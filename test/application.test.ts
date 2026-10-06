@@ -37,6 +37,7 @@ import { SequenceIds } from '../src/ports/ids.js'
 import { deterministicBackend } from '../src/testing/deterministic-backend.js'
 import { MAX_RENDERED_TEXT_CHARS } from '../src/views/shared/sanitize.js'
 import { interactionResponseRunCapabilities } from './support/run-capabilities.js'
+import { heldFixtureExecution } from './support/held-fixture.js'
 
 function deferred<T = void>(): {
   readonly promise: Promise<T>
@@ -1059,7 +1060,8 @@ test('the deterministic stream preserves leading and consecutive newlines', asyn
 })
 
 test('cancellation remains distinct from failure', async () => {
-  const app = createBraidApplication({ fixture: 'deterministic', chunkDelayMs: 25 })
+  const { execution } = heldFixtureExecution()
+  const app = createBraidApplication({ fixture: 'deterministic', execution })
   app.initialize('/workspace')
   const receipt = app.send({ operationId: 'op-cancel', text: 'cancel this turn' })
   await receipt.admissionReady
@@ -1822,7 +1824,8 @@ test('restart persistence does not expose low-entropy raw prompt or public reque
 })
 
 test('cancel uses the operation ledger and replays after terminal completion', async () => {
-  const app = createBraidApplication({ fixture: 'deterministic', chunkDelayMs: 25 })
+  const held = heldFixtureExecution()
+  const app = createBraidApplication({ fixture: 'deterministic', execution: held.execution })
   app.initialize('/workspace')
   const send = app.send({ operationId: 'op-cancel-ledger', text: 'cancel this turn' })
   await send.admissionReady
@@ -1848,6 +1851,7 @@ test('cancel uses the operation ledger and replays after terminal completion', a
     () => app.cancel({ operationId: 'op-cancel-stable', runId: 'run-another' }),
     (error: unknown) => error instanceof AppError && error.code === 'OPERATION_CONFLICT',
   )
+  held.release()
   assert.equal(
     (await next.completion).runs.find((run) => run.id === next.runId)?.status,
     'completed',

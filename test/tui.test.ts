@@ -18,6 +18,7 @@ import { DEFAULT_RUN_CAPABILITIES, type ExecutionPort } from '../src/ports/execu
 import { BraidTerminalApp } from '../src/views/tui/terminal-app.js'
 import { createBraidTheme } from '../src/views/tui/theme.js'
 import { interactionResponseRunCapabilities } from './support/run-capabilities.js'
+import { heldFixtureExecution } from './support/held-fixture.js'
 import { VirtualTerminal } from './support/virtual-terminal.js'
 
 const SIZES = [
@@ -621,7 +622,8 @@ test('conversation commands work through the real terminal input path', async ()
 })
 
 test('cancel command follows the focused run and its conversation during concurrent work', async () => {
-  const app = createBraidApplication({ fixture: 'deterministic', chunkDelayMs: 10_000 })
+  const { execution } = heldFixtureExecution()
+  const app = createBraidApplication({ fixture: 'deterministic', execution })
   app.initialize('/workspace')
   const first = await app.conversations.lifecycle.create({
     operationId: 'op-tui-focus-cancel-create-first',
@@ -820,7 +822,8 @@ test('the terminal saves and restores independent unsent conversation drafts', a
 test('Ctrl+C clears, cancels, then requires a second idle press to quit', async () => {
   const terminal = new VirtualTerminal(80, 24)
   const tui = new TuiMainScreen(terminal)
-  const app = createBraidApplication({ fixture: 'deterministic', chunkDelayMs: 100 })
+  const { execution } = heldFixtureExecution()
+  const app = createBraidApplication({ fixture: 'deterministic', execution })
   app.initialize('/workspace')
   const controller = createApplicationUiController(app)
   let operation = 0

@@ -88,15 +88,36 @@ test('view transform performance records a complete distribution for 20 real rep
   )
 })
 
+// Wall-clock budgets fail on shared CI hosts whenever other jobs compete for the CPU. These checks
+// instead compare each measurement with a baseline taken in the same process, interleaved sample by
+// sample, so host load slows both sides of every ratio together.
+const VISIBLE_WORKER_WINDOW = 2_048
+
+function median(samples: readonly number[]): number {
+  return distribution(samples).median
+}
+
 test('runtime activity projection stays bounded at 10k and 100k saved workers', (t) => {
+  const window = runtimeWorkerState(VISIBLE_WORKER_WINDOW)
   for (const count of [10_000, 100_000]) {
     const state = runtimeWorkerState(count)
+    buildBraidViewModel({ ...window, revision: -1 })
     buildBraidViewModel({ ...state, revision: -1 })
+    const windowRevision: number[] = []
     const changedRevision: number[] = []
+    const historyCostRatio: number[] = []
     for (let repetition = 0; repetition < 10; repetition += 1) {
+      const windowStarted = performance.now()
+      const windowView = buildBraidViewModel({ ...window, revision: repetition })
+      const windowElapsed = performance.now() - windowStarted
       const started = performance.now()
       const view = buildBraidViewModel({ ...state, revision: repetition })
-      changedRevision.push(performance.now() - started)
+      const elapsed = performance.now() - started
+      windowRevision.push(windowElapsed)
+      changedRevision.push(elapsed)
+      historyCostRatio.push(elapsed / windowElapsed)
+      assert.equal(windowView.graph.length, VISIBLE_WORKER_WINDOW + 1)
+      assert.equal(windowView.hiddenGraphNodeCount ?? 0, 0)
       assert.equal(view.activity.length, 500)
       assert.equal(view.graph.length, 2_049)
       assert.equal(view.hiddenGraphNodeCount, count - 2_048)
@@ -111,23 +132,29 @@ test('runtime activity projection stays bounded at 10k and 100k saved workers', 
       unchangedRevision.push(performance.now() - started)
     }
 
-    const changed = distribution(changedRevision)
-    const unchanged = distribution(unchangedRevision)
+    // Saved history beyond the visible window may add a bounded linear scan, not a projection of
+    // every saved worker: the ceilings are 5x and 20x a cost that is about 1.2x and 3x on an idle
+    // host, while rendering the full 100k activity history alone costs more than 4x the window.
+    const historyCost = median(historyCostRatio)
     assert.ok(
-      changed.p90 < (count === 10_000 ? 250 : 450),
-      `${count} worker changed-revision p90=${changed.p90.toFixed(1)}ms`,
+      historyCost < (count === 10_000 ? 5 : 20),
+      `${count} worker changed-revision projection cost ${historyCost.toFixed(2)}x the ${VISIBLE_WORKER_WINDOW}-worker window`,
     )
+    // A stable revision returns the cached view; its cost must be negligible beside a projection.
+    const cachedCost = median(unchangedRevision) / median(changedRevision)
     assert.ok(
-      unchanged.p90 < 5,
-      `${count} worker stable-revision p90=${unchanged.p90.toFixed(1)}ms`,
+      cachedCost < 0.01,
+      `${count} worker stable revision cost ${(cachedCost * 100).toFixed(3)}% of a projection`,
     )
     t.diagnostic(
       JSON.stringify({
         name: 'runtime-activity-projection',
         unit: 'ms',
         environment: { node: process.version, savedWorkers: count },
-        changedRevision: changed,
-        unchangedRevision: unchanged,
+        windowRevision: distribution(windowRevision),
+        changedRevision: distribution(changedRevision),
+        unchangedRevision: distribution(unchangedRevision),
+        historyCostRatio: distribution(historyCostRatio),
       }),
     )
   }

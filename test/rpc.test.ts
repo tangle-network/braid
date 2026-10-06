@@ -33,6 +33,7 @@ import type {
   DetailsQueryResult,
   GraphQueryResult,
 } from '../src/views/shared/semantic-query-types.js'
+import { heldFixtureExecution } from './support/held-fixture.js'
 import { interactionResponseRunCapabilities } from './support/run-capabilities.js'
 
 async function* requestInput(lines: readonly object[]): AsyncGenerator<string> {
@@ -1511,7 +1512,8 @@ test('JSONL cancellation stays unavailable when the runtime does not advertise p
 })
 
 test('JSONL malformed UTF-8 cancels a delayed run before the outer close', async () => {
-  const app = createBraidApplication({ fixture: 'deterministic', chunkDelayMs: 250 })
+  const held = heldFixtureExecution()
+  const app = createBraidApplication({ fixture: 'deterministic', execution: held.execution })
   async function* input(): AsyncGenerator<string | Uint8Array> {
     yield `${[
       {
@@ -1545,12 +1547,15 @@ test('JSONL malformed UTF-8 cancels a delayed run before the outer close', async
   const eventsAfterClose = app.events().length
   assert.equal(app.state().runs[0]?.status, 'aborted')
 
+  // A turn that escaped cancellation would complete and append events once released.
+  held.release()
   await new Promise<void>((resolve) => setTimeout(resolve, 300))
   assert.equal(app.events().length, eventsAfterClose)
 })
 
 test('plain oversized input cancels a delayed run before the outer close', async () => {
-  const app = createBraidApplication({ fixture: 'deterministic', chunkDelayMs: 250 })
+  const held = heldFixtureExecution()
+  const app = createBraidApplication({ fixture: 'deterministic', execution: held.execution })
   async function* input(): AsyncGenerator<string> {
     yield 'delayed plain run\n'
     yield 'x'.repeat(MAX_RPC_LINE_BYTES + 1)
@@ -1568,12 +1573,15 @@ test('plain oversized input cancels a delayed run before the outer close', async
   const eventsAfterClose = app.events().length
   assert.equal(app.state().runs[0]?.status, 'aborted')
 
+  // A turn that escaped cancellation would complete and append events once released.
+  held.release()
   await new Promise<void>((resolve) => setTimeout(resolve, 300))
   assert.equal(app.events().length, eventsAfterClose)
 })
 
 test('plain output failure cancels the delayed run before the outer close', async () => {
-  const app = createBraidApplication({ fixture: 'deterministic', chunkDelayMs: 250 })
+  const held = heldFixtureExecution()
+  const app = createBraidApplication({ fixture: 'deterministic', execution: held.execution })
   const outputFailed = deferred()
   let writes = 0
   const output = {
@@ -1604,6 +1612,8 @@ test('plain output failure cancels the delayed run before the outer close', asyn
   const eventsAfterClose = app.events().length
   assert.equal(app.state().runs[0]?.status, 'aborted')
 
+  // A turn that escaped cancellation would complete and append events once released.
+  held.release()
   await new Promise<void>((resolve) => setTimeout(resolve, 300))
   assert.equal(app.events().length, eventsAfterClose)
 })

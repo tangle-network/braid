@@ -31,6 +31,7 @@ import {
   streamingTailText,
   TranscriptView,
 } from '../src/views/tui/transcript.js'
+import { heldFixtureExecution } from './support/held-fixture.js'
 import { VirtualTerminal } from './support/virtual-terminal.js'
 
 const theme = createBraidTheme({ colors: false, highContrast: true, reducedMotion: true })
@@ -758,12 +759,14 @@ test('selector boundary strips terminal controls from provider option labels', (
 })
 
 test('application view projects canonical graph edges without inventing completeness evidence', async () => {
-  const app = createBraidApplication({ fixture: 'deterministic', chunkDelayMs: 20 })
+  const held = heldFixtureExecution()
+  const app = createBraidApplication({ fixture: 'deterministic', execution: held.execution })
   app.initialize('/workspace')
   const controller = createApplicationUiController(app)
   const receipt = app.send({ operationId: 'op-graph', text: 'graph proof' })
   await receipt.admissionReady
   assert.equal(controller.view().runs[0]?.completeness, 'incomplete')
+  held.release()
   await receipt.completion
   const view = controller.view()
   assert.equal(view.runs[0]?.completeness, 'unavailable')
@@ -902,7 +905,7 @@ test('unconfigured runs preserve drafts while active runs queue input', async ()
     const tui = new TuiMainScreen(terminal)
     const app = createBraidApplication(
       fixture
-        ? { fixture: 'deterministic', chunkDelayMs: 100 }
+        ? { fixture: 'deterministic', execution: heldFixtureExecution().execution }
         : { journal: new MemoryJournal(new FixedClock()) },
     )
     app.initialize('/workspace')
