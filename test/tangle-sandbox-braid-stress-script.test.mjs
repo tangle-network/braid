@@ -670,7 +670,9 @@ test('a terminal pre-kill wait carries the Braid run error code', async () => {
   const runError =
     'RUNTIME_PROVIDER_PAYMENT_REQUIRED: runner relayed Router HTTP 402 refusal (insufficient_funds/payment_required)'
   const session = {
-    responses: [{ type: 'state', state: { runs: [{ id: 'run-1', status: 'failed', error: runError }] } }],
+    responses: [
+      { type: 'state', state: { runs: [{ id: 'run-1', status: 'failed', error: runError }] } },
+    ],
   }
 
   await assert.rejects(

@@ -77,11 +77,7 @@ export function providerHttpFailureDiagnostic(value: unknown): string | undefine
 const RELAYED_ROUTER_REFUSALS: ReadonlyArray<
   readonly [sentence: string, status: number, tokens: string]
 > = Object.freeze([
-  [
-    'Inference requires verified paid access.',
-    402,
-    'insufficient_funds/payment_required',
-  ],
+  ['Inference requires verified paid access.', 402, 'insufficient_funds/payment_required'],
   [
     'Email verification is required before using paid Router access.',
     403,

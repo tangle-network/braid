@@ -1354,7 +1354,10 @@ test('a Router refusal relayed by a CLI runner without its HTTP status keeps its
     state.runs[0]?.error,
     'RUNTIME_PROVIDER_PAYMENT_REQUIRED: runner relayed Router HTTP 402 refusal (insufficient_funds/payment_required)',
   )
-  assert.equal(providerHttpFailureDiagnostic('opencode execution failed: model not found'), undefined)
+  assert.equal(
+    providerHttpFailureDiagnostic('opencode execution failed: model not found'),
+    undefined,
+  )
 })
 
 test('a backend error event keeps the provider HTTP rejection class', () => {

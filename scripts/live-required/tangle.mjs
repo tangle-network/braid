@@ -109,8 +109,7 @@ function soakFailureCategory(failure, fingerprint) {
 function soakPhases(timing) {
   const phases = Object.entries(timing ?? {}).filter(([name]) => SOAK_PHASES.has(name))
   return {
-    lastCompletedPhase:
-      phases.findLast(([, record]) => record?.outcome !== 'threw')?.[0] ?? null,
+    lastCompletedPhase: phases.findLast(([, record]) => record?.outcome !== 'threw')?.[0] ?? null,
     failedPhase: phases.findLast(([, record]) => record?.outcome === 'threw')?.[0] ?? null,
   }
 }

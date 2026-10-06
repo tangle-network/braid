@@ -1037,7 +1037,10 @@ test('LIVE-07 diagnostic names the failed phase and the Braid run error code', (
           failure: {
             name: 'MissingIntegrationError',
             message: providerText,
-            fingerprint: { name: 'MissingIntegrationError', code: 'BRAID_LIVE_INTEGRATION_MISSING' },
+            fingerprint: {
+              name: 'MissingIntegrationError',
+              code: 'BRAID_LIVE_INTEGRATION_MISSING',
+            },
             code: 'BRAID_LIVE_INTEGRATION_MISSING',
             details: {
               runId: 'run-1',
