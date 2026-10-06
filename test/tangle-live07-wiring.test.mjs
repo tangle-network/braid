@@ -953,6 +953,10 @@ test('LIVE-07 retains bounded canary failure and cleanup diagnostics without err
         failureHttpStatus: 503,
         failureCode: null,
         lastCompletedPhase: 'firstProcess.send',
+        failedPhase: null,
+        runStatus: null,
+        runError: null,
+        runErrorHttpStatus: null,
         firstRunAdmitted: true,
         controlObserved: false,
         cleanup: {
@@ -986,6 +990,10 @@ test('LIVE-07 diagnostic keeps absent proof fields distinct from observed false'
     failureHttpStatus: null,
     failureCode: null,
     lastCompletedPhase: null,
+    failedPhase: null,
+    runStatus: null,
+    runError: null,
+    runErrorHttpStatus: null,
     firstRunAdmitted: null,
     controlObserved: null,
     cleanup: null,
@@ -997,6 +1005,10 @@ test('LIVE-07 diagnostic keeps absent proof fields distinct from observed false'
     failureHttpStatus: null,
     failureCode: null,
     lastCompletedPhase: null,
+    failedPhase: null,
+    runStatus: null,
+    runError: null,
+    runErrorHttpStatus: null,
     firstRunAdmitted: false,
     controlObserved: false,
     cleanup: {
@@ -1009,6 +1021,63 @@ test('LIVE-07 diagnostic keeps absent proof fields distinct from observed false'
       failureHttpStatus: null,
     },
   })
+})
+
+test('LIVE-07 diagnostic names the failed phase and the Braid run error code', () => {
+  const providerText = 'opencode execution failed: provider-echoed detail'
+  const diagnostic = sandboxSoakDiagnostic({
+    requestedRuns: 3,
+    attemptedRuns: 1,
+    stoppedAfterCanary: true,
+    attempts: [
+      {
+        index: 0,
+        proof: {
+          status: 'failed',
+          failure: {
+            name: 'MissingIntegrationError',
+            message: providerText,
+            fingerprint: {
+              name: 'MissingIntegrationError',
+              code: 'BRAID_LIVE_INTEGRATION_MISSING',
+            },
+            code: 'BRAID_LIVE_INTEGRATION_MISSING',
+            details: {
+              runId: 'run-1',
+              status: 'failed',
+              runError:
+                'RUNTIME_PROVIDER_PAYMENT_REQUIRED: runner relayed Router HTTP 402 refusal (insufficient_funds/payment_required)',
+              required: 'emitting a provider-bound workspace tool event',
+            },
+          },
+          // A failed proof keeps the phase record; the phase that threw is not completed.
+          timing: {
+            workspace: { elapsedMs: 1, outcome: 'settled' },
+            'firstProcess.observeControl': { elapsedMs: 2, outcome: 'settled' },
+            'firstProcess.waitVisible': { elapsedMs: 3, outcome: 'threw' },
+            totalMs: 6,
+          },
+          progress: { firstRunId: 'run-1', firstControlRef: { environmentId: 'sandbox-1' } },
+        },
+      },
+    ],
+  })
+  assert.deepEqual(diagnostic.attempts[0], {
+    index: 0,
+    status: 'failed',
+    failureCategory: 'integration-contract',
+    failureHttpStatus: null,
+    failureCode: null,
+    lastCompletedPhase: 'firstProcess.observeControl',
+    failedPhase: 'firstProcess.waitVisible',
+    runStatus: 'failed',
+    runError: 'RUNTIME_PROVIDER_PAYMENT_REQUIRED',
+    runErrorHttpStatus: 402,
+    firstRunAdmitted: true,
+    controlObserved: true,
+    cleanup: null,
+  })
+  assert.doesNotMatch(JSON.stringify(diagnostic), /provider-echoed|insufficient_funds/u)
 })
 
 function withBranchAWorkspace(overrides) {

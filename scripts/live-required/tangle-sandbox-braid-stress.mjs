@@ -1449,10 +1449,13 @@ export async function runBraidSandboxStress({
 
   const phase = async (name, task) => {
     const start = performance.now()
+    let outcome = 'threw'
     try {
-      return await protectedSpan(name, task)
+      const value = await protectedSpan(name, task)
+      outcome = 'settled'
+      return value
     } finally {
-      phases[name] = { elapsedMs: performance.now() - start }
+      phases[name] = { elapsedMs: performance.now() - start, outcome }
     }
   }
 
@@ -2188,7 +2191,8 @@ export async function runBraidSandboxStress({
       ...(entry.error ? { error: entry.error } : {}),
     })),
     accountIdentityConsistency: accountIdentityConsistency ?? null,
-    timing: { ...(result?.timing ?? {}), totalMs: performance.now() - startedAt },
+    // A failed proof has no result; its phase timing is the only record of where it stopped.
+    timing: { ...(result?.timing ?? phases), totalMs: performance.now() - startedAt },
     workspaceVerification: workspaceVerification ?? null,
     progress: {
       firstRunId,

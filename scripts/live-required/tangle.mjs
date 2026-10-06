@@ -26,7 +26,7 @@ import {
   runInteractiveProof,
 } from './tangle-sandbox-braid-interactive.mjs'
 import { runProof as runMultirunProof } from './tangle-sandbox-braid-multirun.mjs'
-import { runBraidSandboxSoak } from './tangle-sandbox-braid-soak.mjs'
+import { proofRunFailure, runBraidSandboxSoak } from './tangle-sandbox-braid-soak.mjs'
 import { runConfidentialProof, runWorkspaceForkProof } from './tangle-workspace-proof.mjs'
 
 const TANGLE_ROWS = Object.freeze(['LIVE-06', 'LIVE-07', 'LIVE-08', 'LIVE-09', 'LIVE-10'])
@@ -106,6 +106,14 @@ function soakFailureCategory(failure, fingerprint) {
   return 'unclassified'
 }
 
+function soakPhases(timing) {
+  const phases = Object.entries(timing ?? {}).filter(([name]) => SOAK_PHASES.has(name))
+  return {
+    lastCompletedPhase: phases.findLast(([, record]) => record?.outcome !== 'threw')?.[0] ?? null,
+    failedPhase: phases.findLast(([, record]) => record?.outcome === 'threw')?.[0] ?? null,
+  }
+}
+
 function nonnegativeInteger(value) {
   return Number.isSafeInteger(value) && value >= 0 ? value : null
 }
@@ -124,9 +132,7 @@ export function sandboxSoakDiagnostic(cohort) {
       const proof = attempt?.proof
       const failure = proof?.failure
       const fingerprint = soakFailureFingerprint(failure)
-      const completedPhases = Object.keys(proof?.timing ?? {}).filter((name) =>
-        SOAK_PHASES.has(name),
-      )
+      const phases = soakPhases(proof?.timing)
       const cleanup = proof?.cleanup
       const cleanupFailure = proof?.cleanupFailure
       const cleanupFingerprint = soakFailureFingerprint(cleanupFailure)
@@ -140,7 +146,9 @@ export function sandboxSoakDiagnostic(cohort) {
             : soakFailureCategory(failure, fingerprint),
         failureHttpStatus: fingerprint.httpStatus,
         failureCode: fingerprint.code,
-        lastCompletedPhase: completedPhases.at(-1) ?? null,
+        lastCompletedPhase: phases.lastCompletedPhase,
+        failedPhase: phases.failedPhase,
+        ...proofRunFailure(failure),
         firstRunAdmitted:
           progress === undefined || progress === null
             ? null

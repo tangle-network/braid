@@ -665,3 +665,24 @@ test('stops pre-kill waits as soon as the run becomes terminal', async () => {
     /became unknown before emitting a stable visible provider event/iu,
   )
 })
+
+test('a terminal pre-kill wait carries the Braid run error code', async () => {
+  const runError =
+    'RUNTIME_PROVIDER_PAYMENT_REQUIRED: runner relayed Router HTTP 402 refusal (insufficient_funds/payment_required)'
+  const session = {
+    responses: [
+      { type: 'state', state: { runs: [{ id: 'run-1', status: 'failed', error: runError }] } },
+    ],
+  }
+
+  await assert.rejects(
+    waitForWorkspaceToolEvents(session, 'run-1', 10_000, 'first process'),
+    (error) => {
+      assert.ok(error instanceof MissingIntegrationError)
+      assert.match(error.message, /became failed with RUNTIME_PROVIDER_PAYMENT_REQUIRED/u)
+      assert.equal(error.details.status, 'failed')
+      assert.equal(error.details.runError, runError)
+      return true
+    },
+  )
+})

@@ -1320,6 +1320,58 @@ test('a provider HTTP rejection surfaces its status and error code instead of RU
   assert.equal(JSON.stringify({ state, events: app.events() }).includes(canary), false)
 })
 
+test('a Router refusal relayed by a CLI runner without its HTTP status keeps its class', async () => {
+  const journal = new MemoryJournal(new FixedClock())
+  const app = new BraidApplication({
+    profile: DETERMINISTIC_PROFILE,
+    execution: {
+      async *streamTurn(): AsyncIterable<RuntimeStreamEvent> {
+        yield {
+          type: 'final',
+          status: 'failed',
+          reason:
+            'opencode execution failed: Inference requires verified paid access. Add funds or activate a paid seat at id.tangle.tools. (exit code 1)',
+          text: '',
+          error: {
+            kind: 'backend',
+            message:
+              'opencode execution failed: Inference requires verified paid access. Add funds or activate a paid seat at id.tangle.tools. (exit code 1)',
+          },
+          task: { id: 'task-relayed-402', intent: 'relayed-402' },
+          timestamp: '2026-08-01T00:00:00.000Z',
+        }
+      },
+    },
+    clock: new FixedClock(),
+    ids: new SequenceIds(),
+    journal,
+    effectStorage: journal,
+  })
+
+  app.initialize('/workspace')
+  const state = await app.send({ operationId: 'op-relayed-402', text: 'hello' }).completion
+  assert.equal(
+    state.runs[0]?.error,
+    'RUNTIME_PROVIDER_PAYMENT_REQUIRED: runner relayed Router HTTP 402 refusal (insufficient_funds/payment_required)',
+  )
+  assert.equal(
+    providerHttpFailureDiagnostic(
+      'opencode execution failed: Email verification is required before using paid Router access.',
+    ),
+    'RUNTIME_PROVIDER_UNAUTHORIZED: runner relayed Router HTTP 403 refusal (authentication_error/email_verification_required)',
+  )
+  assert.equal(
+    providerHttpFailureDiagnostic(
+      'opencode execution failed: This API key is scoped to another product.',
+    ),
+    'RUNTIME_PROVIDER_UNAUTHORIZED: runner relayed Router HTTP 403 refusal (authentication_error/product_scope_mismatch)',
+  )
+  assert.equal(
+    providerHttpFailureDiagnostic('opencode execution failed: model not found'),
+    undefined,
+  )
+})
+
 test('a backend error event keeps the provider HTTP rejection class', () => {
   const event = providerEventFor(
     'run-backend-401',
