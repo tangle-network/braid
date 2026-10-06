@@ -1355,6 +1355,18 @@ test('a Router refusal relayed by a CLI runner without its HTTP status keeps its
     'RUNTIME_PROVIDER_PAYMENT_REQUIRED: runner relayed Router HTTP 402 refusal (insufficient_funds/payment_required)',
   )
   assert.equal(
+    providerHttpFailureDiagnostic(
+      'opencode execution failed: Email verification is required before using paid Router access.',
+    ),
+    'RUNTIME_PROVIDER_UNAUTHORIZED: runner relayed Router HTTP 403 refusal (authentication_error/email_verification_required)',
+  )
+  assert.equal(
+    providerHttpFailureDiagnostic(
+      'opencode execution failed: This API key is scoped to another product.',
+    ),
+    'RUNTIME_PROVIDER_UNAUTHORIZED: runner relayed Router HTTP 403 refusal (authentication_error/product_scope_mismatch)',
+  )
+  assert.equal(
     providerHttpFailureDiagnostic('opencode execution failed: model not found'),
     undefined,
   )
