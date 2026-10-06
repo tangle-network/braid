@@ -25,7 +25,7 @@ import {
   DEFAULT_CANCEL_REASON,
   shutdownRequestDigest,
 } from './operation-ledger.js'
-import { safeProviderDiagnostic } from './provider-values.js'
+import { runtimeFailureDiagnostic, safeProviderDiagnostic } from './provider-values.js'
 import { RUN_EFFECT_KIND, runEffectRequest } from './run-admission.js'
 import { executeRun } from './run-execution.js'
 import type { RunExecutionSnapshot } from './run-execution-snapshot.js'
@@ -363,7 +363,7 @@ async function reconcileSnapshot(
       usage: snapshot.usage ?? usageSnapshotForRun(current),
       ...(snapshot.error === undefined
         ? {}
-        : { error: safeProviderDiagnostic(snapshot.error, 'RUNTIME_RECONCILIATION_ERROR') }),
+        : { error: runtimeFailureDiagnostic(snapshot.error, 'RUNTIME_RECONCILIATION_ERROR') }),
       ...(snapshot.detail === undefined
         ? {}
         : { reason: safeProviderDiagnostic(snapshot.detail, 'RUNTIME_RECONCILIATION_STATUS') }),

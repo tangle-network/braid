@@ -4,7 +4,7 @@ import type { ProviderRunSnapshot } from '../ports/execution.js'
 import type { ReconcileInput, ReconnectInput, ReplayPort } from './application-ports.js'
 import { AppError } from './errors.js'
 import { safeSnapshotDetail, safeSnapshotText, safeSnapshotUsage } from './provider-snapshot.js'
-import { safeRuntimeDiagnostic } from './provider-values.js'
+import { runtimeFailureDiagnostic, safeRuntimeDiagnostic } from './provider-values.js'
 import { retainedExecutionRecoveryContext } from './run-recovery-context.js'
 
 interface RecoveryReconnectInput extends ReconnectInput {
@@ -195,7 +195,7 @@ export async function reconcileRun(
         }),
         ...(snapshot.error === undefined
           ? {}
-          : { error: safeSnapshotDetail(snapshot.error, 'RUNTIME_RECONCILIATION_ERROR') }),
+          : { error: runtimeFailureDiagnostic(snapshot.error, 'RUNTIME_RECONCILIATION_ERROR') }),
         ...(snapshot.detail === undefined
           ? {}
           : { reason: safeSnapshotDetail(snapshot.detail, 'RUNTIME_RECONCILIATION_STATUS') }),

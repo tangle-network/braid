@@ -15,7 +15,10 @@ import type {
 import type { ExecutionEnvironmentObservation } from '../domain/execution-observation.js'
 import { localInteractionId } from '../domain/interaction-identity.js'
 import { redactSensitiveText, redactStructuredValue } from '../domain/redaction.js'
-import { publicRuntimeDiagnostic } from '../domain/runtime-diagnostics.js'
+import {
+  providerHttpFailureDiagnostic,
+  publicRuntimeDiagnostic,
+} from '../domain/runtime-diagnostics.js'
 import type { BraidRuntimeEvent } from '../domain/runtime-events.js'
 import type { BraidMessagePart, RunStatus } from '../domain/state.js'
 import { isCanonicalIsoDateTime } from '../domain/text.js'
@@ -28,6 +31,7 @@ import {
 import {
   finiteNonNegativeNumber,
   optionalFiniteNonNegativeNumber,
+  runtimeFailureDiagnostic,
   safeDiagnostic,
   safeProviderDiagnostic,
   safePublicIdentifier,
@@ -414,7 +418,7 @@ export function providerEventFor(
       return {
         kind: 'run.error',
         runId,
-        message: safeProviderDiagnostic(event.message, 'RUNTIME_BACKEND_ERROR'),
+        message: runtimeFailureDiagnostic(event.message, 'RUNTIME_BACKEND_ERROR'),
         recoverable: event.recoverable,
         provider,
       }
@@ -430,7 +434,11 @@ export function providerEventFor(
         usage: usageFromMetadata(event.metadata),
         ...(event.error === undefined
           ? {}
-          : { error: safeDiagnostic(event.error.message, 'RUNTIME_FINAL_ERROR') }),
+          : {
+              error:
+                providerHttpFailureDiagnostic(event.error.message) ??
+                safeDiagnostic(event.error.message, 'RUNTIME_FINAL_ERROR'),
+            }),
         ...(event.reason === undefined
           ? {}
           : {
