@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   live-evidence:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, ci-public]
     timeout-minutes: 120
     environment: release-live
     permissions:
