@@ -11,6 +11,7 @@ import { createBraidApplication, DETERMINISTIC_PROFILE } from '../src/app/compos
 import { cancelRequestDigest } from '../src/app/operation-ledger.js'
 import { effectRequestDigest } from '../src/app/effect-coordinator.js'
 import { MemoryJournal } from '../src/app/journal.js'
+import { providerEventFor } from '../src/app/run-event-mapper.js'
 import { createProfileRecord } from '../src/app/profiles.js'
 import {
   createInteractionRequest,
@@ -22,6 +23,7 @@ import type { ConnectionRecord } from '../src/domain/entities.js'
 import type { BraidEventEnvelope } from '../src/domain/events.js'
 import { createConnectionId } from '../src/domain/ids.js'
 import { assertBraidState } from '../src/domain/invariants.js'
+import { providerHttpFailureDiagnostic } from '../src/domain/runtime-diagnostics.js'
 import type { RuntimeEventEnvelope } from '../src/domain/runtime-events.js'
 import { FixedClock } from '../src/ports/clock.js'
 import type { JournalPort } from '../src/ports/effect-storage.js'
@@ -1278,6 +1280,114 @@ test('provider diagnostics and model metadata cannot persist credential material
   assert.equal(state.runs[0]?.model, 'fixture/deterministic')
   assert.equal(state.runs[0]?.inputTokens, 0)
   assert.equal(state.runs[0]?.outputTokens, 0)
+})
+
+test('a provider HTTP rejection surfaces its status and error code instead of RUNTIME_FINAL_ERROR', async () => {
+  const canary = 'sk-tan-never-persist-this-provider-key-value'
+  const journal = new MemoryJournal(new FixedClock())
+  const app = new BraidApplication({
+    profile: DETERMINISTIC_PROFILE,
+    execution: {
+      async *streamTurn(): AsyncIterable<RuntimeStreamEvent> {
+        yield {
+          type: 'final',
+          status: 'failed',
+          reason: 'failed',
+          text: '',
+          error: {
+            kind: 'backend',
+            message: `routerInlineExecutor: transport failed: router 401: {"error":{"message":"Invalid API key ${canary}","type":"authentication_error","code":"invalid_key"}}`,
+          },
+          task: { id: 'task-router-401', intent: 'router-401' },
+          timestamp: '2026-08-01T00:00:00.000Z',
+        }
+      },
+    },
+    clock: new FixedClock(),
+    ids: new SequenceIds(),
+    journal,
+    effectStorage: journal,
+  })
+
+  app.initialize('/workspace')
+  const state = await app.send({ operationId: 'op-router-401', text: 'hello' }).completion
+  assert.equal(
+    state.runs[0]?.error,
+    'RUNTIME_PROVIDER_UNAUTHORIZED: provider returned HTTP 401 (authentication_error/invalid_key)',
+  )
+  assert.equal(JSON.stringify({ state, events: app.events() }).includes(canary), false)
+})
+
+test('a backend error event keeps the provider HTTP rejection class', () => {
+  const event = providerEventFor(
+    'run-backend-401',
+    {
+      type: 'backend_error',
+      message: 'routerInlineExecutor: transport failed: router 403: {"error":{"code":"forbidden"}}',
+      recoverable: false,
+    } as RuntimeStreamEvent,
+    { eventId: 'backend-401', providerSequence: 1, receivedAt: '2026-08-01T00:00:00.000Z' },
+  )
+  assert.equal(event.kind, 'run.error')
+  assert.equal(
+    event.message,
+    'RUNTIME_PROVIDER_UNAUTHORIZED: provider returned HTTP 403 (forbidden)',
+  )
+})
+
+test('provider HTTP failure diagnostics keep only status and safe provider tokens', () => {
+  assert.equal(
+    providerHttpFailureDiagnostic(
+      'router 402: {"error":{"message":"Add funds","type":"insufficient_funds","code":"payment_required"}}',
+    ),
+    'RUNTIME_PROVIDER_PAYMENT_REQUIRED: provider returned HTTP 402 (insufficient_funds/payment_required)',
+  )
+  assert.equal(
+    providerHttpFailureDiagnostic('x: router 503: upstream unavailable'),
+    'RUNTIME_PROVIDER_UNAVAILABLE: provider returned HTTP 503',
+  )
+  assert.equal(
+    providerHttpFailureDiagnostic(
+      'router 429: {"error":{"type":"rate_limit_error","code":"rate_limit_error"}}',
+    ),
+    'RUNTIME_PROVIDER_RATE_LIMITED: provider returned HTTP 429 (rate_limit_error)',
+  )
+  assert.equal(
+    providerHttpFailureDiagnostic(
+      'router 400: {"error":{"type":"secret_abc","code":"model_not_found"}}',
+    ),
+    'RUNTIME_PROVIDER_REJECTED: provider returned HTTP 400 (model_not_found)',
+  )
+  assert.equal(
+    providerHttpFailureDiagnostic(
+      'router 401: {"type":"error","error":{"type":"authentication_error","message":"bad"}}',
+    ),
+    'RUNTIME_PROVIDER_UNAUTHORIZED: provider returned HTTP 401 (authentication_error)',
+  )
+  for (const secret of [
+    'sk-tan-abcdef0123456789abcdef0123',
+    'ghp_abcdefghijklmnopqrstuvwxyz0123',
+    `AKIA${'ABCDEFGHIJKLMNOP'}`,
+    'client_secret_value',
+  ]) {
+    assert.equal(
+      providerHttpFailureDiagnostic(
+        `router 400: {"error":{"type":"${secret}","code":"${secret}"}}`,
+      ),
+      'RUNTIME_PROVIDER_REJECTED: provider returned HTTP 400',
+    )
+  }
+  assert.equal(
+    providerHttpFailureDiagnostic('tool said the router 404: {"error":{"type":"fake"}}'),
+    undefined,
+  )
+  assert.equal(
+    providerHttpFailureDiagnostic('router 500: upstream\n{"error":{"type":"injected"}}'),
+    'RUNTIME_PROVIDER_UNAVAILABLE: provider returned HTTP 500',
+  )
+  assert.equal(providerHttpFailureDiagnostic('router 200: ok'), undefined)
+  assert.equal(providerHttpFailureDiagnostic('transport failed: fetch failed'), undefined)
+  assert.equal(providerHttpFailureDiagnostic(undefined), undefined)
 })
 
 test('provider diagnostic getters cannot break execution failure handling', () => {

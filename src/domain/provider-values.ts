@@ -1,7 +1,7 @@
 import { redactSensitiveText } from './secret-sanitizer.js'
 import { containsUnsafeControlCharacter } from './text.js'
 
-const SENSITIVE_DIAGNOSTIC =
+export const SENSITIVE_DIAGNOSTIC =
   /(?:secret|password|passphrase|token|bearer|authorization|credential|private(?:[_-]?key)?|api[-_]?key|session(?:[_-]?key)?|access[_-]?key|client[_-]?secret|signature|signed[_-]?url|nonce)/iu
 const SAFE_DIAGNOSTIC = /^[A-Z][A-Z0-9._:-]{0,63}$/u
 const TYPED_PROVIDER_DIAGNOSTIC = /^[A-Z][A-Z0-9]*(?:[._][A-Z0-9]+)*$/u

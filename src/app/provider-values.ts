@@ -1,4 +1,5 @@
 import { safeProviderDiagnostic } from '../domain/provider-values.js'
+import { providerHttpFailureDiagnostic } from '../domain/runtime-diagnostics.js'
 
 export {
   finiteNonNegativeNumber,
@@ -7,6 +8,11 @@ export {
   safeProviderDiagnostic,
   safePublicIdentifier,
 } from '../domain/provider-values.js'
+
+/** A runtime failure keeps its provider HTTP status and error code; other text falls back. */
+export function runtimeFailureDiagnostic(value: unknown, fallback: string): string {
+  return providerHttpFailureDiagnostic(value) ?? safeProviderDiagnostic(value, fallback)
+}
 
 function safeProperty(value: object, key: string): unknown {
   try {

@@ -1,3 +1,6 @@
+import { SENSITIVE_DIAGNOSTIC } from './provider-values.js'
+import { redactSensitiveText } from './secret-sanitizer.js'
+
 export const BRAID_SANDBOX_INTERACTION_UNSUPPORTED =
   'BRAID_SANDBOX_INTERACTION_UNSUPPORTED' as const
 export const BRAID_SANDBOX_CLEANUP_UNCONFIRMED = 'BRAID_SANDBOX_CLEANUP_UNCONFIRMED' as const
@@ -14,4 +17,56 @@ export function publicRuntimeDiagnostic(value: unknown): string | undefined {
     return undefined
   }
   return PUBLIC_RUNTIME_DIAGNOSTICS[value as keyof typeof PUBLIC_RUNTIME_DIAGNOSTICS]
+}
+
+// Runtime's Router executor reports a non-success upstream response as
+// `router <status>: <body prefix>`, either as the whole message or after a
+// `<context>: transport failed: ` prefix.
+const PROVIDER_HTTP_FAILURE = /(?:^|:\s)router ([45]\d{2}): ([^\n]*)/u
+const PROVIDER_ERROR_OBJECT = /"error"\s*:\s*\{([^{}]*)/u
+const providerErrorField = (name: string) =>
+  new RegExp(String.raw`"${name}"\s*:\s*"([A-Za-z][A-Za-z0-9_.-]{0,63})"`, 'u')
+const PROVIDER_ERROR_TYPE = providerErrorField('type')
+const PROVIDER_ERROR_CODE = providerErrorField('code')
+
+function providerFailureClass(status: number): string {
+  if (status === 401 || status === 403) return 'RUNTIME_PROVIDER_UNAUTHORIZED'
+  if (status === 402) return 'RUNTIME_PROVIDER_PAYMENT_REQUIRED'
+  if (status === 404) return 'RUNTIME_PROVIDER_NOT_FOUND'
+  if (status === 429) return 'RUNTIME_PROVIDER_RATE_LIMITED'
+  if (status >= 500) return 'RUNTIME_PROVIDER_UNAVAILABLE'
+  return 'RUNTIME_PROVIDER_REJECTED'
+}
+
+// A provider-declared token is public only when it cannot carry credential material.
+function providerToken(scope: string, field: RegExp): string | undefined {
+  const value = field.exec(scope)?.[1]
+  if (value === undefined || value === 'error') return undefined
+  if (SENSITIVE_DIAGNOSTIC.test(value) || redactSensitiveText(value) !== value) return undefined
+  return value
+}
+
+/**
+ * Classify a runtime failure message into a public diagnostic.
+ *
+ * Provider text is untrusted, so only the HTTP status and the provider's own
+ * error type and code tokens survive; the free-text body never reaches state.
+ * Returns undefined when the message does not carry a provider HTTP failure.
+ */
+export function providerHttpFailureDiagnostic(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const match = PROVIDER_HTTP_FAILURE.exec(value)
+  if (match === null) return undefined
+  const status = Number(match[1])
+  const body = match[2] ?? ''
+  const scopes = [PROVIDER_ERROR_OBJECT.exec(body)?.[1], body].filter(
+    (scope): scope is string => scope !== undefined,
+  )
+  const token = (field: RegExp) =>
+    scopes.map((scope) => providerToken(scope, field)).find((found) => found !== undefined)
+  const tokens = [token(PROVIDER_ERROR_TYPE), token(PROVIDER_ERROR_CODE)]
+    .filter((found): found is string => found !== undefined)
+    .filter((found, index, all) => all.indexOf(found) === index)
+  const detail = tokens.length === 0 ? '' : ` (${tokens.join('/')})`
+  return `${providerFailureClass(status)}: provider returned HTTP ${status}${detail}`
 }
