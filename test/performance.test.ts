@@ -100,6 +100,7 @@ test('view transform performance records a complete distribution for 20 real rep
 // spent descheduled. Budgets below compare against a baseline from the same process or count work
 // directly, so they hold however busy the host is. Wall-clock distributions stay as diagnostics.
 const VISIBLE_WORKER_WINDOW = 2_048
+const MAX_SELECTION_READS_PER_HIDDEN_WORKER = 15
 const DISPLAY_FIELDS = new Set<PropertyKey>(['title', 'runtimeId'])
 
 function median(samples: readonly number[]): number {
@@ -137,6 +138,12 @@ test('runtime activity projection stays bounded at 10k and 100k saved workers', 
   assert.equal(hundredThousand.display, window.display, '100k history projected hidden workers')
   const nearReadsPerWorker = (tenThousand.total - window.total) / (10_000 - VISIBLE_WORKER_WINDOW)
   const farReadsPerWorker = (hundredThousand.total - tenThousand.total) / (100_000 - 10_000)
+  // Read counts are deterministic. Projecting hidden workers adds a constant per-worker cost that
+  // a near/far comparison cannot see, so the selection cost is pinned; change it deliberately.
+  assert.ok(
+    farReadsPerWorker <= MAX_SELECTION_READS_PER_HIDDEN_WORKER,
+    `selection costs ${farReadsPerWorker.toFixed(2)} reads per hidden worker; pinned at ${MAX_SELECTION_READS_PER_HIDDEN_WORKER}`,
+  )
   assert.ok(
     farReadsPerWorker <= nearReadsPerWorker,
     `selection cost per saved worker grew with history: ${nearReadsPerWorker.toFixed(2)} reads near 10k, ${farReadsPerWorker.toFixed(2)} near 100k`,
