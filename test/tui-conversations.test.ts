@@ -6,6 +6,7 @@ import { createBraidApplication } from '../src/app/composition.js'
 import { BraidTerminalApp } from '../src/views/tui/terminal-app.js'
 import { createBraidTheme } from '../src/views/tui/theme.js'
 import { VirtualTerminal } from './support/virtual-terminal.js'
+import { heldFixtureExecution } from './support/held-fixture.js'
 
 function operationIds(prefix: string): () => string {
   let index = 0
@@ -157,7 +158,8 @@ test('rename, archive, and delete require confirmation and preserve the selector
 })
 
 test('a lifecycle failure keeps the confirmation target available for recovery', async () => {
-  const app = createBraidApplication({ fixture: 'deterministic', chunkDelayMs: 1_000 })
+  const { execution } = heldFixtureExecution()
+  const app = createBraidApplication({ fixture: 'deterministic', execution })
   app.initialize('/workspace')
   const terminal = new VirtualTerminal(80, 24)
   const { view, done } = startTerminal(app, terminal)

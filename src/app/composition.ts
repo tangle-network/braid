@@ -5,7 +5,10 @@ import { FixedClock, SystemClock } from '../ports/clock.js'
 import { type CredentialPort, credentialRef } from '../ports/credentials.js'
 import type { EffectStoragePort, JournalPort } from '../ports/effect-storage.js'
 import { RandomIds, SequenceIds } from '../ports/ids.js'
-import { deterministicBackend } from '../testing/deterministic-backend.js'
+import {
+  type DeterministicBackendOptions,
+  deterministicBackend,
+} from '../testing/deterministic-backend.js'
 import { BraidApplication } from './application.js'
 import type { CompositionOptions } from './composition-options.js'
 import { DETERMINISTIC_PROFILE, STARTER_PROFILE } from './default-profiles.js'
@@ -56,6 +59,17 @@ function withProductionCredentialOptions(
   }
 }
 
+/** Execution port behind the deterministic fixture, with Runtime's async admission and cancel. */
+export function createDeterministicExecution(
+  options: DeterministicBackendOptions = {},
+): AgentRuntimeExecutionPort {
+  return new AgentRuntimeExecutionPort(
+    (input) => deterministicBackend(input, options),
+    async () => ({ status: 'cancelled' as const }),
+    { admissionMode: 'async' },
+  )
+}
+
 export function createBraidApplication(options: CompositionOptions = {}): BraidApplication {
   const isFixture = options.fixture === 'deterministic'
   if (isFixture && options.production !== undefined) {
@@ -79,13 +93,8 @@ export function createBraidApplication(options: CompositionOptions = {}): BraidA
   const execution =
     options.execution ??
     (isFixture
-      ? new AgentRuntimeExecutionPort(
-          (input) =>
-            deterministicBackend(input, {
-              ...(options.chunkDelayMs === undefined ? {} : { chunkDelayMs: options.chunkDelayMs }),
-            }),
-          async () => ({ status: 'cancelled' as const }),
-          { admissionMode: 'async' },
+      ? createDeterministicExecution(
+          options.chunkDelayMs === undefined ? {} : { chunkDelayMs: options.chunkDelayMs },
         )
       : (production?.execution ??
         (options.backendResolver

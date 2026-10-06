@@ -14,6 +14,7 @@ import { localInteractionId } from '../src/domain/interaction-identity.js'
 import { assertBraidState } from '../src/domain/invariants.js'
 import { FixedClock } from '../src/ports/clock.js'
 import { DEFAULT_RUN_CAPABILITIES, type ExecutionPort } from '../src/ports/execution.js'
+import { heldFixtureExecution } from './support/held-fixture.js'
 
 async function initializedApp() {
   const app = createBraidApplication({ fixture: 'deterministic' })
@@ -404,7 +405,7 @@ test('branch run configuration merges, replays, rejects conflicts, and clears at
 
 test('branch run configuration survives journal replay and can change future runs during a run', async () => {
   const journal = new MemoryJournal(new FixedClock())
-  const first = createBraidApplication({ fixture: 'deterministic', journal, chunkDelayMs: 100 })
+  const first = createBraidApplication({ fixture: 'deterministic', journal })
   first.initialize('/workspace')
   await first.conversations.branches.setRunOverrides({
     operationId: 'op-run-override-durable',
@@ -414,7 +415,12 @@ test('branch run configuration survives journal replay and can change future run
   })
   await first.whenDurable()
 
-  const restarted = createBraidApplication({ fixture: 'deterministic', journal, chunkDelayMs: 100 })
+  const held = heldFixtureExecution()
+  const restarted = createBraidApplication({
+    fixture: 'deterministic',
+    journal,
+    execution: held.execution,
+  })
   await restarted.whenDurable()
   assert.deepEqual(
     restarted.state().branches.find((branch) => branch.id === restarted.state().branchId)
@@ -432,6 +438,8 @@ test('branch run configuration survives journal replay and can change future run
     runner: 'pi',
   })
   assert.equal(changed.overrides.runner, 'pi')
+  assert.equal(restarted.state().activeRunId, active.runId)
+  held.release()
   await active.completion
   assert.equal(
     restarted.state().branches.find((branch) => branch.id === restarted.state().branchId)?.overrides

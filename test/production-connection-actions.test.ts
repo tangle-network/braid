@@ -27,6 +27,8 @@ import type { BraidEventEnvelope } from '../src/domain/events.js'
 import { createConnectionId, createCredentialRefId } from '../src/domain/ids.js'
 import { FixedClock } from '../src/ports/clock.js'
 import { type CredentialPort, type CredentialRef, credentialRef } from '../src/ports/credentials.js'
+import type { ExecutionPort } from '../src/ports/execution.js'
+import { heldFixtureExecution } from './support/held-fixture.js'
 
 /** Setup stores the secret bound to its endpoint origin; return the secret after checking the binding. */
 function storedSecret(bytes: Uint8Array): string {
@@ -136,7 +138,7 @@ interface FixtureOptions {
   readonly records: readonly ConnectionRecord[]
   readonly selected: ConnectionRecord
   readonly durable?: boolean
-  readonly chunkDelayMs?: number
+  readonly execution?: ExecutionPort
   readonly journal?: MemoryJournal
   readonly credentials?: MemoryCredentialStore
   readonly credentialStore?: CredentialPort
@@ -207,7 +209,7 @@ async function createFixture(options: FixtureOptions): Promise<Fixture> {
       clock,
       journal,
       effectStorage: journal,
-      ...(options.chunkDelayMs === undefined ? {} : { chunkDelayMs: options.chunkDelayMs }),
+      ...(options.execution === undefined ? {} : { execution: options.execution }),
     })
   }
 
@@ -428,7 +430,7 @@ test('remove is blocked while an active run still references the target connecti
   const fixture = await createFixture({
     records: [base, target],
     selected: base,
-    chunkDelayMs: 250,
+    execution: heldFixtureExecution().execution,
   })
   try {
     await fixture.actions.select({
