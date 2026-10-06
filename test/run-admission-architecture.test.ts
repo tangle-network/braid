@@ -235,7 +235,7 @@ test('runtime admission hashes the same secret-safe materialization receipt that
 test('prepared Runtime cancellation preserves an unconfirmed Router cancellation', async () => {
   const execution = new AgentRuntimeExecutionPort(async (input) => ({
     kind: 'prepared-execution' as const,
-    backend: await deterministicBackend(input, { chunkDelayMs: 1_000 }),
+    backend: await deterministicBackend(input, { release: new Promise<void>(() => {}) }),
     cancellation: { kind: 'runtime-executor-cancel' as const },
     materializationReceipt: { provider: 'tangle-inference', backend: 'executor' },
   }))

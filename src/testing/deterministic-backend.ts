@@ -12,11 +12,6 @@ function responseFor(profile: Readonly<AgentProfile>, text: string): string {
   return `Fixture response through ${runner}: ${text}`
 }
 
-/**
- * Test-only buffered model route composed through Runtime's attested Router executor.
- * The product profile remains the UI fixture; this isolated execution profile prevents
- * development tests from claiming that a real coding runner was materialized.
- */
 export interface DeterministicBackendOptions {
   /** Simulated per-chunk latency for demos and visual captures. */
   readonly chunkDelayMs?: number
@@ -27,11 +22,14 @@ export interface DeterministicBackendOptions {
   readonly release?: PromiseLike<void>
 }
 
-/** Resolves when `release` settles; rejects with the abort reason if `signal` aborts first. */
+/** Resolves when `release` settles; rejects like `timers/promises` if `signal` aborts first. */
 function untilReleased(release: PromiseLike<void>, signal: AbortSignal | undefined): Promise<void> {
   if (signal === undefined) return Promise.resolve(release)
   return new Promise<void>((resolve, reject) => {
-    const abort = () => reject(signal.reason)
+    const abort = () =>
+      reject(
+        new DOMException('The operation was aborted', { name: 'AbortError', cause: signal.reason }),
+      )
     if (signal.aborted) {
       abort()
       return
@@ -50,6 +48,11 @@ function untilReleased(release: PromiseLike<void>, signal: AbortSignal | undefin
   })
 }
 
+/**
+ * Test-only buffered model route composed through Runtime's attested Router executor.
+ * The product profile remains the UI fixture; this isolated execution profile prevents
+ * development tests from claiming that a real coding runner was materialized.
+ */
 export async function deterministicBackend(
   input: ExecuteTurnInput,
   options: DeterministicBackendOptions = {},
