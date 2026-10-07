@@ -315,6 +315,7 @@ for (const [columns, rows] of [
       await terminal.waitForRender()
       const screen = terminal.getViewport()
       assert(screen.join('\n').includes('accepted'))
+      assert.match(screen.at(-1) ?? '', /back|close/u)
       for (const line of screen) assert(visibleWidth(line) <= columns)
       terminal.sendInput('\u001b')
       terminal.sendInput('\u001b')

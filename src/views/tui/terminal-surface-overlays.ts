@@ -83,7 +83,7 @@ export class TerminalSurfaceOverlays {
       rows: this.#options.rows,
       onClose: () => this.#options.modals.closeTop(),
     })
-    this.#options.modals.open(panel, { anchor: 'center', width: '96%', maxHeight: '96%' })
+    this.#openBrowser(panel)
   }
 
   openIntelligenceResult(
