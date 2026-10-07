@@ -119,7 +119,12 @@ const PARAMETER_TYPES: Readonly<
   list_profiles: { query: 'string' },
   select_profile: { ref: 'string', expectedRevision: 'number' },
   validate_profile: { ref: 'string' },
-  save_profile: { ref: 'string', profile: 'record', expectedRevision: 'number', createOnly: 'boolean' },
+  save_profile: {
+    ref: 'string',
+    profile: 'record',
+    expectedRevision: 'number',
+    createOnly: 'boolean',
+  },
   learn_profile: {},
   runner_advice: { task: 'string', source: 'string' },
   list_connections: { query: 'string' },

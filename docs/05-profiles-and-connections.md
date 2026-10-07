@@ -128,6 +128,46 @@ When a runner ignores model or effort, the status line labels the field `runner-
 
 Model discovery results are connection-scoped, carry a retrieval time and source, and refresh without replacing an active user selection by list position.
 
+## Profile learning and runner advice
+
+After a run finishes, `/feedback accept [reason...]` or `/feedback reject [reason...]` records an explicit task judgment.
+`/feedback list` shows the selected conversation's judgments and run references.
+Written reasons supply preference lessons; a judgment without a reason records the outcome but contributes no instruction.
+Permission approvals do not become task-quality feedback.
+The [feedback contract](06-conversations-forks-and-analysis.md#feedback-trajectory) defines persistence and export scope.
+
+`/profile learn` creates an unmeasured draft from the current profile and reasons recorded in the selected conversation.
+Braid uses Eval's preference-memory helper and Interface's canonical guidance composition, replacing its previous feedback guidance instead of stacking copies.
+The preview shows each lesson and its source, the exact canonical profile patches, and the complete candidate.
+
+The candidate follows the existing profile export rules before lessons are added.
+Private metadata and credential-bearing values are redacted, and the preview reports when this changes the source profile.
+Review those changes before reuse; redaction is not a replacement for configuring the required secret references.
+
+`/profile learn <new-file>` opens the same preview with a save action.
+`Ctrl+S` saves that reviewed candidate to a new file; an existing file is never overwritten.
+`Esc` closes the preview without saving, and saving does not select the candidate.
+Select it explicitly with `/profile <new-file>` when ready; normal profile validation and provider capability checks still apply.
+
+`/runner advice <task>` sends the next task, a bounded selection of this conversation's explicit feedback, and compatible runner/model pairs from the profile catalog to the existing trace-analysis route.
+It uses the latest completed or failed run on the selected branch as frozen trace evidence.
+Catalog membership establishes a configured candidate; provider availability must still be checked before dispatch.
+The analyst is asked to distinguish user judgments from trace evidence, account for missing comparisons and unknown costs, and say when the evidence is insufficient.
+The recommendation does not change the runner or profile and may incur analysis model charges.
+
+Headless clients use the same application operations:
+
+| Command | Behavior |
+| --- | --- |
+| `learn_profile` | Returns the unmeasured candidate, profile digests, exact patches, lessons, feedback identifiers, and redaction flag. Takes no parameters and writes no file. |
+| `save_profile` | Saves the reviewed `profile` at `ref` using an operation identifier. Set `createOnly: true` to refuse an existing target. |
+| `runner_advice` | Requires an operation identifier and `task`; optional `source` selects a run instead of the default `last`. An identical retry replays the first request's stored result while its frozen source remains available. |
+
+These commands retain corrections and support an explicit runner choice.
+Measured improvement requires comparisons on held-out tasks through Runtime and Eval before a profile change or selection policy can be called better.
+Accumulated feedback and those comparisons are the intended basis for learned runner selection and reusable personal AgentProfiles.
+Automatic routing, profile sharing, and cloud publication are not implemented here.
+
 ## Profile picker
 
 Each row shows profile name, description, version, tags, source, last validation result, and last used runner when available.

@@ -20,7 +20,7 @@ import {
 import { attachRequestedRunToConversation } from './reducer-run-graph.js'
 import { terminalPartStatus } from './reducer-support.js'
 import { finalizeRunUsage } from './run-usage.js'
-import { activeRunForBranch, isActiveRunStatus, type BraidState } from './state.js'
+import { activeRunForBranch, type BraidState, isActiveRunStatus } from './state.js'
 
 function legacyOperation(
   state: BraidState,

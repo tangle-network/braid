@@ -10,6 +10,7 @@ import { ConnectionActionService, type ConnectionActions } from '../../app/conne
 import type { ConnectionProbeFactory } from '../../app/connection-probe.js'
 import { AppError } from '../../app/errors.js'
 import { type ProfileActionOptions, ProfileActionService } from '../../app/profile-actions.js'
+import type { LearnedProfileDraft } from '../../app/profile-learning.js'
 import type {
   ProfileDiscoveryInput,
   ProfileProvider,
@@ -17,7 +18,6 @@ import type {
 } from '../../app/profiles.js'
 import type { ConnectionRecord } from '../../domain/entities.js'
 import type { BraidIntent, UiDispatchResult } from '../../views/shared/intents.js'
-import type { LearnedProfileDraft } from '../../app/profile-learning.js'
 
 export interface ProfileConnectionDispatchOptions {
   readonly profiles?: readonly SourceProfileRecord[]
@@ -222,9 +222,14 @@ export async function dispatchProfileConnectionIntent(
   }
 }
 
-async function learnedProfile(services: ProfileConnectionDispatchServices): Promise<UiDispatchResult> {
+async function learnedProfile(
+  services: ProfileConnectionDispatchServices,
+): Promise<UiDispatchResult> {
   if (services.learnProfile === undefined)
-    throw new AppError('PROFILE_LESSONS_UNAVAILABLE', 'Task feedback is unavailable in this session')
+    throw new AppError(
+      'PROFILE_LESSONS_UNAVAILABLE',
+      'Task feedback is unavailable in this session',
+    )
   return accepted(await services.learnProfile(), services.revision())
 }
 

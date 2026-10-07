@@ -19,7 +19,10 @@ const [
   import(agentInterfaceModuleUrl('agent-profile-snapshot.js')),
   import(agentInterfaceModuleUrl('profile-schema.js')),
 ])) as [
-  Pick<AgentInterfaceModule, 'defineAgentProfile' | 'mergeAgentProfiles' | 'composeAgentProfileGuidance'>,
+  Pick<
+    AgentInterfaceModule,
+    'defineAgentProfile' | 'mergeAgentProfiles' | 'composeAgentProfileGuidance'
+  >,
   Pick<AgentInterfaceModule, 'canonicalCandidateDigest' | 'canonicalCandidateJson' | 'sha256Bytes'>,
   Pick<AgentInterfaceModule, 'canonicalAgentProfileDigest'>,
   Pick<AgentInterfaceModule, 'diffAgentProfiles'>,

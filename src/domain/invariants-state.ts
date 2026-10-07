@@ -50,7 +50,7 @@ import {
   assertSupervisorRecord,
   assertWorkerRecord,
 } from './invariants-runtime.js'
-import { isActiveRunStatus, type BraidState } from './state.js'
+import { type BraidState, isActiveRunStatus } from './state.js'
 
 export function assertBraidState(state: BraidState): void {
   if (state.schemaVersion < 2) fail('state.schemaVersion is unsupported')

@@ -17,9 +17,9 @@ import {
   requestBridge,
   safeBridgeDetail,
 } from './production-bridge-client.js'
+import { startupCredentialForEndpoint } from './production-setup-auth.js'
 import type { ProductionSetupVerification } from './production-setup-types.js'
 import type { ProductionStartupLoadOptions } from './production-startup.js'
-import { startupCredentialForEndpoint } from './production-setup-auth.js'
 
 function validationTimeout(options: ProductionStartupLoadOptions): number {
   const timeout = options.modelValidationTimeoutMs ?? DEFAULT_MODEL_VALIDATION_TIMEOUT_MS

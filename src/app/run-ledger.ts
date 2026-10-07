@@ -1,5 +1,5 @@
 import type { BraidControlKind, BraidEventEnvelope } from '../domain/events.js'
-import { isLiveRunStatus, type BraidState } from '../domain/state.js'
+import { type BraidState, isLiveRunStatus } from '../domain/state.js'
 import type {
   ControlOperationRecord,
   OperationRecord,

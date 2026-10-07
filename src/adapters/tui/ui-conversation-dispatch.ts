@@ -6,7 +6,7 @@ import {
 import type { ForkPlan } from '../../app/conversation-types.js'
 import { AppError } from '../../app/errors.js'
 import type { BraidIntent, UiDispatchResult } from '../../views/shared/intents.js'
-import { freezeView, type BraidViewModel, type ForkPreviewView } from '../../views/shared/models.js'
+import { type BraidViewModel, type ForkPreviewView, freezeView } from '../../views/shared/models.js'
 
 type RunCommandIntent = Extract<BraidIntent, { readonly type: 'run-command' }>
 type HeadlessCommandIntent = Extract<BraidIntent, { readonly type: 'headless-command' }>

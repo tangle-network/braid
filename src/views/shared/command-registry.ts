@@ -117,7 +117,14 @@ const DEFINITIONS: readonly CommandDefinition[] = [
     'connection.select',
     'explicit',
   ],
-  ['runner', [], 'Select a runner or request advice from task outcomes', '/runner [name | advice <task>]', 'run.runner', 'explicit'],
+  [
+    'runner',
+    [],
+    'Select a runner or request advice from task outcomes',
+    '/runner [name | advice <task>]',
+    'run.runner',
+    'explicit',
+  ],
   ['model', [], 'Set the model for this branch', '/model [name]', 'run.model', 'explicit'],
   [
     'effort',

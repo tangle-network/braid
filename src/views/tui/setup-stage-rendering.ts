@@ -6,8 +6,8 @@ import type {
   ConfigurationSessionState,
 } from '../../app/configuration-session.js'
 import { sanitizeTerminalText } from '../shared/sanitize.js'
-import { ConfigurationReview } from './configuration-review.js'
 import { ConfigurationRecovery } from './configuration-recovery.js'
+import { ConfigurationReview } from './configuration-review.js'
 import {
   CANCEL_CONFIGURATION,
   configurationExplanation,

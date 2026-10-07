@@ -1,11 +1,13 @@
 import type {
   AgentProfile,
-  ConfidentialExecutionRequest,
   PortableContextPlan as CanonicalPortableContextPlan,
+  ConfidentialExecutionRequest,
   HarnessType,
   PlacementInfo,
 } from '@tangle-network/agent-interface'
+
 export type { ConfidentialExecutionRequest } from '@tangle-network/agent-interface'
+
 import type {
   BranchRecord,
   ConversationRecord,

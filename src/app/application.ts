@@ -293,6 +293,7 @@ export class BraidApplication {
     })
     this.intelligence = createIntelligenceActions(
       {
+        fingerprint,
         currentState: () => this.#state,
         eventHistory: () => this.#journal.all(),
         loadEventHistory: (source) =>

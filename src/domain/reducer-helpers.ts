@@ -27,7 +27,7 @@ import {
 import { DomainInvariantError } from './invariants.js'
 import { createAdmissionReceipt } from './receipts.js'
 import { LEGACY_RUN_CAPABILITIES } from './runtime-projection.js'
-import { normalizeActiveRuns, type BraidMessagePart, type BraidState } from './state.js'
+import { type BraidMessagePart, type BraidState, normalizeActiveRuns } from './state.js'
 
 export class SequenceGapError extends Error {
   readonly code = 'SEQUENCE_GAP'

@@ -1,5 +1,5 @@
 import type { ConnectionId } from './ids.js'
-import { isActiveRunStatus, type BraidState } from './state.js'
+import { type BraidState, isActiveRunStatus } from './state.js'
 
 export type ConnectionRemovalBlockerKind =
   | 'selected'

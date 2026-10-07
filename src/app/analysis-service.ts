@@ -1,5 +1,6 @@
 import type { ExactAnalystRunResult } from '@tangle-network/agent-eval'
 import type { ExternalOptimizerModelExecutionObservation } from '@tangle-network/agent-eval/campaign'
+import { canonicalDigest } from '../domain/canonical.js'
 import type { AnalysisRecord } from '../domain/entities.js'
 import type { AnalysisId } from '../domain/ids.js'
 import { type AnalysisAnalyst, AnalysisExecutionSession } from './analysis-execution-session.js'
@@ -9,6 +10,7 @@ import { analysisModelCallRecords } from './analysis-model-call-records.js'
 import { AnalysisOperationError } from './analysis-operation.js'
 import { prepareAnalysisRequest } from './analysis-request.js'
 import { completedAnalysisRecord, initialAnalysisRecord } from './analysis-result-mapper.js'
+import { loadFrozenAnalysisSource } from './analysis-source.js'
 import type {
   AnalysisApplicationHost,
   AnalysisProgress,
@@ -54,6 +56,13 @@ export class AnalysisService {
     return this.#execution.listAnalysts()
   }
 
+  clientRequestDigest(request: unknown): string {
+    return (
+      this.#host.fingerprint?.({ effectKind: 'analysis-command', request }) ??
+      canonicalDigest(request)
+    )
+  }
+
   async reconcile(): Promise<void> {
     await this.#lifecycle.reconcile(this.#active)
     this.#reconciled = true
@@ -65,6 +74,47 @@ export class AnalysisService {
 
   async *stream(request: AnalysisRequest): AsyncGenerator<AnalysisProgress, void, void> {
     if (!this.#reconciled) await this.reconcile()
+    if (
+      request.clientRequestDigest !== undefined &&
+      request.operationId !== undefined &&
+      this.#host.currentState().operations.some((operation) => operation.id === request.operationId)
+    ) {
+      const record = this.#host
+        .currentState()
+        .analyses.find((analysis) => analysis.operationId === request.operationId)
+      const prior = record?.request
+      if (
+        record === undefined ||
+        prior === null ||
+        typeof prior !== 'object' ||
+        Array.isArray(prior) ||
+        !('clientRequestDigest' in prior) ||
+        prior.clientRequestDigest !== request.clientRequestDigest
+      ) {
+        throw new AnalysisOperationError(
+          'ANALYSIS_OPERATION_CONFLICT',
+          'The operation identifier belongs to another analysis request',
+        )
+      }
+      if (record.status === 'preparing' || record.status === 'running')
+        throw new Error(`Analysis ${record.id} is already active`)
+      const evidence = await loadFrozenAnalysisSource(
+        this.#host,
+        this.#host.currentState(),
+        record.source,
+      )
+      if (evidence.source.digest !== record.source.digest) {
+        throw new AnalysisOperationError(
+          'ANALYSIS_OPERATION_UNAVAILABLE',
+          'The original analysis evidence is no longer available',
+        )
+      }
+      yield { type: 'started', analysis: record, replayed: true }
+      await this.#graph.project(record)
+      await this.#lifecycle.repairTerminal(record)
+      yield this.#lifecycle.replay(record, evidence)
+      return
+    }
     const prepared = await prepareAnalysisRequest(this.#host, request)
     const existing = this.#lifecycle.existing(prepared.identity)
     if (existing !== undefined) {

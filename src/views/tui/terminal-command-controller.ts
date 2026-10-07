@@ -217,7 +217,9 @@ export class TerminalCommandController {
       analysisCommand === 'ask' || analysisCommand === 'analyze' || analysisCommand === 'compare'
         ? this.#overlays.openIntelligenceProgress(
             analysisCommand,
-            command === 'runner' ? 'Runner advice from recorded task feedback' : intelligenceSourceContext(analysisCommand, args, this.#controller.view()),
+            command === 'runner'
+              ? 'Runner advice from recorded task feedback'
+              : intelligenceSourceContext(analysisCommand, args, this.#controller.view()),
           )
         : undefined
     void this.#dispatch(intent).then((result) => {
@@ -226,8 +228,11 @@ export class TerminalCommandController {
       else if (command === 'fork') this.#overlays.openSurface('fork')
       else if (command === 'profile' && args[0] === 'learn') {
         this.#overlays.openLearnedProfile(result.data, args[1])
-      }
-      else if (analysisCommand === 'ask' || analysisCommand === 'analyze' || analysisCommand === 'compare') {
+      } else if (
+        analysisCommand === 'ask' ||
+        analysisCommand === 'analyze' ||
+        analysisCommand === 'compare'
+      ) {
         intelligenceProgress?.complete(result.data)
       }
     })

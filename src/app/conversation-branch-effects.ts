@@ -44,6 +44,7 @@ import {
 import { assertJsonValue, objectValue } from '../domain/invariants-base.js'
 import { type BraidState, isActiveRunStatus } from '../domain/state.js'
 import type { ExecutionPort } from '../ports/execution.js'
+import { parseConfidentialWorkspaceForkRequest } from './confidential-workspace-fork.js'
 import type {
   ConversationHost,
   ForkPlan,
@@ -51,7 +52,6 @@ import type {
   WorkspaceForkCleanupInput,
   WorkspaceForkCleanupResult,
 } from './conversation-types.js'
-import { parseConfidentialWorkspaceForkRequest } from './confidential-workspace-fork.js'
 import { AppError } from './errors.js'
 
 type ForkExecutionInput = ForkPlanInput & { readonly planDigest: string }

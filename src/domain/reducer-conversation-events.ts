@@ -1,7 +1,7 @@
 import type { BraidEvent } from './events.js'
 import { DomainInvariantError } from './invariants-base.js'
 import { find, upsert } from './reducer-helpers.js'
-import { activeRunForBranch, normalizeActiveRuns, type BraidState } from './state.js'
+import { activeRunForBranch, type BraidState, normalizeActiveRuns } from './state.js'
 
 type ConversationEvent = Extract<
   BraidEvent,

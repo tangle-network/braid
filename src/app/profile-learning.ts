@@ -6,13 +6,14 @@ import {
   diffAgentProfiles,
 } from '../adapters/agent-interface/profile-runtime.js'
 import { AppError } from './errors.js'
-import { assertValidProfile } from './profile-validation.js'
+import { exportProfileDocument } from './profile-persistence.js'
 
 export interface LearnedProfileDraft {
   readonly kind: 'learned-profile-draft'
   readonly status: 'unmeasured'
   readonly sourceProfileDigest: string
   readonly candidateDigest: string
+  readonly redacted: boolean
   readonly profile: Readonly<AgentProfile>
   readonly changes: readonly AgentProfileDiff[]
   readonly lessons: readonly PreferenceMemoryEntry[]
@@ -34,18 +35,25 @@ export async function draftProfileFromFeedback(
       'Record task feedback with a reason before learning a profile. Acceptance alone does not specify an instruction.',
     )
   }
+  const portable = exportProfileDocument(profile).profile
   const candidate = composeAgentProfileGuidance(
-    profile,
-    [{ source: 'braid.feedback', id: 'user-lessons', text: renderPreferenceMemoryMarkdown(lessons) }],
+    portable,
+    [
+      {
+        source: 'braid.feedback',
+        id: 'user-lessons',
+        text: renderPreferenceMemoryMarkdown(lessons),
+      },
+    ],
     'instructions',
     { replaceSources: ['braid.feedback'] },
   )
-  assertValidProfile(candidate)
   return Object.freeze({
     kind: 'learned-profile-draft',
     status: 'unmeasured',
     sourceProfileDigest: canonicalAgentProfileDigestHex(profile),
     candidateDigest: canonicalAgentProfileDigestHex(candidate),
+    redacted: canonicalAgentProfileDigestHex(portable) !== canonicalAgentProfileDigestHex(profile),
     profile: candidate,
     changes: diffAgentProfiles(profile, candidate),
     lessons,

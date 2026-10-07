@@ -151,7 +151,12 @@ export class TerminalOverlayController {
   }
 
   openLearnedProfile(data: unknown, target?: string): void {
-    if (data === null || typeof data !== 'object' || !('kind' in data) || data.kind !== 'learned-profile-draft') {
+    if (
+      data === null ||
+      typeof data !== 'object' ||
+      !('kind' in data) ||
+      data.kind !== 'learned-profile-draft'
+    ) {
       this.openUnavailable('Profile learning unavailable', 'No portable profile draft was returned')
       return
     }
@@ -159,25 +164,38 @@ export class TerminalOverlayController {
     const operationId = this.#nextOperationId()
     const panel = new ProfileLearningPanel(this.#theme, {
       draft,
-      ...(target === undefined ? {} : {
-        target,
-        onSave: async () => {
-          const result = await this.#controller.dispatch({
-            type: 'headless-command', command: 'save_profile', operationId,
-            params: { ref: target, profile: draft.profile, createOnly: true },
-          })
-          if (result.kind !== 'accepted')
-            throw new Error(result.kind === 'error' ? result.message : result.kind === 'unavailable' ? result.reason : 'Profile was not saved')
-          this.#requestRender()
-          return `Saved ${target}. Select it with /profile ${target} when ready.`
-        },
-      }),
+      ...(target === undefined
+        ? {}
+        : {
+            target,
+            onSave: async () => {
+              const result = await this.#controller.dispatch({
+                type: 'headless-command',
+                command: 'save_profile',
+                operationId,
+                params: { ref: target, profile: draft.profile, createOnly: true },
+              })
+              if (result.kind !== 'accepted')
+                throw new Error(
+                  result.kind === 'error'
+                    ? result.message
+                    : result.kind === 'unavailable'
+                      ? result.reason
+                      : 'Profile was not saved',
+                )
+              this.#requestRender()
+              return `Saved ${target}. Select it with /profile ${target} when ready.`
+            },
+          }),
       rows: this.#rows,
       requestRender: this.#requestRender,
       onClose: () => this.#modals.closeTop(),
     })
     this.#modals.open(panel, {
-      anchor: 'top-left', width: '100%', maxHeight: '100%', margin: 0,
+      anchor: 'top-left',
+      width: '100%',
+      maxHeight: '100%',
+      margin: 0,
       fullScreenBelow: Number.MAX_SAFE_INTEGER,
     })
   }
