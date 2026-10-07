@@ -1,0 +1,62 @@
+{
+  "prepared_at": "2026-10-07",
+  "source_commit": "11f32f485e14e2f8f651d536a25c302227e3e9fd",
+  "context_sha256": "96d01e1be4f5fbbfdd0ba210add8604aa339212367a76abeb5af4c31ff03387b",
+  "root_document_sha256": "cfb24a731b7754ddea4972a012f4b78c9f97697d63f714f5e09e6f49a37af74c",
+  "owner": "codex-braid-root-vision-20261007",
+  "reviews": [
+    {
+      "review": "architecture",
+      "prompt": "architecture.prompt.md",
+      "prompt_sha256": "d3a369c6415dd5fb418cd40a359af54890250806814618e02b126d270d9dfec7",
+      "words": 3955,
+      "state": "not_dispatched",
+      "item_id": null,
+      "conversation_url": null,
+      "requested_model": "gpt-6-pro",
+      "served_model": null,
+      "answer_path": null
+    },
+    {
+      "review": "learning",
+      "prompt": "learning.prompt.md",
+      "prompt_sha256": "05dc044956e9aeb5f54e38d9edaa6beff5734c8410cc44f93226625520a432b8",
+      "words": 3965,
+      "state": "not_dispatched",
+      "item_id": null,
+      "conversation_url": null,
+      "requested_model": "gpt-6-pro",
+      "served_model": null,
+      "answer_path": null
+    },
+    {
+      "review": "product",
+      "prompt": "product.prompt.md",
+      "prompt_sha256": "7a5a5309464adf4dd1984c3a70cc6ba45e3f4314386e439d5675619ee9cc8bdb",
+      "words": 4008,
+      "state": "not_dispatched",
+      "item_id": null,
+      "conversation_url": null,
+      "requested_model": "gpt-6-pro",
+      "served_model": null,
+      "answer_path": null
+    }
+  ],
+  "observed_launch_blockers": [
+    "Local launcher cannot open its uv cache and local Git metadata is read-only. Supported GTR and Beelink routes are reachable; account readiness and dispatch remain to be verified."
+  ],
+  "reviews_started": 0,
+  "reviews_received": 0,
+  "lifecycle_document_sha256": "67fea88101d9b5ca61590f4bae911b55e0f0b9eac0160fa56994839e980c1d58",
+  "fleet_preflight": {
+    "host": "drew-gtr-pro",
+    "ledger_items": 214,
+    "ledger_window": [
+      "2026-09-22",
+      "2026-10-05"
+    ],
+    "unresolved_other_items": 24,
+    "matching_root_audit_items": 0,
+    "disposition": "Existing owners and unrelated pending work preserved."
+  }
+}
