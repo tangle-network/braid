@@ -10,40 +10,61 @@
       "prompt": "architecture.prompt.md",
       "prompt_sha256": "d3a369c6415dd5fb418cd40a359af54890250806814618e02b126d270d9dfec7",
       "words": 3955,
-      "state": "not_dispatched",
-      "item_id": null,
+      "state": "blocked_before_dispatch",
+      "item_id": "it-3a4ad00c94",
       "conversation_url": null,
       "requested_model": "gpt-6-pro",
       "served_model": null,
-      "answer_path": null
+      "answer_path": null,
+      "dispatch": {
+        "host": "drew-gtr-pro",
+        "service": "braid-pro-architecture-resume-20261007.service",
+        "service_state": "failed",
+        "log_path": "/home/drew/.local/state/chatgpt-fleet/braid-root-vision-20261007/architecture.dispatch.log",
+        "reason": "AccountBusy during maintained fleet account preflight; ledger contains no chat or active send claim."
+      }
     },
     {
       "review": "learning",
       "prompt": "learning.prompt.md",
       "prompt_sha256": "05dc044956e9aeb5f54e38d9edaa6beff5734c8410cc44f93226625520a432b8",
       "words": 3965,
-      "state": "not_dispatched",
-      "item_id": null,
+      "state": "blocked_before_dispatch",
+      "item_id": "it-3930c98e0f",
       "conversation_url": null,
       "requested_model": "gpt-6-pro",
       "served_model": null,
-      "answer_path": null
+      "answer_path": null,
+      "dispatch": {
+        "host": "drew-gtr-pro",
+        "service": "braid-pro-learning-20261007.service",
+        "service_state": "failed",
+        "log_path": "/home/drew/.local/state/chatgpt-fleet/braid-root-vision-20261007/learning.dispatch.log",
+        "reason": "AccountBusy during maintained fleet account preflight; ledger contains no chat or active send claim."
+      }
     },
     {
       "review": "product",
       "prompt": "product.prompt.md",
       "prompt_sha256": "7a5a5309464adf4dd1984c3a70cc6ba45e3f4314386e439d5675619ee9cc8bdb",
       "words": 4008,
-      "state": "not_dispatched",
-      "item_id": null,
+      "state": "blocked_before_dispatch",
+      "item_id": "it-8401b4cbf5",
       "conversation_url": null,
       "requested_model": "gpt-6-pro",
       "served_model": null,
-      "answer_path": null
+      "answer_path": null,
+      "dispatch": {
+        "host": "drew-gtr-pro",
+        "service": "braid-pro-product-20261007.service",
+        "service_state": "failed",
+        "log_path": "/home/drew/.local/state/chatgpt-fleet/braid-root-vision-20261007/product.dispatch.log",
+        "reason": "AccountBusy during maintained fleet account preflight; ledger contains no chat or active send claim."
+      }
     }
   ],
   "observed_launch_blockers": [
-    "Local launcher cannot open its uv cache and local Git metadata is read-only. Supported GTR and Beelink routes are reachable; account readiness and dispatch remain to be verified."
+    "Maintained GTR send attempts stopped at shared account admission: a, b, c, and d were unreadable (AccountBusy). No conversation or sent prompt was recorded. No hold, pacing rule, or competing operation was overridden."
   ],
   "reviews_started": 0,
   "reviews_received": 0,
@@ -58,5 +79,11 @@
     "unresolved_other_items": 24,
     "matching_root_audit_items": 0,
     "disposition": "Existing owners and unrelated pending work preserved."
-  }
+  },
+  "proposal_delivery": {
+    "pull_request": "https://github.com/tangle-network/braid/pull/128",
+    "main_commit": "bd27d9852d910cba2fdfd1fdce7375146d077fef",
+    "prompt_commit": "cf7f98a4baceea09b7f9822fda169269d57deab1"
+  },
+  "last_dispatch_check": "2026-10-07T21:58:00Z"
 }
