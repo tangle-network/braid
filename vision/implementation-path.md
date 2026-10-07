@@ -4,6 +4,12 @@ Draft 2026-10-07. Root agent's provisional plan, awaiting the requested [GPT-6 P
 
 The first deliverable is one root AgentProfile that can converse, author useful bounded child work, preserve continuity, and propose a justified change to its own methods. Build that complete flow before expanding the number of roles, domains, or workers.
 
+## Reuse before extending
+
+The [upstream durability inventory](https://github.com/tangle-network/agent-runtime/blob/3e9e7f166cce374a44403804f2b175b90f862705/docs/durability.md), inspected at Runtime's 0.308.0 preparation commit, assigns supervised journals and coordinator fencing to Runtime, durable sleeping event/timer waits to Platform Workflows, and workspace recovery to the sandbox stack. It also distinguishes an in-process delegation queue from recoverable supervised work. These are upstream documented capabilities, not proof that Braid's pinned Runtime 0.263.0 integrates or validates them.
+
+Stage 0 must check published exports, compatible versions, and actual consumer behavior. Reuse those owners for the lifecycle requirements. In particular, "Runtime/Cloud" below names a composition of existing owners; it does not propose moving Platform Workflows' scheduler into Runtime or Braid. The audit prompts retain their original proposal snapshots so later corrections remain traceable.
+
 ## Sequence and completion evidence
 
 | Stage | Concrete deliverable | Primary owner | Completion evidence |
