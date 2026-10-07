@@ -69,6 +69,7 @@ import { reconcileRun, reconnectRun } from './run-replay.js'
 import { isTerminal, waitForIdle } from './run-status.js'
 import { resolveConversationTarget } from './run-targets.js'
 import { shutdownApplication } from './shutdown-controller.js'
+import { createTaskFeedbackActions, type TaskFeedbackActions } from './task-feedback.js'
 import { snapshotWorkspaceRequest } from './workspace-request.js'
 
 export type { SendInput, SendReceipt } from './application-types.js'
@@ -119,6 +120,7 @@ function deferred<T>(): Deferred<T> {
 export class BraidApplication {
   readonly conversations: ConversationActions
   readonly intelligence: IntelligenceActions
+  readonly feedback: TaskFeedbackActions
   readonly automation: AutomationActions
   readonly configuration: ConfigurationActionTransition
   readonly runtimeSelection: RuntimeSelection
@@ -279,6 +281,16 @@ export class BraidApplication {
     this.#portViews = runtime.ports
     this.#transition = runtime.transition
     this.configuration = createConfigurationActionTransition(this.#transition)
+    this.feedback = createTaskFeedbackActions({
+      state: () => this.#state,
+      now: () => this.#clock.now(),
+      fingerprint,
+      commit: async (event) => {
+        assertWritable(this.#storageFailure)
+        if (this.#asynchronousJournal) await this.#commitAndWait(event)
+        else this.#commit(event)
+      },
+    })
     this.intelligence = createIntelligenceActions(
       {
         currentState: () => this.#state,

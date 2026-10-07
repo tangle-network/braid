@@ -71,6 +71,7 @@ const INTENTS_FOR: Readonly<Record<CommandName, CommandIntentFactory>> = {
   ask: runCommandIntent('ask'),
   analyze: runCommandIntent('analyze'),
   compare: runCommandIntent('compare'),
+  feedback: runCommandIntent('feedback'),
   approve: runCommandIntent('approve'),
   reject: runCommandIntent('reject'),
   automate: runCommandIntent('automate'),
@@ -166,6 +167,14 @@ const DEFINITIONS: readonly CommandDefinition[] = [
     'Compare two frozen sources',
     '/compare <left> <right>',
     'analysis.compare',
+    'explicit',
+  ],
+  [
+    'feedback',
+    [],
+    'Record task feedback or inspect this conversation’s feedback',
+    '/feedback accept|reject [reason...] | list',
+    'feedback.read',
     'explicit',
   ],
   [

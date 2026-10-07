@@ -12,6 +12,7 @@ import { dispatchAutomationHeadlessCommand } from './ui-automation-dispatch.js'
 import { dispatchConversationHeadlessCommand } from './ui-conversation-dispatch.js'
 import { dispatchCoreIntent } from './ui-core-dispatch.js'
 import type { UiDispatchContext } from './ui-dispatch-context.js'
+import { dispatchFeedbackHeadlessCommand } from './ui-feedback-dispatch.js'
 import { projectInteractionReceipt } from './ui-interaction-receipt.js'
 
 type HeadlessCommandIntent = Extract<BraidIntent, { readonly type: 'headless-command' }>
@@ -71,6 +72,9 @@ export async function dispatchHeadlessCommand(
       data: queryDetails(state, { entityType, entityId }),
     }
   }
+
+  const feedbackResult = await dispatchFeedbackHeadlessCommand(intent, context)
+  if (feedbackResult !== undefined) return feedbackResult
 
   const automationResult = await dispatchAutomationHeadlessCommand(intent, context)
   if (automationResult !== undefined) return automationResult

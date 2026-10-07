@@ -461,6 +461,10 @@ export class TerminalOverlayController {
     this.#surfaces.dispose()
   }
 
+  openFeedback(data: unknown): void {
+    this.#surfaces.openFeedback(data)
+  }
+
   openIntelligenceResult(command: 'ask' | 'analyze' | 'compare', data: unknown): void {
     this.#surfaces.openIntelligenceResult(command, data)
   }

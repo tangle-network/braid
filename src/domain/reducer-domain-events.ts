@@ -241,8 +241,29 @@ export function applyDomainEvent(
       return { ...state, operations: upsert(state.operations, event.operation) }
     case 'effect.upserted':
       return { ...state, effects: upsert(state.effects, event.effect) }
-    case 'feedback.decision.recorded':
-      return { ...state, feedbackDecisions: upsert(state.feedbackDecisions, event.decision) }
+    case 'feedback.decision.recorded': {
+      if (event.operation !== undefined) {
+        const existing = state.operations.find((item) => item.id === event.operation?.id)
+        if (
+          existing !== undefined &&
+          (existing.requestDigest !== event.operation.requestDigest ||
+            existing.kind !== event.operation.kind)
+        )
+          throw new DomainInvariantError('Feedback operation conflicts with a recorded operation')
+        if (
+          event.decision.operationId !== event.operation.id ||
+          event.decision.runId !== event.operation.target?.id
+        )
+          throw new DomainInvariantError('Feedback operation does not match its exact run decision')
+      }
+      return {
+        ...state,
+        feedbackDecisions: upsert(state.feedbackDecisions, event.decision),
+        ...(event.operation === undefined
+          ? {}
+          : { operations: upsert(state.operations, event.operation) }),
+      }
+    }
     case 'content.unavailable':
       return state
     case 'replay.cursor.advanced': {

@@ -389,15 +389,15 @@ A comparison node has explicit left and right edges and does not change the sele
 
 ## Feedback trajectory
 
-Braid records approval, rejection, revision, corrected input, fork choice, retry choice, selected run, selected analysis finding, and automation override as structured user decisions.
+After a run finishes, `/feedback accept [reason...]` or `/feedback reject [reason...]` records the user's task judgment for the focused run, or the latest run on the selected branch when no run is focused. Running, detached, blocked, and unknown runs require resolution before feedback. A successful process exit does not count as task acceptance.
 
-The user can inspect and export these decisions as an `agent-eval` `FeedbackTrajectory` after redaction.
+`/feedback list` opens task feedback for the selected conversation. Select a row to inspect its reason and frozen run, profile digest, runner, requested model, and reported model references. An omitted reason records the judgment without generating a preference lesson.
 
-A decision event includes source state, offered options, chosen option, optional feedback, timestamp, profile and run references, and automation involvement.
+Headless clients call `record_feedback` with an operation identifier and exact `runId`, `outcome` of `accept` or `reject`, and optional `reason`. Repeating the same operation and input returns the same canonical `agent-eval` `FeedbackTrajectory`. Reusing it for different input fails. The event, operation, and sanitized trajectory commit together in the encrypted journal and survive restart. Reasons are limited to 4,096 UTF-8 bytes.
 
-Secret answers and raw credentials are never feedback content.
+`list_feedback` returns canonical trajectories. Its default scope is the selected conversation; `conversationId` selects another conversation and `runId` filters within that scope. `scope: "workspace"` explicitly includes all workspace conversations and cannot be combined with `conversationId`. This export includes only explicit task judgments recorded here. Permission approvals and automation decisions remain operational history and never become task-quality evidence. Conversation import retains historical decision text but does not turn imported decisions into local learning evidence.
 
-Feedback capture can be disabled globally or per conversation without disabling the operational decision itself.
+The application derives preference lessons through `agent-eval`'s `summarizePreferenceMemory`. These are user observations, not measured improvements or runner rankings. Secret values and terminal controls are removed before feedback enters the journal, display, or export.
 
 ## Automation rules
 

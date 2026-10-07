@@ -7,6 +7,7 @@ import { dispatchAutomationCommand } from './ui-automation-command.js'
 import { dispatchConversationRunCommand } from './ui-conversation-dispatch.js'
 import { dispatchCoreIntent } from './ui-core-dispatch.js'
 import type { UiDispatchContext } from './ui-dispatch-context.js'
+import { dispatchFeedbackCommand } from './ui-feedback-dispatch.js'
 import { dispatchHeadlessCommand } from './ui-headless-dispatch.js'
 
 type RunCommandIntent = Extract<BraidIntent, { readonly type: 'run-command' }>
@@ -26,6 +27,7 @@ export async function dispatchCommandIntent(
   if (intent.command === 'approve' || intent.command === 'reject') {
     return dispatchInteractionCommand(intent, context)
   }
+  if (intent.command === 'feedback') return dispatchFeedbackCommand(intent, context)
   if (intent.command === 'automate') return dispatchAutomationCommand(intent, context)
   if (intent.command === 'help') return { kind: 'accepted', revision: context.app.state().revision }
   if (intent.command === 'quit') {

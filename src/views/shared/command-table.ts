@@ -95,6 +95,12 @@ export const SHARED_COMMAND_TABLE = [
     mutatingHeadlessCommands: ['compare'],
   },
   {
+    name: 'feedback',
+    requiresOperationId: true,
+    headlessCommands: ['record_feedback', 'list_feedback'],
+    mutatingHeadlessCommands: ['record_feedback'],
+  },
+  {
     name: 'approve',
     requiresOperationId: true,
     headlessCommands: ['respond_interaction'],

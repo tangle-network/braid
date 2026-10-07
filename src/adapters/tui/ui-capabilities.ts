@@ -94,6 +94,7 @@ export function capabilityMap(
   capabilities['settings.open'] = { available: true, source: 'application' }
   capabilities['activity.read'] = { available: true, source: 'local' }
   capabilities['graph.read'] = { available: true, source: 'local' }
+  capabilities['feedback.read'] = { available: true, source: 'application' }
   capabilities['details.read'] = { available: true, source: 'local' }
   const hasWorkspace = state.workspace !== null
   const hasRunningWorker = state.workers.some((worker) => worker.status === 'running')

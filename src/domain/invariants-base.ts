@@ -277,6 +277,25 @@ export function assertFeedbackDecisionRecord(
   assertEntityId('conversation', record.conversationId, 'feedbackDecision.conversationId')
   if (record.operationId !== undefined)
     assertEntityId('operation', record.operationId, 'feedbackDecision.operationId')
+  if (record.runId !== undefined) assertEntityId('run', record.runId, 'feedbackDecision.runId')
+  if (record.taskTrajectory !== undefined) {
+    const trajectory = record.taskTrajectory
+    if (
+      record.automated ||
+      record.runId === undefined ||
+      record.operationId === undefined ||
+      trajectory.id !== record.id ||
+      trajectory.tags?.source !== 'braid.task-feedback' ||
+      trajectory.tags.runId !== record.runId ||
+      trajectory.tags.conversationId !== record.conversationId ||
+      trajectory.labels.length !== 1 ||
+      trajectory.labels[0]?.source !== 'user' ||
+      trajectory.labels[0].kind !== (record.chosenOption === 'accept' ? 'approve' : 'reject') ||
+      (record.chosenOption !== 'accept' && record.chosenOption !== 'reject')
+    )
+      fail('Task feedback must bind an explicit user judgment to its recorded run')
+    nonEmpty(trajectory.task.intent, 'feedbackDecision.taskTrajectory.task.intent')
+  }
   nonEmpty(record.chosenOption, 'feedbackDecision.chosenOption')
   assertDate(record.createdAt, 'feedbackDecision.createdAt')
 }

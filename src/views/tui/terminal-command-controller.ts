@@ -222,7 +222,8 @@ export class TerminalCommandController {
         : undefined
     void this.#dispatch(intent).then((result) => {
       if (result.kind !== 'accepted' || this.#isStopped()) return
-      if (command === 'fork') this.#overlays.openSurface('fork')
+      if (command === 'feedback' && args[0] === 'list') this.#overlays.openFeedback(result.data)
+      else if (command === 'fork') this.#overlays.openSurface('fork')
       else if (command === 'profile' && args[0] === 'learn') {
         this.#overlays.openLearnedProfile(result.data, args[1])
       }

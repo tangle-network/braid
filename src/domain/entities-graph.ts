@@ -1,3 +1,4 @@
+import type { FeedbackTrajectory } from '@tangle-network/agent-eval'
 import type { IsoDateTime, JsonValue } from './entities-base.js'
 import type {
   AnalysisId,
@@ -157,6 +158,9 @@ export interface EffectRecord {
 }
 
 export interface FeedbackDecisionRecord {
+  /** Present only for an explicit user judgment of a finished task. */
+  readonly taskTrajectory?: FeedbackTrajectory
+  readonly runId?: RunId
   readonly id: FeedbackDecisionId
   readonly conversationId: ConversationId
   readonly operationId?: OperationId
