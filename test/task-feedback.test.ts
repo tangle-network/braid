@@ -103,6 +103,9 @@ test('task feedback survives encrypted restart, exact retries, and conflicting R
     const first = await durable.app.feedback.list()
     assert.equal(first.length, 1)
     assert.equal(first[0]?.tags?.runner, 'pi')
+    assert.equal(first[0]?.tags?.reportedModel, undefined)
+    assert.equal(first[0]?.tags?.recordedModel, 'fixture/deterministic')
+    assert.equal(first[0]?.metadata?.modelProvenance, 'provider-or-request-fallback')
     assert.equal(first[0]?.tags?.requestedModel, 'fixture/deterministic')
     assert.equal(first[0]?.tags?.profileDigest, durable.app.state().runs[0]?.receipt.profileDigest)
     assert.doesNotMatch(JSON.stringify(first), /abc123-secret-canary/u)
@@ -141,6 +144,42 @@ test('task feedback survives encrypted restart, exact retries, and conflicting R
     const bytes = await readFile(path)
     assert(!bytes.includes(Buffer.from('abc123-secret-canary')))
     assert(!bytes.includes(Buffer.from('Cites the exact check')))
+  } finally {
+    await durable.storage.close()
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('concurrent deletion cannot restore task feedback or poison later journal writes', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-feedback-delete-'))
+  const durable = await createDurableBraidApplication({
+    path: join(root, 'braid.sqlite'),
+    workspaceRoot: root,
+    credentialStore: new MemoryCredentialStore(),
+    profile: DETERMINISTIC_PROFILE,
+    execution: createDeterministicExecution({ chunkDelayMs: 0 }),
+  })
+  try {
+    durable.app.initialize(root)
+    await durable.app.whenDurable()
+    const runId = await finish(durable.app)
+    const conversationId = durable.app.state().conversationId
+    const results = await Promise.allSettled([
+      durable.app.feedback.record({
+        operationId: 'op-deleting-feedback',
+        runId,
+        outcome: 'reject',
+        reason: 'Purged judgment',
+      }),
+      durable.app.conversations.lifecycle.delete({
+        operationId: 'op-delete-feedback-conversation',
+        conversationId,
+      }),
+    ])
+    assert.equal(results[1]?.status, 'fulfilled')
+    assert.deepEqual(await durable.app.feedback.list({ scope: 'workspace' }), [])
+    assert(!JSON.stringify(durable.app.state()).includes('Purged judgment'))
+    await finish(durable.app, 'op-after-deleted-feedback')
   } finally {
     await durable.storage.close()
     await rm(root, { recursive: true, force: true })
@@ -188,6 +227,16 @@ test('feedback replay preserves legacy approvals, excludes them from lessons, an
     operationId: 'op-new-feedback-conversation',
     title: 'Other work',
   })
+  const controller = createApplicationUiController(app)
+  const staleFocus = await controller.dispatch({
+    type: 'run-command',
+    command: 'feedback',
+    args: ['reject', 'Wrong conversation'],
+    operationId: 'op-stale-focus-feedback',
+  })
+  assert.equal(staleFocus.kind, 'error')
+  if (staleFocus.kind === 'error') assert.equal(staleFocus.code, 'UNKNOWN_RUN')
+  assert.equal(app.state().feedbackDecisions.length, 1)
   assert.deepEqual(await app.feedback.list(), [])
   assert.deepEqual(await app.feedback.list({ scope: 'workspace' }), [recorded])
   assert.deepEqual(await app.feedback.list({ conversationId: originalConversation, runId }), [

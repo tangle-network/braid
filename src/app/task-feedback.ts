@@ -36,7 +36,7 @@ export interface TaskFeedbackActions {
 interface FeedbackHost extends OperationFingerprintPort {
   state(): BraidState
   now(): string
-  commit(event: BraidEvent): Promise<void>
+  commit(event: BraidEvent, expectedRevision: number): Promise<void>
 }
 
 /** Only explicit task judgments enter learning. Permission decisions remain operational history. */
@@ -104,6 +104,7 @@ async function recordTaskFeedback(
       request: { runId: input.runId, outcome: input.outcome, reason: input.reason ?? null },
     }),
   )
+  const { createFeedbackTrajectory } = await import('@tangle-network/agent-eval')
   const state = host.state()
   const existing = state.operations.find((item) => item.id === id)
   if (existing !== undefined) {
@@ -134,7 +135,6 @@ async function recordTaskFeedback(
   const decisionId = createFeedbackDecisionId(
     `feedback-${canonicalDigest({ operationId: id }).slice(0, 48)}`,
   )
-  const { createFeedbackTrajectory } = await import('@tangle-network/agent-eval')
   // Eval returns optional undefined properties; omit them before journal redaction.
   const trajectory = JSON.parse(
     canonicalJson(
@@ -177,12 +177,13 @@ async function recordTaskFeedback(
           ...(run.receipt.requested.model === undefined
             ? {}
             : { requestedModel: run.receipt.requested.model }),
-          ...(run.model === undefined ? {} : { reportedModel: run.model }),
+          ...(run.model === undefined ? {} : { recordedModel: run.model }),
           ...(run.connectionId === undefined ? {} : { connectionId: String(run.connectionId) }),
         },
         metadata: {
           runStatus: run.status,
           sourceComplete: run.complete,
+          modelProvenance: 'provider-or-request-fallback',
           receiptDigest: run.receipt.digest,
         },
         createdAt,
@@ -212,6 +213,6 @@ async function recordTaskFeedback(
     createdAt,
     updatedAt: createdAt,
   }
-  await host.commit({ kind: 'feedback.decision.recorded', decision, operation })
+  await host.commit({ kind: 'feedback.decision.recorded', decision, operation }, state.revision)
   return structuredClone(trajectory)
 }

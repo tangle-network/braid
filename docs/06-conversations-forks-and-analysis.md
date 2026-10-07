@@ -391,7 +391,7 @@ A comparison node has explicit left and right edges and does not change the sele
 
 After a run finishes, `/feedback accept [reason...]` or `/feedback reject [reason...]` records the user's task judgment for the focused run, or the latest run on the selected branch when no run is focused. Running, detached, blocked, and unknown runs require resolution before feedback. A successful process exit does not count as task acceptance.
 
-`/feedback list` opens task feedback for the selected conversation. Select a row to inspect its reason and frozen run, profile digest, runner, requested model, and reported model references. An omitted reason records the judgment without generating a preference lesson.
+`/feedback list` opens task feedback for the selected conversation. Select a row to inspect its reason and frozen run, profile digest, runner, requested model, and recorded model references. The recorded model may fall back to the request when a provider does not report model identity. An omitted reason records the judgment without generating a preference lesson.
 
 Headless clients call `record_feedback` with an operation identifier and exact `runId`, `outcome` of `accept` or `reject`, and optional `reason`. Repeating the same operation and input returns the same canonical `agent-eval` `FeedbackTrajectory`. Reusing it for different input fails. The event, operation, and sanitized trajectory commit together in the encrypted journal and survive restart. Reasons are limited to 4,096 UTF-8 bytes.
 

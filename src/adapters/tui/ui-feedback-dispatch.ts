@@ -20,7 +20,7 @@ export async function dispatchFeedbackCommand(
         .map((trajectory) => ({
           id: trajectory.id,
           kind: 'feedback',
-          title: trajectory.task.intent,
+          title: `${trajectory.labels[0]?.kind === 'approve' ? 'Accepted' : 'Rejected'} · ${trajectory.task.intent}`,
           status: trajectory.labels[0]?.kind === 'approve' ? 'accepted' : 'rejected',
           ...(trajectory.tags?.runId === undefined ? {} : { runId: trajectory.tags.runId }),
           meta: trajectory.tags?.runner ?? 'runner unavailable',
@@ -31,7 +31,8 @@ export async function dispatchFeedbackCommand(
             `Run: ${trajectory.tags?.runId ?? 'unavailable'}`,
             `Runner: ${trajectory.tags?.runner ?? 'unavailable'}`,
             `Requested model: ${trajectory.tags?.requestedModel ?? 'unavailable'}`,
-            `Reported model: ${trajectory.tags?.reportedModel ?? 'unavailable'}`,
+            `Recorded model: ${trajectory.tags?.recordedModel ?? 'unavailable'}`,
+            'Model source: provider report or requested-model fallback.',
             `Profile: ${trajectory.tags?.profileDigest ?? 'unavailable'}`,
             `Recorded: ${trajectory.createdAt}`,
           ],
@@ -46,15 +47,10 @@ export async function dispatchFeedbackCommand(
       'Use /feedback accept|reject [reason...] or /feedback list',
     )
   const state = context.app.state()
-  const run =
-    state.focusedRunId !== null
-      ? state.runs.find((item) => item.id === state.focusedRunId)
-      : [...state.runs]
-          .reverse()
-          .find(
-            (item) =>
-              item.conversationId === state.conversationId && item.branchId === state.branchId,
-          )
+  const branchRuns = state.runs.filter(
+    (item) => item.conversationId === state.conversationId && item.branchId === state.branchId,
+  )
+  const run = branchRuns.find((item) => item.id === state.focusedRunId) ?? branchRuns.at(-1)
   if (run === undefined)
     throw new AppError('UNKNOWN_RUN', 'Select a finished run before recording task feedback')
   const trajectory = await context.app.feedback.record({

@@ -29,6 +29,7 @@ import type {
   RuntimeEventIngestionResult,
 } from './application-ports.js'
 import { wireApplicationRuntime } from './application-runtime-wiring.js'
+import { commitEventsAndWaitAtRevision } from './application-transition.js'
 import type {
   AppSubscriber,
   ControlReceipt,
@@ -285,10 +286,10 @@ export class BraidApplication {
       state: () => this.#state,
       now: () => this.#clock.now(),
       fingerprint,
-      commit: async (event) => {
+      commit: async (event, expectedRevision) => {
+        this.#assertNotClosed()
         assertWritable(this.#storageFailure)
-        if (this.#asynchronousJournal) await this.#commitAndWait(event)
-        else this.#commit(event)
+        await commitEventsAndWaitAtRevision(this.#transition, [event], expectedRevision)
       },
     })
     this.intelligence = createIntelligenceActions(
