@@ -1,0 +1,193 @@
+{
+  "sourceCommit": "b63c6fcec638c04ee422357295a35128286eea1a",
+  "generatedAt": "2026-10-07T09:49:19.951Z",
+  "command": "node /tmp/braid-feedback-capture.mjs <repository> <output>",
+  "binary": "clean npm install from locally built tarball",
+  "tarball": "tangle-network-braid-0.3.4.tgz",
+  "tarballSha256": "d380c4e615e892f523b4ab9d905ed786f7984f039c4bbdd9e441fbc7129d0e95",
+  "provenance": {
+    "renderer": {
+      "package": "@earendil-works/pi-tui@0.84.4",
+      "pty": "node-pty@1.1.0",
+      "emulator": "@xterm/headless@6.0.0",
+      "node": "v24.21.0",
+      "terminal": "xterm-256color"
+    },
+    "raster": {
+      "agg": "agg 1.9.0",
+      "imagemagick": "unavailable: spawn convert ENOENT",
+      "fontFamily": "DejaVu Sans Mono",
+      "font": "DejaVu Sans Mono | Book | /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+      "colorMode": "sRGB 8-bit",
+      "frameExtraction": "ffmpeg 6.1.1-3ubuntu5, first GIF frame to PNG",
+      "frameStyle": "Captured terminal cells; original ANSI style retained in keyboard GIF"
+    }
+  },
+  "fixture": "deterministic runtime fixture; no live provider integration claim",
+  "steps": [
+    "open empty feedback list",
+    "run task to completion",
+    "accept with reason",
+    "inspect list and detail",
+    "close and reopen feedback list",
+    "exit cleanly"
+  ],
+  "artifacts": [
+    {
+      "path": "40x12-empty.txt",
+      "sha256": "4540a6453748ab28dd49b1f354d28d4241180fa4a9fa5e69c933b28e09f71ffe"
+    },
+    {
+      "path": "40x12-empty.png",
+      "sha256": "cdea6eb66e0c964e0daeb36c1d2caaed08fcdf025fd1df6e92b252f4755fa1cd"
+    },
+    {
+      "path": "raw/40x12-empty.cast",
+      "sha256": "d393cfa4373c976c8070d012f43a62b1d6e44cfd0b9ab74506bb8dcd3cced81a"
+    },
+    {
+      "path": "40x12-list.txt",
+      "sha256": "9092c7d625b06a6cc87989713214fdd8572afd9108b3b316dd6401cf087efbbd"
+    },
+    {
+      "path": "40x12-list.png",
+      "sha256": "b9fbe189eda5ed26ddd7ff1805f1f24005bdc977bfdea1e346ef8b7dcdd99707"
+    },
+    {
+      "path": "raw/40x12-list.cast",
+      "sha256": "6249134911f497bc9ace829099cf4ef9293e061df2b15a94ca851f5851c13ed1"
+    },
+    {
+      "path": "40x12-detail.txt",
+      "sha256": "dcb41d15dc69142232f3f3da2bc0066b04a514941e1650be99b4048c831bab48"
+    },
+    {
+      "path": "40x12-detail.png",
+      "sha256": "2122798bc502b5bbc360b3b4e5be72f85d034916ba43a91ce04785e2ca075f23"
+    },
+    {
+      "path": "raw/40x12-detail.cast",
+      "sha256": "0ff7bfe7975026411a0cad53a89c32288125c7731a9ac543452e6297aacaa1df"
+    },
+    {
+      "path": "80x24-empty.txt",
+      "sha256": "2746194776d5e1e1f158f6cecf715447d44b78281894247e8ea59cf8b101aa5e"
+    },
+    {
+      "path": "80x24-empty.png",
+      "sha256": "18f97d1caf05a7b5c0c88617cecca0a76cc0a980d84cf44ae3b8dbba7e9680a0"
+    },
+    {
+      "path": "raw/80x24-empty.cast",
+      "sha256": "5d5cfce1756fe949d0f3c09f9951990df882b8ac5fe5c174fb3212ef6a532a50"
+    },
+    {
+      "path": "80x24-list.txt",
+      "sha256": "e999cd7c82d0a02eaa3f117170bad282e2d018799748f6e8fbd8477c3f84437a"
+    },
+    {
+      "path": "80x24-list.png",
+      "sha256": "44a13edd22818b4bf2132f8b14bef9d732b5a50f4505b8dd2c6e5858cb37bf6d"
+    },
+    {
+      "path": "raw/80x24-list.cast",
+      "sha256": "493679302d787c1e25e4925356ccc8fdd44069caa7c9a1985d4768df51be51aa"
+    },
+    {
+      "path": "80x24-detail.txt",
+      "sha256": "34ee28e597efaef5bf05e28a43f92bd5d1b4dcc8ce5bb544e89171d1409c9a67"
+    },
+    {
+      "path": "80x24-detail.png",
+      "sha256": "0482eb0b06e3512e9300d33e400aab69b7acdd0b3fbb502e7234585e65682dab"
+    },
+    {
+      "path": "raw/80x24-detail.cast",
+      "sha256": "c9027ac39bd8a471dd98060da0db1614507115f392cf8bcfaf54e0831d32c2ee"
+    },
+    {
+      "path": "raw/feedback-keyboard.cast",
+      "sha256": "007354e714db75a4923853461c1642ecdb1b66d9a40a93a3ba484a367410a614"
+    },
+    {
+      "path": "feedback-keyboard.gif",
+      "sha256": "564e4b18cbf056d186626ea6e1ed90d90172e7581491e6b560d17c7bf8938860"
+    },
+    {
+      "path": "120x40-empty.txt",
+      "sha256": "2854bf650ae8c1df5d4fbd54a66afa8c70073399f2d8d2b4ee4a77b519e6d673"
+    },
+    {
+      "path": "120x40-empty.png",
+      "sha256": "04c1519a775a88fe249aea642558c13340ff91e9e075e73b8e70188d6be7b340"
+    },
+    {
+      "path": "raw/120x40-empty.cast",
+      "sha256": "fb35f54f6a01e6f2d477355d108886401b0a5bf74a91f99af67c659c6cd22b6b"
+    },
+    {
+      "path": "120x40-list.txt",
+      "sha256": "639763cc055922bec07306dde341668447d0458ed6013ffaafb4fc83a4192ecd"
+    },
+    {
+      "path": "120x40-list.png",
+      "sha256": "6fbb0ef194da84514f97396194c12dc2a9e1ad009f3a025f0b74a45d695ac30f"
+    },
+    {
+      "path": "raw/120x40-list.cast",
+      "sha256": "d931f0607e5759546eed586476eaefdb51626fc11bb90d133458fb6abe50b2f5"
+    },
+    {
+      "path": "120x40-detail.txt",
+      "sha256": "639763cc055922bec07306dde341668447d0458ed6013ffaafb4fc83a4192ecd"
+    },
+    {
+      "path": "120x40-detail.png",
+      "sha256": "6fbb0ef194da84514f97396194c12dc2a9e1ad009f3a025f0b74a45d695ac30f"
+    },
+    {
+      "path": "raw/120x40-detail.cast",
+      "sha256": "d931f0607e5759546eed586476eaefdb51626fc11bb90d133458fb6abe50b2f5"
+    },
+    {
+      "path": "200x60-empty.txt",
+      "sha256": "17625c141399b95a2520812064766f7126378855d2dab80bd9c4dd11ae5b7c9b"
+    },
+    {
+      "path": "200x60-empty.png",
+      "sha256": "0cc2f5365fb81856993bb1d089b0e13b24b33a05a5db9fa797a2364903df281f"
+    },
+    {
+      "path": "raw/200x60-empty.cast",
+      "sha256": "0dc9c1676744b450662a0eeee3a569db45bdb337270c619e75e4df216c42b05a"
+    },
+    {
+      "path": "200x60-list.txt",
+      "sha256": "c39e479308884c6999cb044e38f07cbf5dcbca8982ec2be6e23dee270b0fd84a"
+    },
+    {
+      "path": "200x60-list.png",
+      "sha256": "2985c8885a14918cefdcc870bd110d5a7bcfcf180a11f688794de0d077faed68"
+    },
+    {
+      "path": "raw/200x60-list.cast",
+      "sha256": "22070bf63d1d0bdddc342f0eb7269d202dddd546abb2467819e5c576a667162f"
+    },
+    {
+      "path": "200x60-detail.txt",
+      "sha256": "c39e479308884c6999cb044e38f07cbf5dcbca8982ec2be6e23dee270b0fd84a"
+    },
+    {
+      "path": "200x60-detail.png",
+      "sha256": "2985c8885a14918cefdcc870bd110d5a7bcfcf180a11f688794de0d077faed68"
+    },
+    {
+      "path": "raw/200x60-detail.cast",
+      "sha256": "55a8326c442b659d351d894fd160f9aee6f132916291a62ef126171179d3acf4"
+    },
+    {
+      "path": "raw/capture.mjs",
+      "sha256": "4d5fe2d00e410a01a4f3761adab15968465910cd041f4b7c88c84e39f9b8ee65"
+    }
+  ]
+}

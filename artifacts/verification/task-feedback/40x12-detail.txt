@@ -1,0 +1,12 @@
+ Task feedback › Accepted · Inspect the…
+────────────────────────────────────────
+ Task: Inspect the source and cite the  
+ check.                                 
+ Decision: accepted                     
+ Reason: Cited the source and passing   
+ check.                                 
+ Run: run-000001                        
+ Runner: pi                             
+ Requested model: fixture/deterministic 
+────────────────────────────────────────
+ ↑↓ · Pg · ←/esc back · page 1/2        
