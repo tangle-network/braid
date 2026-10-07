@@ -14,7 +14,13 @@ export const SHARED_COMMAND_TABLE = [
   {
     name: 'profile',
     requiresOperationId: true,
-    headlessCommands: ['list_profiles', 'select_profile', 'validate_profile', 'save_profile'],
+    headlessCommands: [
+      'list_profiles',
+      'select_profile',
+      'validate_profile',
+      'save_profile',
+      'learn_profile',
+    ],
     mutatingHeadlessCommands: ['select_profile', 'save_profile'],
   },
   {
@@ -37,8 +43,8 @@ export const SHARED_COMMAND_TABLE = [
   {
     name: 'runner',
     requiresOperationId: true,
-    headlessCommands: ['set_run_override'],
-    mutatingHeadlessCommands: ['set_run_override'],
+    headlessCommands: ['set_run_override', 'runner_advice'],
+    mutatingHeadlessCommands: ['set_run_override', 'runner_advice'],
   },
   {
     name: 'model',
@@ -93,6 +99,12 @@ export const SHARED_COMMAND_TABLE = [
     requiresOperationId: true,
     headlessCommands: ['compare'],
     mutatingHeadlessCommands: ['compare'],
+  },
+  {
+    name: 'feedback',
+    requiresOperationId: true,
+    headlessCommands: ['record_feedback', 'list_feedback'],
+    mutatingHeadlessCommands: ['record_feedback'],
   },
   {
     name: 'approve',

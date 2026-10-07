@@ -11,6 +11,7 @@ import { capabilityForHeadlessCommand } from '../../views/shared/headless-comman
 import type { BraidIntent, UiDispatchResult } from '../../views/shared/intents.js'
 import type { BraidViewModel } from '../../views/shared/models.js'
 import { redactSensitiveText } from '../../views/shared/sanitize.js'
+import type { ProfileConnectionDispatchServices } from './profile-connection-dispatch.js'
 import type { UiFixture } from './ui-fixtures.js'
 import { resolveIntelligenceFixture } from './ui-intelligence-fixtures.js'
 
@@ -20,6 +21,7 @@ interface IntelligenceDispatchContext {
   readonly view: () => BraidViewModel
   readonly notify: () => void
   readonly setNotice: (notice: string) => void
+  readonly profileConnections: ProfileConnectionDispatchServices
 }
 
 type AnalysisCommand = 'ask' | 'analyze' | 'compare'
@@ -45,11 +47,17 @@ type AnalysisTerminal =
 
 function requiresOperationId(intent: BraidIntent): boolean {
   if (intent.type === 'run-command') {
-    return intent.command === 'ask' || intent.command === 'analyze' || intent.command === 'compare'
+    return (
+      intent.command === 'ask' ||
+      intent.command === 'analyze' ||
+      intent.command === 'compare' ||
+      (intent.command === 'runner' && intent.args[0] === 'advice')
+    )
   }
   if (intent.type !== 'headless-command') return false
   return (
     intent.command === 'ask' ||
+    intent.command === 'runner_advice' ||
     intent.command === 'analyze' ||
     intent.command === 'compare' ||
     intent.command === 'promote_analysis' ||
@@ -65,6 +73,7 @@ function requiresOperationId(intent: BraidIntent): boolean {
 function isIntelligenceHeadlessCommand(command: string): boolean {
   return [
     'ask',
+    'runner_advice',
     'analyze',
     'compare',
     'promote_analysis',
@@ -417,7 +426,15 @@ export async function dispatchIntelligenceIntent(
     if (operationId === undefined)
       invalid('OPERATION_ID_REQUIRED', `${command} requires operationId`)
   }
-  if (intent.type === 'headless-command' && isIntelligenceHeadlessCommand(intent.command)) {
+  const adviceReplay =
+    intent.type === 'headless-command' &&
+    intent.command === 'runner_advice' &&
+    context.app.state().operations.some((operation) => operation.id === intent.operationId)
+  if (
+    intent.type === 'headless-command' &&
+    isIntelligenceHeadlessCommand(intent.command) &&
+    !adviceReplay
+  ) {
     const capability = capabilityForHeadlessCommand(intent.command)
     const availability =
       capability === undefined ? undefined : context.view().capabilities[capability]
@@ -432,6 +449,9 @@ export async function dispatchIntelligenceIntent(
     return accepted(context.app, fixture.data, operationId)
   }
   if (intent.type === 'run-command') {
+    if (intent.command === 'runner' && intent.args[0] === 'advice') {
+      return runRunnerAdvice(context, intent.args.slice(1).join(' '), 'last', intent.operationId)
+    }
     if (intent.command !== 'ask' && intent.command !== 'analyze' && intent.command !== 'compare') {
       return undefined
     }
@@ -462,6 +482,13 @@ export async function dispatchIntelligenceIntent(
 
   if (intent.type !== 'headless-command') return undefined
   switch (intent.command) {
+    case 'runner_advice':
+      return runRunnerAdvice(
+        context,
+        String(intent.params.task ?? ''),
+        String(intent.params.source ?? 'last'),
+        intent.operationId,
+      )
     case 'ask': {
       const source = intent.params.source
       const question = intent.params.question
@@ -597,4 +624,43 @@ export async function dispatchIntelligenceIntent(
     default:
       return undefined
   }
+}
+
+async function runRunnerAdvice(
+  context: IntelligenceDispatchContext,
+  task: string,
+  source: string,
+  operationId?: string,
+): Promise<UiDispatchResult> {
+  const { runnerAdviceQuestion } = await import('../../app/runner-advice.js')
+  const state = context.app.state()
+  const clientRequestDigest = context.app.intelligence.analysis.clientRequestDigest({
+    command: 'runner_advice',
+    task,
+    source,
+  })
+  if (
+    operationId !== undefined &&
+    state.operations.some((operation) => operation.id === operationId)
+  )
+    return runAnalysis(context, { operationId, clientRequestDigest }, operationId)
+  const selectedSource = sourceRequest(state, source)
+  if (selectedSource.runId === undefined)
+    invalid('ANALYSIS_SOURCE_INVALID', 'Runner advice requires a finished run source')
+  const feedback = await context.app.feedback.list({
+    conversationId: String(selectedSource.conversationId ?? state.conversationId),
+  })
+  const catalog = await context.profileConnections.profiles.list()
+  const question = await runnerAdviceQuestion({ task, feedback, profiles: catalog.profiles })
+  return runAnalysis(
+    context,
+    {
+      ...selectedSource,
+      question,
+      recipe: 'ask',
+      clientRequestDigest,
+      ...(operationId === undefined ? {} : { operationId }),
+    },
+    operationId,
+  )
 }

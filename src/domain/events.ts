@@ -226,7 +226,10 @@ export interface DomainBraidEventMap {
   readonly 'operation.requested': { readonly operation: OperationRecord }
   readonly 'operation.updated': { readonly operation: OperationRecord }
   readonly 'effect.upserted': { readonly effect: EffectRecord }
-  readonly 'feedback.decision.recorded': { readonly decision: FeedbackDecisionRecord }
+  readonly 'feedback.decision.recorded': {
+    readonly decision: FeedbackDecisionRecord
+    readonly operation?: OperationRecord
+  }
   readonly 'content.unavailable': {
     readonly conversationId: ConversationId
     readonly originalKind: string

@@ -1,0 +1,12 @@
+ learned profile › Exact profile changes
+────────────────────────────────────────
+ ! Saved learned.json. Select it with /…
+ [                                      
+   {                                    
+     "kind": "agent-profile-diff",      
+     "remove": {                        
+       "prompt": true                   
+     }                                  
+   },                                   
+────────────────────────────────────────
+ ↑↓ · Pg · ←/esc back · page 1/5        

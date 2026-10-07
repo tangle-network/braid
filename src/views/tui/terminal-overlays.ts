@@ -1,5 +1,6 @@
 import type { Editor, SelectItem } from '@earendil-works/pi-tui'
 import type { ConnectionSummary } from '../../app/connection-action-types.js'
+import type { LearnedProfileDraft } from '../../app/profile-learning.js'
 import { type CommandName, commandItems } from '../shared/command-registry.js'
 import type { UiConnectionLifecycle } from '../shared/connection-lifecycle.js'
 import type { BraidUiController } from '../shared/intents.js'
@@ -17,6 +18,7 @@ import { ConversationOverlayController } from './conversation-overlays.js'
 import { executionTargetFor } from './execution-target.js'
 import type { ModalCoordinator } from './modal-coordinator.js'
 import { ProfileEditorViewPanel } from './profile-editor.js'
+import { ProfileLearningPanel } from './profile-learning.js'
 import { SearchableSelector } from './selector.js'
 import {
   type IntelligenceProgressHandle,
@@ -138,6 +140,56 @@ export class TerminalOverlayController {
       query,
       onCancel: () => this.#modals.closeTop(),
       rows: this.#rows,
+    })
+    this.#modals.open(panel, {
+      anchor: 'top-left',
+      width: '100%',
+      maxHeight: '100%',
+      margin: 0,
+      fullScreenBelow: Number.MAX_SAFE_INTEGER,
+    })
+  }
+
+  openLearnedProfile(data: unknown, target?: string): void {
+    if (
+      data === null ||
+      typeof data !== 'object' ||
+      !('kind' in data) ||
+      data.kind !== 'learned-profile-draft'
+    ) {
+      this.openUnavailable('Profile learning unavailable', 'No portable profile draft was returned')
+      return
+    }
+    const draft = data as LearnedProfileDraft
+    const operationId = this.#nextOperationId()
+    const panel = new ProfileLearningPanel(this.#theme, {
+      draft,
+      ...(target === undefined
+        ? {}
+        : {
+            target,
+            onSave: async () => {
+              const result = await this.#controller.dispatch({
+                type: 'headless-command',
+                command: 'save_profile',
+                operationId,
+                params: { ref: target, profile: draft.profile, createOnly: true },
+              })
+              if (result.kind !== 'accepted')
+                throw new Error(
+                  result.kind === 'error'
+                    ? result.message
+                    : result.kind === 'unavailable'
+                      ? result.reason
+                      : 'Profile was not saved',
+                )
+              this.#requestRender()
+              return `Saved ${target}. Select it with /profile ${target} when ready.`
+            },
+          }),
+      rows: this.#rows,
+      requestRender: this.#requestRender,
+      onClose: () => this.#modals.closeTop(),
     })
     this.#modals.open(panel, {
       anchor: 'top-left',
@@ -425,6 +477,10 @@ export class TerminalOverlayController {
 
   dispose(): void {
     this.#surfaces.dispose()
+  }
+
+  openFeedback(data: unknown): void {
+    this.#surfaces.openFeedback(data)
   }
 
   openIntelligenceResult(command: 'ask' | 'analyze' | 'compare', data: unknown): void {

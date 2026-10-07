@@ -10,6 +10,7 @@ import { ConnectionActionService, type ConnectionActions } from '../../app/conne
 import type { ConnectionProbeFactory } from '../../app/connection-probe.js'
 import { AppError } from '../../app/errors.js'
 import { type ProfileActionOptions, ProfileActionService } from '../../app/profile-actions.js'
+import type { LearnedProfileDraft } from '../../app/profile-learning.js'
 import type {
   ProfileDiscoveryInput,
   ProfileProvider,
@@ -40,6 +41,7 @@ export interface ProfileConnectionDispatchServices {
   readonly profiles: ProfileActionService
   readonly connections: ConnectionActions
   readonly revision: () => number
+  readonly learnProfile?: () => Promise<LearnedProfileDraft>
 }
 
 export function createProfileConnectionDispatchServices(
@@ -61,6 +63,10 @@ export function createProfileConnectionDispatchServices(
         ? undefined
         : createLazyProductionConnectionAdapter(record, options.productionConnection)))
   return {
+    learnProfile: async () => {
+      const { draftProfileFromFeedback } = await import('../../app/profile-learning.js')
+      return draftProfileFromFeedback(app.runtimeSelection.profile(), await app.feedback.list())
+    },
     profiles: new ProfileActionService({
       host,
       ...(options.profiles === undefined ? {} : { profiles: options.profiles }),
@@ -121,6 +127,10 @@ export async function dispatchProfileConnectionIntent(
   services: ProfileConnectionDispatchServices,
 ): Promise<UiDispatchResult | undefined> {
   if (intent.type === 'run-command') {
+    if (intent.command === 'profile' && intent.args[0] === 'learn') {
+      if (intent.args.length > 2) throw new AppError('INVALID_PARAMS', '/profile learn [new-file]')
+      return learnedProfile(services)
+    }
     if (intent.command === 'profile')
       return dispatchProfileCommand(intent, services.profiles, services.revision)
     if (intent.command === 'connection')
@@ -129,6 +139,8 @@ export async function dispatchProfileConnectionIntent(
   }
   if (intent.type !== 'headless-command') return undefined
   switch (intent.command) {
+    case 'learn_profile':
+      return learnedProfile(services)
     case 'list_profiles':
       return accepted(
         await services.profiles.list(stringParam(intent.command, intent.params, 'query')),
@@ -155,6 +167,7 @@ export async function dispatchProfileConnectionIntent(
           operationId: requiredOperationId(intent),
           ref: requiredString(intent.command, intent.params, 'ref'),
           profile: intent.params.profile,
+          ...(intent.params.createOnly === true ? { createOnly: true } : {}),
           ...revisionParam(intent.command, intent.params),
         }),
         services.revision(),
@@ -207,6 +220,17 @@ export async function dispatchProfileConnectionIntent(
     default:
       return undefined
   }
+}
+
+async function learnedProfile(
+  services: ProfileConnectionDispatchServices,
+): Promise<UiDispatchResult> {
+  if (services.learnProfile === undefined)
+    throw new AppError(
+      'PROFILE_LESSONS_UNAVAILABLE',
+      'Task feedback is unavailable in this session',
+    )
+  return accepted(await services.learnProfile(), services.revision())
 }
 
 async function dispatchProfileCommand(

@@ -1,0 +1,3 @@
+{"version":2,"width":40,"height":12,"timestamp":1791366541,"title":"Braid task feedback","command":"packed braid --fixture deterministic","env":{"TERM":"xterm-256color"},"stdin":true}
+[0,"o","\u001b[2J\u001b[H Task feedback › Accepted · Inspect the…\r\n────────────────────────────────────────\r\n Task: Inspect the source and cite the  \r\n check.                                 \r\n Decision: accepted                     \r\n Reason: Cited the source and passing   \r\n check.                                 \r\n Run: run-000001                        \r\n Runner: pi                             \r\n Requested model: fixture/deterministic \r\n────────────────────────────────────────\r\n ↑↓ · Pg · ←/esc back · page 1/2        "]
+[0.1,"o","\u001b[0m"]

@@ -1,0 +1,12 @@
+ learned profile › Exact profile changes
+────────────────────────────────────────
+ ! Unmeasured draft. Ctrl+S saves a new…
+ [                                      
+   {                                    
+     "kind": "agent-profile-diff",      
+     "remove": {                        
+       "prompt": true                   
+     }                                  
+   },                                   
+────────────────────────────────────────
+ ↑↓ · Pg · ←/esc back · page 1/5        

@@ -29,6 +29,7 @@ import type {
   RuntimeEventIngestionResult,
 } from './application-ports.js'
 import { wireApplicationRuntime } from './application-runtime-wiring.js'
+import { commitEventsAndWaitAtRevision } from './application-transition.js'
 import type {
   AppSubscriber,
   ControlReceipt,
@@ -69,6 +70,7 @@ import { reconcileRun, reconnectRun } from './run-replay.js'
 import { isTerminal, waitForIdle } from './run-status.js'
 import { resolveConversationTarget } from './run-targets.js'
 import { shutdownApplication } from './shutdown-controller.js'
+import { createTaskFeedbackActions, type TaskFeedbackActions } from './task-feedback.js'
 import { snapshotWorkspaceRequest } from './workspace-request.js'
 
 export type { SendInput, SendReceipt } from './application-types.js'
@@ -119,6 +121,7 @@ function deferred<T>(): Deferred<T> {
 export class BraidApplication {
   readonly conversations: ConversationActions
   readonly intelligence: IntelligenceActions
+  readonly feedback: TaskFeedbackActions
   readonly automation: AutomationActions
   readonly configuration: ConfigurationActionTransition
   readonly runtimeSelection: RuntimeSelection
@@ -279,8 +282,19 @@ export class BraidApplication {
     this.#portViews = runtime.ports
     this.#transition = runtime.transition
     this.configuration = createConfigurationActionTransition(this.#transition)
+    this.feedback = createTaskFeedbackActions({
+      state: () => this.#state,
+      now: () => this.#clock.now(),
+      fingerprint,
+      commit: async (event, expectedRevision) => {
+        this.#assertNotClosed()
+        assertWritable(this.#storageFailure)
+        await commitEventsAndWaitAtRevision(this.#transition, [event], expectedRevision)
+      },
+    })
     this.intelligence = createIntelligenceActions(
       {
+        fingerprint,
         currentState: () => this.#state,
         eventHistory: () => this.#journal.all(),
         loadEventHistory: (source) =>

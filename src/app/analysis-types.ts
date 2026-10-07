@@ -34,6 +34,8 @@ export interface AnalysisSourceRequest {
 
 export interface AnalysisRequest extends AnalysisSourceRequest {
   readonly operationId?: string
+  /** Binds a product command to its first frozen question and evidence. */
+  readonly clientRequestDigest?: string
   readonly question?: string
   readonly recipe?: AnalysisRecipe
   readonly analystIds?: readonly string[]
@@ -81,6 +83,7 @@ export interface AnalysisApplicationHost {
   readonly commitAndWait?: (event: BraidEvent) => void | Promise<void>
   readonly now: () => string
   readonly analysisExecutionTarget?: (state: BraidState) => AnalysisExecutionTarget
+  readonly fingerprint?: import('./operation-fingerprint.js').OperationFingerprintPort['fingerprint']
 }
 
 export interface AnalysisProgressStarted {

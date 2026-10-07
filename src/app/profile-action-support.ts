@@ -1,3 +1,4 @@
+import { resolve } from 'node:path'
 import { canonicalAgentProfileDigest } from '../adapters/agent-interface/profile-runtime.js'
 import type {
   ProfileRecord as DomainProfileRecord,
@@ -48,6 +49,7 @@ export function findProfileRecord(
     (record) =>
       record.id === ref ||
       record.source.reference === ref ||
+      (record.source.kind === 'file' && record.source.reference === resolve(ref)) ||
       record.source.label === ref ||
       record.displayName === ref,
   )

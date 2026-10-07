@@ -1,0 +1,3 @@
+{"version":2,"width":40,"height":12,"timestamp":1791367231,"title":"Braid portable profile learning","command":"packed braid --fixture deterministic","env":{"TERM":"xterm-256color"},"stdin":true}
+[0,"o","\u001b[2J\u001b[H learned profile › Exact profile changes\r\n────────────────────────────────────────\r\n ! Unmeasured draft. Ctrl+S saves a new…\r\n [                                      \r\n   {                                    \r\n     \"kind\": \"agent-profile-diff\",      \r\n     \"remove\": {                        \r\n       \"prompt\": true                   \r\n     }                                  \r\n   },                                   \r\n────────────────────────────────────────\r\n ↑↓ · Pg · ←/esc back · page 1/5        "]
+[0.1,"o","\u001b[0m"]

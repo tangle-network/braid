@@ -1,0 +1,24 @@
+ learned profile · 3                                              Braid starter 
+────────────────────────────────────────────────────────────────────────────────
+ ! Unmeasured draft. Ctrl+S saves a new profile to learned.json. Esc leaves it …
+ › · Avoid outputs like "Inspect the source and cite the check." when: Preserve…
+   · Exact profile changes · profile · unmeasured                               
+   · Complete portable AgentProfile · profile · draft                           
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+────────────────────────────────────────────────────────────────────────────────
+ ↑↓ move · enter/→ open · ←/esc close                                           

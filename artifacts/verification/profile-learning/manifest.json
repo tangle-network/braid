@@ -1,0 +1,193 @@
+{
+  "sourceCommit": "a33e7460de14c54758170d3085a0004026708088",
+  "generatedAt": "2026-10-07T10:00:48.082Z",
+  "command": "node /tmp/braid-learning-capture.mjs <repository> <output>",
+  "binary": "clean npm install from locally built tarball",
+  "tarball": "tangle-network-braid-0.3.4.tgz",
+  "tarballSha256": "616f3ac2316ec7a54c51e6085f810feb62f8e53639196b876f74981346b6ebb4",
+  "provenance": {
+    "renderer": {
+      "package": "@earendil-works/pi-tui@0.84.4",
+      "pty": "node-pty@1.1.0",
+      "emulator": "@xterm/headless@6.0.0",
+      "node": "v24.21.0",
+      "terminal": "xterm-256color"
+    },
+    "raster": {
+      "agg": "agg 1.9.0",
+      "imagemagick": "not used; terminal cells rendered with agg and ffmpeg",
+      "fontFamily": "DejaVu Sans Mono",
+      "font": "DejaVu Sans Mono | Book | /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+      "colorMode": "sRGB 8-bit",
+      "ffmpeg": "ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023 the FFmpeg developers"
+    }
+  },
+  "fixture": "deterministic runtime fixture; no live provider integration claim",
+  "steps": [
+    "run task to completion",
+    "reject with correction",
+    "preview learned profile",
+    "inspect exact changes",
+    "Ctrl+S saves new file",
+    "explicitly select saved profile",
+    "exit cleanly"
+  ],
+  "artifacts": [
+    {
+      "path": "40x12-preview.txt",
+      "sha256": "ef10957c0a4eb4ad2fa401b92cab18562a77a0e37bdf236988c3bd6ea9031b7e"
+    },
+    {
+      "path": "40x12-preview.png",
+      "sha256": "c5b68afc9a9a21eb345118cf4f4884ae096295bb0bdefb51a2ac0ec8a4e0f266"
+    },
+    {
+      "path": "raw/40x12-preview.cast",
+      "sha256": "664c8139af99d47a285161928c247b8177cfd0dd525fa4f6d2ff42935c9b7d52"
+    },
+    {
+      "path": "40x12-changes.txt",
+      "sha256": "1872f55daba1b6b395e3d0c9c01eeee444f18d605fe5326f749142d630fccd6b"
+    },
+    {
+      "path": "40x12-changes.png",
+      "sha256": "e0296c52c6ebe2064eeddb1bf3ce409798fed599a0e9c3a3983bcee99f7a7c7d"
+    },
+    {
+      "path": "raw/40x12-changes.cast",
+      "sha256": "79ac61a5a9606a9fdbb5415dba9c4dea281913dcc03d4883bc62796ba2e5f177"
+    },
+    {
+      "path": "40x12-saved.txt",
+      "sha256": "870b77932177eeca335aa69e622a7b42d36b4cd77c3bacc939ca25f57c38a863"
+    },
+    {
+      "path": "40x12-saved.png",
+      "sha256": "053db0fdab2cda6e485acf0f7d4e275e78f9c7aaa17b6f2bee9d5f6374a2b6fe"
+    },
+    {
+      "path": "raw/40x12-saved.cast",
+      "sha256": "0ba697ed08b3a4c7af7029a52a43e712a2ecbeb1b7e39a14a146e302d91283d8"
+    },
+    {
+      "path": "80x24-preview.txt",
+      "sha256": "b37f4d1995bfe1e3ff86fd02b27c3cb29e59c23a26b0d809e4fb0718886b2309"
+    },
+    {
+      "path": "80x24-preview.png",
+      "sha256": "3576290b4af94fcd716c02e792e093758c5743db88263703028da2bcab3923f3"
+    },
+    {
+      "path": "raw/80x24-preview.cast",
+      "sha256": "a26bb85bcc9b472e3705b25fd51a2cb7b0f8804cfb46d4f38ba18c9c0a3e3509"
+    },
+    {
+      "path": "80x24-changes.txt",
+      "sha256": "badbeee8c00dadd32281dba6b64a3a6a16b210b517f7e9c654f1e5c7040e8d37"
+    },
+    {
+      "path": "80x24-changes.png",
+      "sha256": "84b5214a9764558c9dd6b31d0641592a815001fb75bd395dfc7b4f0f9bb54226"
+    },
+    {
+      "path": "raw/80x24-changes.cast",
+      "sha256": "daae20eb4a543fe850cfc9f04930e137c0b9fa753b29757887dd33eedb4b606c"
+    },
+    {
+      "path": "80x24-saved.txt",
+      "sha256": "a52b13ee705a048ada01d56fdbf73734e6b4ce8c4239877f61181cfef0113f66"
+    },
+    {
+      "path": "80x24-saved.png",
+      "sha256": "3d609941a428701507b31f49f746ed6a29baf057006c4f909c64c57ad589391a"
+    },
+    {
+      "path": "raw/80x24-saved.cast",
+      "sha256": "f7574831eb5efb6c0fbf739e9fdd91e5cd691f8c0327a55f73897ccef578923c"
+    },
+    {
+      "path": "raw/profile-learning-keyboard.cast",
+      "sha256": "5ad51328019735e7b8412f4729ecb39e3e044906c54e3166565948b13f92ea92"
+    },
+    {
+      "path": "profile-learning-keyboard.gif",
+      "sha256": "6a4d6a8bb68cc40593cf6d323ffdabae8be40013c3cd2fc48624b5c51df025f1"
+    },
+    {
+      "path": "120x40-preview.txt",
+      "sha256": "ed63842a0459715032e3ec7f805d5bc07dbf6cb411fb3e54571af15f56bc24e9"
+    },
+    {
+      "path": "120x40-preview.png",
+      "sha256": "f02003a80c383aa13be178e5acc44c6dc6243817338b4fb5d5037a26b70f52c4"
+    },
+    {
+      "path": "raw/120x40-preview.cast",
+      "sha256": "07b321f5660b526d93b9352929203ffc3bcfea059034708178ab6c57a9396bd8"
+    },
+    {
+      "path": "120x40-changes.txt",
+      "sha256": "fe98a73e8355de80cb10f98d61afcc764f3bea22bf5f880a09ca1ed194cdfd43"
+    },
+    {
+      "path": "120x40-changes.png",
+      "sha256": "9dde31773e81c22367375319d808cf3601d1eb8e265cff522d02415790f28a69"
+    },
+    {
+      "path": "raw/120x40-changes.cast",
+      "sha256": "39b69067186cf83497344c63bf006315f0c06b057123d3efce9afc0e076e4131"
+    },
+    {
+      "path": "120x40-saved.txt",
+      "sha256": "28d621f37b6c0070d48895c456d2df6cf3a71f47160c3567f514231154f023de"
+    },
+    {
+      "path": "120x40-saved.png",
+      "sha256": "7520315c9d674b7ec838fce4e4efebf247ab5855e747bcfb85e53244a94b1b99"
+    },
+    {
+      "path": "raw/120x40-saved.cast",
+      "sha256": "33bceee8f51c8deaa70095b900460d2f357a4694da3fdfbf6a7dd1d621adb516"
+    },
+    {
+      "path": "200x60-preview.txt",
+      "sha256": "7001628a265bb3ae5fbce11ccce6c0b88c90214067236cda6c1fe9f1150464ee"
+    },
+    {
+      "path": "200x60-preview.png",
+      "sha256": "3699b8b1208dc9f86a622f232281cf8e4aaa6fc09461b82638e9faab53b42823"
+    },
+    {
+      "path": "raw/200x60-preview.cast",
+      "sha256": "d5df8fc039c8c35c8c70fb75645ef76858e0f287c98fddf345f8bf4884d86f7e"
+    },
+    {
+      "path": "200x60-changes.txt",
+      "sha256": "5f344c20f5574f2cf6806027a727f23058fd9a9d646db69f3d279c9981942542"
+    },
+    {
+      "path": "200x60-changes.png",
+      "sha256": "08d1c0fd213c37a42eae0201ec3971851346e45f505eb86a24289ba76d0923be"
+    },
+    {
+      "path": "raw/200x60-changes.cast",
+      "sha256": "9c23952145a4bbd9b2f8037debef2d7ec1d11c60f64c484b7e88a93da1aff628"
+    },
+    {
+      "path": "200x60-saved.txt",
+      "sha256": "4f95c5c56a201fa0358e274be8bd63a2bf53de6fd90b87ea3b439a269d7b3545"
+    },
+    {
+      "path": "200x60-saved.png",
+      "sha256": "f45842e7211a8300f443070218ef5121ad71333135c019c0f85c3f4f22964deb"
+    },
+    {
+      "path": "raw/200x60-saved.cast",
+      "sha256": "7eeb7aba2cc4d2c62578c6eb7bfb76cdf67af177c101f6610a7b772035f6e0a0"
+    },
+    {
+      "path": "raw/capture.mjs",
+      "sha256": "a79783c0dfa556e83deb1fd07b5604d0dbd75fc8abc0b5f537cd9532ff147814"
+    }
+  ]
+}

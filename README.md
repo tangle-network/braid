@@ -3,7 +3,7 @@
 **One terminal for coding agents, conversation branches, and reviews of finished runs.**
 
 Use Pi, Codex, or OpenCode through the same interface, on your machine or in a Tangle cloud sandbox.
-Keep the instructions you give an agent, compare different approaches, and see which runner, model, and workspace each turn used.
+Record which results you accept, turn corrections into portable agent profiles, and see which runner, model, and workspace each turn used.
 
 [Install and start](#start-with-a-local-coding-agent) · [Cloud setup](docs/getting-started.md#use-a-tangle-cloud-sandbox) · [Commands](#while-you-work)
 
@@ -57,6 +57,9 @@ New cloud connections delete the sandbox after one turn; choose retained executi
 | Add the next task while a run continues | `/queue <task>` |
 | Stop the selected run | `/cancel` |
 | Ask what a completed run established | `/ask <question>` |
+| Record whether a finished task met your needs | `/feedback accept [reason...]` or `/feedback reject [reason...]` |
+| Review a profile draft from your corrections | `/profile learn [new-file]` |
+| Request a runner recommendation for the next task | `/runner advice <task>` |
 | Change the next turn's runner or model | `/runner`, then `/model` |
 
 `/fork` previews what carries over before you confirm.
@@ -70,6 +73,27 @@ Read the [analysis setup and commands](docs/getting-started.md#review-a-finished
 
 Commands that need an unavailable provider feature explain what is missing.
 See the [conversation and control reference](docs/06-conversations-forks-and-analysis.md) for continuation, permissions, queueing, and worker controls.
+
+## Keep corrections for the next task
+
+After a finished run, explain what to repeat or fix:
+
+```text
+/feedback reject Repair the implementation instead of weakening the regression test.
+/profile learn learned-agent.json
+```
+
+The profile preview shows lessons from this conversation, their feedback sources, and the exact changes to a portable `AgentProfile`.
+The draft is **unmeasured**. Private values and metadata follow profile export redaction rules, with a notice when redaction changes the profile.
+Press `Ctrl+S` to save a new file, then explicitly select it with `/profile learned-agent.json` when ready.
+
+`/runner advice <task>` uses this conversation's feedback, the latest finished run, and compatible runner/model pairs in your profile catalog.
+It uses the existing analysis connection and can incur model charges.
+The result is advice based on recorded observations; it does not automatically switch runners or establish which runner is best.
+
+The next step is to compare candidates on held-out tasks through Runtime and Eval before using results to learn runner selection.
+Profile drafts can already be saved and reused locally; profile sharing and cloud publication are not implemented in this workflow.
+See [profile learning and runner advice](docs/05-profiles-and-connections.md#profile-learning-and-runner-advice).
 
 ## Your work, accounts, and costs
 

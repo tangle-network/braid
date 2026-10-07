@@ -12,7 +12,11 @@ import {
 import { isAnalysisComparisonResult } from './comparison.js'
 import { ConversationConfirmation } from './conversation-dialogs.js'
 import { DetailsViewPanel } from './details.js'
-import type { EntityBrowserRow } from './entity-browser.js'
+import {
+  EntityBrowser,
+  type EntityBrowserDocument,
+  type EntityBrowserRow,
+} from './entity-browser.js'
 import { GraphView } from './graph.js'
 import { type HelpViewOptions, HelpViewPanel } from './help.js'
 import type { ModalCoordinator } from './modal-coordinator.js'
@@ -66,6 +70,20 @@ export class TerminalSurfaceOverlays {
       width: '86%',
       maxHeight: '90%',
     })
+  }
+
+  openFeedback(data: unknown): void {
+    if (!data || typeof data !== 'object' || !('rows' in data) || !Array.isArray(data.rows)) {
+      this.openUnavailable('/feedback list', 'The feedback list could not be rendered')
+      return
+    }
+    const document = data as EntityBrowserDocument
+    const panel = new EntityBrowser(this.#options.theme, {
+      document: () => document,
+      rows: this.#options.rows,
+      onClose: () => this.#options.modals.closeTop(),
+    })
+    this.#openBrowser(panel)
   }
 
   openIntelligenceResult(

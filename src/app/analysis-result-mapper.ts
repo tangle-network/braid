@@ -65,6 +65,9 @@ export function initialAnalysisChecks(evidence: FrozenAnalysisEvidence): readonl
 
 export function persistedAnalysisRequest(request: AnalysisRequest): JsonValue {
   return {
+    ...(request.clientRequestDigest === undefined
+      ? {}
+      : { clientRequestDigest: request.clientRequestDigest }),
     ...(request.conversationId === undefined ? {} : { conversationId: request.conversationId }),
     ...(request.branchId === undefined ? {} : { branchId: request.branchId }),
     ...(request.runId === undefined ? {} : { runId: request.runId }),

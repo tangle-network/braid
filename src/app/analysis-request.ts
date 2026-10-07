@@ -19,6 +19,9 @@ function requestForDigest(
   executionTarget: AnalysisExecutionTarget,
 ): Readonly<Record<string, unknown>> {
   return {
+    ...(request.clientRequestDigest === undefined
+      ? {}
+      : { clientRequestDigest: request.clientRequestDigest }),
     question: request.question,
     recipe: request.recipe ?? 'ask',
     analystIds: request.analystIds,
