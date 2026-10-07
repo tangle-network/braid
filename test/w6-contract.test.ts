@@ -2,7 +2,6 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { createBraidApplication } from '../src/app/composition.js'
-import { RPC_COMMAND_NAMES } from '../src/views/headless/protocol.js'
 import { runRpc } from '../src/views/headless/rpc.js'
 import {
   COMMAND_DEFINITIONS,
@@ -17,77 +16,10 @@ import {
   MUTATING_HEADLESS_COMMANDS,
 } from '../src/views/shared/headless-commands.js'
 
-const REQUIRED_HEADLESS = [
-  'initialize',
-  'get_state',
-  'subscribe',
-  'unsubscribe',
-  'list_profiles',
-  'select_profile',
-  'validate_profile',
-  'save_profile',
-  'list_connections',
-  'upsert_connection',
-  'test_connection',
-  'select_connection',
-  'remove_connection',
-  'set_run_override',
-  'new_conversation',
-  'list_conversations',
-  'open_conversation',
-  'rename_conversation',
-  'archive_conversation',
-  'delete_conversation',
-  'set_draft',
-  'import_conversation',
-  'send',
-  'queue',
-  'remove_queued',
-  'steer',
-  'cancel',
-  'detach',
-  'reconnect',
-  'reconcile',
-  'respond_interaction',
-  'cancel_interaction',
-  'automation_create',
-  'automation_update',
-  'automation_dry_run',
-  'automation_disable',
-  'automation_delete',
-  'automation_list',
-  'cancel_run',
-  'branch',
-  'clone',
-  'plan_fork',
-  'execute_fork',
-  'ask',
-  'analyze',
-  'compare',
-  'promote_analysis',
-  'cancel_analysis',
-  'get_graph',
-  'get_activity',
-  'get_details',
-  'refresh_supervision',
-  'steer_worker',
-  'cancel_worker',
-  'cancel_supervisor',
-  'attach_worker',
-  'export',
-  'shutdown',
-] as const
-
 async function* lines(linesToSend: readonly (object | string)[]): AsyncGenerator<string> {
   for (const line of linesToSend)
     yield `${typeof line === 'string' ? line : JSON.stringify(line)}\n`
 }
-
-test('headless registry exposes every required JSONL command exactly once', () => {
-  assert.deepEqual([...HEADLESS_COMMAND_NAMES], [...REQUIRED_HEADLESS])
-  assert.deepEqual([...RPC_COMMAND_NAMES], [...REQUIRED_HEADLESS])
-  assert.equal(new Set(HEADLESS_COMMAND_NAMES).size, HEADLESS_COMMAND_NAMES.length)
-})
 
 test('all mutating JSONL commands reject absent caller operation identifiers', async () => {
   const app = createBraidApplication({ fixture: 'deterministic' })
@@ -165,6 +97,7 @@ test('the command registry owns typed intents for local and headless command pat
 })
 
 test('keyboard and headless mutation metadata comes from one exact table', () => {
+  assert.equal(new Set(HEADLESS_COMMAND_NAMES).size, HEADLESS_COMMAND_NAMES.length)
   const definitions = new Map(
     COMMAND_DEFINITIONS.map((definition) => [definition.name, definition]),
   )

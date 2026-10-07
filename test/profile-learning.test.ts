@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 import { PassThrough } from 'node:stream'
 import test from 'node:test'
 import { TuiMainScreen, visibleWidth } from '@earendil-works/pi-tui'
@@ -175,6 +175,20 @@ test('RPC learns a redacted portable profile, preserves guidance, and saves only
       app.runtimeSelection.profile(),
       PROFILE,
       'saving a candidate must not select it',
+    )
+    ack(
+      await rpc(app, [
+        {
+          command: 'select_profile',
+          operationId: 'op-select-learned',
+          params: { ref: relative(process.cwd(), target) },
+        },
+      ]),
+    )
+    assert.deepEqual(
+      app.runtimeSelection.profile(),
+      draft.profile,
+      'a saved profile remains selectable through its relative file reference',
     )
   } finally {
     await closeRpc(app)
