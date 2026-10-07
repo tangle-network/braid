@@ -1,0 +1,76 @@
+{
+  "claim": "one local packed runner-advice wiring proof, not recommendation quality",
+  "checkpoint": "f7f28e861f193fd1fc8b57ad9e409f128d0adc70",
+  "startedAt": "2026-10-07T09:52:09.108Z",
+  "finishedAt": "2026-10-07T09:52:35.189Z",
+  "status": "unavailable",
+  "tarballSha256": "353131db6f112ef4b3f579762478b80f9a8bd0a6456161ec634f4bb3571b2063",
+  "route": {
+    "id": "codex/gpt-5-codex",
+    "backend": "codex"
+  },
+  "readiness": {
+    "claim": "packed-analysis-readiness-only",
+    "python": {
+      "status": "ready",
+      "readiness": "ready"
+    },
+    "ask": {
+      "readiness": "ready",
+      "status": "engine-configured",
+      "diagnostics": []
+    }
+  },
+  "source": {
+    "runId": "run-5d9d4e8d-9f40-4ec9-8d34-9dbda73eb502",
+    "status": "failed",
+    "output": "",
+    "elapsedMs": 21844,
+    "receipt": {
+      "profileDigest": "a038493b6a4ddaad23f4e91e4839637ceb12c666d44680f79e565f9853cd6553",
+      "requestDigest": "119d4890be22cbefbb2eec199cc0eeb8d269660d9f81e0d3ba7bc968df678669",
+      "capabilitiesDigest": "3bfa713f17a455b38cb9e667b4184c56ecf798f21b1e86b0387d1e7400e88764",
+      "admittedAt": "2026-10-07T09:52:13.984Z",
+      "provider": "cli-bridge",
+      "providerSessionId": "session-braid-run-5d9d4e8d-9f40-4ec9-8d34-9dbda73eb502",
+      "admissionStatus": "admitted",
+      "digest": "8a92019262c597a0fbcaf548e4bf1ebfa59e74bf73f88f8bb50092c9dd4b9c13",
+      "materializationDigest": "8a517f01888a5551c3ac1f763f6f31e65e6bdbc19dcf76f7423ccaed77a777a3"
+    },
+    "providerSessionId": "session-braid-run-5d9d4e8d-9f40-4ec9-8d34-9dbda73eb502"
+  },
+  "providerDiagnostic": {
+    "runId": "run-5d9d4e8d-9f40-4ec9-8d34-9dbda73eb502",
+    "spanId": "e932cab2dc368a97",
+    "traceId": "4c6bf31d44a3a62511f22cfb30b55741",
+    "name": "chat codex",
+    "status": {
+      "code": "STATUS_CODE_ERROR",
+      "message": "codex: workspace routing discovery unauthorized (401)"
+    },
+    "source": "/home/drew/code/cli-bridge/data/traces/spans.jsonl"
+  },
+  "proofOutcome": {
+    "sourceDispatches": 1,
+    "sourceSuccessful": 0,
+    "feedbackCommands": 0,
+    "adviceCommands": 0,
+    "durableReplay": "unchecked",
+    "reason": "Existing Codex workspace routing discovery returned unauthorized (401); the bounded run stopped before advice.",
+    "claimExclusions": [
+      "runner-advice served integration success",
+      "recommendation quality",
+      "comparative harness advantage",
+      "model availability beyond this route"
+    ]
+  },
+  "cleanup": {
+    "strategy": "process-group",
+    "forcedKill": false,
+    "exited": true,
+    "descendantsExited": true,
+    "descendantsVerified": true,
+    "cleanupStatus": "term"
+  },
+  "rawEvidenceSha256": "2fccaf498bcf7c5fab6e8c7716a9d548b6c59f5256abc3d2163d58955bcd0c52"
+}

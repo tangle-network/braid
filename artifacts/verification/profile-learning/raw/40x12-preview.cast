@@ -1,0 +1,3 @@
+{"version":2,"width":40,"height":12,"timestamp":1791367231,"title":"Braid portable profile learning","command":"packed braid --fixture deterministic","env":{"TERM":"xterm-256color"},"stdin":true}
+[0,"o","\u001b[2J\u001b[H learned profile · 3      Braid starter \r\n────────────────────────────────────────\r\n ! Unmeasured draft. Ctrl+S saves a new…\r\n › · Avoid outputs like \"Inspect the so…\r\n   · Exact profile changes · profile    \r\n   · Complete portable AgentProfile · p…\r\n                                        \r\n                                        \r\n                                        \r\n                                        \r\n────────────────────────────────────────\r\n ↑↓ move · → open · ←/esc close         "]
+[0.1,"o","\u001b[0m"]

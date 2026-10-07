@@ -1,0 +1,60 @@
+ learned profile › Exact profile changes                                                                                                                                                  Braid starter 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ! Unmeasured draft. Ctrl+S saves a new profile to learned.json. Esc leaves it unsaved.                                                                                                                 
+   · Avoid outputs like "Inspect the source and cit…│ [                                                                                                                                                 
+ › · Exact profile changes · profile                │   {                                                                                                                                               
+   · Complete portable AgentProfile · profile       │     "kind": "agent-profile-diff",                                                                                                                 
+                                                    │     "remove": {                                                                                                                                   
+                                                    │       "prompt": true                                                                                                                              
+                                                    │     }                                                                                                                                             
+                                                    │   },                                                                                                                                              
+                                                    │   {                                                                                                                                               
+                                                    │     "kind": "agent-profile-diff",                                                                                                                 
+                                                    │     "set": {                                                                                                                                      
+                                                    │       "prompt": {                                                                                                                                 
+                                                    │         "instructions": [                                                                                                                         
+                                                    │           "<profile-guidance source=\"braid.feedback\" id=\"user-lessons\">\n# Preference Memory\n\n- Avoid outputs like \"Inspect the source and 
+                                                    │ cite the check.\" when: Preserve expected behavior and repair the implementation.\n  Rationale: Preserve expected behavior and repair the         
+                                                    │ implementation.\n  Source: feedback-809c049317e0d25995bef3c72361b66dc0be36dd029a268a\n\n</profile-guidance>"                                      
+                                                    │         ]                                                                                                                                         
+                                                    │       }                                                                                                                                           
+                                                    │     }                                                                                                                                             
+                                                    │   }                                                                                                                                               
+                                                    │ ]                                                                                                                                                 
+                                                    │                                                                                                                                                   
+                                                    │                                                                                                                                                   
+                                                    │                                                                                                                                                   
+                                                    │                                                                                                                                                   
+                                                    │                                                                                                                                                   
+                                                    │                                                                                                                                                   
+                                                    │                                                                                                                                                   
+                                                    │                                                                                                                                                   
+                                                    │                                                                                                                                                   
+                                                    │                                                                                                                                                   
+                                                    │                                                                                                                                                   
+                                                    │                                                                                                                                                   
+                                                    │                                                                                                                                                   
+                                                    │                                                                                                                                                   
+                                                    │                                                                                                                                                   
+                                                    │                                                                                                                                                   
+                                                    │                                                                                                                                                   
+                                                    │                                                                                                                                                   
+                                                    │                                                                                                                                                   
+                                                    │                                                                                                                                                   
+                                                    │                                                                                                                                                   
+                                                    │                                                                                                                                                   
+                                                    │                                                                                                                                                   
+                                                    │                                                                                                                                                   
+                                                    │                                                                                                                                                   
+                                                    │                                                                                                                                                   
+                                                    │                                                                                                                                                   
+                                                    │                                                                                                                                                   
+                                                    │                                                                                                                                                   
+                                                    │                                                                                                                                                   
+                                                    │                                                                                                                                                   
+                                                    │                                                                                                                                                   
+                                                    │                                                                                                                                                   
+                                                    │                                                                                                                                                   
+                                                    │                                                                                                                                                   
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ↑↓ select · PgUp/PgDn detail · home/end jump · ←/esc close                                                                                                                                             
