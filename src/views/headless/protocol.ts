@@ -76,6 +76,7 @@ type ReadOnlyGenericRpcCommand =
   | 'unsubscribe'
   | 'list_profiles'
   | 'validate_profile'
+  | 'learn_profile'
   | 'list_connections'
   | 'list_conversations'
   | 'automation_list'

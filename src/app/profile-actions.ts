@@ -203,12 +203,14 @@ export class ProfileActionService {
     readonly operationId: string
     readonly ref: string
     readonly profile: unknown
+    readonly createOnly?: boolean
     readonly expectedRevision?: number
   }): Promise<ProfileSaveResult> {
     const operationId = parseOperation(input.operationId, 'save_profile')
     const digest = requestDigest('save_profile', {
       ref: input.ref,
       profile: input.profile,
+      ...(input.createOnly === true ? { createOnly: true } : {}),
       expectedRevision: input.expectedRevision ?? null,
     })
     const replay = operationReplay(this.#options.host.state(), operationId, 'profile-save', digest)
@@ -242,6 +244,9 @@ export class ProfileActionService {
       throw invalidProfile(report)
     const catalog = await this.#catalog()
     const existing = findProfileRecord(catalog.records, input.ref)
+    if (input.createOnly === true && existing !== undefined) {
+      throw new AppError('PROFILE_EXISTS', 'Choose a new file for this profile revision')
+    }
     const target = existing === undefined ? { source: newProfileFileTarget(input.ref) } : existing
     if (target.source.kind !== 'file' || !target.source.writable) {
       throw new AppError('PROFILE_READ_ONLY', 'The selected profile source is not writable')

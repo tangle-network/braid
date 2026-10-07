@@ -157,7 +157,10 @@ export class TerminalCommandController {
       return
     }
     if (command !== 'approve' && command !== 'reject') {
-      const availability = commandAvailability(command, this.#controller.view().capabilities)
+      const availability = commandAvailability(
+        command === 'runner' && args[0] === 'advice' ? 'ask' : command,
+        this.#controller.view().capabilities,
+      )
       if (!availability.available) {
         this.#overlays.openUnavailable(
           `/${command}`,
@@ -209,17 +212,21 @@ export class TerminalCommandController {
       })
       return
     }
+    const analysisCommand = command === 'runner' && args[0] === 'advice' ? 'ask' : command
     const intelligenceProgress =
-      command === 'ask' || command === 'analyze' || command === 'compare'
+      analysisCommand === 'ask' || analysisCommand === 'analyze' || analysisCommand === 'compare'
         ? this.#overlays.openIntelligenceProgress(
-            command,
-            intelligenceSourceContext(command, args, this.#controller.view()),
+            analysisCommand,
+            command === 'runner' ? 'Runner advice from recorded task feedback' : intelligenceSourceContext(analysisCommand, args, this.#controller.view()),
           )
         : undefined
     void this.#dispatch(intent).then((result) => {
       if (result.kind !== 'accepted' || this.#isStopped()) return
       if (command === 'fork') this.#overlays.openSurface('fork')
-      else if (command === 'ask' || command === 'analyze' || command === 'compare') {
+      else if (command === 'profile' && args[0] === 'learn') {
+        this.#overlays.openLearnedProfile(result.data, args[1])
+      }
+      else if (analysisCommand === 'ask' || analysisCommand === 'analyze' || analysisCommand === 'compare') {
         intelligenceProgress?.complete(result.data)
       }
     })

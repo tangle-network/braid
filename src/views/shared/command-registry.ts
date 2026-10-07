@@ -103,8 +103,8 @@ const DEFINITIONS: readonly CommandDefinition[] = [
   [
     'profile',
     [],
-    'Inspect, select, import, or edit a profile',
-    '/profile [ref]',
+    'Select a profile or learn a draft from task feedback',
+    '/profile [ref | learn [new-file]]',
     'profile.select',
     'explicit',
   ],
@@ -116,7 +116,7 @@ const DEFINITIONS: readonly CommandDefinition[] = [
     'connection.select',
     'explicit',
   ],
-  ['runner', [], 'Set the runner for this branch', '/runner [name]', 'run.runner', 'explicit'],
+  ['runner', [], 'Select a runner or request advice from task outcomes', '/runner [name | advice <task>]', 'run.runner', 'explicit'],
   ['model', [], 'Set the model for this branch', '/model [name]', 'run.model', 'explicit'],
   [
     'effort',
