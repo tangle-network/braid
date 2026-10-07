@@ -18,7 +18,7 @@ import {
 } from './reducer-helpers.js'
 import { reduceLegacyEvent } from './reducer-legacy.js'
 import { isRuntimeEvent, reduceRuntimeEvent } from './reducer-runtime.js'
-import { type BraidState, initialState, normalizeActiveRuns } from './state.js'
+import { normalizeActiveRuns, type BraidState, initialState } from './state.js'
 import { isCanonicalIsoDateTime } from './text.js'
 
 export const MAX_APPLIED_EVENT_HISTORY = 256

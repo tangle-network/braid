@@ -28,8 +28,9 @@ import type {
   WorkerRecord,
   WorkspaceRecord,
 } from './entities.js'
+import type { ActiveRunRef } from './state.js'
 import type { BranchId, ConversationId, RunId, WorkspaceId } from './ids.js'
-import type { ActiveRunRef, BraidState } from './state.js'
+import type { BraidState } from './state.js'
 
 export interface MaterializedState {
   readonly schemaVersion: BraidState['schemaVersion']

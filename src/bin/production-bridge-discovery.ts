@@ -7,8 +7,8 @@ import {
   requestBridge,
   safeBridgeDetail,
 } from './production-bridge-client.js'
-import { startupCredentialForEndpoint } from './production-setup-auth.js'
 import type { ProductionStartupLoadOptions } from './production-startup.js'
+import { startupCredentialForEndpoint } from './production-setup-auth.js'
 
 export interface BridgeModel {
   readonly id: string

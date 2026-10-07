@@ -5,7 +5,7 @@ import { migrateLegacyInteractions } from './legacy-interaction-snapshot.js'
 import type { MaterializedState } from './materialized-state.js'
 import { canonicalProjectionChecksum } from './projection-checksum.js'
 import { withHealth } from './reducer-helpers.js'
-import { type BraidState, initialState, normalizeActiveRuns } from './state.js'
+import { normalizeActiveRuns, type BraidState, initialState } from './state.js'
 
 export const MATERIALIZED_SNAPSHOT_SCHEMA_VERSION = 1 as const
 

@@ -1,8 +1,8 @@
 import {
+  ContextTransferResultSchema,
   type AgentEnvironmentCapabilities,
   type ContextTransferRequest,
   type ContextTransferResult,
-  ContextTransferResultSchema,
 } from '@tangle-network/agent-interface'
 import type { CliBridgeProvider } from '@tangle-network/agent-provider-cli-bridge'
 import type { ContextTransferExecutionPort } from '../../ports/execution.js'

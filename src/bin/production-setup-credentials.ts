@@ -23,8 +23,8 @@ import { credentialRef } from '../ports/credentials.js'
 import type { ProductionCredentialContext } from './production-credential-context.js'
 import { defaultProductionCredentialRefResolver } from './production-credential-reference.js'
 import { resolveProductionDatabaseKeyFile } from './production-key-path.js'
-import { startupCredentialForEndpoint } from './production-setup-auth.js'
 import type { ProductionStartupLoadOptions } from './production-setup-types.js'
+import { startupCredentialForEndpoint } from './production-setup-auth.js'
 
 const MAX_PENDING_CREDENTIAL_BYTES = 16 * 1024
 

@@ -1,5 +1,4 @@
 export { canonicalJson } from '../../domain/canonical-json.js'
-
 import { canonicalJson } from '../../domain/canonical-json.js'
 
 /**

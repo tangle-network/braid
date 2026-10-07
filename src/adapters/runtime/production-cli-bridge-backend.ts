@@ -14,11 +14,11 @@ import {
   materializeBridgeModelRoute,
 } from '../connections/cli-bridge-model-route.js'
 import { readConnectionCredential } from '../connections/production-connection-credentials.js'
+import type { OriginBoundBridgeModelCredential } from '../connections/production-connection-types.js'
 import {
   isLoopbackEndpoint,
   normalizeCliBridgeProviderBaseUrl,
 } from '../connections/production-connection-endpoints.js'
-import type { OriginBoundBridgeModelCredential } from '../connections/production-connection-types.js'
 import { endpointLocation, staticExecutionObservation } from './execution-observation-source.js'
 import type { PreparedExecution } from './prepared-execution.js'
 import {
