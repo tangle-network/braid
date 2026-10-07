@@ -15,7 +15,7 @@ export async function dispatchFeedbackCommand(
     const document: EntityBrowserDocument = {
       title: 'Task feedback',
       context: 'This conversation · explicit task judgments',
-      emptyMessage: 'No task feedback. After a run, use /feedback accept or /feedback reject.',
+      emptyMessage: 'No feedback. /feedback accept|reject',
       rows: trajectories
         .map((trajectory) => ({
           id: trajectory.id,
