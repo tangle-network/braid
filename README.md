@@ -119,6 +119,7 @@ For terminal scrollback, use `braid --inline`; for plain text, use `braid --plai
 ## Contribute
 
 Read the [product contract](docs/01-product-contract.md), [component map](docs/components/README.md), and [verification guide](docs/08-verification.md).
+The [vision](vision/README.md) records ranked directions, their evidence, and longer-term research bets.
 Braid uses [agent-runtime](https://github.com/tangle-network/agent-runtime) for execution and [pi-tui](https://www.npmjs.com/package/@earendil-works/pi-tui) for terminal rendering.
 See [third-party notices](THIRD_PARTY_NOTICES.md) for attribution.
 
