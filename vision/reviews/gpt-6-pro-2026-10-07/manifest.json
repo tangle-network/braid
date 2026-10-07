@@ -10,72 +10,82 @@
       "prompt": "architecture.prompt.md",
       "prompt_sha256": "d3a369c6415dd5fb418cd40a359af54890250806814618e02b126d270d9dfec7",
       "words": 3955,
-      "state": "blocked_before_dispatch",
+      "state": "awaiting_answer",
       "item_id": "it-3a4ad00c94",
-      "conversation_url": null,
+      "conversation_url": "https://chatgpt.com/c/6ac6d427-a478-83e8-91c4-a4e48904a968",
       "requested_model": "gpt-6-pro",
       "served_model": null,
       "answer_path": null,
       "dispatch": {
         "host": "drew-gtr-pro",
-        "service": "braid-pro-architecture-resume-20261007.service",
-        "service_state": "failed",
+        "service": "braid-pro-architecture-pickerfix-20261007.service",
+        "service_state": "active",
         "log_path": "/home/drew/.local/state/chatgpt-fleet/braid-root-vision-20261007/architecture.dispatch.log",
-        "reason": "AccountBusy during maintained fleet account preflight; ledger contains no chat or active send claim."
-      }
+        "reason": "Stored full prompt and requested GPT-6 Pro selection verified; start receipt recorded. Same worker is waiting for the answer and served-model metadata."
+      },
+      "normalized_prompt_sha256": "ffd627aa7ebf79d75a5b5d6330eae4a8f505232cb6de58f9956be385ffc10202",
+      "chat_recorded_at": "2026-10-07T23:22:24.066Z",
+      "verified_send_at": "2026-10-07T23:24:44.205Z",
+      "user_message_id": "e77b4cf9-5146-4fbe-9ade-8fc67a26eb5e"
     },
     {
       "review": "learning",
       "prompt": "learning.prompt.md",
       "prompt_sha256": "05dc044956e9aeb5f54e38d9edaa6beff5734c8410cc44f93226625520a432b8",
       "words": 3965,
-      "state": "blocked_before_dispatch",
+      "state": "awaiting_answer",
       "item_id": "it-3930c98e0f",
-      "conversation_url": null,
+      "conversation_url": "https://chatgpt.com/c/6ac6d27e-305c-83e8-9673-d5a287412b16",
       "requested_model": "gpt-6-pro",
       "served_model": null,
       "answer_path": null,
       "dispatch": {
         "host": "drew-gtr-pro",
-        "service": "braid-pro-learning-20261007.service",
-        "service_state": "failed",
+        "service": "braid-pro-learning-pickerfix-20261007.service",
+        "service_state": "active",
         "log_path": "/home/drew/.local/state/chatgpt-fleet/braid-root-vision-20261007/learning.dispatch.log",
-        "reason": "AccountBusy during maintained fleet account preflight; ledger contains no chat or active send claim."
-      }
+        "reason": "Stored full prompt and requested GPT-6 Pro selection verified; start receipt recorded. Same worker is waiting for the answer and served-model metadata."
+      },
+      "normalized_prompt_sha256": "e0b28960516b42bc863eb5cf2ee426cb63f78b0e43102c35d27ca514b17e8c95",
+      "chat_recorded_at": "2026-10-07T23:15:18.315Z",
+      "verified_send_at": "2026-10-07T23:19:42.547Z",
+      "user_message_id": "581447be-ff18-4dc5-88cf-cd265912ad70"
     },
     {
       "review": "product",
       "prompt": "product.prompt.md",
       "prompt_sha256": "7a5a5309464adf4dd1984c3a70cc6ba45e3f4314386e439d5675619ee9cc8bdb",
       "words": 4008,
-      "state": "blocked_before_dispatch",
+      "state": "awaiting_answer",
       "item_id": "it-8401b4cbf5",
-      "conversation_url": null,
+      "conversation_url": "https://chatgpt.com/c/6ac6d597-a5cc-832f-95f3-fdc0a9dd56c4",
       "requested_model": "gpt-6-pro",
       "served_model": null,
       "answer_path": null,
       "dispatch": {
         "host": "drew-gtr-pro",
-        "service": "braid-pro-product-20261007.service",
-        "service_state": "failed",
+        "service": "braid-pro-product-pickerfix-20261007.service",
+        "service_state": "active",
         "log_path": "/home/drew/.local/state/chatgpt-fleet/braid-root-vision-20261007/product.dispatch.log",
-        "reason": "AccountBusy during maintained fleet account preflight; ledger contains no chat or active send claim."
-      }
+        "reason": "Stored full prompt and requested GPT-6 Pro selection verified; start receipt recorded. Same worker is waiting for the answer and served-model metadata."
+      },
+      "normalized_prompt_sha256": "0c1ccc5e9e3aee6112af3a42a0efa37f2e580da2dffda71177fca54b9545d678",
+      "chat_recorded_at": "2026-10-07T23:28:26.020Z",
+      "verified_send_at": "2026-10-07T23:29:26.053Z",
+      "user_message_id": "2f09075a-3857-4c07-84b6-6ef0f27876b6"
     }
   ],
   "observed_launch_blockers": [
-    "Maintained GTR send attempts stopped at shared account admission: a, b, c, and d were unreadable (AccountBusy). No conversation or sent prompt was recorded. No hold, pacing rule, or competing operation was overridden."
+    "Maintained GTR send attempts stopped at shared account admission: a, b, c, and d were unreadable (AccountBusy). No conversation or sent prompt was recorded. No hold, pacing rule, or competing operation was overridden.",
+    "After the source admission fix deployed, all three items acquired claims. Each send then refused the changed model picker layout before submission; requested GPT-6 Pro was not established. Model guards remain enforced."
   ],
-  "reviews_started": 0,
+  "reviews_started": 3,
   "reviews_received": 0,
   "lifecycle_document_sha256": "67fea88101d9b5ca61590f4bae911b55e0f0b9eac0160fa56994839e980c1d58",
   "fleet_preflight": {
     "host": "drew-gtr-pro",
     "ledger_items": 214,
-    "ledger_window": [
-      "2026-09-22",
-      "2026-10-05"
-    ],
+    "ledger_window": ["2026-09-22", "2026-10-05"],
     "unresolved_other_items": 24,
     "matching_root_audit_items": 0,
     "disposition": "Existing owners and unrelated pending work preserved."
@@ -85,5 +95,19 @@
     "main_commit": "bd27d9852d910cba2fdfd1fdce7375146d077fef",
     "prompt_commit": "cf7f98a4baceea09b7f9822fda169269d57deab1"
   },
-  "last_dispatch_check": "2026-10-07T21:58:00Z"
+  "last_dispatch_check": "2026-10-07T23:29:43Z",
+  "admission_fix": {
+    "pull_request": "https://github.com/tangle-network/tangle-tools/pull/785",
+    "merge_commit": "8220d5535d06e94109527f8a579106e9d233bff1",
+    "deployed_hosts": ["drew-gtr-pro", "Mac"],
+    "behavior": "Wait for temporary request admission; do not replay requests or send clicks."
+  },
+  "picker_fix": {
+    "pull_request": "https://github.com/tangle-network/tangle-tools/pull/797",
+    "merge_commit": "567c828062c609d9509abea28c6dd34742aafe3d",
+    "deployed_hosts": ["drew-gtr-pro", "Mac"],
+    "behavior": "Verify checked GPT-6 family and Pro effort separately; preserve request-body and returned-model guards.",
+    "verification": "Live no-send model selection succeeded before one-shot dispatch workers launched."
+  },
+  "dispatch_receipts": "dispatch-receipts.json"
 }
