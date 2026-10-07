@@ -1,11 +1,20 @@
 import { spawnSync } from 'node:child_process'
 import { readdir } from 'node:fs/promises'
 import { createRequire } from 'node:module'
-import { extname, join, relative } from 'node:path'
+import { join, relative } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { configuredTestDist } from './test-dist.mjs'
 
-const root = join(configuredTestDist(), 'test')
+const listOnly = process.argv.includes('--list')
+const root = listOnly
+  ? fileURLToPath(new URL('../test/', import.meta.url))
+  : join(configuredTestDist(), 'test')
+const suffix = listOnly ? '.test.ts' : '.test.js'
+
+function testName(path) {
+  return relative(root, path).replace(/\.ts$/u, '.js')
+}
 
 async function testsUnder(directory) {
   const entries = await readdir(directory, { withFileTypes: true })
@@ -13,7 +22,7 @@ async function testsUnder(directory) {
     entries.map(async (entry) => {
       const path = join(directory, entry.name)
       if (entry.isDirectory()) return testsUnder(path)
-      return extname(path) === '.js' && path.endsWith('.test.js') ? [path] : []
+      return path.endsWith(suffix) ? [path] : []
     }),
   )
   return nested.flat()
@@ -21,13 +30,12 @@ async function testsUnder(directory) {
 
 const tests = (await testsUnder(root)).sort()
 if (tests.length === 0) {
-  process.stderr.write('No compiled tests found\n')
+  process.stderr.write('No tests found\n')
   process.exit(1)
 }
 
 const scopeIndex = process.argv.indexOf('--scope')
 const scope = scopeIndex === -1 ? undefined : process.argv[scopeIndex + 1]
-const listOnly = process.argv.includes('--list')
 if (scopeIndex !== -1 && !scope) {
   process.stderr.write('--scope requires a test scope\n')
   process.exit(1)
@@ -37,7 +45,6 @@ const scopeFiles = {
   unit: [
     'agent-interface-runtime-parity.test.js',
     'canonical.test.js',
-    'component-docs.test.js',
     'analysis-model-call-observability.test.js',
     'analysis-model-call-roundtrip.test.js',
     'application.test.js',
@@ -168,16 +175,14 @@ const scopeFiles = {
   property: ['property.test.js'],
 }
 const selectedTests =
-  scope === undefined
-    ? tests
-    : tests.filter((path) => scopeFiles[scope]?.includes(relative(root, path)))
+  scope === undefined ? tests : tests.filter((path) => scopeFiles[scope]?.includes(testName(path)))
 if (scope !== undefined && selectedTests.length === 0) {
-  process.stderr.write(`No compiled tests registered for scope ${scope}\n`)
+  process.stderr.write(`No tests registered for scope ${scope}\n`)
   process.exit(1)
 }
 
 if (listOnly) {
-  process.stdout.write(`${JSON.stringify(selectedTests.map((path) => relative(root, path)))}\n`)
+  process.stdout.write(`${JSON.stringify(selectedTests.map(testName))}\n`)
   process.exit(0)
 }
 
@@ -206,8 +211,8 @@ const isolatedTestFiles = new Set([
   'security.test.js',
   'storage-performance.test.js',
 ])
-const isolatedTests = selectedTests.filter((path) => isolatedTestFiles.has(relative(root, path)))
-const concurrentTests = selectedTests.filter((path) => !isolatedTestFiles.has(relative(root, path)))
+const isolatedTests = selectedTests.filter((path) => isolatedTestFiles.has(testName(path)))
+const concurrentTests = selectedTests.filter((path) => !isolatedTestFiles.has(testName(path)))
 
 function runTestBatch(paths) {
   if (paths.length === 0) return 0
