@@ -7,6 +7,7 @@ import { prepareProofTools } from './build-proof-tools.mjs'
 
 const repository = resolve(fileURLToPath(new URL('../', import.meta.url)))
 const args = process.argv.slice(2).filter((argument) => argument !== '--')
+if (args.includes('--list')) await import('./run-tests.mjs')
 const testDist = await createTestDist('test')
 const environment = { ...process.env, BRAID_TEST_DIST: testDist }
 

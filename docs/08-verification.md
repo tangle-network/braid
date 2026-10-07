@@ -239,7 +239,13 @@ The production adapter, not `MemoryStorage`, is the proof source for encryption,
 
 ### Layer 2: unit and property checks
 
-Unit checks cover parsers, canonicalization, digests, redaction, reducers, commands, selectors, view-model builders, layout, capability decisions, state machines, and storage queries.
+Prefer checks through the installed CLI, RPC, terminal, real storage, and provider boundaries.
+Retain a unit check when a consequential failure cannot reasonably be detected by those stronger checks, such as a secret escaping at a stream split or a corrupted release proof being accepted.
+Do not maintain tests of private helper choreography, source spelling, documentation headings, trivial constructors, or duplicate script and file inventories.
+
+`pnpm test -- --list` and scoped variants list source tests without installing dependencies or compiling the test tree.
+Normal execution still compiles the complete source and test tree before selecting the requested scope.
+The scoped runner owns its file inventory; the default command discovers every TypeScript test.
 
 Property checks generate event interleavings, branch operations, identifier values, Unicode content, dimensions, and replay failures.
 

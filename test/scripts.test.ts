@@ -8,14 +8,7 @@ import test from 'node:test'
 
 // @ts-expect-error The release scripts are intentionally JavaScript entry points.
 const releaseCatalog = await import('../scripts/release-check-catalog.mjs')
-const {
-  CHECK_CATEGORIES,
-  LIVE_BRIDGE_RELEASE_PROOFS,
-  releaseCheckEntry,
-  RELEASE_COMMANDS,
-  REQUIRED_CHECKS,
-  requiredEvidenceCheckIds,
-} = releaseCatalog
+const { LIVE_BRIDGE_RELEASE_PROOFS, releaseCheckEntry } = releaseCatalog
 // @ts-expect-error The release scripts are intentionally JavaScript entry points.
 const { canonicalJson } = await import('../scripts/release-evidence.mjs')
 const { assertConversationForkPreviewFlow, assertForkPreviewFlow } = await import(
@@ -36,9 +29,6 @@ const publicationProofSupport = await import('../scripts/release/publication-pro
 const { applyPublicationProof, createPublicationProof, REQUIRED_RELEASE_TARGETS } =
   publicationProofSupport
 // @ts-expect-error The release scripts are intentionally JavaScript entry points.
-const platformSupport = await import('../scripts/release/platform.mjs')
-const { npmInvocation, pnpmInvocation, portableEvidencePath } = platformSupport
-// @ts-expect-error The release scripts are intentionally JavaScript entry points.
 const upstreamSupport = await import('../scripts/release/upstream-evidence.mjs')
 const { evaluateUpstreamRequirementChecks, UPSTREAM_REQUIREMENT_OWNERS } = upstreamSupport
 // @ts-expect-error The release scripts are intentionally JavaScript entry points.
@@ -49,7 +39,7 @@ const packageProofTracePath = '../scripts/package-proof-trace.mjs'
 const { firstTerminalTrace } = await import(packageProofTracePath)
 // @ts-expect-error The visual definitions are an executable JavaScript release helper.
 const visualDefinitions = await import('../scripts/capture-visual-definitions.mjs')
-const { createStateDefinitions, isRunningWorkStripRow } = visualDefinitions
+const { isRunningWorkStripRow } = visualDefinitions
 
 const packageJson = JSON.parse(
   await readFile(new URL('../../package.json', import.meta.url), 'utf8'),
@@ -57,51 +47,6 @@ const packageJson = JSON.parse(
 const requirementBindings = JSON.parse(
   await readFile(new URL('../../release/requirement-bindings.json', import.meta.url), 'utf8'),
 )
-
-test('W5 exposes stable checks for every requested release surface', () => {
-  const required = [
-    'test:unit',
-    'test:contract',
-    'test:coordination',
-    'test:rpc',
-    'test:virtual-terminal',
-    'test:pty',
-    'test:storage',
-    'test:crash',
-    'test:security',
-    'test:performance',
-    'test:live',
-    'test:install',
-    'test:capture',
-    'check:release',
-  ]
-  for (const script of required) assert.equal(typeof packageJson.scripts[script], 'string', script)
-})
-
-test('deterministic visual capture stays separate from the explicit live demo', async () => {
-  const [visualSource, liveDemoSource] = await Promise.all([
-    readFile(new URL('../../scripts/capture-visual.mjs', import.meta.url), 'utf8'),
-    readFile(new URL('../../scripts/live-demo.mjs', import.meta.url), 'utf8'),
-  ])
-
-  assert.equal(
-    packageJson.scripts['capture:visual'],
-    'pnpm run build && node scripts/capture-visual.mjs',
-  )
-  assert.equal(
-    packageJson.scripts['capture:demo:live'],
-    'pnpm run build && node scripts/live-demo.mjs',
-  )
-  assert.match(visualSource, /--fixture', 'deterministic'/u)
-  assert.match(visualSource, /fullInterfaceMarker = uiFixture === 'interaction'\s*\? '↑↓ move'/u)
-  assert.match(visualSource, /output\.includes\(fullInterfaceMarker\)/u)
-  assert.doesNotMatch(visualSource, /output\.includes\('›'\)/u)
-  assert.match(visualSource, /stateFixture: 'deterministic'/u)
-  assert.match(visualSource, /liveDemoCommand: 'pnpm capture:demo:live'/u)
-  assert.doesNotMatch(visualSource, /capture-product-demo|productDemo/u)
-  assert.match(liveDemoSource, /BRAID_LIVE_DEMO_ENDPOINT/u)
-  assert.match(liveDemoSource, /assertPublicCapture/u)
-})
 
 test('visual proof binds the fork preview flow to its exact artifact pair', () => {
   const visualProof = {
@@ -203,79 +148,6 @@ test('terminal package parity restores baseline focus from the complete keyboard
   assert.equal(trace.events.length, 2)
 })
 
-test('active streaming capture waits for a terminal run state before exiting', async () => {
-  let screen = 'working'
-  let cancelled = false
-  let closed = false
-  const definition = createStateDefinitions((value: string) => value).find(
-    (candidate: { readonly name: string }) => candidate.name === 'active-streaming',
-  )
-  assert.ok(definition)
-
-  await definition.run({
-    input(data: string) {
-      if (data === '\r' && cancelled) screen = 'stopping'
-      if (data === '/cancel') cancelled = true
-    },
-    screen: () => screen,
-    async waitFor(predicate: () => boolean, label: string) {
-      if (label === 'active work') {
-        assert.equal(predicate(), true)
-        return
-      }
-      assert.equal(label, 'cancellation')
-      assert.equal(predicate(), false, 'stopping is not a terminal run state')
-      screen = 'cancelled'
-      assert.equal(predicate(), true)
-    },
-    async captureState() {
-      return { point: { screen: 'working' }, record: { view: { status: 'running' } } }
-    },
-    async closeNormally() {
-      assert.equal(screen, 'cancelled')
-      closed = true
-    },
-  })
-
-  assert.equal(closed, true)
-})
-
-test('supervision capture reaches the worker Activity scope from the default scope', async () => {
-  const definition = createStateDefinitions((value: string) => value).find(
-    (candidate: { readonly name: string }) => candidate.name === 'supervision',
-  )
-  assert.ok(definition)
-
-  let screen = 'activity · 4\nstream and replay'
-  const inputs: string[] = []
-  let closed = false
-  await definition.run({
-    input(data: string) {
-      inputs.push(data)
-      const tabCount = inputs.filter((item) => item === '\t').length
-      if (tabCount > 0 && tabCount < 3) screen = `${['runs', 'analyses'][tabCount - 1]} · 0`
-      if (tabCount === 3) screen = 'workers · 3\na/r'
-    },
-    screen: () => screen,
-    async waitFor(predicate: () => boolean, label: string) {
-      assert.equal(predicate(), true, label)
-    },
-    async waitForStable() {},
-    async captureState() {
-      return {
-        point: { screen },
-        record: { view: { activity: [{ kind: 'worker' }] } },
-      }
-    },
-    async closeNormally() {
-      closed = true
-    },
-  })
-
-  assert.deepEqual(inputs, ['/activity', '\r', '\t', '\t', '\t'])
-  assert.equal(closed, true)
-})
-
 test('multi-run capture recognizes responsive Work Strip rows without requiring lower-priority fields', () => {
   assert.equal(
     isRunningWorkStripRow(
@@ -288,22 +160,15 @@ test('multi-run capture recognizes responsive Work Strip rows without requiring 
   assert.equal(isRunningWorkStripRow('Fixture response includes work branch · running'), false)
 })
 
-test('the scoped test runner rejects an unregistered scope instead of silently running the wrong suite', async () => {
-  const source = await readFile(new URL('../../scripts/run-tests.mjs', import.meta.url), 'utf8')
-  assert.match(source, /No compiled tests registered for scope/u)
-  assert.match(source, /scopeFiles/u)
-  assert.match(
-    source,
-    /isolatedTestFiles = new Set\(\[[\s\S]*'performance\.test\.js',[\s\S]*'production-composition\.test\.js',[\s\S]*'security\.test\.js',[\s\S]*'storage-performance\.test\.js',[\s\S]*\]\)/u,
+test('the scoped test command rejects an unregistered scope without running tests', () => {
+  const result = spawnSync(
+    process.execPath,
+    ['scripts/test.mjs', '--scope', 'unregistered-scope', '--list'],
+    { cwd: process.cwd(), encoding: 'utf8' },
   )
-  assert.match(source, /runTestBatch\(\[path\]\)/u)
-})
-
-test('compiled tests receive the JavaScript helpers imported from scripts', async () => {
-  const source = await readFile(new URL('../../scripts/clean-tests.mjs', import.meta.url), 'utf8')
-  assert.match(source, /configuredTestDist/u)
-  assert.match(source, /join\(testDist, 'scripts'\)/u)
-  assert.match(source, /entry\.name\.endsWith\('\.mjs'\)/u)
+  assert.equal(result.status, 1)
+  assert.equal(result.stdout, '')
+  assert.match(result.stderr, /No tests registered for scope unregistered-scope/u)
 })
 
 test('registry commands retry transient failures and stop at the configured limit', async () => {
@@ -355,232 +220,6 @@ test('clean package installs cannot inherit disabled native dependency builds', 
   assert.equal(environment.KEEP_ME, 'yes')
 })
 
-test('every scoped package alias forwards its declared file set', () => {
-  assert.equal(packageJson.scripts.test, 'node scripts/test.mjs')
-  const aliases = {
-    'test:unit': [
-      'agent-interface-runtime-parity.test.js',
-      'analysis-model-call-observability.test.js',
-      'analysis-model-call-roundtrip.test.js',
-      'application.test.js',
-      'canonical.test.js',
-      'cli-startup.test.js',
-      'component-docs.test.js',
-      'conversation-branch-effects.test.js',
-      'conversations.test.js',
-      'coordination.test.js',
-      'domain-ids.test.js',
-      'domain-invariants.test.js',
-      'domain-reducer.test.js',
-      'domain-text.test.js',
-      'eval.test.js',
-      'native-interactive-actions.test.js',
-      'native-interactive-run-broker.test.js',
-      'nitro-confidential-attestation.test.js',
-      'observability.test.js',
-      'plain-accessibility.test.js',
-      'property.test.js',
-      'reducer.test.js',
-      'run-event-mapper-stream-safety.test.js',
-      'sanitize.test.js',
-      'scripts.test.js',
-      'storage-journal-routing.test.js',
-      'terminal-usage-status.test.js',
-      'usage-projection.test.js',
-      'w6-ui.test.js',
-    ],
-    'test:contract': [
-      'agent-interface-runtime-parity.test.js',
-      'analysis-model-call-observability.test.js',
-      'analysis-model-call-roundtrip.test.js',
-      'application.test.js',
-      'cli-bridge-context-transfer.test.js',
-      'cli-bridge-interactions.test.js',
-      'cli-bridge-profile-contract.test.js',
-      'cli-bridge-retained-restart.test.js',
-      'conversation-branch-effects.test.js',
-      'conversations.test.js',
-      'coordination.test.js',
-      'domain-invariants.test.js',
-      'domain-reducer.test.js',
-      'nitro-confidential-attestation.test.js',
-      'observability.test.js',
-      'reducer.test.js',
-      'scripts.test.js',
-      'tangle-retained-lifecycle.test.js',
-      'usage-projection.test.js',
-      'w6-contract.test.js',
-    ],
-    'test:coordination': [
-      'analysis-durable.test.js',
-      'cli-bridge-interactions.test.js',
-      'cli-bridge-retained-restart.test.js',
-      'coordination.test.js',
-      'effect-admission.test.js',
-      'run-admission-architecture.test.js',
-      'run-interactions.test.js',
-      'tangle-retained-lifecycle.test.js',
-    ],
-    'test:rpc': [
-      'automation-interaction-commands.test.js',
-      'profile-connection-actions.test.js',
-      'rpc.test.js',
-      'w6-contract.test.js',
-    ],
-    'test:virtual-terminal': [
-      'activity-document.test.js',
-      'configuration-product-flow.test.js',
-      'intelligence-dispatch.test.js',
-      'keyboard.test.js',
-      'native-interactive-command.test.js',
-      'terminal-responsive.test.js',
-      'terminal-usage-status.test.js',
-      'tui-autocomplete.test.js',
-      'tui-conversations.test.js',
-      'tui-core-workflows.test.js',
-      'tui-interaction-security.test.js',
-      'tui-permission-response.test.js',
-      'tui-refresh-lifecycle.test.js',
-      'tui.test.js',
-      'w6-ui.test.js',
-    ],
-    'test:storage': [
-      'conversation-storage.test.js',
-      'coordination.test.js',
-      'domain-reducer.test.js',
-      'effect-admission.test.js',
-      'storage-crash.test.js',
-      'storage-journal-routing.test.js',
-      'storage-snapshots.test.js',
-      'storage.test.js',
-    ],
-    'test:crash': [
-      'cli-bridge-retained-restart.test.js',
-      'conversation-storage.test.js',
-      'profile-save-recovery.test.js',
-      'storage-crash.test.js',
-      'storage.test.js',
-    ],
-    'test:security': [
-      'analysis-model-call-observability.test.js',
-      'analysis-model-call-roundtrip.test.js',
-      'cli-startup.test.js',
-      'configuration-product-flow.test.js',
-      'conversation-branch-effects.test.js',
-      'conversations.test.js',
-      'coordination.test.js',
-      'nitro-confidential-attestation.test.js',
-      'observability.test.js',
-      'plain-accessibility.test.js',
-      'profile-connection-actions.test.js',
-      'profile-save-recovery.test.js',
-      'run-event-mapper-stream-safety.test.js',
-      'sanitize.test.js',
-      'security.test.js',
-      'storage-snapshots.test.js',
-      'storage.test.js',
-      'tui-core-workflows.test.js',
-      'tui-interaction-security.test.js',
-      'w6-contract.test.js',
-    ],
-    'test:performance': [
-      'coordination.test.js',
-      'performance.test.js',
-      'reducer.test.js',
-      'storage-performance.test.js',
-    ],
-  }
-  const criticalRegressionFiles = [
-    'agent-interface-runtime-parity.test.js',
-    'analysis-durable.test.js',
-    'analysis-model-call-observability.test.js',
-    'analysis-model-call-roundtrip.test.js',
-    'automation-interaction-commands.test.js',
-    'cli-bridge-profile-contract.test.js',
-    'cli-bridge-retained-restart.test.js',
-    'cli-startup.test.js',
-    'configuration-product-flow.test.js',
-    'nitro-confidential-attestation.test.js',
-    'observability.test.js',
-    'plain-accessibility.test.js',
-    'profile-connection-actions.test.js',
-    'profile-save-recovery.test.js',
-    'run-admission-architecture.test.js',
-    'storage-snapshots.test.js',
-    'terminal-responsive.test.js',
-    'terminal-usage-status.test.js',
-    'tui-autocomplete.test.js',
-    'tui-conversations.test.js',
-    'tui-core-workflows.test.js',
-    'tui-interaction-security.test.js',
-    'tui-permission-response.test.js',
-    'usage-projection.test.js',
-  ]
-  for (const [alias, expected] of Object.entries(aliases)) {
-    assert.deepEqual(expected, [...expected].sort(), `${alias} must stay sorted`)
-    assert.equal(new Set(expected).size, expected.length, `${alias} must not contain duplicates`)
-  }
-  const registeredCriticalFiles = new Set(Object.values(aliases).flat())
-  for (const file of criticalRegressionFiles) {
-    assert.equal(
-      registeredCriticalFiles.has(file),
-      true,
-      `${file} is missing from every stable scope`,
-    )
-  }
-  for (const [alias, expected] of Object.entries(aliases)) {
-    const scope = packageJson.scripts[alias].match(/--scope\s+([a-z-]+)/u)?.[1]
-    assert.equal(scope, alias.slice('test:'.length), alias)
-    const output = execFileSync(
-      process.execPath,
-      ['scripts/test.mjs', '--scope', scope, '--list'],
-      {
-        cwd: process.cwd(),
-        encoding: 'utf8',
-      },
-    )
-    assert.deepEqual(JSON.parse(output), [...expected].sort(), alias)
-  }
-})
-
-test('the release catalog exactly covers every stable verification command', async () => {
-  const verification = await readFile(
-    new URL('../../docs/08-verification.md', import.meta.url),
-    'utf8',
-  )
-  const documented = new Map(
-    [...verification.matchAll(/^\| `([^`]+)` \| `(pnpm [^`]+)` \|/gmu)].map((match) => [
-      match[1],
-      match[2],
-    ]),
-  )
-  const catalog = new Map([...RELEASE_COMMANDS].map(([id, value]) => [id, value.command]))
-  assert.deepEqual([...catalog], [...documented])
-  for (const [id, value] of RELEASE_COMMANDS) {
-    assert(CHECK_CATEGORIES.has(value.category), `${id} has an unregistered category`)
-    assert(value.command.startsWith('pnpm '), `${id} is not a pnpm command`)
-    const script = value.command.slice('pnpm '.length)
-    assert.equal(typeof packageJson.scripts[script], 'string', `${id} exposes no ${script}`)
-  }
-  assert.equal(REQUIRED_CHECKS.has('verify:release'), false)
-  assert.equal(releaseCheckEntry('UP-01')?.command, 'pnpm test:upstream')
-  assert.equal(releaseCheckEntry('UP-08')?.command, 'pnpm test:upstream')
-  assert.equal(releaseCheckEntry('LIVE-06')?.command, 'pnpm test:live:tangle')
-  assert.equal(releaseCheckEntry('PERF-10')?.command, 'pnpm test:performance')
-  assert.equal(releaseCheckEntry('EVAL-06')?.command, 'pnpm test:eval')
-  assert.equal(releaseCheckEntry('VR-03')?.command, 'pnpm test:property:soak')
-  const evidenceIds = requiredEvidenceCheckIds([
-    'PR-01',
-    'UP-01',
-    'LIVE-06',
-    'PERF-10',
-    'EVAL-06',
-    'VR-03',
-  ])
-  assert.equal(evidenceIds.length, REQUIRED_CHECKS.size + 5)
-  assert.equal(evidenceIds.includes('verify:release'), false)
-})
-
 test('LIVE-01 through LIVE-05 retain distinct strict proof bindings', () => {
   const ids = ['LIVE-01', 'LIVE-02', 'LIVE-03', 'LIVE-04', 'LIVE-05']
   const proofs = ids.map((id) => LIVE_BRIDGE_RELEASE_PROOFS[id])
@@ -600,54 +239,6 @@ test('LIVE-01 through LIVE-05 retain distinct strict proof bindings', () => {
     assert.equal(releaseCheckEntry(id)?.command, 'pnpm test:live:bridge:release')
     assert.deepEqual(requirementBindings[id]?.checks, [id])
   }
-})
-
-test('release subprocesses and recorded paths are portable to Windows', async () => {
-  assert.deepEqual(npmInvocation(['install'], { platform: 'linux' }), {
-    file: 'npm',
-    args: ['install'],
-  })
-  assert.deepEqual(
-    npmInvocation(['install'], {
-      platform: 'win32',
-      execPath: 'C:\\node\\node.exe',
-    }),
-    {
-      file: 'C:\\node\\node.exe',
-      args: ['C:\\node\\node_modules\\npm\\bin\\npm-cli.js', 'install'],
-    },
-  )
-  assert.deepEqual(
-    pnpmInvocation(['pack'], {
-      platform: 'win32',
-      execPath: 'C:\\node\\node.exe',
-      environment: { npm_execpath: 'C:\\pnpm\\pnpm.mjs' },
-    }),
-    {
-      file: 'C:\\node\\node.exe',
-      args: ['C:\\pnpm\\pnpm.mjs', 'pack'],
-    },
-  )
-  assert.throws(
-    () =>
-      pnpmInvocation(['pack'], {
-        platform: 'win32',
-        execPath: 'C:\\node\\node.exe',
-        environment: {},
-      }),
-    /pnpm JavaScript entry point/u,
-  )
-  assert.equal(
-    portableEvidencePath('<temporary>\\install\\node_modules\\@tangle-network'),
-    '<temporary>/install/node_modules/@tangle-network',
-  )
-  const candidatePreparation = await readFile(
-    new URL('../../scripts/release/prepare-candidate.mjs', import.meta.url),
-    'utf8',
-  )
-  assert.match(candidatePreparation, /pnpmInvocation\(\['run', 'build'\]\)/u)
-  assert.match(candidatePreparation, /readCandidateIdentity/u)
-  assert.doesNotMatch(candidatePreparation, /run\('pnpm'/u)
 })
 
 test('package smoke rejects symlinked restored candidate archives', async () => {
@@ -823,29 +414,6 @@ test('release report counts each real result instead of treating captured rows a
   assert.doesNotMatch(report, /Checks: 5\/5 passed/u)
 })
 
-test('packed-process proof includes all reference sizes, accessibility flags, and cleanup assertions', async () => {
-  const source = await readFile(
-    new URL('../../scripts/verify-package.mjs', import.meta.url),
-    'utf8',
-  )
-  for (const dimensions of ['40', '80', '120', '200'])
-    assert.match(source, new RegExp(`columns: ${dimensions}`, 'u'))
-  assert.match(source, /highContrast: true/u)
-  assert.match(source, /reducedMotion: true/u)
-  assert.match(source, /packed package contains unexpected/u)
-  assert.match(source, /packed binary is not executable/u)
-  const rpcPacked = await readFile(
-    new URL('../../scripts/test-rpc-packed.mjs', import.meta.url),
-    'utf8',
-  )
-  const deterministicRpc = await readFile(
-    new URL('../../scripts/packed-rpc/deterministic.mjs', import.meta.url),
-    'utf8',
-  )
-  assert.match(rpcPacked, /await packed\.cleanup\(\)/u)
-  assert.match(deterministicRpc, /await rm\(journalPath/u)
-})
-
 test('package parity normalizes generated identity but rejects changed references', () => {
   const output = execFileSync(
     process.execPath,
@@ -859,7 +427,6 @@ test('package parity normalizes generated identity but rejects changed reference
 })
 
 test('accessibility proof rejects terminal metadata instead of allowlisting it', () => {
-  const proofSource = readFile(new URL('../../scripts/verify-package.mjs', import.meta.url), 'utf8')
   assert.doesNotThrow(() => assertAccessibleTerminalOutput('plain accessibility frame'))
   for (const metadata of [
     '\u001b]0;Braid — /workspace\u0007',
@@ -868,10 +435,6 @@ test('accessibility proof rejects terminal metadata instead of allowlisting it',
   ]) {
     assert.throws(() => assertAccessibleTerminalOutput(metadata), /terminal metadata/u)
   }
-  return proofSource.then((source) => {
-    assert.match(source, /assertAccessibleTerminalOutput\(accessibility\.output\)/u)
-    assert.doesNotMatch(source, /OSC_SEQUENCE/u)
-  })
 })
 
 test('visual capture provenance reports installed renderer versions instead of stale constants', async () => {
@@ -940,7 +503,7 @@ test('protected live and semantic checks stay unavailable instead of becoming lo
   }
 })
 
-test('release keys stay isolated while publication uses the installed product', async () => {
+test('release signing jobs cannot execute repository code with private keys', async () => {
   const workflow = await readFile('.github/workflows/release.yml', 'utf8')
   const liveEvidenceWorkflow = await readFile('.github/workflows/release-live-evidence.yml', 'utf8')
   assert.deepEqual(packageJson.os, ['darwin', 'linux'])
@@ -997,69 +560,7 @@ test('release keys stay isolated while publication uses the installed product', 
     assert.doesNotMatch(workflow, new RegExp(`\\b${name}\\b`, 'u'), name)
   }
 
-  assert.doesNotMatch(workflow, /release:collect|verify:candidate|verify:release/u)
-  assert.match(candidate, /name: Run source checks once[\s\S]*?run: pnpm check/u)
-  assert.match(
-    candidate,
-    /name: Build and use one immutable candidate[\s\S]*?run: pnpm release:prepare/u,
-  )
-
-  const publish = job('publish', 'post-publish-smoke')
-  const liveGate = job('verify-live-10', 'publish')
-  assert.match(liveGate, /node scripts\/release\/verify-publish-gate\.mjs/u)
-  assert.match(liveGate, /run-id: \$\{\{ inputs\.live_evidence_run_id \}\}/u)
-  assert.match(publish, /needs: \[candidate, endorse-candidate, platform-smoke, verify-live-10\]/u)
-  assert.match(
-    publish,
-    /if: \$\{\{ inputs\.publish && needs\.verify-live-10\.result == 'success' \}\}/u,
-  )
   assert.match(liveEvidenceWorkflow, /environment: release-live/u)
-  assert.match(liveEvidenceWorkflow, /verify-workflow-run\.mjs/u)
-  assert.match(liveEvidenceWorkflow, /collect-live-evidence\.mjs/u)
-  assert.match(liveEvidenceWorkflow, /--package-proof "w6\/package-proof\.json"/u)
-  assert.match(liveEvidenceWorkflow, /BRAID_LIVE_TANGLE_ENV_JSON/u)
-  assert.match(liveEvidenceWorkflow, /name: braid-live-evidence-\$\{\{ inputs\.commit \}\}/u)
-  assert.match(
-    liveEvidenceWorkflow,
-    /name: Upload sanitized collection diagnostics after failure[\s\S]*?if: \$\{\{ failure\(\) \}\}[\s\S]*?name: braid-live-evidence-diagnostic-\$\{\{ inputs\.commit \}\}[\s\S]*?path: \$\{\{ runner\.temp \}\}\/braid-live-evidence\/release[\s\S]*?if-no-files-found: error/u,
-  )
-  assert.doesNotMatch(liveEvidenceWorkflow, /steps\.package\.outputs\.version/u)
-  const liveCollector = await readFile('scripts/release/collector.mjs', 'utf8')
-  assert.match(liveCollector, /BRAID_LIVE_BINARY: packed\.binary/u)
-  assert.match(liveCollector, /BRAID_LIVE_PACKAGE_ROOT: packed\.packageRoot/u)
-  assert.doesNotMatch(publish, /already exists; checking|if npm view/iu)
-  assert.match(publish, /node scripts\/release\/check-registry-collision\.mjs/u)
-  assert.match(publish, /node scripts\/release\/verify-candidate-identity\.mjs/u)
-  assert.match(publish, /if: steps\.registry\.outputs\.status == 'available'/u)
-
-  const candidateSmoke = job('platform-smoke', 'publish')
-  const registrySmoke = job('post-publish-smoke', 'finalize')
-  const packageSmoke = await readFile('scripts/release/smoke-package.mjs', 'utf8')
-  assert.match(candidateSmoke, /name: Install and use the exact candidate/u)
-  assert.match(candidateSmoke, /node scripts\/release\/smoke-package\.mjs/u)
-  assert.match(registrySmoke, /name: Download and use the registry package/u)
-  assert.match(registrySmoke, /node scripts\/release\/smoke-package\.mjs/u)
-  assert.match(
-    packageSmoke,
-    /const smokeRoot = await realpath\(await mkdtemp\(/u,
-    'Package smoke must use a physical path for protected storage on macOS',
-  )
-
-  const finalize = job('finalize', 'endorse-final')
-  assert.match(finalize, /name: Validate candidate and registry use/u)
-  assert.match(finalize, /node scripts\/release\/record-publication\.mjs/u)
-})
-
-test('release acceptance uses candidate product checks without a manual attestation', async () => {
-  const workflow = await readFile('.github/workflows/release.yml', 'utf8')
-  assert.doesNotMatch(workflow, /BRAID_REVIEW_ATTESTATION|independent review attestation/iu)
-  for (const requirement of ['SE-12', 'US-10']) {
-    assert.deepEqual(requirementBindings[requirement].checks, [
-      'security',
-      'install',
-      'live-analysis',
-    ])
-  }
 })
 
 test('the final release proof requires matching candidate and registry smokes on every platform', async () => {
