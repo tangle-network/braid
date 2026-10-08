@@ -7,7 +7,8 @@ import { canonicalProjectionChecksum } from './projection-checksum.js'
 import { withHealth } from './reducer-helpers.js'
 import { normalizeActiveRuns, type BraidState, initialState } from './state.js'
 
-export const MATERIALIZED_SNAPSHOT_SCHEMA_VERSION = 1 as const
+// Old snapshots omitted native-child state. StorageJournal replays their journal once.
+export const MATERIALIZED_SNAPSHOT_SCHEMA_VERSION = 2 as const
 
 /**
  * The durable projection needed to resume the application.
@@ -32,6 +33,7 @@ export interface MaterializedStateSnapshot {
 
 function materializedState(state: BraidState): MaterializedState {
   return {
+    projectionVersion: MATERIALIZED_SNAPSHOT_SCHEMA_VERSION,
     schemaVersion: state.schemaVersion,
     workspace: state.workspace,
     workspaceId: state.workspaceId,
@@ -125,6 +127,7 @@ export function isMaterializedStateSnapshot(value: unknown): value is Materializ
   )
     return false
   if (candidate.state.schemaVersion !== 2) return false
+  if (candidate.state.projectionVersion !== MATERIALIZED_SNAPSHOT_SCHEMA_VERSION) return false
   return canonicalDigest(candidate.state) === candidate.stateChecksum
 }
 
@@ -137,7 +140,9 @@ export function restoreMaterializedState(value: unknown): BraidState {
     conversationId: snapshot.state.conversationId,
     branchId: snapshot.state.branchId,
   })
-  const stateFields = migrateLegacyInteractions({ ...snapshot.state } as MaterializedState & {
+  const { projectionVersion: _projectionVersion, ...stateFields } = migrateLegacyInteractions({
+    ...snapshot.state,
+  } as MaterializedState & {
     interactions?: unknown
   })
   validatePersistedActiveRunReferences(stateFields)
@@ -167,7 +172,9 @@ export function restoreMaterializedState(value: unknown): BraidState {
   return finalized
 }
 
-function validatePersistedActiveRunReferences(state: MaterializedState): void {
+function validatePersistedActiveRunReferences(
+  state: Omit<MaterializedState, 'projectionVersion'>,
+): void {
   const runs = new Map(state.runs.map((run) => [run.id, run]))
   for (const [name, runId] of [
     ['activeRunId', state.activeRunId],

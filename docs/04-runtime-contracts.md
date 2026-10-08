@@ -294,9 +294,11 @@ Runtime reconstructs the retained process and returns an opaque handle or a name
 
 Braid never persists the provider reference or reads Runtime files directly.
 
-The shared stream has no stable provider-native child-task lifecycle.
+The shared `ChildTaskEvent` stream supplies native harness child identity, nesting, lifecycle, and observed usage.
 
-[agent-runtime issue 756](https://github.com/tangle-network/agent-runtime/issues/756) tracks the normalized identity and replay contract.
+Braid projects these events into read-only activity rows scoped by owning run and child identifier. Source event identifiers deduplicate observations across replay and restart. Native children keep their own status and usage; parent completion or cancellation does not imply child completion or cancellation.
+
+Native children are distinct from Runtime supervisor workers and do not acquire worker steer, cancel, or attach controls. The provider remains responsible for emitting the shared contract, including from cloud runs.
 
 ## Existing CLI Bridge server contract
 

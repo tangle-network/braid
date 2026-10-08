@@ -5,6 +5,7 @@ import { createOperationId } from './ids.js'
 import { DomainInvariantError } from './invariants-base.js'
 import { assertAutomationRuleRecord } from './invariants-runtime.js'
 import { safePublicIdentifier } from './provider-values.js'
+import { nativeChildEvent, projectNativeChild } from './native-children.js'
 import {
   activity,
   addActivity,
@@ -224,12 +225,19 @@ export function reduceInteractionEvent(
         ),
       }
     }
-    case 'run.provider.event':
+    case 'run.provider.event': {
+      const child =
+        event.envelope.event.type === 'child-task'
+          ? nativeChildEvent(event.envelope.event)
+          : undefined
       return {
         ...state,
         ...base,
         runs: updateRun(state, event.runId, (run) => ({
           ...withProviderProgress(run, event.provider),
+          ...(child === undefined
+            ? {}
+            : { nativeChildren: projectNativeChild(run.nativeChildren, child) }),
           ...(event.envelope.event.type === 'session.updated'
             ? {
                 harnessSessionId:
@@ -253,6 +261,7 @@ export function reduceInteractionEvent(
             : {}),
         })),
       }
+    }
     case 'run.finished':
       return reduceFinishedEvent(state, event, base)
     default: {

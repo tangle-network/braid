@@ -33,6 +33,8 @@ import type { BranchId, ConversationId, RunId, WorkspaceId } from './ids.js'
 import type { BraidState } from './state.js'
 
 export interface MaterializedState {
+  /** Persisted inside the encrypted payload so old projections rebuild from the journal. */
+  readonly projectionVersion: 2
   readonly schemaVersion: BraidState['schemaVersion']
   readonly workspace: string | null
   readonly workspaceId: WorkspaceId | null

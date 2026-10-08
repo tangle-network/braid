@@ -1,5 +1,6 @@
 import type {
   AgentExactRunControlRef,
+  ChildTaskEvent,
   InteractionBinding,
   InteractionRequest,
 } from '@tangle-network/agent-interface'
@@ -92,6 +93,12 @@ export interface QueuedInput {
 }
 
 export interface RuntimeRunFields {
+  /** Observed harness children belong to this run, not to Runtime's worker namespace. */
+  readonly nativeChildren?: {
+    readonly children: readonly ChildTaskEvent[]
+    readonly appliedEventIds: readonly string[]
+    readonly truncated: boolean
+  }
   readonly receipt: RunAdmissionReceipt
   readonly capabilities: RunCapabilities
   readonly controlRef?: AgentExactRunControlRef

@@ -8,6 +8,12 @@ Activity provides one searchable place to find live, queued, waiting, detached, 
 
 Project activity from canonical runs, interactions, queue entries, analyses, supervisors, and workers.
 
+Canonical runner-native children appear as distinct `native-child` rows under their owning run.
+They retain their own reported status, runner, model, usage, source event, and parent relationship.
+The same child identifier in two runs identifies two different rows.
+Missing parents and cycles leave depth unknown and explain the incomplete ancestry in details.
+Native child usage is displayed separately and never added to the run totals.
+
 Render the compact summary with `ActivityView` and the searchable full surface with `ActivityBrowserPanel`.
 
 Use stable entity identifiers for focus and detail actions.
@@ -47,6 +53,10 @@ The runs filter contains only run ownership rows so keyboard focus switching is 
 
 Other filters operate over their matching projected rows.
 
+The workers filter includes both Runtime workers and native children, labeled by kind.
+Native children are read-only; selecting one does not change the focused run, and action keys
+explain that Runtime worker controls do not apply.
+
 Detached work remains visible because local silence is not completion.
 
 ## Failure and safety
@@ -70,6 +80,10 @@ Closing the surface stops runtime-backed refresh.
 ## Proof
 
 Tests cover ordering, filtering, focus switching, background interactions, detached runs, two supervisors, unchanged snapshots, and refresh cleanup.
+
+Native-child tests cover run-scoped identity, own status, missing and cyclic ancestry,
+unknown usage, unchanged run accounting, and keyboard details at all four reference sizes.
+These fixtures prove presentation of canonical events, not live provider emission.
 
 Captures show activity with concurrent work at all required terminal sizes.
 

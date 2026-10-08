@@ -51,7 +51,7 @@ export function projectActivityDocument(view: BraidViewModel): ActivityDocument 
   const items = view.activity.map((item) => {
     const sourceEventId = item.sourceEventId
     const eventStatus =
-      sourceEventId === undefined
+      sourceEventId === undefined || item.kind === 'native-child'
         ? undefined
         : (partsBySourceEvent.get(sourceKey(item.runId, sourceEventId)) ??
           unscopedPartsBySourceEvent.get(sourceEventId))

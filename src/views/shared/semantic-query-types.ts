@@ -62,6 +62,8 @@ export interface SemanticActivityItem {
   readonly entityId?: string
   readonly elapsedMs?: number
   readonly startedAt?: string
+  readonly parentId?: string
+  readonly depth?: number
 }
 
 export interface ActivityQueryResult {

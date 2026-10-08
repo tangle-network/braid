@@ -500,23 +500,27 @@ export function activityFor(state: BraidState): ActivityItemView[] {
     const worker = item.entityType === 'worker' ? workers.get(item.entityId ?? '') : undefined
     const analysis = item.entityType === 'analysis' ? analyses.get(item.entityId ?? '') : undefined
     const parentId =
-      worker?.parentRuntimeRef !== undefined && worker.parentWorkerId === undefined
+      item.parentId ??
+      (worker?.parentRuntimeRef !== undefined && worker.parentWorkerId === undefined
         ? undefined
-        : (worker?.parentWorkerId ?? worker?.supervisorId)
+        : (worker?.parentWorkerId ?? worker?.supervisorId))
     const depth =
-      item.entityType === 'supervisor'
+      item.depth ??
+      (item.entityType === 'supervisor'
         ? 0
         : item.entityType === 'worker' && item.entityId !== undefined
           ? depthForWorker(item.entityId, workers, workerDepth)
-          : undefined
+          : undefined)
     return {
       id: item.id,
       kind: item.kind,
       title: item.title,
       status:
-        run !== undefined && item.entityType === 'run'
-          ? statusForRun(state, run)
-          : viewStatusForSemanticStatus(item.status),
+        item.kind === 'native-child' && item.status === 'started'
+          ? 'starting'
+          : run !== undefined && item.entityType === 'run'
+            ? statusForRun(state, run)
+            : viewStatusForSemanticStatus(item.status),
       ...(item.detail === undefined ? {} : { detail: item.detail }),
       ...(item.elapsedMs === undefined ? {} : { elapsedMs: item.elapsedMs }),
       ...(item.startedAt === undefined ? {} : { startedAt: item.startedAt }),
