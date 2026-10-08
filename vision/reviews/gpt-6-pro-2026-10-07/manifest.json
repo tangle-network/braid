@@ -10,69 +10,81 @@
       "prompt": "architecture.prompt.md",
       "prompt_sha256": "d3a369c6415dd5fb418cd40a359af54890250806814618e02b126d270d9dfec7",
       "words": 3955,
-      "state": "awaiting_answer",
+      "state": "read_and_integrated",
       "item_id": "it-3a4ad00c94",
       "conversation_url": "https://chatgpt.com/c/6ac6d427-a478-83e8-91c4-a4e48904a968",
       "requested_model": "gpt-6-pro",
-      "served_model": null,
-      "answer_path": null,
+      "served_model": "gpt-6-pro",
+      "answer_path": "architecture.answer.md",
       "dispatch": {
         "host": "drew-gtr-pro",
-        "service": "braid-pro-architecture-pickerfix-20261007.service",
-        "service_state": "active",
+        "service": "braid-pro-architecture-replycapture-20261007.service",
+        "service_state": "inactive",
         "log_path": "/home/drew/.local/state/chatgpt-fleet/braid-root-vision-20261007/architecture.dispatch.log",
-        "reason": "Stored full prompt and requested GPT-6 Pro selection verified; start receipt recorded. Same worker is waiting for the answer and served-model metadata."
+        "reason": "Recovered the original verified conversation through maintained wait; no resend. Answer persisted before optional native export."
       },
       "normalized_prompt_sha256": "ffd627aa7ebf79d75a5b5d6330eae4a8f505232cb6de58f9956be385ffc10202",
       "chat_recorded_at": "2026-10-07T23:22:24.066Z",
       "verified_send_at": "2026-10-07T23:24:44.205Z",
-      "user_message_id": "e77b4cf9-5146-4fbe-9ade-8fc67a26eb5e"
+      "user_message_id": "e77b4cf9-5146-4fbe-9ade-8fc67a26eb5e",
+      "answer_sha256": "9be39ec8ab17700896558aab831ca786fffd8c35fb1b532c79aba9de29e31131",
+      "answer_bytes": 31079,
+      "native_export_state": "deferred_or_pending",
+      "served_model_verified_at": "2026-10-07T23:53:43Z"
     },
     {
       "review": "learning",
       "prompt": "learning.prompt.md",
       "prompt_sha256": "05dc044956e9aeb5f54e38d9edaa6beff5734c8410cc44f93226625520a432b8",
       "words": 3965,
-      "state": "awaiting_answer",
+      "state": "read_and_integrated",
       "item_id": "it-3930c98e0f",
       "conversation_url": "https://chatgpt.com/c/6ac6d27e-305c-83e8-9673-d5a287412b16",
       "requested_model": "gpt-6-pro",
-      "served_model": null,
-      "answer_path": null,
+      "served_model": "gpt-6-pro",
+      "answer_path": "learning.answer.md",
       "dispatch": {
         "host": "drew-gtr-pro",
-        "service": "braid-pro-learning-pickerfix-20261007.service",
-        "service_state": "active",
+        "service": "braid-pro-learning-replycapture-20261007.service",
+        "service_state": "inactive",
         "log_path": "/home/drew/.local/state/chatgpt-fleet/braid-root-vision-20261007/learning.dispatch.log",
-        "reason": "Stored full prompt and requested GPT-6 Pro selection verified; start receipt recorded. Same worker is waiting for the answer and served-model metadata."
+        "reason": "Recovered the original verified conversation through maintained wait; no resend. Answer persisted before optional native export."
       },
       "normalized_prompt_sha256": "e0b28960516b42bc863eb5cf2ee426cb63f78b0e43102c35d27ca514b17e8c95",
       "chat_recorded_at": "2026-10-07T23:15:18.315Z",
       "verified_send_at": "2026-10-07T23:19:42.547Z",
-      "user_message_id": "581447be-ff18-4dc5-88cf-cd265912ad70"
+      "user_message_id": "581447be-ff18-4dc5-88cf-cd265912ad70",
+      "answer_sha256": "e8f45fb6d9033ef8d0e79dc7d3dbf9198e6fe0ddfa1893b5f122b9be42e88960",
+      "answer_bytes": 31799,
+      "served_model_verified_at": "2026-10-07T23:56:24Z",
+      "native_export_state": "deferred_or_pending"
     },
     {
       "review": "product",
       "prompt": "product.prompt.md",
       "prompt_sha256": "7a5a5309464adf4dd1984c3a70cc6ba45e3f4314386e439d5675619ee9cc8bdb",
       "words": 4008,
-      "state": "awaiting_answer",
+      "state": "read_and_integrated",
       "item_id": "it-8401b4cbf5",
       "conversation_url": "https://chatgpt.com/c/6ac6d597-a5cc-832f-95f3-fdc0a9dd56c4",
       "requested_model": "gpt-6-pro",
-      "served_model": null,
-      "answer_path": null,
+      "served_model": "gpt-6-pro",
+      "answer_path": "product.answer.md",
       "dispatch": {
         "host": "drew-gtr-pro",
-        "service": "braid-pro-product-pickerfix-20261007.service",
-        "service_state": "active",
+        "service": "braid-pro-product-replycapture-20261007.service",
+        "service_state": "inactive",
         "log_path": "/home/drew/.local/state/chatgpt-fleet/braid-root-vision-20261007/product.dispatch.log",
-        "reason": "Stored full prompt and requested GPT-6 Pro selection verified; start receipt recorded. Same worker is waiting for the answer and served-model metadata."
+        "reason": "Recovered the original verified conversation through maintained wait; no resend. Answer persisted before optional native export."
       },
       "normalized_prompt_sha256": "0c1ccc5e9e3aee6112af3a42a0efa37f2e580da2dffda71177fca54b9545d678",
       "chat_recorded_at": "2026-10-07T23:28:26.020Z",
       "verified_send_at": "2026-10-07T23:29:26.053Z",
-      "user_message_id": "2f09075a-3857-4c07-84b6-6ef0f27876b6"
+      "user_message_id": "2f09075a-3857-4c07-84b6-6ef0f27876b6",
+      "answer_sha256": "9b6c1ac83c04541043ec3a4037b88e600304576871e2b2ab0d19ad8c536599f1",
+      "answer_bytes": 28129,
+      "native_export_state": "deferred_or_pending",
+      "served_model_verified_at": "2026-10-07T23:53:31Z"
     }
   ],
   "observed_launch_blockers": [
@@ -80,7 +92,7 @@
     "After the source admission fix deployed, all three items acquired claims. Each send then refused the changed model picker layout before submission; requested GPT-6 Pro was not established. Model guards remain enforced."
   ],
   "reviews_started": 3,
-  "reviews_received": 0,
+  "reviews_received": 3,
   "lifecycle_document_sha256": "67fea88101d9b5ca61590f4bae911b55e0f0b9eac0160fa56994839e980c1d58",
   "fleet_preflight": {
     "host": "drew-gtr-pro",
@@ -109,5 +121,8 @@
     "behavior": "Verify checked GPT-6 family and Pro effort separately; preserve request-body and returned-model guards.",
     "verification": "Live no-send model selection succeeded before one-shot dispatch workers launched."
   },
-  "dispatch_receipts": "dispatch-receipts.json"
+  "dispatch_receipts": "dispatch-receipts.json",
+  "answer_receipts": "answer-receipts.json",
+  "last_answer_check": "2026-10-07T23:58:04.974257+00:00",
+  "synthesis": "synthesis.md"
 }

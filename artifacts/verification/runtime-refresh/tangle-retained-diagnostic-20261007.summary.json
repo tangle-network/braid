@@ -1,0 +1,140 @@
+{
+  "schema": "braid.runtime-refresh.diagnostic-summary.v1",
+  "status": "failed",
+  "purpose": "single pre-approval-fix diagnostic attempt; not final published-cohort release proof",
+  "startedAt": "2026-10-07T23:33:38Z",
+  "finishedAt": "2026-10-07T23:40:57Z",
+  "cohort": {
+    "@tangle-network/agent-runtime": {
+      "version": "0.309.0",
+      "fileManifestSha256": "9cbfe976940b15dbc96583f56b83644ae824e63c4860a14c24e4ac1e338c2d67"
+    },
+    "@tangle-network/agent-provider-tangle": {
+      "version": "3.6.5",
+      "fileManifestSha256": "e97d2a6e2e69ce7ead5c6c732a4016f13a585d290368e94757f0539ff9c72b9f"
+    },
+    "@tangle-network/sandbox": {
+      "version": "0.60.22",
+      "fileManifestSha256": "9cb8ddae9ea73472111a7377b9c5bed283ae462b78cfe0192403ae7ec00f1a51"
+    }
+  },
+  "failure": {
+    "name": "MissingIntegrationError",
+    "message": "Braid RPC did not expose a provider-bound workspace tool event for run run-9e3263e8-bd36-4c5b-b73d-904a62f9b61a",
+    "fingerprint": {
+      "name": "MissingIntegrationError",
+      "code": "BRAID_LIVE_INTEGRATION_MISSING"
+    },
+    "code": "BRAID_LIVE_INTEGRATION_MISSING",
+    "details": {
+      "runId": "run-9e3263e8-bd36-4c5b-b73d-904a62f9b61a",
+      "required": [
+        "run.tool.call",
+        "run.tool.result",
+        "run.part.updated:tool"
+      ]
+    }
+  },
+  "timing": {
+    "workspace": {
+      "elapsedMs": 50.37089599999945,
+      "outcome": "settled"
+    },
+    "firstProcess.initialize": {
+      "elapsedMs": 4453.827101,
+      "outcome": "settled"
+    },
+    "firstProcess.send": {
+      "elapsedMs": 616.0347660000007,
+      "outcome": "settled"
+    },
+    "firstProcess.observeControl": {
+      "elapsedMs": 13309.438788000001,
+      "outcome": "settled"
+    },
+    "firstProcess.waitVisible": {
+      "elapsedMs": 180052.119777,
+      "outcome": "threw"
+    },
+    "totalMs": 425842.62495
+  },
+  "publicEventEvidence": {
+    "rpcResponseCount": 55,
+    "retainedEventCount": 30,
+    "sourceSequenceRange": [
+      14,
+      43
+    ],
+    "uniqueSourceEventIdHashes": 30,
+    "sourceEventIdMatchesCursor": true,
+    "rpcSequenceRange": [
+      25,
+      54
+    ],
+    "journalSequenceRange": null
+  },
+  "captureLimitations": [
+    "Canonical type/status/phase cannot be recovered from this receipt: diagnostic reader expected an internal envelope, while projectSemanticEvent exposes payload.unknown (or payload.harnessSession). Empty envelope summaries are a capture gap, not proof that production events were erased.",
+    "run starting/cursor4 is the last admission get_state snapshot at2026-10-07T23:34:01.653Z; provider identities continued advancing. This does not establish backend status at timeout.",
+    "No raw/native contents retained or inspected; no second diagnostic attempt.",
+    "Timeline sequence is RPC response.sequence; this receipt does not retain a distinct journal sequence."
+  ],
+  "cleanup": {
+    "exactResource": true,
+    "mode": "exact-owned-resource-set",
+    "identity": {
+      "confirmed": true,
+      "mode": "exact-owned-resource-set",
+      "matchedCount": 1,
+      "removedIds": [
+        "sandbox-14667c2fe4bf"
+      ],
+      "deletions": [
+        {
+          "id": "sandbox-14667c2fe4bf",
+          "attempts": [
+            {
+              "attempt": 1,
+              "deleted": true
+            }
+          ],
+          "confirmed": true
+        }
+      ],
+      "remainingIds": []
+    },
+    "activeResourceDelta": 2,
+    "activeResourceDeltaRequired": false,
+    "accountUsageScope": "account-wide",
+    "accountUsageAttribution": "unattributed-shared-usage",
+    "usageObservationComplete": true,
+    "usageDelta": {
+      "activeSandboxes": 2,
+      "totalSandboxes": 14,
+      "computeMinutes": 66,
+      "gpuSeconds": 0,
+      "gpuCostUsd": 0,
+      "unknownFields": []
+    }
+  },
+  "cleanupFailure": {
+    "name": "LiveBridgeError",
+    "message": "timed out waiting for shutdown acknowledgement",
+    "fingerprint": {
+      "name": "LiveBridgeError",
+      "code": "RPC_TIMEOUT"
+    }
+  },
+  "failureProcessCleanup": {
+    "first": {
+      "cleanupStatus": "term",
+      "exited": true,
+      "descendantsVerified": true,
+      "exit": {
+        "code": null,
+        "signal": "SIGTERM"
+      }
+    }
+  },
+  "receiptSha256": "e6c0d8d30afd59a4994e33f5bbdc72e654baf30f228f862b9f0c4f72d77c9ddd"
+}

@@ -10,7 +10,8 @@ The same profile can define how to author child AgentProfiles, choose tools or h
 | --- | --- |
 | [One evolving root agent](root-agent.md) | The central abstraction: objective discovery, recursive profile authoring, capability creation and personal evolution |
 | [Durable root lifecycle](root-lifecycle.md) | Event wakeups, topology controls, shared budgets, recovery semantics, and failure tests |
-| [Implementation path](implementation-path.md) | Provisional delivery sequence and completion evidence, pending independent review |
+| [Implementation path](implementation-path.md) | Delivery sequence revised after three independent GPT-6 Pro reviews |
+| [Review synthesis](reviews/gpt-6-pro-2026-10-07/synthesis.md) | Accepted findings, source checks, disagreements, and the first deciding experiment |
 | [Directions](directions.md) | Twelve ranked investments, their limits, ownership, and the first useful comparison |
 | [Evidence](evidence.md) | Dated implementation boundaries and primary sources behind the strategy |
 | [Moonshots](moonshots.md) | Larger conditional bets if model capability and reliable execution keep improving |
