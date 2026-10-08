@@ -23,7 +23,7 @@ Keep TUI and headless dispatch on the same application command path after their 
 | Component | Responsibility |
 | --- | --- |
 | `SearchableSelector` | Filter, navigate, select, cancel, and route declared row actions. |
-| `CommandPalette` | Present supported commands from the canonical registry. |
+| `terminal-overlays.ts` command selector | Present supported commands from the canonical registry through `SearchableSelector`. |
 | `DynamicAutocompleteProvider` | Combine command completion with bounded workspace path completion. |
 | `GuardedAutocompleteProvider` | Ignore stale completion results after the input context changes. |
 
