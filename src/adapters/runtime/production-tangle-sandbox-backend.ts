@@ -16,7 +16,10 @@ import { canonicalDigest } from '../../domain/canonical.js'
 import type { ConnectionRecord, ConnectionResourceRequest } from '../../domain/entities.js'
 import type { ConnectionId } from '../../domain/ids.js'
 import type { ExecuteTurnInput } from '../../ports/execution.js'
-import { harnessSupportsModel, snapHarnessToModel } from '../agent-interface/harness-runtime.js'
+import {
+  harnessSupportsModel,
+  snapHarnessToModel,
+} from '@tangle-network/agent-interface/harness-capabilities'
 import { nitroVerifiersForConnection } from '../connections/nitro-confidential-attestation.js'
 import {
   createTangleRetainedControlLookup,

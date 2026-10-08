@@ -19,4 +19,8 @@ A regression through production `providerEventFor` and `toEvent` failed against 
 
 Both exact owned sandboxes were deleted through the SDK and confirmed absent. Shutdown acknowledgement timed out; SIGTERM cleanup verified process exit and descendants. Shared account resource deltas are unattributed and do not prove leaked resources from these attempts.
 
+An authenticated hosted trace lookup for the exact second run over 23:30–23:45 UTC returned zero traces and no next cursor. This supplies no additional backend evidence. The private lookup response SHA-256 is `458ff8cca9ebe47caa207dd92757ad604f740357269324f8f3e80c9190e61471`; its receipt remains beside the run artifacts.
+
 Next deciding check: adopt the published SDK/provider fixes, pass the registry-backed Braid gate, and run the original cloud proof with the corrected diagnostic. If it fails, use canonical event evidence to locate the responsible provider or runtime boundary. No backend stall, event-normalization defect, or successful cloud durability claim is established here.
+
+A [third diagnostic](2026-10-08-tangle-permission-diagnostic.md) captured native evidence and established an unanswered permission in that run. The first two attempts remain inconclusive because they lack equivalent native evidence.

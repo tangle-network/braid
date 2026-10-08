@@ -1,0 +1,49 @@
+{
+  "status": "candidate-only; registry adoption pending",
+  "host": "beelink2",
+  "worktree": "/home/drew/code/_wt/braid-approval-candidate-proof-20261007",
+  "sdkFeature": {
+    "repository": "tangle-network/agent-dev-container",
+    "pullRequest": 9605,
+    "commit": "b5d06a952930b9737734a9c1e6fbc0ca4de68e9e",
+    "tarballSha256": "c72c78cc844dc4415b3865d4eff781b6016898857d0f74a82ef0b7658fa730ea"
+  },
+  "providerCandidate": {
+    "repository": "tangle-network/agent-sdk",
+    "branch": "fix/approval-terminal-summary-20261007",
+    "tarballSha256": "8c354500ecb301d2337aab4dfb4e0adb50cc2db73f46cb41f82785cb6ec52739"
+  },
+  "proof": {
+    "baselineFrozenInstall": true,
+    "build": true,
+    "typecheck": true,
+    "originalConnectionTests": {
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0
+    },
+    "testCommand": "pnpm test",
+    "testGroups": {
+      "main": 909,
+      "performance": 16,
+      "composition": 36,
+      "security": 20,
+      "storagePerformance": 2,
+      "scripts": 35
+    },
+    "totalPassed": 1018,
+    "failed": 0,
+    "skipped": 0,
+    "releaseEvidenceSelfTest": true
+  },
+  "logs": [
+    "/tmp/braid-approval-candidate.log",
+    "/tmp/braid-approval-candidate-full-test.log"
+  ],
+  "limits": [
+    "Candidate tarballs were installed only in the isolated proof worktree.",
+    "The unchanged Braid approval assertion passed through the patched packages.",
+    "This is deterministic package-boundary evidence, not live Tangle proof.",
+    "Published package pins and the final owning worktree check remain required."
+  ]
+}

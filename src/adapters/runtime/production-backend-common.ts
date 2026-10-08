@@ -4,7 +4,7 @@ import type { ConnectionCatalog, ConnectionSelectionInput } from '../../app/conn
 import { canonicalDigest } from '../../domain/canonical.js'
 import type { ConnectionRecord } from '../../domain/entities.js'
 import type { ConnectionId } from '../../domain/ids.js'
-import { snapshotAgentProfile } from '../agent-interface/profile-runtime.js'
+import { snapshotAgentProfile } from '@tangle-network/agent-interface/profile-snapshot'
 import type { ProductionConnectionOptions } from '../connections/production-connection-types.js'
 import type { ExecuteTurnInput } from '../../ports/execution.js'
 

@@ -7,14 +7,13 @@ import type {
   AgentProfileSecurityPolicy,
   AgentProfileValidationResult,
 } from '@tangle-network/agent-interface'
+import { agentProfileSchema } from '@tangle-network/agent-interface/profile-schema'
+import { canonicalAgentProfileDigest } from '@tangle-network/agent-interface'
 import {
-  agentProfileSchema,
-  canonicalAgentProfileDigest,
   DEFAULT_CLOUD_AGENT_PROFILE_SECURITY_POLICY,
-  loadAgentEnvironmentCapabilitiesSchema,
-  snapshotAgentProfile,
   validateAgentProfileSecurity,
-} from '../adapters/agent-interface/profile-runtime.js'
+} from '@tangle-network/agent-interface/profile-security'
+import { snapshotAgentProfile } from '@tangle-network/agent-interface/profile-snapshot'
 import { redactSensitiveText } from '../domain/secret-sanitizer.js'
 import type {
   ProfileIssue,
@@ -215,7 +214,9 @@ async function providerCapabilities(
   if (provider.capabilities === undefined) return { issues: [] }
   try {
     const candidate = await provider.capabilities()
-    const AgentEnvironmentCapabilitiesSchema = await loadAgentEnvironmentCapabilitiesSchema()
+    const { AgentEnvironmentCapabilitiesSchema } = await import(
+      '@tangle-network/agent-interface/environment-provider'
+    )
     const parsed = AgentEnvironmentCapabilitiesSchema.safeParse(candidate)
     if (!parsed.success) {
       return {

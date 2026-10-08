@@ -3,263 +3,328 @@
   "packages": [
     {
       "license": "MIT",
-      "name": "@asteasolutions/zod-to-openapi"
+      "name": "@asteasolutions/zod-to-openapi",
+      "version": "9.1.0"
     },
     {
       "license": "MIT",
-      "name": "@dataiku/uv-linux-x64"
+      "name": "@dataiku/uv-linux-x64",
+      "version": "0.12.0"
     },
     {
       "license": "MIT",
-      "name": "@dataiku/uv"
+      "name": "@dataiku/uv",
+      "version": "0.12.0"
     },
     {
       "license": "MIT",
-      "name": "@earendil-works/pi-tui"
+      "name": "@earendil-works/pi-tui",
+      "version": "1.1.0"
     },
     {
       "license": "MIT",
-      "name": "@hono/node-server"
+      "name": "@hono/node-server",
+      "version": "2.1.1"
     },
     {
       "license": "MIT",
-      "name": "@koromix/koffi-linux-x64"
+      "name": "@koromix/koffi-linux-x64",
+      "version": "3.3.2"
     },
     {
       "license": "MIT",
-      "name": "@napi-rs/keyring-linux-x64-gnu"
+      "name": "@napi-rs/keyring-linux-x64-gnu",
+      "version": "2.1.0"
     },
     {
       "license": "MIT",
-      "name": "@napi-rs/keyring"
+      "name": "@napi-rs/keyring",
+      "version": "2.1.0"
     },
     {
       "license": "MIT",
-      "name": "@noble/hashes"
+      "name": "@noble/hashes",
+      "version": "2.4.0"
     },
     {
       "license": "MIT",
-      "name": "@tangle-network/agent-core"
+      "name": "@tangle-network/agent-core",
+      "version": "0.10.3"
     },
     {
       "license": "MIT",
-      "name": "@tangle-network/agent-eval"
+      "name": "@tangle-network/agent-eval",
+      "version": "0.209.1"
     },
     {
       "license": "MIT",
-      "name": "@tangle-network/agent-interface"
+      "name": "@tangle-network/agent-interface",
+      "version": "3.1.1"
     },
     {
       "license": "MIT",
-      "name": "@tangle-network/agent-knowledge"
+      "name": "@tangle-network/agent-knowledge",
+      "version": "20.0.0"
     },
     {
       "license": "Unknown",
-      "name": "@tangle-network/agent-profile-materialize"
+      "name": "@tangle-network/agent-profile-materialize",
+      "version": "0.21.0"
     },
     {
       "license": "MIT",
-      "name": "@tangle-network/agent-provider-cli-bridge"
+      "name": "@tangle-network/agent-provider-cli-bridge",
+      "version": "1.1.2"
     },
     {
       "license": "MIT",
-      "name": "@tangle-network/agent-provider-tangle"
+      "name": "@tangle-network/agent-provider-tangle",
+      "version": "3.6.6"
     },
     {
       "license": "MIT",
-      "name": "@tangle-network/agent-runtime"
+      "name": "@tangle-network/agent-runtime",
+      "version": "0.312.0"
     },
     {
       "license": "MIT",
-      "name": "@tangle-network/agent-trace-contract"
+      "name": "@tangle-network/agent-trace-contract",
+      "version": "2.0.0"
     },
     {
       "license": "MIT",
-      "name": "@tangle-network/sandbox"
+      "name": "@tangle-network/sandbox",
+      "version": "0.60.27"
     },
     {
       "license": "Apache-2.0",
-      "name": "@tangle-network/tcloud-attestation"
+      "name": "@tangle-network/tcloud-attestation",
+      "version": "0.1.1"
     },
     {
       "license": "MIT",
-      "name": "@types/proper-lockfile"
+      "name": "@types/proper-lockfile",
+      "version": "4.1.4"
     },
     {
       "license": "MIT",
-      "name": "@types/retry"
+      "name": "@types/retry",
+      "version": "0.12.5"
     },
     {
       "license": "Apache-2.0",
-      "name": "b4a"
+      "name": "b4a",
+      "version": "1.8.1"
     },
     {
       "license": "Apache-2.0",
-      "name": "bare-events"
+      "name": "bare-events",
+      "version": "2.9.2"
     },
     {
       "license": "Apache-2.0",
-      "name": "bare-fs"
+      "name": "bare-fs",
+      "version": "4.8.1"
     },
     {
       "license": "Apache-2.0",
-      "name": "bare-path"
+      "name": "bare-path",
+      "version": "3.1.1"
     },
     {
       "license": "Apache-2.0",
-      "name": "bare-stream"
+      "name": "bare-stream",
+      "version": "2.13.4"
     },
     {
       "license": "Apache-2.0",
-      "name": "bare-url"
+      "name": "bare-url",
+      "version": "2.5.2"
     },
     {
       "license": "MIT",
-      "name": "better-sqlite3-multiple-ciphers"
+      "name": "better-sqlite3-multiple-ciphers",
+      "version": "13.0.3"
     },
     {
       "license": "CC0-1.0",
-      "name": "binary-search"
+      "name": "binary-search",
+      "version": "1.3.6"
     },
     {
       "license": "MIT",
-      "name": "chalk"
+      "name": "chalk",
+      "version": "6.0.1"
     },
     {
       "license": "MIT",
-      "name": "cheminfo-types"
+      "name": "cheminfo-types",
+      "version": "1.15.0"
     },
     {
       "license": "Apache-2.0",
-      "name": "events-universal"
+      "name": "events-universal",
+      "version": "1.0.1"
     },
     {
       "license": "MIT",
-      "name": "fast-fifo"
+      "name": "fast-fifo",
+      "version": "1.3.2"
     },
     {
       "license": "MIT",
-      "name": "fft.js"
+      "name": "fft.js",
+      "version": "4.0.4"
     },
     {
       "license": "MIT",
-      "name": "get-east-asian-width"
+      "name": "get-east-asian-width",
+      "version": "1.6.0"
     },
     {
       "license": "ISC",
-      "name": "graceful-fs"
+      "name": "graceful-fs",
+      "version": "4.2.11"
     },
     {
       "license": "MIT",
-      "name": "hono"
+      "name": "hono",
+      "version": "4.13.13"
     },
     {
       "license": "MIT",
-      "name": "is-any-array"
+      "name": "is-any-array",
+      "version": "3.0.0"
     },
     {
       "license": "MIT",
-      "name": "koffi"
+      "name": "koffi",
+      "version": "3.3.2"
     },
     {
       "license": "MIT",
-      "name": "linear-sum-assignment"
+      "name": "linear-sum-assignment",
+      "version": "1.0.9"
     },
     {
       "license": "MIT",
-      "name": "marked"
+      "name": "marked",
+      "version": "18.0.11"
     },
     {
       "license": "MIT",
-      "name": "ml-array-max"
+      "name": "ml-array-max",
+      "version": "2.0.0"
     },
     {
       "license": "MIT",
-      "name": "ml-array-min"
+      "name": "ml-array-min",
+      "version": "2.0.0"
     },
     {
       "license": "MIT",
-      "name": "ml-array-rescale"
+      "name": "ml-array-rescale",
+      "version": "2.0.0"
     },
     {
       "license": "MIT",
-      "name": "ml-matrix"
+      "name": "ml-matrix",
+      "version": "6.15.0"
     },
     {
       "license": "MIT",
-      "name": "ml-spectra-processing"
+      "name": "ml-spectra-processing",
+      "version": "14.34.0"
     },
     {
       "license": "MIT",
-      "name": "ml-xsadd"
+      "name": "ml-xsadd",
+      "version": "3.0.1"
     },
     {
       "license": "MIT",
-      "name": "node-addon-api"
+      "name": "node-addon-api",
+      "version": "8.9.2"
     },
     {
       "license": "MIT",
-      "name": "openapi3-ts"
+      "name": "openapi3-ts",
+      "version": "4.6.1"
     },
     {
       "license": "MIT",
-      "name": "proper-lockfile"
+      "name": "proper-lockfile",
+      "version": "4.1.2"
     },
     {
       "license": "MIT",
-      "name": "re2js"
+      "name": "re2js",
+      "version": "2.8.6"
     },
     {
       "license": "MIT",
-      "name": "retry"
+      "name": "retry",
+      "version": "0.12.0"
     },
     {
       "license": "ISC",
-      "name": "signal-exit"
+      "name": "signal-exit",
+      "version": "3.0.7"
     },
     {
       "license": "BSD-3-Clause",
-      "name": "smol-toml"
+      "name": "smol-toml",
+      "version": "1.9.0"
     },
     {
       "license": "CC-BY-3.0",
-      "name": "spdx-exceptions"
+      "name": "spdx-exceptions",
+      "version": "2.5.0"
     },
     {
       "license": "MIT",
-      "name": "spdx-expression-parse"
+      "name": "spdx-expression-parse",
+      "version": "5.0.0"
     },
     {
       "license": "CC0-1.0",
-      "name": "spdx-license-ids"
+      "name": "spdx-license-ids",
+      "version": "3.0.23"
     },
     {
       "license": "MIT",
-      "name": "streamx"
+      "name": "streamx",
+      "version": "2.28.1"
     },
     {
       "license": "MIT",
-      "name": "tar-stream"
+      "name": "tar-stream",
+      "version": "3.2.1"
     },
     {
       "license": "MIT",
-      "name": "teex"
+      "name": "teex",
+      "version": "1.0.1"
     },
     {
       "license": "Apache-2.0",
-      "name": "text-decoder"
+      "name": "text-decoder",
+      "version": "1.2.7"
     },
     {
       "license": "MIT",
-      "name": "undici"
+      "name": "undici",
+      "version": "8.11.2"
     },
     {
       "license": "ISC",
-      "name": "yaml"
+      "name": "yaml",
+      "version": "2.9.0"
     },
     {
       "license": "MIT",
-      "name": "zod"
+      "name": "zod",
+      "version": "4.6.5"
     }
   ]
 }

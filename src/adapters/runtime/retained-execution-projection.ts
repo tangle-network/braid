@@ -10,7 +10,6 @@ export function retainedCapabilities(
   environment: AgentEnvironmentCapabilities,
   options: {
     readonly sessionContinuation?: boolean
-    readonly exactStatus?: boolean
   } = {},
 ): RunCapabilities {
   const retainedControl =
@@ -18,7 +17,6 @@ export function retainedCapabilities(
     environment.retainedControl.resultIdentity === true &&
     environment.retainedControl.eventIdentity === true &&
     environment.retainedControl.cancellationIdempotency === true
-  const exactStatus = retainedControl && (options.exactStatus ?? true)
   return Object.freeze({
     streaming: {
       live: environment.streaming.live,
@@ -34,7 +32,7 @@ export function retainedCapabilities(
       cancel: retainedControl,
       steer: false,
       queue: true,
-      status: exactStatus,
+      status: retainedControl,
       recreate: retainedControl,
     },
     events: { stableIdentity: true, sequence: true, cursor: true },

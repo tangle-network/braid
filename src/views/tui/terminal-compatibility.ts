@@ -6,7 +6,7 @@ export interface KeyboardCompatibility {
   readonly message: string
 }
 
-type TerminalOutputTarget = Pick<Terminal, 'setProgress' | 'setTitle' | 'write'>
+type TerminalOutputTarget = Pick<Terminal, 'start' | 'setProgress' | 'setTitle' | 'write'>
 
 const MAX_METADATA_BYTES = 4096
 
@@ -88,18 +88,32 @@ export function installTerminalOutputPolicy(
   suppressMetadata: boolean,
 ): () => void {
   if (!suppressMetadata) return () => {}
+  const originalStart = terminal.start.bind(terminal)
   const originalWrite = terminal.write.bind(terminal)
   const originalSetTitle = terminal.setTitle.bind(terminal)
   const originalSetProgress = terminal.setProgress.bind(terminal)
   const filter = new TerminalMetadataFilter()
+  const startWithoutMetadata: Terminal['start'] = (onInput, onResize): void => {
+    const programStatus = process.env.PI_PROGRAM_STATUS
+    // Pi reads this supported override synchronously when start negotiates terminal protocols.
+    process.env.PI_PROGRAM_STATUS = '0'
+    try {
+      originalStart(onInput, onResize)
+    } finally {
+      if (programStatus === undefined) delete process.env.PI_PROGRAM_STATUS
+      else process.env.PI_PROGRAM_STATUS = programStatus
+    }
+  }
   const filteredWrite = (data: string): void => {
     const safeData = filter.push(data)
     if (safeData) originalWrite(safeData)
   }
+  terminal.start = startWithoutMetadata
   terminal.write = filteredWrite
   terminal.setTitle = () => {}
   terminal.setProgress = () => {}
   return () => {
+    if (terminal.start === startWithoutMetadata) terminal.start = originalStart
     if (terminal.write === filteredWrite) terminal.write = originalWrite
     if (terminal.setTitle !== originalSetTitle) terminal.setTitle = originalSetTitle
     if (terminal.setProgress !== originalSetProgress) terminal.setProgress = originalSetProgress

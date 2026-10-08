@@ -1,0 +1,134 @@
+{
+  "schemaVersion": "braid.tangle-sandbox-braid-stress.v1",
+  "proofId": "braid-cloud-stress-1791412196854-263653-c90dabf4",
+  "config": {
+    "endpoint": "https://sandbox.tangle.tools",
+    "connectionId": "connection-live-tangle-sandbox",
+    "connectionKind": "tangle-sandbox",
+    "workspaceRequest": {
+      "repoUrl": "https://github.com/tangle-network/braid.git",
+      "gitRef": "main",
+      "cwd": {
+        "base": "repository",
+        "path": "."
+      }
+    },
+    "credentialConfigured": true,
+    "model": "tangle-router/glm-5.3",
+    "modelProvider": "tangle-router",
+    "runner": "opencode",
+    "lifecycle": "retained",
+    "idleTtlSeconds": 1800
+  },
+  "timing": {
+    "workspace": {
+      "elapsedMs": 142.42952400000013,
+      "outcome": "settled"
+    },
+    "firstProcess.initialize": {
+      "elapsedMs": 970.3291260000001,
+      "outcome": "settled"
+    },
+    "firstProcess.send": {
+      "elapsedMs": 193.40592600000036,
+      "outcome": "settled"
+    },
+    "firstProcess.observeControl": {
+      "elapsedMs": 14135.675023,
+      "outcome": "settled"
+    },
+    "firstProcess.waitVisible": {
+      "elapsedMs": 180001.014342,
+      "outcome": "threw"
+    },
+    "totalMs": 408552.238513
+  },
+  "status": "failed",
+  "cleanup": {
+    "exactResource": true,
+    "mode": "exact-owned-resource-set",
+    "identity": {
+      "confirmed": true,
+      "mode": "exact-owned-resource-set",
+      "matchedCount": 1,
+      "removedIds": [
+        "sandbox-8738e8eb1355"
+      ],
+      "deletions": [
+        {
+          "id": "sandbox-8738e8eb1355",
+          "attempts": [
+            {
+              "attempt": 1,
+              "deleted": true
+            }
+          ],
+          "confirmed": true
+        }
+      ],
+      "remainingIds": []
+    },
+    "activeResourceDelta": 1,
+    "activeResourceDeltaRequired": false,
+    "accountUsageScope": "account-wide",
+    "accountUsageAttribution": "unattributed-shared-usage",
+    "usageObservationComplete": true,
+    "usageDelta": {
+      "activeSandboxes": 1,
+      "totalSandboxes": 3,
+      "computeMinutes": 9,
+      "gpuSeconds": 0,
+      "gpuCostUsd": 0,
+      "unknownFields": []
+    }
+  },
+  "progress": {
+    "firstRunId": "run-dec2465f-ec24-4653-b647-da23b9081305",
+    "providerEnvironmentId": "sandbox-8738e8eb1355",
+    "firstControlRef": {
+      "runId": "run-dec2465f-ec24-4653-b647-da23b9081305",
+      "provider": "tangle-sandbox",
+      "environmentId": "sandbox-8738e8eb1355",
+      "sessionId": "[REDACTED]",
+      "executionId": "run-dec2465f-ec24-4653-b647-da23b9081305",
+      "requestDigest": "sha256:4154a43845866c2f6b70a69eae306f0b05827f4123e712d40046273e4cfa98e8"
+    }
+  },
+  "failure": {
+    "name": "MissingIntegrationError",
+    "message": "Braid RPC did not expose a provider-bound workspace tool event for run run-dec2465f-ec24-4653-b647-da23b9081305",
+    "fingerprint": {
+      "name": "MissingIntegrationError",
+      "code": "BRAID_LIVE_INTEGRATION_MISSING"
+    },
+    "code": "BRAID_LIVE_INTEGRATION_MISSING",
+    "details": {
+      "runId": "run-dec2465f-ec24-4653-b647-da23b9081305",
+      "required": [
+        "run.tool.call",
+        "run.tool.result",
+        "run.part.updated:tool"
+      ]
+    }
+  },
+  "cleanupFailure": {
+    "name": "LiveBridgeError",
+    "message": "timed out waiting for shutdown acknowledgement",
+    "fingerprint": {
+      "name": "LiveBridgeError",
+      "code": "RPC_TIMEOUT"
+    }
+  },
+  "failureProcessCleanup": {
+    "first": {
+      "cleanupStatus": "term",
+      "exited": true,
+      "descendantsVerified": true,
+      "exit": {
+        "code": null,
+        "signal": "SIGTERM"
+      }
+    }
+  },
+  "diagnosticLimit": "The retained failure timeline records event kinds/status fields, not provider event envelope content. The displayed starting status is an old admission snapshot, not a fresh observation at timeout. It cannot establish the cause of the missing tool event."
+}

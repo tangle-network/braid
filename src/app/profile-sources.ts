@@ -1,6 +1,6 @@
 import { basename, resolve } from 'node:path'
 import type { AgentProfile, AgentProfileRef } from '@tangle-network/agent-interface'
-import { canonicalCandidateDigest } from '../adapters/agent-interface/profile-runtime.js'
+import { canonicalCandidateDigest } from '@tangle-network/agent-interface'
 import { redactSensitiveText } from '../domain/secret-sanitizer.js'
 import { ProfilePersistenceError, readProfileFile } from './profile-persistence.js'
 import type {

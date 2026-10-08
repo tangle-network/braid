@@ -1,8 +1,8 @@
 import {
   canonicalAgentProfileDigest,
   canonicalCandidateDigest,
-  snapshotAgentProfile,
-} from '../adapters/agent-interface/profile-runtime.js'
+} from '@tangle-network/agent-interface'
+import { snapshotAgentProfile } from '@tangle-network/agent-interface/profile-snapshot'
 import { redactStructuredValue } from '../domain/bounded-structured.js'
 import { exportProfileDocument } from './profile-persistence.js'
 import type { ProfileIssue, ProfileSnapshotInput, ProfileSnapshotReceipt } from './profile-types.js'

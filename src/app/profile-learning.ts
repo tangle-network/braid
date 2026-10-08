@@ -1,10 +1,8 @@
 import type { FeedbackTrajectory, PreferenceMemoryEntry } from '@tangle-network/agent-eval'
 import type { AgentProfile, AgentProfileDiff } from '@tangle-network/agent-interface'
-import {
-  canonicalAgentProfileDigestHex,
-  composeAgentProfileGuidance,
-  diffAgentProfiles,
-} from '../adapters/agent-interface/profile-runtime.js'
+import { canonicalAgentProfileDigestHex } from '../adapters/agent-interface/profile-runtime.js'
+import { composeAgentProfileGuidance } from '@tangle-network/agent-interface/profile'
+import { diffAgentProfiles } from '@tangle-network/agent-interface'
 import { AppError } from './errors.js'
 import { exportProfileDocument } from './profile-persistence.js'
 

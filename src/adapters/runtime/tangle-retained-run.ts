@@ -79,7 +79,6 @@ export function createTangleRetainedPlan(
     environmentIdempotencyKey,
     executionId,
     providerName: provider.name,
-    exactStatus: false,
     ...(environmentId === undefined ? {} : { environmentId }),
     providerSessionId:
       exactControlRef?.sessionId ??
@@ -89,7 +88,6 @@ export function createTangleRetainedPlan(
     model: prepared.model,
     capabilities: retainedCapabilities(prepared.capabilities, {
       sessionContinuation: prepared.capabilities.sessions.continue,
-      exactStatus: false,
     }),
     materializationReceipt: publicMaterializationReceipt({
       ...prepared.materializationReceipt,

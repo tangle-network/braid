@@ -1,9 +1,6 @@
 import type { AgentProfile, AgentProfileDiff } from '@tangle-network/agent-interface'
-import {
-  canonicalCandidateJson,
-  diffAgentProfiles,
-  snapshotAgentProfile,
-} from '../adapters/agent-interface/profile-runtime.js'
+import { canonicalCandidateJson, diffAgentProfiles } from '@tangle-network/agent-interface'
+import { snapshotAgentProfile } from '@tangle-network/agent-interface/profile-snapshot'
 import { redactSensitiveText } from '../domain/secret-sanitizer.js'
 import type { ProfileDraftValidation } from './profile-types.js'
 import { ProfileValidationError, validateProfileShape } from './profile-validation.js'

@@ -9,11 +9,9 @@ const raw = execFileSync('pnpm', ['licenses', 'list', '--prod', '--json'], {
 const groups = JSON.parse(raw)
 const packages = Object.entries(groups)
   .flatMap(([license, entries]) =>
-    entries.map((entry) => ({
-      license,
-      name: entry.name,
-      version: entry.version,
-    })),
+    entries.flatMap((entry) =>
+      entry.versions.map((version) => ({ license, name: entry.name, version })),
+    ),
   )
   .sort((left, right) =>
     `${left.name}@${left.version}`.localeCompare(`${right.name}@${right.version}`),

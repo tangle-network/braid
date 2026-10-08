@@ -7,10 +7,8 @@ import type {
 } from '@tangle-network/agent-eval'
 import type { ExternalOptimizerModelExecutionObservation } from '@tangle-network/agent-eval/campaign'
 import type { AgentProfile } from '@tangle-network/agent-interface'
-import {
-  canonicalAgentProfileDigestHex,
-  defineAgentProfile,
-} from '../src/adapters/agent-interface/profile-runtime.js'
+import { canonicalAgentProfileDigestHex } from '../src/adapters/agent-interface/profile-runtime.js'
+import { defineAgentProfile } from '@tangle-network/agent-interface/profile'
 import { mapAnalystFinding } from '../src/adapters/analysis/citations.js'
 import {
   AgentEvalAnalystAdapter,

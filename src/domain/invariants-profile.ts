@@ -1,7 +1,5 @@
-import {
-  canonicalAgentProfileDigest,
-  snapshotAgentProfile,
-} from '../adapters/agent-interface/profile-runtime.js'
+import { canonicalAgentProfileDigest } from '@tangle-network/agent-interface'
+import { snapshotAgentProfile } from '@tangle-network/agent-interface/profile-snapshot'
 
 import type {
   ConnectionRecord,

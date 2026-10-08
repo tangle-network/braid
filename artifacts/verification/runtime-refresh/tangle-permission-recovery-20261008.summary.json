@@ -1,0 +1,141 @@
+{
+  "schema": "braid.permission-recovery-diagnostic.v1",
+  "status": "passed",
+  "completedAt": "2026-10-08T09:21:35Z",
+  "proofId": "braid-cloud-stress-1791451084688-3256606-65b50ff3",
+  "purpose": "Validate the public Braid permission review/response fix through a packed binary using the preserved diagnostic dependency graph.",
+  "source": {
+    "baseCommit": "5932e0d45507af9cad6b8918496b864d52f79be7",
+    "overlayFileCount": 12,
+    "overlayManifestSha256": "ad8e3e2dc352896cc801d99fe2c751676f6dde29ca3341bfc0d11d98ea7c7183",
+    "packedTarballSha256": "1b13de3f9cf5a0115bc7f1e0d449438feb86c590e4b6e4b59fe7c3673dfc52cb",
+    "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
+    "receiptSha256": "8dcc66d55cdaeeb3cfea4c54cc75c4bdd72a6727aed5f698f631d8a0bc9d1294"
+  },
+  "versions": {
+    "braid": "0.3.4",
+    "agentInterface": "3.1.1",
+    "agent-runtime": "0.309.0",
+    "agent-provider-tangle": "3.6.5",
+    "sandbox": "0.60.22"
+  },
+  "requestedExecution": {
+    "runner": "opencode",
+    "model": "tangle-router/glm-5.3",
+    "phaseTimeoutMs": 180000,
+    "holdMs": 30000
+  },
+  "assertions": {
+    "proofPassed": true,
+    "fourScopedPermissionsSettled": true,
+    "sigkillAndRestart": true,
+    "exclusiveReplayProgress": true,
+    "followUpWorkspaceContinuity": true,
+    "exactThreeProviderExecutions": true,
+    "cancellationSettledRemotely": true,
+    "restartCancellationRetryIsIdempotent": true,
+    "exactOwnedSandboxDeleted": true,
+    "allLocalProcessDescendantsExited": true
+  },
+  "permissions": {
+    "requested": 4,
+    "allowOnceAccepted": 4,
+    "durablySettled": 4,
+    "stableResponseOperationIds": true
+  },
+  "restart": {
+    "runId": "run-f8ddaa60-ee3e-4990-b11b-dfb4a625e5c5",
+    "statusAtKill": "waiting",
+    "terminalStatus": "completed",
+    "localRunCountAfterReconnect": 1,
+    "firstVisibleEvents": 10,
+    "resumedVisibleEvents": 20,
+    "resumeFromCursor": "17",
+    "finalCursor": "52",
+    "duplicateVisibleEvents": 0,
+    "providerSequenceBeforeKill": 13,
+    "firstProviderSequenceAfterRestart": 14
+  },
+  "providerExecutions": {
+    "observedCount": 3,
+    "matched": true,
+    "executions": [
+      {
+        "executionId": "run-caeafda8-046b-4c7a-b431-f25d5b084c69",
+        "status": "cancelled"
+      },
+      {
+        "executionId": "run-b260f7cd-3ac0-4fd5-8f08-0807f99a0a3c",
+        "status": "completed"
+      },
+      {
+        "executionId": "run-f8ddaa60-ee3e-4990-b11b-dfb4a625e5c5",
+        "status": "completed"
+      }
+    ]
+  },
+  "followUp": {
+    "runId": "run-b260f7cd-3ac0-4fd5-8f08-0807f99a0a3c",
+    "completed": true,
+    "workspaceChallengeDigestMatched": true,
+    "visibleProviderEvents": 20
+  },
+  "cancellation": {
+    "runId": "run-caeafda8-046b-4c7a-b431-f25d5b084c69",
+    "localStatus": "aborted",
+    "remoteStatus": "cancelled",
+    "exactResultCode": "EXECUTION_CANCELLED",
+    "sameOperationRetryReplayed": true,
+    "changedBodyCode": "OPERATION_CONFLICT",
+    "lateResultObserved": false
+  },
+  "cleanup": {
+    "sandboxId": "sandbox-7e625fa3cd6b",
+    "matchedOwnedResources": 1,
+    "confirmedDeleted": true,
+    "remainingOwnedResources": 0,
+    "allThreeLocalProcessesExited": true,
+    "allDescendantsVerified": true,
+    "privateProofWorkspaceRetained": true
+  },
+  "spend": {
+    "scope": "unique proof runs only",
+    "runs": [
+      {
+        "runId": "run-f8ddaa60-ee3e-4990-b11b-dfb4a625e5c5",
+        "role": "resumed-first-turn",
+        "costStatus": "unknown",
+        "costUsd": null
+      },
+      {
+        "runId": "run-b260f7cd-3ac0-4fd5-8f08-0807f99a0a3c",
+        "role": "follow-up-turn",
+        "costStatus": "unknown",
+        "costUsd": null
+      },
+      {
+        "runId": "run-caeafda8-046b-4c7a-b431-f25d5b084c69",
+        "role": "cancelled-turn",
+        "costStatus": "unknown",
+        "costUsd": null
+      }
+    ],
+    "totalCostUsd": null,
+    "costStatus": "unknown",
+    "accountWideUsageNotAttributed": true
+  },
+  "durationMs": 205326,
+  "privateRpcCapture": {
+    "rows": 1591,
+    "bytes": 28361413,
+    "truncated": false,
+    "elapsedMs": 205382.597325
+  },
+  "limitations": [
+    "This is the preserved Runtime 0.309.0 / provider 3.6.5 / Sandbox SDK 0.60.22 diagnostic cohort, not the final dependency-refresh cohort.",
+    "The rebuilt tarball used a copied frozen dependency graph; this is not a clean consumer-install proof.",
+    "Existing evidence redaction masks session identifiers and some status strings. Deterministic run/session/continuity checks passed before serialization; masked values are not treated as identity evidence.",
+    "No per-run USD cost was reported. Account-wide usage is shared and is not attributed to this proof.",
+    "This exercises the retained cloud conversation path, not recursive supervisor admission or fleet-wide budget conservation."
+  ]
+}

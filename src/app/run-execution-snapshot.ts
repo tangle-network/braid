@@ -1,5 +1,5 @@
 import type { AgentProfile } from '@tangle-network/agent-interface'
-import { snapshotAgentProfile } from '../adapters/agent-interface/profile-runtime.js'
+import { snapshotAgentProfile } from '@tangle-network/agent-interface/profile-snapshot'
 import type { BraidState } from '../domain/state.js'
 import type { RunExecutionSnapshot, SendInput } from './application-types.js'
 import { continuationSessionFor } from './run-continuation.js'

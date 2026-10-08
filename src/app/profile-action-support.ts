@@ -1,5 +1,5 @@
 import { resolve } from 'node:path'
-import { canonicalAgentProfileDigest } from '../adapters/agent-interface/profile-runtime.js'
+import { canonicalAgentProfileDigest } from '@tangle-network/agent-interface'
 import type {
   ProfileRecord as DomainProfileRecord,
   ProfileSourceKind as DomainProfileSourceKind,

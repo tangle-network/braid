@@ -1,8 +1,6 @@
 import type { AgentProfile } from '@tangle-network/agent-interface'
-import {
-  canonicalAgentProfileDigestHex,
-  snapshotAgentProfile,
-} from '../adapters/agent-interface/profile-runtime.js'
+import { canonicalAgentProfileDigestHex } from '../adapters/agent-interface/profile-runtime.js'
+import { snapshotAgentProfile } from '@tangle-network/agent-interface/profile-snapshot'
 import type { BraidState } from '../domain/state.js'
 
 export class RuntimeSelection {
