@@ -1,0 +1,184 @@
+{
+  "schema": "braid.final-cohort-cloud-proof.v1",
+  "status": "passed",
+  "completedAt": "2026-10-08T09:53:57Z",
+  "proofId": "braid-cloud-stress-1791453051230-3858794-8f9dffeb",
+  "purpose": "Validate the final published dependency cohort through the tested Braid build packed and freshly installed into an empty consumer.",
+  "source": {
+    "testedCommit": "f376dc5b27ccc2887f9d1cf1d6544457deff498e",
+    "gatedWorktreeBase": "db2f8dbad5b9b69dc8f04cb3e76cdb218da69af1",
+    "sourceManifestPathsMatched": 79,
+    "sourceManifestSha256": "57dfd35da1aa4345d68be7c86f538cfd87746fea08a9c29740d0ee52aa5b3c16",
+    "proofSnapshotManifestSha256": "3b3e46d07c476bc6c6b64b0d0f981db14938a50c6eb3ae889a38622f2f82c8dd",
+    "sourceLockSha256": "2ef327d6ca163b65cb88d418f7e69a83fb0a20974b7ce687d7044d850304cea2"
+  },
+  "package": {
+    "version": "0.3.4",
+    "tarballSha256": "d53264776a22083c82f4e2ccd476e801bc59780a7f4d61e936187a7aa10a7bbd",
+    "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
+    "packedFilesMatchedInstalled": 2245,
+    "packedDistMatchedGatedBuild": true,
+    "install": "maintained buildPackedBinary helper; npm install into an empty consumer",
+    "installExitCode": 0,
+    "consumerLockSha256": "da99c02a2fea534540cbd0f5f1780037ecfa37fb98d4abba37d03d1fe03e5b99",
+    "reusedOrSymlinkedSourceDependencies": false,
+    "postRunProvenanceChecks": {
+      "consumerLockUnchanged": true,
+      "installedBinaryUnchanged": true,
+      "proofSnapshotUnchanged": true,
+      "corePackageManifestsUnchanged": true,
+      "consumerNodeModulesIsOwnDirectory": true
+    }
+  },
+  "dependencies": {
+    "@tangle-network/agent-runtime": {
+      "version": "0.312.0",
+      "manifestSha256": "179db38ac142b61be87ddfab7d9076faf567fb7f499da851822d1e548315f39a",
+      "integrity": "sha512-EBAU1m0BDGqmpABwREh9GDp1531k1oarQhfSWb7/33jkoSbVUKxhPEtCkyul5DdNdI/ia3LYmWLvEOBv3wYlNw=="
+    },
+    "@tangle-network/agent-provider-tangle": {
+      "version": "3.6.6",
+      "manifestSha256": "7a356bc1bb73126b24e2f6828a55026e154a446d435ee79846276d08b47553e6",
+      "integrity": "sha512-KFFoPW8U6wjRgXb1rykwEV9y/hbLGGkodkgXQUKqlXCkgfPAPgWMDpp7M5AXEhTVqpPNpwy3lYO6jJOYCm8a8Q=="
+    },
+    "@tangle-network/sandbox": {
+      "version": "0.60.27",
+      "manifestSha256": "2b4653de5213cf7832f989823d1b025b3df17bc8249de2a7410adc9d25c3ce6a",
+      "integrity": "sha512-kQ+NwN2pGMLc1lSSO447F6GnUG1G6auCj6Wp076RKuYqFdd9eIY5LuSoWrbz4NPHFxjJ5avehuhCu+Pka09aEA=="
+    },
+    "@tangle-network/agent-interface": {
+      "version": "3.1.1",
+      "manifestSha256": "bda2287b64682afc6c2183f157ca123bff1f96bd8b08716d5d28f6ee628307f8",
+      "integrity": "sha512-53YmcHkkip2lBZtQKuk/eQrZvsv6uxS7S03787X3jKVRdFOx1OXzVF0oSo/1Du69+g0QAx1xJl7zAuFJ6soifA=="
+    }
+  },
+  "requestedExecution": {
+    "runner": "opencode",
+    "model": "tangle-router/glm-5.3",
+    "phaseTimeoutMs": 180000,
+    "holdMs": 30000
+  },
+  "assertions": {
+    "cleanConsumerInstall": true,
+    "packedFilesMatchInstalled": true,
+    "frozenInputsUnchanged": true,
+    "proofPassed": true,
+    "fourScopedPermissionsSettled": true,
+    "sigkillAndRestart": true,
+    "exclusiveReplayProgress": true,
+    "followUpWorkspaceContinuity": true,
+    "exactThreeProviderExecutions": true,
+    "cancellationSettledRemotely": true,
+    "restartCancellationRetryIsIdempotent": true,
+    "exactOwnedSandboxDeleted": true,
+    "allLocalProcessDescendantsExited": true
+  },
+  "permissions": {
+    "requested": 4,
+    "allowOnceAccepted": 4,
+    "durablySettled": 4,
+    "stableResponseOperationIds": true
+  },
+  "restart": {
+    "runId": "run-b8183b82-9cdc-4be1-9352-0a87726bfc17",
+    "statusAtKill": "waiting",
+    "terminalStatus": "completed",
+    "localRunCountAfterReconnect": 1,
+    "firstVisibleEvents": 9,
+    "resumedVisibleEvents": 19,
+    "resumeFromCursor": "16",
+    "finalCursor": "50",
+    "duplicateVisibleEvents": 0,
+    "providerSequenceBeforeKill": 12,
+    "firstProviderSequenceAfterRestart": 13
+  },
+  "providerExecutions": {
+    "observedCount": 3,
+    "matched": true,
+    "executions": [
+      {
+        "executionId": "run-289354f1-dc6e-4b89-a8e3-59426c09af81",
+        "status": "cancelled"
+      },
+      {
+        "executionId": "run-734c95c9-6616-4d9a-91bd-4808e6e30763",
+        "status": "completed"
+      },
+      {
+        "executionId": "run-b8183b82-9cdc-4be1-9352-0a87726bfc17",
+        "status": "completed"
+      }
+    ]
+  },
+  "followUp": {
+    "runId": "run-734c95c9-6616-4d9a-91bd-4808e6e30763",
+    "completed": true,
+    "workspaceChallengeDigestMatched": true,
+    "visibleProviderEvents": 15
+  },
+  "cancellation": {
+    "runId": "run-289354f1-dc6e-4b89-a8e3-59426c09af81",
+    "localStatus": "aborted",
+    "remoteStatus": "cancelled",
+    "exactResultCode": "EXECUTION_CANCELLED",
+    "sameOperationRetryReplayed": true,
+    "changedBodyCode": "OPERATION_CONFLICT",
+    "lateResultObserved": false
+  },
+  "cleanup": {
+    "sandboxId": "sandbox-9e83eedca9d4",
+    "matchedOwnedResources": 1,
+    "confirmedDeleted": true,
+    "remainingOwnedResources": 0,
+    "allThreeLocalProcessesExited": true,
+    "allDescendantsVerified": true,
+    "privateProofWorkspaceRetained": true
+  },
+  "spend": {
+    "scope": "unique proof runs only",
+    "runs": [
+      {
+        "runId": "run-b8183b82-9cdc-4be1-9352-0a87726bfc17",
+        "role": "resumed-first-turn",
+        "costStatus": "unknown",
+        "costUsd": null
+      },
+      {
+        "runId": "run-734c95c9-6616-4d9a-91bd-4808e6e30763",
+        "role": "follow-up-turn",
+        "costStatus": "unknown",
+        "costUsd": null
+      },
+      {
+        "runId": "run-289354f1-dc6e-4b89-a8e3-59426c09af81",
+        "role": "cancelled-turn",
+        "costStatus": "unknown",
+        "costUsd": null
+      }
+    ],
+    "totalCostUsd": null,
+    "costStatus": "unknown",
+    "accountWideUsageNotAttributed": true
+  },
+  "durationMs": 180421,
+  "privateRpcCapture": {
+    "rows": 1277,
+    "bytes": 21225037,
+    "truncated": false,
+    "elapsedMs": 180487.332372
+  },
+  "privateEvidenceSha256": {
+    "proof": "f05ea39d30fa6be724c8451171e287510d6205dc02bd94e42965e9905f1377f2",
+    "freezeManifest": "6727e95a3ac46bd49ac6cdcb490c418ed90d4916c03379fc993b07835e2da3af",
+    "installReceipt": "c06f9da4daa8cf11fc006505615973d6e9383ac842c7cfb9772c36a743662cb5",
+    "rpcTrace": "0c9a6b252ad3ffd64aad0702222f48ed2252fdd8b1a16eca1e34bab1ba0c5226"
+  },
+  "limitations": [
+    "This validates the locally packed tested source with published dependencies; it is not evidence of a new published Braid release.",
+    "This exercises the retained cloud conversation path, not recursive supervisor admission or fleet-wide budget conservation.",
+    "Runner and model names identify the requested route; the resolved served model and sidecar revision were not separately inspected.",
+    "Some private RPC strings and provider session identifiers are redacted. Deterministic identity and continuity assertions passed before serialization; masked equality is not used as evidence.",
+    "No per-run USD cost was reported. Shared account-wide usage is not attributed to this proof.",
+    "The private RPC capture is protocol evidence, not a terminal keyboard recording."
+  ]
+}
