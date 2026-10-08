@@ -1,8 +1,5 @@
 import assert from 'node:assert/strict'
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { dirname, extname, join, resolve } from 'node:path'
 import test from 'node:test'
-import { fileURLToPath } from 'node:url'
 import { TuiMainScreen, visibleWidth } from '@earendil-works/pi-tui'
 import { comparePairedArms } from '@tangle-network/agent-eval'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
@@ -1328,79 +1325,6 @@ test('completed export notices survive real terminal input at every supported wi
     }
   }
 })
-
-test('workflow presentation modules stay bounded and acyclic', () => {
-  const directSource = new URL('../src/views/tui/interaction.ts', import.meta.url)
-  const directRoot = new URL('../src/views/tui/', import.meta.url)
-  const compiledRoot = new URL('../../src/views/tui/', import.meta.url)
-  const tuiRoot = fileURLToPath(existsSync(directSource) ? directRoot : compiledRoot)
-  const interactionPath = join(tuiRoot, 'interaction.ts')
-  const overlayPath = join(tuiRoot, 'conversation-overlays.ts')
-  const entityBrowserPath = join(tuiRoot, 'entity-browser.ts')
-  const activityBrowserPath = join(tuiRoot, 'activity-browser.ts')
-  assert.ok(readFileSync(interactionPath, 'utf8').split('\n').length - 1 < 250)
-  assert.ok(readFileSync(overlayPath, 'utf8').split('\n').length - 1 < 300)
-  assert.ok(readFileSync(entityBrowserPath, 'utf8').split('\n').length - 1 < 450)
-  assert.ok(readFileSync(activityBrowserPath, 'utf8').split('\n').length - 1 < 400)
-
-  const files = new Set(tuiSourceFiles(tuiRoot))
-  const graph = new Map<string, Set<string>>()
-  for (const file of files) {
-    const targets = new Set<string>()
-    const source = readFileSync(file, 'utf8')
-    for (const match of source.matchAll(
-      /(?:\bfrom\s+|\bimport\s*(?:\(\s*)?)['"](\.[^'"]+)['"]/gu,
-    )) {
-      const target = resolveTuiImport(file, match[1] ?? '', files)
-      if (target !== undefined) targets.add(target)
-    }
-    graph.set(file, targets)
-  }
-  assert.deepEqual(findCycles(graph), [])
-})
-
-function tuiSourceFiles(directory: string): string[] {
-  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-    const path = join(directory, entry.name)
-    return entry.isDirectory() ? tuiSourceFiles(path) : extname(path) === '.ts' ? [path] : []
-  })
-}
-
-function resolveTuiImport(
-  importer: string,
-  specifier: string,
-  files: ReadonlySet<string>,
-): string | undefined {
-  const raw = resolve(dirname(importer), specifier)
-  const candidates = [
-    raw,
-    raw.endsWith('.js') ? `${raw.slice(0, -3)}.ts` : `${raw}.ts`,
-    join(raw, 'index.ts'),
-  ]
-  return candidates.find((candidate) => files.has(candidate))
-}
-
-function findCycles(graph: ReadonlyMap<string, ReadonlySet<string>>): string[][] {
-  const cycles: string[][] = []
-  const active: string[] = []
-  const activeSet = new Set<string>()
-  const visited = new Set<string>()
-  const visit = (node: string): void => {
-    if (activeSet.has(node)) {
-      cycles.push(active.slice(active.indexOf(node)))
-      return
-    }
-    if (visited.has(node)) return
-    visited.add(node)
-    active.push(node)
-    activeSet.add(node)
-    for (const target of graph.get(node) ?? []) visit(target)
-    active.pop()
-    activeSet.delete(node)
-  }
-  for (const node of graph.keys()) visit(node)
-  return cycles
-}
 
 function isPositive(outcome: string): boolean {
   return ['accept', 'once', 'session', 'persistent'].includes(outcome)

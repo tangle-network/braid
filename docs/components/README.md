@@ -91,7 +91,7 @@ Helpers remain in the same document as the component whose behavior they serve.
 | `AutomationOverlayWorkflow` | `src/views/tui/automation-overlay-workflow.ts` | [automation.md](automation.md) |
 | `AutomationRulePanel` | `src/views/tui/automation-rule-panel.ts` | [automation.md](automation.md) |
 | `RuleResponseEditor` | `src/views/tui/automation-rule-response-editor.ts` | [automation.md](automation.md) |
-| `CommandPalette` | `src/views/tui/command-palette.ts` | [selectors-and-commands.md](selectors-and-commands.md) |
+| Command palette | `src/views/tui/terminal-overlays.ts` | [selectors-and-commands.md](selectors-and-commands.md) |
 | `ComparisonViewPanel` | `src/views/tui/comparison.ts` | [comparison.md](comparison.md) |
 | `ComposerView` | `src/views/tui/composer-view.ts` | [transcript-composer.md](transcript-composer.md) |
 | `ConfigurationCredential` | `src/views/tui/configuration-credential.ts` | [profiles-and-connections.md](profiles-and-connections.md) |

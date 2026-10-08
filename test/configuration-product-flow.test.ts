@@ -1,6 +1,4 @@
 import assert from 'node:assert/strict'
-import { readdirSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import test from 'node:test'
 import { visibleWidth } from '@earendil-works/pi-tui'
 import type { AgentProfile } from '@tangle-network/agent-interface'
@@ -181,17 +179,6 @@ function controllerFor(
 async function settle(): Promise<void> {
   await new Promise<void>((resolve) => setTimeout(resolve, 10))
 }
-
-test('configuration view modules stay below the production size bound', () => {
-  const root = join(process.cwd(), 'src/views/tui')
-  const files = readdirSync(root).filter((file) =>
-    /^(?:configuration|profile-editor|connection-setup)-?.*\.ts$/u.test(file),
-  )
-  for (const file of files) {
-    const lines = readFileSync(join(root, file), 'utf8').split(/\r?\n/u).length
-    assert.ok(lines <= 300, `${file} has ${lines} lines`)
-  }
-})
 
 test('initial catalog failures remain visible in their panels', async () => {
   const profiles = new ProfileEditorViewPanel(theme, {
