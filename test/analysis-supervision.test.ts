@@ -800,6 +800,15 @@ test('runtime supervisor adapter persists projections and routes exact cancel op
         stateDir: '/tmp/braid/.agent',
         workers: [
           {
+            id: 'runtime-worker-shadow',
+            label: 'runtime-worker-1',
+            status: 'running',
+            latencyMs: 4,
+            spend,
+            metered: spend,
+            liveTail: ['safe progress'],
+          },
+          {
             id: 'runtime-worker-1',
             label: 'worker-one',
             status: 'running',
@@ -813,12 +822,12 @@ test('runtime supervisor adapter persists projections and routes exact cancel op
         journalTail: [],
         driverSpend: spend,
         totals: {
-          workers: 1,
-          running: 1,
+          workers: 2,
+          running: 2,
           done: 0,
           down: 0,
           cancelled: 0,
-          inFlight: 1,
+          inFlight: 2,
           settled: 0,
           tokensInput: 2,
           tokensOutput: 3,
@@ -911,11 +920,12 @@ test('runtime supervisor adapter persists projections and routes exact cancel op
   const queued = await service.steerWorker(
     '/tmp/braid',
     'runtime-supervisor-1',
-    'worker-one',
+    'runtime-worker-1',
     'op-steer-worker-1',
     'inspect this',
   )
   assert.equal(queued.status, 'queued')
+  assert.equal(queued.worker, 'runtime-worker-1')
   if (queued.status === 'queued') assert.equal(queued.operationId, 'op-steer-worker-1')
   const cancelledWorker = await service.cancelWorker(
     '/tmp/braid',
@@ -953,4 +963,39 @@ test('runtime supervisor adapter persists projections and routes exact cancel op
     worker: 'runtime-worker-1',
     providers: interactiveProvider,
   })
+})
+
+test('runtime supervisor control refuses labels before calling any runtime effect', async () => {
+  const snapshot = {
+    supervisors: [
+      {
+        id: 'supervisor-1',
+        workers: [
+          { id: 'worker-a', label: 'shared-label' },
+          { id: 'worker-b', label: 'shared-label' },
+        ],
+      },
+    ],
+  } as unknown as TopSnapshot
+  const unexpectedEffect = () => assert.fail('A display label must not dispatch a runtime effect')
+  const controller = new RuntimeSupervisorController({
+    watcher: new RuntimeSupervisorWatcher(() => snapshot),
+    write: unexpectedEffect,
+    cancelWorker: unexpectedEffect,
+    attachWorker: unexpectedEffect,
+    providers: unexpectedEffect,
+  })
+  assert.equal(
+    controller.steerWorker('/tmp/braid', 'supervisor-1', 'shared-label', 'op-steer-label', 'stop')
+      .status,
+    'unavailable',
+  )
+  assert.equal(
+    controller.cancelWorker('/tmp/braid', 'supervisor-1', 'shared-label', 'op-cancel-label').status,
+    'unavailable',
+  )
+  assert.equal(
+    (await controller.attachWorker('/tmp/braid', 'supervisor-1', 'shared-label')).status,
+    'unavailable',
+  )
 })

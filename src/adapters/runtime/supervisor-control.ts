@@ -81,7 +81,7 @@ function missingWorkerIssue(worker: string): SupervisorCapabilityIssue {
     capability: 'supervisor.worker.resolve',
     packageName: '@tangle-network/agent-runtime',
     packageVersion: AGENT_RUNTIME_VERSION,
-    reason: `Runtime snapshot contains no worker with id or label '${worker}'`,
+    reason: `Runtime snapshot contains no worker with id '${worker}'`,
     reproduction:
       "import { loadTopSnapshot } from '@tangle-network/agent-runtime/tui'; console.log(loadTopSnapshot(rootDir).supervisors.flatMap((supervisor) => supervisor.workers));",
   }
@@ -99,7 +99,7 @@ function missingSupervisorIssue(supervisorId: string): SupervisorCapabilityIssue
 }
 
 function findWorker(workers: readonly WorkerView[], target: string): WorkerView | undefined {
-  return workers.find((worker) => worker.id === target || worker.label === target)
+  return workers.find((worker) => worker.id === target)
 }
 
 export class RuntimeSupervisorController {
@@ -131,7 +131,7 @@ export class RuntimeSupervisorController {
   steerWorker(
     rootDir: string,
     supervisorId: string,
-    workerIdOrLabel: string,
+    workerId: string,
     operationId: string,
     message: string,
     source = 'braid',
@@ -139,13 +139,12 @@ export class RuntimeSupervisorController {
   ): SupervisorWorkerSteerResult {
     const snapshot = this.#watcher.snapshot(rootDir)
     const supervisor = snapshot.supervisors.find((candidate) => candidate.id === supervisorId)
-    const worker =
-      supervisor === undefined ? undefined : findWorker(supervisor.workers, workerIdOrLabel)
+    const worker = supervisor === undefined ? undefined : findWorker(supervisor.workers, workerId)
     if (worker === undefined) {
       return {
         status: 'unavailable',
-        worker: workerIdOrLabel,
-        issue: missingWorkerIssue(workerIdOrLabel),
+        worker: workerId,
+        issue: missingWorkerIssue(workerId),
       }
     }
     const result = this.#write(rootDir, supervisorId, worker.id, {
@@ -176,7 +175,7 @@ export class RuntimeSupervisorController {
   cancelWorker(
     rootDir: string,
     supervisorId: string,
-    workerIdOrLabel: string,
+    workerId: string,
     operationId: string,
     reason = 'cancelled by user',
     source = 'braid',
@@ -185,16 +184,16 @@ export class RuntimeSupervisorController {
     if (supervisor === undefined) {
       return {
         status: 'unavailable',
-        worker: workerIdOrLabel,
+        worker: workerId,
         issue: missingSupervisorIssue(supervisorId),
       }
     }
-    const worker = findWorker(supervisor.workers, workerIdOrLabel)
+    const worker = findWorker(supervisor.workers, workerId)
     if (worker === undefined) {
       return {
         status: 'unavailable',
-        worker: workerIdOrLabel,
-        issue: missingWorkerIssue(workerIdOrLabel),
+        worker: workerId,
+        issue: missingWorkerIssue(workerId),
       }
     }
     const cancellation = this.#cancelWorker(supervisor.stateDir, worker.id, operationId, {
@@ -234,7 +233,7 @@ export class RuntimeSupervisorController {
   async attachWorker(
     rootDir: string,
     supervisorId: string,
-    workerIdOrLabel: string,
+    workerId: string,
     signal?: AbortSignal,
   ): Promise<SupervisorWorkerAttachResult> {
     signal?.throwIfAborted()
@@ -242,18 +241,18 @@ export class RuntimeSupervisorController {
     if (supervisor === undefined) {
       return {
         status: 'unavailable',
-        worker: workerIdOrLabel,
+        worker: workerId,
         reason: 'unknown-node',
         issue: missingSupervisorIssue(supervisorId),
       }
     }
-    const worker = findWorker(supervisor.workers, workerIdOrLabel)
+    const worker = findWorker(supervisor.workers, workerId)
     if (worker === undefined) {
       return {
         status: 'unavailable',
-        worker: workerIdOrLabel,
+        worker: workerId,
         reason: 'unknown-node',
-        issue: missingWorkerIssue(workerIdOrLabel),
+        issue: missingWorkerIssue(workerId),
       }
     }
     if (this.#providers === undefined) {
