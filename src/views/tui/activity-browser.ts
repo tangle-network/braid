@@ -38,7 +38,7 @@ export class ActivityBrowserPanel extends EntityBrowser {
   constructor(theme: BraidTheme, options: ActivityBrowserOptions) {
     const scopeState: { scope: ActivityBrowserScope } = { scope: options.scope ?? 'all' }
     super(theme, {
-      document: () =>
+      document: (selectedId) =>
         activityDocument(
           options.view(),
           scopeState.scope,
@@ -46,6 +46,7 @@ export class ActivityBrowserPanel extends EntityBrowser {
           options.emptyMessage,
           options.pinned,
           options.workerAttachAvailable?.(),
+          selectedId,
         ),
       rows: options.rows,
       onClose: options.onClose,
@@ -80,6 +81,7 @@ export function activityDocument(
   emptyMessage?: string,
   pinned?: string,
   workerAttachAvailable?: boolean,
+  selectedId?: string,
 ): EntityBrowserDocument {
   const details = new Map(
     (view.entityDetails ?? []).map((detail) => [detailKey(detail), detail] as const),
@@ -89,10 +91,14 @@ export function activityDocument(
     .items.filter((item) => included(item, scope))
     .slice()
     .reverse()
+  const selected = items.find((item) => item.id === selectedId)
   return {
     title: scope === 'all' ? 'activity' : scope,
     ...(scope === 'runs' ? { context: 'Enter opens details and focuses controls' } : {}),
-    filterHint: activityFooter(scope, view, workerAttachAvailable),
+    filterHint:
+      selected?.kind === 'native-child'
+        ? 'native child: read only · tab filter'
+        : activityFooter(scope, view, workerAttachAvailable),
     ...(pinned === undefined ? {} : { pinned }),
     ...(notice === undefined ? {} : { notice }),
     emptyMessage:
@@ -100,10 +106,35 @@ export function activityDocument(
       (scope === 'analyses'
         ? 'No trace analyses have been recorded.'
         : scope === 'workers'
-          ? 'No runtime workers have been reported.'
+          ? 'No runtime workers or native children have been reported.'
           : 'No activity has been recorded.'),
-    rows: items.map((item) => rowFor(item, details, runs, view)),
+    rows: nativeParentsFirst(items).map((item) => rowFor(item, details, runs, view)),
   }
+}
+
+/** Place a reported native parent before its descendants without inventing missing ancestry. */
+function nativeParentsFirst(
+  items: readonly ActivityDocumentItem[],
+): readonly ActivityDocumentItem[] {
+  const byId = new Map(items.map((item) => [item.id, item] as const))
+  const seen = new Set<string>()
+  const output: ActivityDocumentItem[] = []
+  for (const item of items) {
+    if (seen.has(item.id)) continue
+    const ancestry: ActivityDocumentItem[] = []
+    let cursor: ActivityDocumentItem | undefined = item
+    while (cursor !== undefined && !seen.has(cursor.id)) {
+      seen.add(cursor.id)
+      ancestry.push(cursor)
+      const parent: ActivityDocumentItem | undefined =
+        cursor.kind === 'native-child' && (cursor.depth ?? 0) > 0 && cursor.parentId !== undefined
+          ? byId.get(cursor.parentId)
+          : undefined
+      cursor = parent?.kind === 'native-child' && parent.runId === item.runId ? parent : undefined
+    }
+    output.push(...ancestry.reverse())
+  }
+  return output
 }
 
 function activityAction(
@@ -291,7 +322,9 @@ function included(item: ActivityDocumentItem, scope: ActivityBrowserScope): bool
   if (scope === 'all') return true
   if (scope === 'runs') return item.kind === 'run'
   if (scope === 'analyses') return item.kind === 'analysis'
-  if (scope === 'workers') return item.kind === 'supervisor' || item.kind === 'worker'
+  if (scope === 'workers') {
+    return item.kind === 'supervisor' || item.kind === 'worker' || item.kind === 'native-child'
+  }
   return false
 }
 

@@ -172,3 +172,5 @@ The Runtime owns all supervisor files and provider resources created by this con
 Braid does not implement a supervisor, agent loop, worker process, or attach transport.
 
 The graph does not equate a branch, run, worker, and provider session.
+
+Native harness children are separate read-only rows in the [activity browser](activity.md), projected from shared `ChildTaskEvent` observations. They are never inserted into the Runtime worker graph or given worker controls.

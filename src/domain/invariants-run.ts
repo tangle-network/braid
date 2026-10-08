@@ -31,6 +31,7 @@ import {
   assertRetainedRunAdmission,
 } from './invariants-retained-admission.js'
 import { assertAutomationRuleRecord } from './invariants-runtime.js'
+import { assertNativeChildren } from './invariants-native-children.js'
 import { safePublicIdentifier } from './provider-values.js'
 
 export function assertRunRecord(record: RunRecord): void {
@@ -77,6 +78,7 @@ export function assertRunRecord(record: RunRecord): void {
     }
   }
   assertRetainedRunAdmission(record)
+  assertNativeChildren(record)
   assertRunInteractions(record)
   if (record.bindingId !== undefined) assertEntityId('binding', record.bindingId, 'run.bindingId')
   if (record.receiptId !== undefined) assertEntityId('receipt', record.receiptId, 'run.receiptId')

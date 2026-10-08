@@ -1,0 +1,12 @@
+ workers › Check tests                  
+────────────────────────────────────────
+ time: 2026-10-08T12:00:00.900Z         
+ elapsed: 800ms                         
+ run: run-000001                        
+ parent:                                
+ native-child:["run-000001","native-revi
+ ew"]                                   
+ source event: check-completed          
+ Native child · completed · read only   
+────────────────────────────────────────
+ ↑↓ · Pg · ←/esc back · page 1/2        

@@ -1,0 +1,12 @@
+ workers › Review patch                 
+────────────────────────────────────────
+ time: 2026-10-08T12:00:01.200Z         
+ elapsed: 1.2s                          
+ run: run-000001                        
+ parent: run:run-000001                 
+ source event: review-completed         
+ Native child · completed · read only   
+ child: native-review                   
+ runner: codex                          
+────────────────────────────────────────
+ ↑↓ · Pg · ←/esc back · page 1/2        

@@ -1,4 +1,5 @@
 import type { BraidState } from '../../domain/state.js'
+import { nativeChildActivity } from './native-child-activity.js'
 import { sanitizeTerminalText, sanitizeTitle } from './sanitize.js'
 import { recentWorkersForActivity } from './semantic-activity-limit.js'
 import { compareSemanticText } from './semantic-graph-filters.js'
@@ -69,9 +70,10 @@ function activityForRun(run: BraidState['runs'][number], output: SemanticActivit
     startedAt: run.startedAt,
     ...(runElapsedMs === undefined ? {} : { elapsedMs: runElapsedMs }),
   })
+  output.push(...nativeChildActivity(run))
 
   for (const item of run.activity) {
-    if (item.type === 'session.updated') continue
+    if (item.type === 'session.updated' || item.type === 'child-task') continue
     const occurredAt = item.source?.occurredAt ?? run.updatedAt
     add(output, {
       id: `activity:${item.id}`,
@@ -88,7 +90,7 @@ function activityForRun(run: BraidState['runs'][number], output: SemanticActivit
   }
 
   for (const event of run.eventDetails) {
-    if (event.type === 'session.updated') continue
+    if (event.type === 'session.updated' || event.type === 'child-task') continue
     add(output, {
       id: `event:${run.id}:${event.eventId}`,
       kind: 'system',

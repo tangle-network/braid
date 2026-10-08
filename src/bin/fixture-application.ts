@@ -2,6 +2,7 @@ import { AgentRuntimeExecutionPort } from '../adapters/runtime/agent-runtime-exe
 import { createBraidApplication } from '../app/composition.js'
 import { DEFAULT_RUN_CAPABILITIES } from '../ports/execution.js'
 import { deterministicBackend } from '../testing/deterministic-backend.js'
+import { createNativeChildUiFixture } from '../testing/native-child-ui-fixture.js'
 import { PRODUCT_DEMO_CONNECTION, PRODUCT_DEMO_PROFILE } from '../testing/product-demo-fixture.js'
 import { createSupervisionUiFixture } from '../testing/supervision-ui-fixture.js'
 import type { CliOptions } from './args.js'
@@ -16,6 +17,7 @@ export function openFixtureApplication(options: CliOptions) {
     fixture: options.fixture,
     ...(productDemo ? { profile: PRODUCT_DEMO_PROFILE } : {}),
     ...(options.uiFixture === 'supervision' ? { intelligence: createSupervisionUiFixture() } : {}),
+    ...(options.uiFixture === 'native-children' ? { execution: createNativeChildUiFixture() } : {}),
     ...(cancellationUnavailable
       ? {
           execution: new AgentRuntimeExecutionPort(

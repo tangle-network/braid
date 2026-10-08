@@ -1,0 +1,24 @@
+ workers › Check tests                                                          
+────────────────────────────────────────────────────────────────────────────────
+ time: 2026-10-08T12:00:00.900Z                                                 
+ elapsed: 800ms                                                                 
+ run: run-000001                                                                
+ parent: native-child:["run-000001","native-review"]                            
+ source event: check-completed                                                  
+ Native child · completed · read only                                           
+ child: native-check                                                            
+ runner: codex                                                                  
+ model: fixture/native-model                                                    
+ tokens: not reported                                                           
+ cost: not reported                                                             
+ parent child: native-review                                                    
+ terminal reason: Fixture assertions passed                                     
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+────────────────────────────────────────────────────────────────────────────────
+ ↑↓ · Pg · ←/esc back · native child: read only · tab filter                    

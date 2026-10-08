@@ -439,6 +439,12 @@ Conflicting rules fail closed and require user response.
 
 `/automate disable <rule-id>` and `/automate delete <rule-id>` preserve their audited lifecycle through the same application actions used by headless clients.
 
+## Native child history
+
+Native child observations and their source event identities are retained on the owning run. Snapshot projection version 2 is stored inside the encrypted state payload. Earlier snapshots rebuild from the retained journal so valid historical child events enter the new projection. Children are deduplicated within each run, including after restart; identical child identifiers in different runs remain distinct.
+
+The projection retains at most 512 children and 8,192 source event identities per run. An observation that would exceed either limit freezes further child updates and marks that history incomplete. The last observed child status remains visible and is not inferred from the parent run.
+
 ## Graph and analysis acceptance
 
 | ID | Required proof |

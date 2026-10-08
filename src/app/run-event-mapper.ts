@@ -14,6 +14,7 @@ import type {
 } from '../domain/events.js'
 import type { ExecutionEnvironmentObservation } from '../domain/execution-observation.js'
 import { localInteractionId } from '../domain/interaction-identity.js'
+import { nativeChildEvent } from '../domain/native-children.js'
 import { redactSensitiveText, redactStructuredValue } from '../domain/redaction.js'
 import {
   providerHttpFailureDiagnostic,
@@ -340,12 +341,23 @@ export function providerEventFor(
   provider: ProviderEventMeta,
   streamSanitizer?: RuntimeStreamSanitizer,
 ): BraidEvent {
+  const child = event.type === 'child-task' ? nativeChildEvent(event) : undefined
+  if (event.type === 'child-task' && child === undefined) {
+    return {
+      kind: 'run.warning',
+      runId,
+      code: 'NATIVE_CHILD_EVENT_INVALID',
+      message: 'A native child update was invalid and could not be projected.',
+      provider,
+    }
+  }
   const detailEvent =
-    event.type === 'raw'
+    child ??
+    (event.type === 'raw'
       ? ({ type: 'raw', event: { redacted: true } } as BraidRuntimeEvent)
       : event.type === 'unknown'
         ? ({ type: 'unknown', payload: { redacted: true } } as BraidRuntimeEvent)
-        : event
+        : event)
   switch (event.type) {
     case 'text_delta':
       return {
@@ -519,7 +531,7 @@ export function providerEventFor(
           eventId: provider.eventId,
           sequence: provider.providerSequence,
           receivedAt: provider.receivedAt ?? new Date().toISOString(),
-          event: safeValue(detailEvent) as BraidRuntimeEvent,
+          event: (child ?? safeValue(detailEvent)) as BraidRuntimeEvent,
         },
         provider,
       }
@@ -534,7 +546,7 @@ export function providerEventFor(
           ...(provider.cursor === undefined ? {} : { cursor: provider.cursor }),
           ...(provider.occurredAt === undefined ? {} : { occurredAt: provider.occurredAt }),
           receivedAt: provider.receivedAt ?? new Date().toISOString(),
-          event: safeValue(detailEvent) as BraidRuntimeEvent,
+          event: (child ?? safeValue(detailEvent)) as BraidRuntimeEvent,
         },
         provider,
       }

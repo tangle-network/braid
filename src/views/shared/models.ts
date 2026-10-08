@@ -363,6 +363,7 @@ export interface ActivityItemView {
     | 'tool'
     | 'supervisor'
     | 'worker'
+    | 'native-child'
     | 'interaction'
     | 'analysis'
     | 'environment'

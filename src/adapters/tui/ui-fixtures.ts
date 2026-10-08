@@ -20,6 +20,7 @@ export type UiFixture =
   | 'comparison'
   | 'product-demo'
   | 'supervision'
+  | 'native-children'
   | 'cancellation-unavailable'
 
 export const FIXTURE_INTERACTION: InteractionView = Object.freeze({

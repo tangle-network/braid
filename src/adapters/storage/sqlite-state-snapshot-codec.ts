@@ -77,7 +77,10 @@ export function materializedSnapshotFromPayload(
 ): MaterializedStateSnapshot {
   const candidate: unknown = {
     kind: 'braid.materialized-state',
-    schemaVersion: 1,
+    schemaVersion:
+      payload !== null && typeof payload === 'object' && !Array.isArray(payload)
+        ? ((payload as Readonly<Record<string, JsonValue>>).projectionVersion ?? 1)
+        : 1,
     scopeId: metadata.scopeId,
     generation: metadata.generation,
     eventId: metadata.eventId,

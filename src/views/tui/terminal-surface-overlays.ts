@@ -236,6 +236,13 @@ export class TerminalSurfaceOverlays {
       this.openUnavailable('activity action unavailable', 'Select an activity row first')
       return
     }
+    if (selected.kind === 'native-child') {
+      this.openUnavailable(
+        'native child controls unavailable',
+        'The runner reports this child as activity. Runtime worker controls do not apply.',
+      )
+      return
+    }
     if (action === 'steer') {
       this.#openWorkerSteer(selected)
       return

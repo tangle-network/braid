@@ -1,0 +1,12 @@
+ workers › Review patch                 
+────────────────────────────────────────
+ model: fixture/native-model            
+ observed tokens: 24 in / 8 out         
+ cost: not reported                     
+ Child usage is shown separately; it is 
+ not added to run totals.               
+ terminal reason: Fixture review        
+ complete                               
+                                        
+────────────────────────────────────────
+ ↑↓ · Pg · ←/esc back · page 2/2        
