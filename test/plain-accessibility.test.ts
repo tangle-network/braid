@@ -3,7 +3,9 @@ import test from 'node:test'
 import {
   createInteractionRequest,
   interactionResponseBinding,
+  interactionRequestMaterial,
 } from '../src/app/interaction-request.js'
+import { providerEventFor } from '../src/app/run-event-mapper.js'
 import type { BraidEvent, BraidEventEnvelope } from '../src/domain/events.js'
 import { createAdmissionReceipt } from '../src/domain/receipts.js'
 import type { BraidViewModel, InteractionView } from '../src/views/shared/models.js'
@@ -82,6 +84,64 @@ test('semantic projection keeps detached state and only public interaction reque
   assert.equal('default' in projected, false)
   assert.equal(JSON.stringify(interaction).includes('\u001b'), false)
   assert.equal(JSON.stringify(interaction).includes('\u0007'), false)
+})
+
+test('permission tool input is reviewable only when the bounded public projection is unchanged', () => {
+  const projectInput = (input: Record<string, unknown>, throughMapper = false) => {
+    const exact = createInteractionRequest({
+      ...interactionRequestMaterial(request),
+      subject: { type: 'tool', toolName: 'bash', input },
+    })
+    const projected = projectSemanticEvent(
+      envelope(
+        throughMapper
+          ? providerEventFor(
+              'run-plain',
+              { type: 'interaction', request: exact },
+              { eventId: 'permission-event', providerSequence: 1 },
+            )
+          : {
+              kind: 'run.interaction',
+              runId: 'run-plain',
+              request: exact,
+              responseBinding: interactionResponseBinding(exact),
+              provider: { eventId: 'permission-event', providerSequence: 1 },
+            },
+      ),
+    )
+    return (projected.interaction as Record<string, unknown>).subject as Record<string, unknown>
+  }
+  const input = { command: 'cat .braid-live/proof/marker.txt', workdir: '/workspace' }
+  assert.deepEqual(projectInput(input), {
+    type: 'tool',
+    toolName: 'bash',
+    input,
+    inputComplete: true,
+  })
+  assert.equal(projectInput(input, true).inputComplete, true)
+  const previouslySanitized = projectInput(
+    { ...input, command: `${input.command}\u001b]52;c;private-clipboard\u0007` },
+    true,
+  )
+  assert.deepEqual(previouslySanitized.input, input)
+  assert.equal(
+    previouslySanitized.inputComplete,
+    false,
+    'earlier redaction must not become an exact reviewed command',
+  )
+  for (const unsafe of [
+    { command: 'cat marker', authorization: 'permission-canary-secret' },
+    { command: 'cat marker\u001b]52;c;private-clipboard\u0007' },
+    { command: 'x'.repeat(12_000) },
+    Object.fromEntries(Array.from({ length: 200 }, (_, index) => [`field${index}`, index])),
+  ]) {
+    const projected = projectInput(unsafe)
+    assert.equal(projected.inputComplete, false)
+    const encoded = JSON.stringify(projected)
+    assert.equal(encoded.includes('permission-canary-secret'), false)
+    assert.equal(encoded.includes('private-clipboard'), false)
+    assert.ok(Buffer.byteLength(encoded) < 5_000)
+  }
 })
 
 test('semantic run admission keeps identity after projecting a full capability document', () => {

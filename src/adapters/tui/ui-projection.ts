@@ -31,7 +31,11 @@ import {
 } from '../../views/shared/sanitize.js'
 import { queryActivity } from '../../views/shared/semantic-activity.js'
 import { queryGraph } from '../../views/shared/semantic-graph.js'
-import { projectSemanticEvent, semanticPart } from '../../views/shared/semantic-projection.js'
+import {
+  projectSemanticEvent,
+  semanticPart,
+  semanticInteractionRequest,
+} from '../../views/shared/semantic-projection.js'
 import {
   type GraphQueryResult,
   viewStatusForSemanticStatus,
@@ -740,7 +744,19 @@ export function toHeadlessState(
     }),
     sessionUsage: sessionUsageFor(state),
     environments: Object.freeze(state.environments.map(environmentView)),
-    interactions: interactionViews(state),
+    interactions: interactionViews(state).map((view) => {
+      const interaction = state.runs
+        .find((run) => run.id === view.runId)
+        ?.interactions.find((item) => item.request.id === view.interactionId)
+      return {
+        ...view,
+        ...(interaction
+          ? {
+              request: semanticInteractionRequest(interaction.request, interaction.responseBinding),
+            }
+          : {}),
+      }
+    }),
     queue: queueViews(state),
     activeRunId: state.activeRunId,
     focusedRunId: state.focusedRunId,

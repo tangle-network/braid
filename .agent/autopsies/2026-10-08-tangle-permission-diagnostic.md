@@ -1,0 +1,15 @@
+# Cloud run blocked on an unanswered permission
+
+Verdict: ROOT_CAUSE_CONFIRMED for this proof omission. The full recovery flow remains unproved.
+
+The [safe receipt](../../artifacts/verification/runtime-refresh/tangle-permission-diagnostic-20261008.summary.json) records one failed run through packed Braid, Runtime 0.309.0, Tangle Provider 3.6.5, and Sandbox 0.60.22. The runner was OpenCode with `tangle-router/glm-5.3`. The original workspace-tool deadline stayed at 180 seconds.
+
+The exact provider execution requested permission to run its marker command 21.264 seconds after admission. Its public request offered `allow_once` and `deny`, with a 300-second permission timeout. The proof waited for a workspace tool and never answered permissions. Its last 30 captured events were `model-processing` with phase `thinking`. Native evidence identifies those events as quiet-process timer ticks, not model progress. The first tool later timed out, and the agent asked again.
+
+This evidence rules out failure to reach inference for this run. It does not establish that Braid rendered the permission correctly: the old diagnostic retained the final event tail rather than the pending interaction. The corrected proof must observe that request through Braid, submit a scoped response through `respond_interaction`, and verify its acknowledgement before claiming a tool result.
+
+Before cleanup, the maintained SDK captured the exact session execution ledger and native process evidence. There was one active provider execution. The native capture is explicitly partial because the execution was still active. Its source image reported sidecar revision `14de5302f6346a89e2d4b8245193aea8c725a137`. Raw artifacts remain private under `/Users/drew/.local/state/agent-work/braid/capture-corrected-20261008/artifacts`; their hashes are in the safe receipt.
+
+Automatic cleanup did not confirm resource deletion. The exact sandbox still existed with the expected Braid owner, retained lifecycle, and session identity. The maintained platform CLI deleted it, and a subsequent exact lookup confirmed absence. The original Braid process and descendants had already exited. A shutdown acknowledgement timeout obscured the later automatic cleanup error. A separate read-only check reproduced duplicate IDs during offset pagination over the changing account inventory. The cleanup performed that scan before deleting its known resource. A single unpaginated SDK read returned all 2,017 non-deleted resources without duplicates. The fix deletes the exact owned resource first and uses the complete inventory for duplicate-resource discovery. The original hidden exception remains unknown; the reproduced failure explains how this ordering can leak a known resource.
+
+Next deciding check: run the same recovery proof with a bounded permission responder and retained interaction receipts. Keep the deadline, workspace checks, exact provider identities, restart, replay, follow-up, cancellation, and cleanup requirements. Record unexpected requests instead of granting arbitrary commands. Do not assign this cause to the two earlier runs, which have no equivalent native capture.

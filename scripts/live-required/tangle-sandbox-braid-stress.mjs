@@ -34,6 +34,7 @@ import {
   latestCursorFromResponses,
   MissingIntegrationError,
   proofCoordinates,
+  proofInteractionTimeline,
   resourceDelta,
   rpcRoundTrip,
   runObservations,
@@ -52,7 +53,6 @@ const repository = resolve(dirname(scriptPath), '../..')
 const DEFAULT_TIMEOUT_MS = 180_000
 const DEFAULT_HOLD_MS = 30_000
 const DEFAULT_IDLE_TTL_SECONDS = 1_800
-const SANDBOX_LIST_PAGE_SIZE = 100
 const CLEANUP_RETRY_ATTEMPTS = 5
 const CLEANUP_RETRY_DELAY_MS = 1_000
 const CLEANUP_RETRY_MAX_DELAY_MS = 5_000
@@ -330,27 +330,38 @@ function proofPrompts(coordinates, holdMs) {
   const challengePath = continuityChallengePath(coordinates)
   const responsePath = continuityResponsePath(coordinates)
   const holdSeconds = Math.max(5, Math.ceil(holdMs / 1000))
+  const commands = {
+    first: [
+      `mkdir -p ${shellQuote(dirname(path))} && printf '%s\\n' ${shellQuote(coordinates.marker)} > ${shellQuote(path)} && cat ${shellQuote(path)}`,
+      'git -C . rev-parse --is-inside-work-tree || git -C . init; git -C . rev-parse --is-inside-work-tree',
+      `sleep ${holdSeconds}`,
+    ],
+    followUp: [
+      `test -f '${path}' && sha256sum -- '${challengePath}' | awk '{print $1}' > '${responsePath}'`,
+    ],
+    cancel: [`cat ${shellQuote(path)}`, `sleep ${Math.max(60, holdSeconds * 2)}`],
+  }
   return {
+    commands,
+    readPaths: { first: [path], followUp: [responsePath], cancel: [path] },
     first: [
       'Use the current Tangle Sandbox working directory for every command in this turn.',
-      `Create ${path} and write exactly ${coordinates.marker} followed by a newline.`,
-      `Read ${path}, print its contents, and prove the workspace is usable with a shell command.`,
-      'Run git -C . rev-parse --is-inside-work-tree. If it fails, run git -C . init.',
-      'Then run git -C . rev-parse --is-inside-work-tree again and print its result.',
-      `Execute the shell command sleep ${holdSeconds} before the final response to keep the run active.`,
+      'Run these exact shell commands as three separate tool calls, in order. Do not combine or alter them:',
+      ...commands.first.map((command, index) => `${index + 1}.\n\`\`\`sh\n${command}\n\`\`\``),
       `Reply with exactly ${coordinates.marker}.`,
-    ].join(' '),
+    ].join('\n\n'),
     followUp: [
       'Use the existing Tangle Sandbox workspace.',
-      `Perform exactly these two actions, in order, with no other command or file change: run this one shell command once: test -f '${path}' && sha256sum -- '${challengePath}' | awk '{print $1}' > '${responsePath}'; then read ${responsePath} once.`,
+      `Perform exactly these two actions, in order, with no other command or file change: run this one shell command once: ${commands.followUp[0]}; then use the read tool to read ${responsePath} once.`,
       `Do not read, write, truncate, rename, or delete ${challengePath}; do not run the shell command again.`,
       'Reply with only the lowercase 64-character digest from the response file.',
     ].join(' '),
     cancel: [
       'Keep working in the same Tangle Sandbox workspace.',
-      `Read ${path}, then execute the shell command sleep ${Math.max(60, holdSeconds * 2)} before replying.`,
+      'Run these exact shell commands as separate tool calls, in order. Do not combine or alter them:',
+      ...commands.cancel.map((command, index) => `${index + 1}.\n\`\`\`sh\n${command}\n\`\`\``),
       `Reply with exactly ${coordinates.cancelMarker} only if cancellation does not arrive.`,
-    ].join(' '),
+    ].join('\n\n'),
   }
 }
 
@@ -440,22 +451,20 @@ async function prepareContinuityChallenge(client, controlRef, coordinates) {
 }
 
 async function listAllSandboxes(client) {
-  const boxes = []
+  // An unpaginated SDK list is one complete inventory. Offset pages over a
+  // changing shared account can repeat or omit resources between requests.
+  const boxes = await client.list({
+    status: ['pending', 'provisioning', 'running', 'stopped', 'failed', 'expired'],
+  })
+  if (!Array.isArray(boxes)) throw new Error('Sandbox list returned an invalid inventory')
   const seenIds = new Set()
-  let offset = 0
-  for (;;) {
-    const page = await client.list({ limit: SANDBOX_LIST_PAGE_SIZE, offset })
-    if (!Array.isArray(page)) throw new Error('Sandbox list returned an invalid page')
-    for (const box of page) {
-      if (typeof box?.id === 'string') {
-        if (seenIds.has(box.id)) throw new Error(`Sandbox list repeated ${box.id}`)
-        seenIds.add(box.id)
-      }
-      boxes.push(box)
+  for (const box of boxes) {
+    if (typeof box?.id === 'string') {
+      if (seenIds.has(box.id)) throw new Error(`Sandbox list repeated ${box.id}`)
+      seenIds.add(box.id)
     }
-    if (page.length < SANDBOX_LIST_PAGE_SIZE) return boxes
-    offset += page.length
   }
+  return boxes
 }
 
 function transientCleanupDelay(error) {
@@ -595,6 +604,59 @@ function diagnosticText(value) {
     .slice(0, 512)
 }
 
+function diagnosticRecord(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : undefined
+}
+
+function diagnosticToken(value) {
+  const text = diagnosticText(value)
+  return text !== undefined && /^[a-z0-9_.:-]{1,128}$/iu.test(text) ? text : undefined
+}
+
+function diagnosticIdentity(value, sequence) {
+  const fields = Object.fromEntries(
+    ['eventId', 'cursor'].flatMap((name) => {
+      const field = value?.[name]
+      return typeof field === 'string' && field.length > 0 && field.length <= 4096
+        ? [[`${name}Sha256`, sha256(field)]]
+        : []
+    }),
+  )
+  if (Number.isSafeInteger(sequence) && sequence >= 0) fields.sequence = sequence
+  return fields
+}
+
+function providerFailureDiagnostic(payload) {
+  // Read the public semantic projection, not Braid's internal event envelope.
+  const canonical = diagnosticRecord(payload.unknown)
+  const source = diagnosticRecord(payload.source)
+  const eventType = diagnosticRecord(payload.harnessSession) ? 'session.updated' : canonical?.type
+  if (!canonical && !source && eventType === undefined) return undefined
+  // Never inspect raw/unknown payloads or tool input/output. Braid intentionally erases native data.
+  const redacted = canonical?.type === 'raw' || canonical?.type === 'unknown'
+  const tokens = Object.fromEntries(
+    [
+      ['eventType', eventType],
+      ...(!redacted
+        ? [
+            ['status', canonical?.status],
+            ['phase', canonical?.phase],
+            ['errorCode', canonical?.code ?? diagnosticRecord(canonical?.error)?.code],
+          ]
+        : []),
+    ].flatMap(([name, field]) => {
+      const token = diagnosticToken(field)
+      return token === undefined ? [] : [[name, token]]
+    }),
+  )
+  const sourceIdentity = diagnosticIdentity(source, source?.providerSequence)
+  return {
+    ...tokens,
+    ...(redacted ? { nativeDiagnostic: 'unavailable-redacted' } : {}),
+    source: sourceIdentity,
+  }
+}
+
 export function cloudFailureEventTimeline(responses, runId) {
   return (responses ?? [])
     .filter((response) => response?.type === 'event')
@@ -624,19 +686,22 @@ export function cloudFailureEventTimeline(responses, runId) {
           return field === undefined ? [] : [[name, field]]
         }),
       )
+      const provider = providerFailureDiagnostic(payload)
       return [
         {
           ...(Number.isSafeInteger(response.sequence) ? { sequence: response.sequence } : {}),
+          ...(Number.isSafeInteger(event.sequence) ? { journalSequence: event.sequence } : {}),
           kind,
           ...(eventRunId === undefined ? {} : { runId: eventRunId }),
           ...fields,
+          ...(provider === undefined ? {} : { provider }),
         },
       ]
     })
     .slice(-30)
 }
 
-function failureDiagnostics(session, runId) {
+export function failureDiagnostics(session, runId) {
   if (!session) return undefined
   const responses = session.responses ?? []
   const stateResponse = [...responses]
@@ -656,11 +721,22 @@ function failureDiagnostics(session, runId) {
     }))
   const stderr = session.stderr?.slice(-8_192).trim()
   const eventTimeline = cloudFailureEventTimeline(responses, runId)
+  const interactionTimeline = proofInteractionTimeline(responses, runId)
   return {
     responseCount: responses.length,
-    ...(run ? { run: runSnapshot(run, stateResponse.state) } : {}),
+    ...(run
+      ? {
+          lastObservedRun: {
+            ...runSnapshot(run, stateResponse.state),
+            updatedAt: run.updatedAt,
+            stateSequence: stateResponse.state.sequence,
+            stateRevision: stateResponse.state.revision,
+          },
+        }
+      : {}),
     ...(errors.length > 0 ? { errors } : {}),
     ...(eventTimeline.length > 0 ? { eventTimeline } : {}),
+    ...(interactionTimeline.length > 0 ? { interactionTimeline } : {}),
     ...(stderr ? { stderr } : {}),
   }
 }
@@ -856,10 +932,11 @@ export async function cleanupOwnedRetainedResources(
     (expectedSessionId !== undefined &&
       matchesResourceIdentity(box, expectedResourceIdentityForSession(expectedSessionId))) ||
     ownedByOperation(box, operationId)
-  const listed = (await cleanupProviderCall(() => listAllSandboxes(client))).filter(predicate)
+  const deletions = []
+  // Remove the known resource before account discovery can fail or become slow.
   if (controlRef?.environmentId) {
     const exact = await cleanupProviderCall(() => client.get(controlRef.environmentId))
-    if (exact && !listed.some((box) => box.id === exact.id)) {
+    if (exact) {
       if (!predicate(exact)) {
         throw new MissingIntegrationError(
           'The exact control resource failed ownership validation',
@@ -868,11 +945,15 @@ export async function cleanupOwnedRetainedResources(
           },
         )
       }
-      listed.push(exact)
+      deletions.push(await deleteOwnedResource(client, exact, predicate))
     }
   }
-  const deletions = []
-  for (const box of listed) deletions.push(await deleteOwnedResource(client, box, predicate))
+  const listed = (await cleanupProviderCall(() => listAllSandboxes(client))).filter(predicate)
+  for (const box of listed) {
+    if (!deletions.some((entry) => entry.id === box.id)) {
+      deletions.push(await deleteOwnedResource(client, box, predicate))
+    }
+  }
   const remaining = (await cleanupProviderCall(() => listAllSandboxes(client))).filter(predicate)
   const confirmed = deletions.every((entry) => entry.confirmed) && remaining.length === 0
   if (!confirmed) {
@@ -884,8 +965,8 @@ export async function cleanupOwnedRetainedResources(
   return {
     confirmed,
     mode: 'exact-owned-resource-set',
-    matchedCount: listed.length,
-    removedIds: listed.map((box) => box.id),
+    matchedCount: deletions.length,
+    removedIds: deletions.map((entry) => entry.id),
     deletions,
     remainingIds: [],
   }
@@ -1399,6 +1480,16 @@ export async function runBraidSandboxStress({
     throw new Error('BRAID_TANGLE_SANDBOX_IDLE_TTL_SECONDS must be an integer from 60 to 604800')
   }
   const prompts = proofPrompts(coordinates, holdMs)
+  const permissionReceipts = []
+  let workspaceCwd
+  const permissionPolicy = (phase, previousResponses) => ({
+    proofId: coordinates.proofId,
+    commands: prompts.commands[phase],
+    readPaths: prompts.readPaths[phase].flatMap((path) => [path, resolve(workspaceCwd, path)]),
+    workspaceCwd,
+    receipts: permissionReceipts,
+    ...(previousResponses === undefined ? {} : { previousResponses }),
+  })
   const phases = {}
   const unresolvedIntegrationNeeds = []
   const usageRecords = []
@@ -1438,6 +1529,7 @@ export async function runBraidSandboxStress({
   let cleanupMode
   let cleanupIdentity
   let cleanupError
+  let resourceCleanupError
   let failure
   let diagnostics
   let finalUsage
@@ -1535,6 +1627,25 @@ export async function runBraidSandboxStress({
     )
     knownEnvironmentId = firstObservation.controlRef.environmentId
     proofWindow?.admitted(proofScope, firstRunId, knownEnvironmentId)
+    workspaceCwd = await phase('firstProcess.observeWorkspace', async () => {
+      const box = await retainedBox(
+        client,
+        firstObservation.controlRef,
+        'Permission workspace scope',
+      )
+      const observed = await box.exec('pwd', { sessionId: firstObservation.controlRef.sessionId })
+      assert.equal(
+        observed.exitCode ?? observed.code,
+        0,
+        'Could not observe the exact session workspace',
+      )
+      const path = observed.stdout?.trim()
+      assert.ok(
+        typeof path === 'string' && path.startsWith('/') && !/[\r\n\0]/u.test(path),
+        'The session workspace was not an absolute path',
+      )
+      return path
+    })
     try {
       tagObservation = await observeRetainedResource(client, firstObservation.controlRef)
     } catch (error) {
@@ -1549,7 +1660,13 @@ export async function runBraidSandboxStress({
     assertNonTerminalRun(firstRunBeforeVisible, 'first Braid run')
     assert.equal(localRunCount(firstStateBeforeVisible.state, firstRunId), 1)
     await phase('firstProcess.waitVisible', () =>
-      waitForWorkspaceToolEvents(firstSession, firstRunId, timeoutMs, 'first process'),
+      waitForWorkspaceToolEvents(
+        firstSession,
+        firstRunId,
+        timeoutMs,
+        'first process',
+        permissionPolicy('first'),
+      ),
     )
     const firstState = await stateRoundTrip(firstSession)
     const firstRun = firstState.state.runs?.find((run) => run.id === firstRunId)
@@ -1606,7 +1723,12 @@ export async function runBraidSandboxStress({
     )
     assertAck(reconnect, 'reconnect')
     const freshTerminal = await phase('freshProcess.waitTerminal', () =>
-      waitForTerminal(freshSession, firstRunId, timeoutMs),
+      waitForTerminal(
+        freshSession,
+        firstRunId,
+        timeoutMs,
+        permissionPolicy('first', firstResponses),
+      ),
     )
     const freshRun = freshTerminal.run
     assert.equal(
@@ -1671,7 +1793,7 @@ export async function runBraidSandboxStress({
     const followUpRunId = followUpAck.runId
     assert.equal(typeof followUpRunId, 'string', 'follow-up send acknowledgement has no run ID')
     const followUpTerminal = await phase('followUp.waitTerminal', () =>
-      waitForTerminal(freshSession, followUpRunId, timeoutMs),
+      waitForTerminal(freshSession, followUpRunId, timeoutMs, permissionPolicy('followUp')),
     )
     assert.equal(followUpTerminal.run?.status, 'completed')
     assert.equal(
@@ -1731,7 +1853,7 @@ export async function runBraidSandboxStress({
     cancelRunId = cancelSendAck.runId
     assert.equal(typeof cancelRunId, 'string', 'cancel send acknowledgement has no run ID')
     const cancelObservation = await phase('cancel.observeControl', () =>
-      waitForControlIdentity(freshSession, cancelRunId, timeoutMs),
+      waitForControlIdentity(freshSession, cancelRunId, timeoutMs, permissionPolicy('cancel')),
     )
     const cancelState = await stateRoundTrip(freshSession)
     const cancelRun = cancelState.state.runs?.find((run) => run.id === cancelRunId)
@@ -1906,6 +2028,10 @@ export async function runBraidSandboxStress({
       followUp: followUpTerminal.run,
       cancelled: cancelled.run,
     })
+    assert.ok(
+      permissionReceipts.every((receipt) => receipt.outcome === 'responded'),
+      'Proof permission response evidence is incomplete',
+    )
     result = {
       schemaVersion: 'braid.tangle-sandbox-braid-stress.v1',
       status: 'passed',
@@ -2063,6 +2189,7 @@ export async function runBraidSandboxStress({
           collectIntegrationNeed(error, unresolvedIntegrationNeeds)
         }
       } catch (error) {
+        resourceCleanupError = error
         cleanupError ??= error
         collectIntegrationNeed(error, unresolvedIntegrationNeeds)
       }
@@ -2203,9 +2330,12 @@ export async function runBraidSandboxStress({
       freshControlRef: freshObservation?.controlRef,
       finalCursor,
     },
+    permissionReceipts,
+    ...(workspaceCwd === undefined ? {} : { permissionWorkspace: workspaceCwd }),
     ...(failure ? { failure: errorDetails(failure) } : {}),
     ...(diagnostics && Object.keys(diagnostics).length > 0 ? { diagnostics } : {}),
     ...(cleanupError ? { cleanupFailure: errorDetails(cleanupError) } : {}),
+    ...(resourceCleanupError ? { resourceCleanupFailure: errorDetails(resourceCleanupError) } : {}),
     ...(accountIdentityError ? { accountIdentityFailure: errorDetails(accountIdentityError) } : {}),
     ...(cleanupRecovery === undefined ? {} : { cleanupRecovery }),
     ...(Object.keys(failureProcessCleanup).length === 0 ? {} : { failureProcessCleanup }),

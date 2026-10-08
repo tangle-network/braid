@@ -193,6 +193,88 @@ test('retained cleanup retries transient provider reads before deleting the exac
   assert.deepEqual(result.remainingIds, [])
 })
 
+test('exact owned cleanup does not depend on an account census succeeding', async () => {
+  let deleted = false
+  const resource = {
+    id: controlRef.environmentId,
+    name: `braid-${controlRef.sessionId}`,
+    metadata: { owner: 'braid', lifecycle: 'retained', providerSessionId: controlRef.sessionId },
+    async delete() {
+      deleted = true
+    },
+  }
+  const client = {
+    async get() {
+      return deleted ? null : resource
+    },
+    async list() {
+      throw new Error('account census unavailable')
+    },
+  }
+  await assert.rejects(
+    cleanupOwnedRetainedResources(client, { controlRef }),
+    /account census unavailable/,
+  )
+  assert.equal(deleted, true, 'the known owned resource must be removed before the wider census')
+})
+
+test('cleanup excludes deleted account history while finding duplicate owned resources', async () => {
+  const deleted = new Set()
+  const resources = [controlRef.environmentId, 'sandbox-duplicate-proof'].map((id) => ({
+    id,
+    name: `braid-${controlRef.sessionId}`,
+    metadata: { owner: 'braid', lifecycle: 'retained', providerSessionId: controlRef.sessionId },
+    async delete() {
+      deleted.add(id)
+    },
+  }))
+  const client = {
+    async get(id) {
+      return deleted.has(id) ? null : resources.find((box) => box.id === id)
+    },
+    async list(options) {
+      assert.deepEqual(options.status, [
+        'pending',
+        'provisioning',
+        'running',
+        'stopped',
+        'failed',
+        'expired',
+      ])
+      assert.equal(deleted.has(controlRef.environmentId), true)
+      return resources.filter((box) => !deleted.has(box.id))
+    },
+  }
+  const result = await cleanupOwnedRetainedResources(client, { controlRef })
+  assert.equal(result.confirmed, true)
+  assert.equal(result.matchedCount, 2)
+  assert.deepEqual(result.removedIds.sort(), resources.map((box) => box.id).sort())
+})
+
+test('exact cleanup refuses a resource whose ownership changed', async () => {
+  let deleted = false
+  const client = {
+    async get() {
+      return {
+        id: controlRef.environmentId,
+        name: 'another-task',
+        metadata: { owner: 'another-app' },
+        async delete() {
+          deleted = true
+        },
+      }
+    },
+    async list() {
+      throw new Error('census must not precede exact ownership validation')
+    },
+  }
+  await assert.rejects(
+    cleanupOwnedRetainedResources(client, { controlRef }),
+    /ownership validation/,
+  )
+  assert.equal(deleted, false)
+})
+
 test('every telemetry field is observed, unavailable, provider-default, or explicitly in flight', () => {
   const state = { environments: [environment()] }
   const complete = telemetryDisclosure(terminalRun(), state, workspaceVerification, account)

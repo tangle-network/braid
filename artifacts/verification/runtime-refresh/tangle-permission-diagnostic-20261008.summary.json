@@ -1,0 +1,51 @@
+{
+  "schemaVersion": "braid.cloud-diagnostic-summary.v1",
+  "status": "failed",
+  "runId": "run-3af966ce-0551-4d94-8c9b-7fc7955c5edf",
+  "cohort": {
+    "runtime": "0.309.0",
+    "provider": "3.6.5",
+    "sandbox": "0.60.22"
+  },
+  "runner": "opencode",
+  "model": "tangle-router/glm-5.3",
+  "sidecarBundleRevision": "14de5302f6346a89e2d4b8245193aea8c725a137",
+  "acceptance": {
+    "workspaceToolDeadlineMs": 180000,
+    "changed": false,
+    "restartReached": false
+  },
+  "observation": {
+    "firstPermissionEvent": 15,
+    "firstPermissionAt": "2026-10-08T07:36:37.268000+00:00",
+    "permissionDelayAfterAdmissionMs": 21264,
+    "kind": "permission",
+    "tool": "bash",
+    "timeoutMs": 300000,
+    "offeredDecisions": [
+      "allow_once",
+      "deny"
+    ],
+    "proofResponded": false,
+    "heartbeatMeaning": "CLI process liveness; not model progress",
+    "providerExecutionCount": 1
+  },
+  "cause": "The proof waited for a workspace tool without answering its prerequisite permission. Live projection into Braid remains to be observed by the corrected proof.",
+  "cleanup": {
+    "originalAutomaticCleanupConfirmed": false,
+    "processExitAndDescendantsVerified": true,
+    "manualPlatformCliDeleteSucceeded": true,
+    "subsequentExactLookup": "not_found"
+  },
+  "evidence": {
+    "nativeCapture": "partial, active before deletion",
+    "nativeSha256": "7f857a21cd0173f7da8544231000dd87ae33e7c5ea16f19f4dd622fbed89c6b6",
+    "diagnosticSha256": "cd349cb68c19d3361e0624d30ff6379068ea2231ba7c6910406dc867a967b329",
+    "privateArtifactsRetained": true
+  },
+  "limits": [
+    "This attempt is not final registry-cohort verification.",
+    "No restart, replay, follow-up, cancellation, or durable root success is established.",
+    "Earlier attempts lack native captures; their cause is not retroactively assigned."
+  ]
+}

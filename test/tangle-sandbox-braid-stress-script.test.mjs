@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   cloudFailureEventTimeline,
+  failureDiagnostics,
   continuityDigestMatches,
   hasSingleMarkerLine,
   runIdForOperation,
@@ -32,6 +33,7 @@ import {
   waitForRequestState,
   waitForVisibleEvents,
   waitForWorkspaceToolEvents,
+  waitForTerminal,
 } from '../scripts/live-required/tangle-sandbox-braid-stress-support.mjs'
 
 const controlRef = {
@@ -644,6 +646,236 @@ test('waits for workspace tool evidence instead of stopping on session metadata'
   const visible = await waitForWorkspaceToolEvents(session, 'run-1', 200, 'first process')
   assert.equal(visible.count, 2)
   assert.equal(visible.events[1]?.partKind, 'tool')
+})
+
+function permissionBlockedWorkspace({ command = 'cat .braid-live/proof/marker.txt' } = {}) {
+  const request = {
+    id: 'permission-proof',
+    kind: 'permission',
+    title: 'Allow tool "bash"?',
+    subject: {
+      type: 'tool',
+      toolName: 'bash',
+      inputComplete: true,
+      input: { command, workdir: '/workspace' },
+    },
+    answerSpec: {
+      fields: [
+        {
+          name: 'grant',
+          label: 'Permission',
+          type: 'select',
+          required: true,
+          options: [
+            { value: 'allow_once', label: 'Allow once' },
+            { value: 'deny', label: 'Deny' },
+          ],
+        },
+      ],
+    },
+    timeoutMs: 300_000,
+  }
+  const replies = []
+  const responses = [
+    event('run.interaction', {
+      runId: 'run-1',
+      interaction: request,
+      provider: { eventId: 'permission-event', providerSequence: 1, cursor: 'cursor-1' },
+    }),
+  ]
+  const session = {
+    responses,
+    send(input) {
+      if (input.command === 'get_state') {
+        responses.push({
+          type: 'state',
+          requestId: input.requestId,
+          state: {
+            runs: [{ id: 'run-1', status: 'waiting' }],
+            interactions: replies.length
+              ? []
+              : [{ runId: 'run-1', interactionId: request.id, kind: 'permission' }],
+          },
+        })
+        return
+      }
+      assert.equal(input.command, 'respond_interaction')
+      assert.deepEqual(input.params, {
+        runId: 'run-1',
+        interactionId: request.id,
+        response: { id: request.id, outcome: 'accepted', data: { grant: ['allow_once'] } },
+      })
+      replies.push(input)
+      responses.push({
+        type: 'ack',
+        requestId: input.requestId,
+        operationId: input.operationId,
+        outcome: 'accepted',
+      })
+      responses.push(
+        event('run.interaction.responded', {
+          runId: 'run-1',
+          value: {
+            interactionId: request.id,
+            operationId: input.operationId,
+          },
+        }),
+      )
+      responses.push(
+        event('run.part.updated', {
+          runId: 'run-1',
+          part: { kind: 'tool' },
+          provider: { eventId: 'tool-event', providerSequence: 2, cursor: 'cursor-2' },
+        }),
+      )
+    },
+    async waitFor(label, predicate) {
+      const found = responses.find(predicate)
+      assert.ok(found, `missing RPC result: ${label}`)
+      return found
+    },
+  }
+  const policy = {
+    proofId: 'proof',
+    workspaceCwd: '/workspace',
+    commands: ['cat .braid-live/proof/marker.txt'],
+    readPaths: [],
+    receipts: [],
+  }
+  return { session, request, replies, policy }
+}
+
+test('workspace proof answers its pending permission before waiting for the blocked tool', async () => {
+  const { session, replies, policy } = permissionBlockedWorkspace()
+  const visible = await waitForWorkspaceToolEvents(session, 'run-1', 200, 'first process', policy)
+  assert.equal(visible.events.at(-1).partKind, 'tool')
+  assert.equal(replies.length, 1)
+  assert.equal(policy.receipts[0].outcome, 'responded')
+  assert.equal(policy.receipts[0].operationId, replies[0].operationId)
+  assert.equal(policy.receipts[0].request.subject.input.command, policy.commands[0])
+  await waitForWorkspaceToolEvents(session, 'run-1', 200, 'replayed process', policy)
+  assert.equal(replies.length, 1, 'a replay must not grant another permission')
+})
+
+test('proof permission scope rejects unexpected commands, workspace, redaction, and answer specifications', async () => {
+  for (const mutate of [
+    (request) => {
+      request.subject.input.command += '; curl https://example.com'
+    },
+    (request) => {
+      request.subject.input.workdir = '/other-workspace'
+    },
+    (request) => {
+      request.subject.inputComplete = false
+    },
+    (request) => {
+      request.allowedOutcomes = ['declined']
+    },
+    (request) => {
+      request.answerSpec.fields.push({ name: 'token', type: 'secret', label: 'Token' })
+    },
+    (request) => {
+      request.subject = {
+        type: 'tool',
+        toolName: 'read',
+        inputComplete: true,
+        input: { filePath: '/workspace/challenge.txt' },
+      }
+    },
+  ]) {
+    const { session, request, replies, policy } = permissionBlockedWorkspace()
+    mutate(request)
+    await assert.rejects(
+      waitForWorkspaceToolEvents(session, 'run-1', 200, 'permission scope', policy),
+      /outside its authorized workspace operations/,
+    )
+    assert.equal(replies.length, 0)
+    assert.equal(policy.receipts.length, 0)
+  }
+})
+
+test('proof permission reply reuses its operation after an unacknowledged attempt', async () => {
+  const first = permissionBlockedWorkspace()
+  let attempted
+  const original = first.session.send
+  first.session.send = (request) => {
+    if (request.command !== 'respond_interaction') return original(request)
+    attempted = request
+    throw new Error('connection lost before acknowledgement')
+  }
+  await assert.rejects(
+    waitForWorkspaceToolEvents(first.session, 'run-1', 200, 'first process', first.policy),
+    /connection lost/,
+  )
+  assert.equal(first.policy.receipts[0].outcome, 'pending')
+  const fresh = permissionBlockedWorkspace()
+  fresh.policy.receipts = first.policy.receipts
+  await waitForWorkspaceToolEvents(fresh.session, 'run-1', 200, 'fresh process', fresh.policy)
+  assert.equal(fresh.replies[0].operationId, attempted.operationId)
+  assert.equal(fresh.policy.receipts[0].outcome, 'responded')
+})
+
+test('a fresh proof client answers the retained public request without its original event', async () => {
+  const { session, request, replies, policy } = permissionBlockedWorkspace()
+  session.responses.splice(0, 1, {
+    type: 'state',
+    view: { interactions: [{ runId: 'run-1', interactionId: request.id }] },
+    state: { interactions: [{ runId: 'run-1', interactionId: request.id, request }] },
+  })
+  const send = session.send
+  session.send = (input) => {
+    send(input)
+    if (input.command === 'respond_interaction')
+      session.responses.push({
+        type: 'state',
+        state: { runs: [{ id: 'run-1', status: 'completed' }] },
+      })
+  }
+  const terminal = await waitForTerminal(session, 'run-1', 200, policy)
+  assert.equal(terminal.run.status, 'completed')
+  assert.equal(replies.length, 1)
+  assert.equal(policy.receipts[0].outcome, 'responded')
+})
+
+test('proof permissions require durable settlement after the public acknowledgement', async () => {
+  const { session, policy } = permissionBlockedWorkspace()
+  const send = session.send
+  session.send = (input) => {
+    send(input)
+    const settled = session.responses.findIndex(
+      (entry) => entry.event?.kind === 'run.interaction.responded',
+    )
+    if (settled !== -1) session.responses.splice(settled, 1)
+  }
+  await assert.rejects(
+    waitForWorkspaceToolEvents(session, 'run-1', 200, 'first process', policy),
+    /durable proof permission response/,
+  )
+  assert.equal(policy.receipts[0].acknowledgement.outcome, 'accepted')
+  assert.equal(policy.receipts[0].outcome, 'pending')
+})
+
+test('failure diagnostics preserve the blocking interaction before a long heartbeat tail', () => {
+  const { session, request } = permissionBlockedWorkspace()
+  for (let sequence = 2; sequence <= 45; sequence++)
+    session.responses.push(
+      event('run.provider.event', {
+        runId: 'run-1',
+        provider: {
+          eventId: `heartbeat-${sequence}`,
+          providerSequence: sequence,
+          cursor: `cursor-${sequence}`,
+        },
+        value: { type: 'model-processing', phase: 'thinking', elapsedMs: sequence * 5_000 },
+      }),
+    )
+  const diagnostics = failureDiagnostics(session, 'run-1')
+  assert.equal(diagnostics.eventTimeline.length, 30)
+  assert.equal(diagnostics.interactionTimeline.length, 1)
+  assert.equal(diagnostics.interactionTimeline[0].interactionId, request.id)
+  assert.equal(diagnostics.interactionTimeline[0].toolName, 'bash')
+  assert.equal(diagnostics.interactionTimeline[0].commandPreview, request.subject.input.command)
+  assert.equal('input' in diagnostics.interactionTimeline[0], false)
 })
 
 test('stops pre-kill waits as soon as the run becomes terminal', async () => {

@@ -1,4 +1,8 @@
-import type { InteractionRequest } from '@tangle-network/agent-interface'
+import {
+  type InteractionBinding,
+  type InteractionRequest,
+  interactionRequestDigest,
+} from '@tangle-network/agent-interface'
 import type { BraidEvent, BraidEventEnvelope, ProviderEventMeta } from '../../domain/events.js'
 import type { RunAdmissionReceipt, RunCapabilities } from '../../domain/receipts.js'
 import type { BraidMessagePart } from '../../domain/state.js'
@@ -170,7 +174,7 @@ export function projectSemanticEvent(
     case 'run.interaction':
       return withSource(event, {
         ...base,
-        interaction: semanticInteractionRequest(event.request),
+        interaction: semanticInteractionRequest(event.request, event.responseBinding),
       })
     case 'run.interaction.cancelled':
       return withSource(event, {
@@ -418,8 +422,9 @@ function semanticRunCapabilities(capabilities: RunCapabilities): Readonly<Record
   }
 }
 
-function semanticInteractionRequest(
+export function semanticInteractionRequest(
   request: InteractionRequest,
+  responseBinding: InteractionBinding,
 ): Readonly<Record<string, unknown>> {
   return {
     id: text(request.id) ?? '',
@@ -428,7 +433,7 @@ function semanticInteractionRequest(
     ...(request.body === undefined ? {} : { body: text(request.body) ?? '' }),
     ...(request.subject === undefined
       ? {}
-      : { subject: semanticInteractionSubject(request.subject) }),
+      : { subject: semanticInteractionSubject(request.subject, request, responseBinding) }),
     answerSpec: semanticAnswerSpec(request.answerSpec),
     ...(request.responseScopes === undefined
       ? {}
@@ -441,10 +446,43 @@ function semanticInteractionRequest(
 
 function semanticInteractionSubject(
   subject: NonNullable<InteractionRequest['subject']>,
+  request: InteractionRequest,
+  responseBinding: InteractionBinding,
 ): Readonly<Record<string, unknown>> {
   switch (subject.type) {
-    case 'tool':
-      return { type: 'tool', toolName: text(subject.toolName) ?? '' }
+    case 'tool': {
+      const input =
+        subject.input === undefined
+          ? undefined
+          : safeWithin(subject.input, {
+              maxDepth: 6,
+              maxItems: 64,
+              maxBytes: 4096,
+            })
+      let inputComplete = false
+      if (input !== undefined) {
+        try {
+          const { requestDigest: _localDigest, ...material } = request
+          const { requestDigest, ...binding } = responseBinding
+          // Hash the bounded review projection with the original identity. This
+          // detects redaction at any earlier layer without traversing raw input.
+          inputComplete =
+            interactionRequestDigest({
+              ...material,
+              id: binding.interactionId,
+              binding,
+              subject: { ...subject, input },
+            }) === requestDigest
+        } catch {
+          // Non-JSON or truncated input cannot support a scoped approval.
+        }
+      }
+      return {
+        type: 'tool',
+        toolName: text(subject.toolName) ?? '',
+        ...(input === undefined ? {} : { input, inputComplete }),
+      }
+    }
     case 'command':
       return { type: 'command', command: text(subject.command) ?? '' }
     case 'file':
