@@ -4,6 +4,10 @@ Revised 2026-10-07 after three independently prompted GPT-6 Pro reviews. The [sy
 
 The first deliverable is one root AgentProfile that can converse, author useful bounded child work, preserve continuity, and propose a justified change to its own methods. Build that complete flow before expanding the number of roles, domains, or workers.
 
+As of 2026-10-08, the retained cloud conversation path has passed a fresh-package proof on the published dependency cohort: answer scoped permissions, kill and restart Braid, replay from the saved cursor, continue in the same workspace, cancel exactly once, and confirm cleanup. The [runtime refresh evidence](../artifacts/verification/runtime-refresh/README.md) records exact packages and limits.
+
+The root-agent goal is not complete. Ordinary conversation admission still does not start a supervised root. The next delivery is one bounded user flow: the selected root profile authors and dispatches a cloud child, the child returns an artifact, and the root wakes, checks it, and reports through the same conversation. Reconnection must preserve parent/child identities and resource accounting. This first slice does not replace the [full topology lifecycle proof](root-lifecycle.md#failure-tests-that-earn-the-durability-claim), including nested delegation and coordinator recovery.
+
 ## Reuse before extending
 
 The [upstream durability inventory](https://github.com/tangle-network/agent-runtime/blob/3e9e7f166cce374a44403804f2b175b90f862705/docs/durability.md), inspected at Runtime's 0.308.0 preparation commit, assigns supervised journals and coordinator fencing to Runtime, durable sleeping event/timer waits to Platform Workflows, and workspace recovery to the sandbox stack. It also distinguishes an in-process delegation queue from recoverable supervised work. Use the [checked dependency cohort](../docs/04-runtime-contracts.md#evidence-baseline) for Braid's current integration boundary.
