@@ -296,6 +296,9 @@ The runtime kernel exports `cancelWorker` and `cancelRun` as idempotent cancella
 
 Braid supplies the runtime state directory, exact runtime target, and caller operation identifier.
 
+Worker steering, cancellation, and attachment resolve only the exact runtime worker identifier within the selected supervisor.
+Display labels never select a worker, including when a label matches another worker's identifier; an unknown identifier returns unavailable before any runtime effect.
+
 An `unknown` effect means the request awaits acknowledgement and never becomes local success.
 
 Runtime stores each worker's exact interactive binding outside its presentation snapshot.
