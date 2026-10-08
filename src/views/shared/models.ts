@@ -738,7 +738,10 @@ export interface HeadlessState {
   }[]
   readonly sessionUsage: SessionUsageView
   readonly environments: readonly EnvironmentView[]
-  readonly interactions: readonly InteractionView[]
+  readonly interactions: readonly (InteractionView & {
+    /** Bounded public request details remain available after event replay advances. */
+    readonly request?: Readonly<Record<string, unknown>>
+  })[]
   readonly queue: readonly {
     readonly operationId: string
     readonly runId: string

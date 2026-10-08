@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { resolve } from 'node:path'
 import test from 'node:test'
 import { AuthError, NotFoundError, QuotaError } from '@tangle-network/sandbox'
 import { toEvent } from '../dist/adapters/tui/ui-projection.js'
+import { providerEventFor } from '../dist/app/run-event-mapper.js'
 import { parseOperationId } from '../dist/domain/ids.js'
 import {
   assertProofReceipt,
@@ -53,6 +55,8 @@ import {
 import { sandboxConfiguration as multirunSandboxConfiguration } from '../scripts/live-required/tangle-sandbox-braid-multirun.mjs'
 import {
   assertExactSessionExecutions,
+  cloudFailureEventTimeline,
+  failureDiagnostics,
   providerExecutionLedgerEvidence,
   readRetainedWorkspaceFile,
 } from '../scripts/live-required/tangle-sandbox-braid-stress.mjs'
@@ -2494,4 +2498,81 @@ test('LIVE-08 refuses cloud cleanup when a run existed without exact identity', 
       return true
     },
   )
+})
+
+test('cloud failure receipts read the production RPC projection without exposing native payloads', () => {
+  const hash = (value) => createHash('sha256').update(value).digest('hex')
+  const source = { eventId: 'provider-event-4', providerSequence: 4, cursor: 'opaque-cursor' }
+  const response = (runtimeEvent) => ({
+    type: 'event',
+    sequence: 91,
+    event: toEvent({
+      sequence: 7,
+      revision: 7,
+      event: providerEventFor('run-1', runtimeEvent, source),
+    }),
+  })
+  const responses = [
+    response({ type: 'model-processing', phase: 'waiting' }),
+    response({ type: 'raw', event: { secret: 'native-sentinel' } }),
+    response({ type: 'unknown', payload: { secret: 'native-sentinel' } }),
+    response({ type: 'session.updated', sessionId: 'private-session', title: 'private-title' }),
+    response({ type: 'tool_call', toolName: 'bash', args: { command: 'private-command' } }),
+  ]
+  const timeline = cloudFailureEventTimeline(responses, 'run-1')
+  assert.deepEqual(timeline[0].provider, {
+    eventType: 'model-processing',
+    phase: 'waiting',
+    source: {
+      eventIdSha256: hash(source.eventId),
+      cursorSha256: hash(source.cursor),
+      sequence: 4,
+    },
+  })
+  assert.equal(timeline[0].sequence, 91)
+  assert.equal(timeline[0].journalSequence, 7)
+  assert.equal(timeline[1].provider.nativeDiagnostic, 'unavailable-redacted')
+  assert.equal(timeline[2].provider.nativeDiagnostic, 'unavailable-redacted')
+  assert.equal(timeline[3].provider.eventType, 'session.updated')
+  assert.doesNotMatch(
+    JSON.stringify(timeline),
+    /native-sentinel|private-|opaque-cursor|provider-event-4/u,
+  )
+  assert.equal(cloudFailureEventTimeline(responses, 'other-run').length, 0)
+  assert.equal(cloudFailureEventTimeline(Array(50).fill(responses[0]), 'run-1').length, 30)
+})
+
+test('cloud failure receipts distinguish an old state snapshot from later events', () => {
+  const result = failureDiagnostics(
+    {
+      responses: [
+        {
+          type: 'state',
+          state: {
+            sequence: 4,
+            revision: 4,
+            runs: [{ id: 'run-1', status: 'starting', updatedAt: '2026-10-07T23:34:01Z' }],
+            environments: [],
+          },
+        },
+        {
+          type: 'event',
+          sequence: 91,
+          event: toEvent({
+            sequence: 54,
+            revision: 54,
+            event: { kind: 'run.status.changed', runId: 'run-1', status: 'streaming' },
+          }),
+        },
+      ],
+    },
+    'run-1',
+  )
+  assert.equal(result.run, undefined)
+  assert.equal(result.lastObservedRun.status, 'starting')
+  assert.equal(result.lastObservedRun.updatedAt, '2026-10-07T23:34:01Z')
+  assert.equal(result.lastObservedRun.stateSequence, 4)
+  assert.equal(result.lastObservedRun.stateRevision, 4)
+  assert.equal(result.eventTimeline[0].journalSequence, 54)
+  assert.equal(result.eventTimeline[0].status, 'streaming')
 })

@@ -92,6 +92,11 @@ test('RPC answers a retained question after reconnect acknowledgement on the sam
     id: 'question-reconnect-rpc',
     kind: 'question',
     title: 'Continue?',
+    subject: {
+      type: 'tool',
+      toolName: 'bash',
+      input: { command: 'cat marker', workdir: '/workspace' },
+    },
     answerSpec: {
       fields: [{ type: 'boolean', name: 'continue', label: 'Continue', required: true }],
     },
@@ -247,6 +252,16 @@ test('RPC answers a retained question after reconnect acknowledgement on the sam
     write: responseWriter(responses),
   })
   assert.equal(code, 0)
+  const restored = responses.find(
+    (response) => response.type === 'state' && response.requestId === 'rpc-reconnect-init',
+  )
+  assert.ok(restored?.type === 'state' && restored.projection === 'full')
+  const publicRequest = (restored.state.interactions[0] as unknown as Record<string, unknown>)
+    .request as Record<string, unknown>
+  assert.ok(publicRequest, 'a restarted client must recover its pending request from public state')
+  assert.deepEqual(publicRequest.subject, { ...source.subject, inputComplete: true })
+  assert.equal('binding' in publicRequest, false)
+  assert.equal('requestDigest' in publicRequest, false)
   assert.equal(responseCount, 1)
   assert.equal(resumedCount, 1)
   assert.equal(

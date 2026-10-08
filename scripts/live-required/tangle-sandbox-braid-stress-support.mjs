@@ -1,11 +1,15 @@
 import assert from 'node:assert/strict'
-import { randomUUID } from 'node:crypto'
-import { AgentExactRunControlRefSchema } from '@tangle-network/agent-interface'
+import { createHash, randomUUID } from 'node:crypto'
+import {
+  AgentExactRunControlRefSchema,
+  validateInteractionAnswer,
+} from '@tangle-network/agent-interface'
 
 import { sleep } from '../live-bridge/process.mjs'
-import { countProtectedWork } from '../proof-tools.mjs'
+import { countProtectedWork, redactString } from '../proof-tools.mjs'
 import {
   requestBase,
+  interactionFromResponse,
   responseForRequest,
   runFromState,
   stateForRequest,
@@ -137,10 +141,11 @@ export function latestCursorFromResponses(responses, runId) {
   return cursor
 }
 
-export async function waitForControlIdentity(session, runId, timeoutMs) {
+export async function waitForControlIdentity(session, runId, timeoutMs, permissions) {
   const deadline = performance.now() + timeoutMs
   for (;;) {
     countProtectedWork('polls')
+    await answerProofPermissions(session, runId, permissions, deadline)
     const observation = observationFromResponses(session.responses, runId)
     if (observation?.controlRef && observation.cursor !== undefined) return observation
     throwIfRunTerminated(session.responses, runId, 'exposing exact provider identity')
@@ -175,10 +180,232 @@ export async function waitForVisibleEvents(session, runId, timeoutMs, phase) {
   }
 }
 
-export async function waitForWorkspaceToolEvents(session, runId, timeoutMs, phase) {
+function proofRequestDigest(request) {
+  return createHash('sha256').update(JSON.stringify(request)).digest('hex')
+}
+
+/** Keep permission evidence independently of a long tail of process-liveness events. */
+export function proofInteractionTimeline(responses, runId) {
+  return responses
+    .flatMap((response) => {
+      if (eventRunId(response) !== runId || !response.event?.kind?.startsWith('run.interaction'))
+        return []
+      const payload = eventParts(response).payload
+      const request = response.event.kind === 'run.interaction' ? payload.interaction : undefined
+      const value = record(payload.value) ?? record(payload.interaction) ?? payload
+      return [
+        {
+          kind: response.event.kind,
+          interactionId: request?.id ?? value.interactionId ?? value.id,
+          ...(request
+            ? {
+                requestKind: request.kind,
+                requestSha256: proofRequestDigest(request),
+                ...proofPermissionPreview(request),
+                ...(request.subject?.type === 'tool' ? { toolName: request.subject.toolName } : {}),
+                ...(Number.isFinite(request.timeoutMs) ? { timeoutMs: request.timeoutMs } : {}),
+              }
+            : {}),
+          ...(typeof value.operationId === 'string' ? { operationId: value.operationId } : {}),
+          ...(typeof value.reason === 'string' ? { reason: value.reason.slice(0, 160) } : {}),
+          ...(Number.isSafeInteger(response.event.sequence)
+            ? { journalSequence: response.event.sequence }
+            : {}),
+        },
+      ]
+    })
+    .slice(-32)
+}
+
+function proofPermissionPreview(request) {
+  const input = request.subject?.input
+  const command = typeof input?.command === 'string' ? input.command : undefined
+  const path = typeof input?.filePath === 'string' ? input.filePath : undefined
+  return {
+    ...(command === undefined ? {} : { commandPreview: redactString(command).slice(0, 512) }),
+    ...(path === undefined ? {} : { pathPreview: redactString(path).slice(0, 512) }),
+  }
+}
+
+function proofPermissionResponse(request, policy) {
+  const subject = request.subject
+  const input = record(subject?.input)
+  let allowed = false
+  if (
+    subject?.type === 'tool' &&
+    subject.inputComplete === true &&
+    subject.toolName === 'bash' &&
+    input
+  ) {
+    allowed =
+      policy.commands.includes(input.command) &&
+      Object.keys(input).every((key) =>
+        ['command', 'workdir', 'timeout', 'description'].includes(key),
+      ) &&
+      (input.workdir === undefined ||
+        input.workdir === '.' ||
+        input.workdir === policy.workspaceCwd)
+  } else if (
+    subject?.type === 'tool' &&
+    subject.inputComplete === true &&
+    subject.toolName === 'read' &&
+    input
+  ) {
+    allowed =
+      policy.readPaths.includes(input.filePath) &&
+      Object.keys(input).every((key) => ['filePath', 'offset', 'limit'].includes(key))
+  }
+  const fields = request.answerSpec?.fields
+  const grant = fields?.find((field) => field.name === 'grant')
+  if (
+    request.kind !== 'permission' ||
+    !allowed ||
+    grant?.type !== 'select' ||
+    !grant.options?.some((option) => option.value === 'allow_once') ||
+    (request.allowedOutcomes !== undefined && !request.allowedOutcomes.includes('accepted')) ||
+    fields.some((field) => field.type === 'secret' || (field.name !== 'grant' && field.required))
+  ) {
+    throw new MissingIntegrationError(
+      'The proof received an interaction outside its authorized workspace operations',
+      {
+        interactionId: request.id,
+        requestKind: request.kind,
+        requestSha256: proofRequestDigest(request),
+        ...proofPermissionPreview(request),
+        ...(subject?.type === 'tool' ? { toolName: subject.toolName } : {}),
+      },
+    )
+  }
+  const response = { id: request.id, outcome: 'accepted', data: { grant: ['allow_once'] } }
+  const checked = validateInteractionAnswer(request.answerSpec, response.data)
+  if (!checked.ok)
+    throw new MissingIntegrationError(
+      'The proof cannot answer the exact permission specification',
+      {
+        interactionId: request.id,
+        errors: checked.errors,
+      },
+    )
+  // Public RPC omits the private binding; Braid validates it against the durable request.
+  return response
+}
+
+/** The proof acts as the user through public RPC; it never changes agent permissions. */
+async function answerProofPermissions(session, runId, policy, deadline) {
+  if (!policy) return
+  const remaining = () => {
+    const ms = Math.ceil(deadline - performance.now())
+    if (ms <= 0)
+      throw new MissingIntegrationError(
+        'The proof permission response exceeded its existing phase deadline',
+        { runId },
+      )
+    return ms
+  }
+  const requests = new Map()
+  for (const response of [...(policy.previousResponses ?? []), ...session.responses]) {
+    const interaction = interactionFromResponse(response, runId)
+    if (interaction?.request) requests.set(interaction.interactionId, interaction.request)
+    for (const pending of response.state?.interactions ?? []) {
+      if (pending.runId === runId && pending.request)
+        requests.set(pending.interactionId, pending.request)
+    }
+  }
+  for (const [interactionId, request] of requests) {
+    const requestSha256 = proofRequestDigest(request)
+    const recorded = policy.receipts.find(
+      (receipt) => receipt.runId === runId && receipt.interactionId === interactionId,
+    )
+    if (recorded) {
+      assert.deepEqual(recorded.request, request, 'A proof permission changed after admission')
+      if (recorded.outcome === 'responded') continue
+    }
+    const current = await rpcRoundTrip(
+      session,
+      'get_state',
+      { projection: 'full' },
+      undefined,
+      'proof pending permission state',
+      remaining(),
+    )
+    assert.equal(
+      current.response.type,
+      'state',
+      'The proof could not inspect its pending permission',
+    )
+    if (terminalStatus(runFromState(current.response.state, runId))) continue
+    const pending =
+      current.response.state?.interactions?.some(
+        (item) => item.runId === runId && item.interactionId === interactionId,
+      ) ||
+      current.response.state?.runs
+        ?.find((run) => run.id === runId)
+        ?.interactions?.some(
+          (item) =>
+            item.request?.id === interactionId && ['pending', 'responding'].includes(item.status),
+        )
+    if (!pending) continue
+    const response = proofPermissionResponse(request, policy)
+    const operationId = `op-live-permission-${proofRequestDigest({ proofId: policy.proofId, runId, interactionId })}`
+    const receipt = recorded ?? {
+      runId,
+      interactionId,
+      requestSha256,
+      operationId,
+      request: structuredClone(request),
+      response,
+      pendingStateObserved: true,
+      outcome: 'pending',
+    }
+    if (!recorded) policy.receipts.push(receipt)
+    const acknowledgement = await rpcRoundTrip(
+      session,
+      'respond_interaction',
+      { runId, interactionId, response },
+      operationId,
+      'proof permission acknowledgement',
+      remaining(),
+    )
+    assert.equal(
+      acknowledgement.response.type,
+      'ack',
+      'Proof permission response was not acknowledged',
+    )
+    assert.equal(
+      acknowledgement.response.operationId,
+      operationId,
+      'Proof permission acknowledgement changed identity',
+    )
+    assert.ok(
+      ['accepted', 'already-applied'].includes(acknowledgement.response.outcome),
+      'Proof permission was not accepted',
+    )
+    receipt.acknowledgement = acknowledgement.response
+    const settled = await session.waitFor(
+      'durable proof permission response',
+      (entry) =>
+        entry.type === 'event' &&
+        entry.event?.kind === 'run.interaction.responded' &&
+        entry.event.payload?.runId === runId &&
+        entry.event.payload?.value?.operationId === operationId,
+      remaining(),
+    )
+    receipt.settlement = {
+      kind: settled.event.kind,
+      operationId,
+      ...(Number.isSafeInteger(settled.event.sequence)
+        ? { journalSequence: settled.event.sequence }
+        : {}),
+    }
+    receipt.outcome = 'responded'
+  }
+}
+
+export async function waitForWorkspaceToolEvents(session, runId, timeoutMs, phase, permissions) {
   const deadline = performance.now() + timeoutMs
   for (;;) {
     countProtectedWork('polls')
+    await answerProofPermissions(session, runId, permissions, deadline)
     const visible = assertUniqueVisibleEvents(session.responses, runId, phase)
     const tools = workspaceToolEvents(visible)
     if (tools.length > 0) return visible
@@ -218,7 +445,14 @@ function throwIfRunTerminated(responses, runId, pendingProof) {
   }
 }
 
-export async function rpcRoundTrip(session, command, params = {}, operationId, label = command) {
+export async function rpcRoundTrip(
+  session,
+  command,
+  params = {},
+  operationId,
+  label = command,
+  timeoutMs,
+) {
   const requestId = `braid-live-${command}-${randomUUID()}`
   const request = { ...requestBase(requestId, command, operationId), params }
   const started = performance.now()
@@ -227,6 +461,7 @@ export async function rpcRoundTrip(session, command, params = {}, operationId, l
   const response = await session.waitFor(
     label,
     command === 'get_state' ? stateForRequest(requestId) : responseForRequest(requestId),
+    timeoutMs,
   )
   return { request, response, elapsedMs: performance.now() - started }
 }
@@ -253,10 +488,11 @@ export async function waitForRequestState(session, requestId, runId, timeoutMs) 
   return { response, run }
 }
 
-export async function waitForTerminal(session, runId, timeoutMs) {
+export async function waitForTerminal(session, runId, timeoutMs, permissions) {
   const deadline = performance.now() + timeoutMs
   for (;;) {
     countProtectedWork('polls')
+    await answerProofPermissions(session, runId, permissions, deadline)
     const existing = [...session.responses]
       .reverse()
       .find((response) => stateForRun(response, runId))
