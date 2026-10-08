@@ -1,0 +1,12 @@
+ workers › Check tests                  
+────────────────────────────────────────
+ child: native-check                    
+ runner: codex                          
+ model: fixture/native-model            
+ tokens: not reported                   
+ cost: not reported                     
+ parent child: native-review            
+ terminal reason: Fixture assertions    
+ passed                                 
+────────────────────────────────────────
+ ↑↓ · Pg · ←/esc back · page 2/2        

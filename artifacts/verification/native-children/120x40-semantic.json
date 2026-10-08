@@ -1,0 +1,923 @@
+{
+  "schemaVersion": 2,
+  "capturePhase": "atomic-signal-frame",
+  "state": {
+    "schemaVersion": 2,
+    "revision": 12,
+    "sequence": 12,
+    "workspace": "/workspace",
+    "conversationId": "conv-1",
+    "branchId": "branch-1",
+    "conversations": [
+      {
+        "id": "conv-1",
+        "title": "New conversation",
+        "branchId": "branch-1",
+        "archived": false,
+        "updatedAt": "2026-08-01T00:00:00.000Z"
+      }
+    ],
+    "profile": {
+      "name": "Braid starter",
+      "description": "A portable starter profile for the Braid terminal",
+      "harness": "pi",
+      "model": {
+        "default": "fixture/deterministic",
+        "provider": "fixture",
+        "reasoningEffort": "none"
+      }
+    },
+    "runConfiguration": {
+      "profileName": "Braid starter",
+      "runner": "pi",
+      "model": "fixture/deterministic",
+      "effort": "none",
+      "overrides": {}
+    },
+    "draft": "",
+    "messages": [
+      {
+        "id": "message-000003",
+        "role": "user",
+        "text": "Inspect native children",
+        "status": "complete",
+        "runId": "run-000001",
+        "parts": [
+          {
+            "id": "part-message-000003",
+            "kind": "text",
+            "text": "Inspect native children"
+          }
+        ]
+      },
+      {
+        "id": "message-000004",
+        "role": "assistant",
+        "text": "Offline fixture: two native children reported. Open /activity to inspect them.",
+        "status": "complete",
+        "runId": "run-000001",
+        "parts": [
+          {
+            "id": "run-000001:text",
+            "kind": "text",
+            "text": "Offline fixture: two native children reported. Open /activity to inspect them.",
+            "sourceEventId": "run-000001:runtime:6"
+          }
+        ]
+      }
+    ],
+    "runs": [
+      {
+        "id": "run-000001",
+        "turnId": "turn-000002",
+        "operationId": "op-terminal-000002",
+        "status": "completed",
+        "startedAt": "2026-08-01T00:00:00.000Z",
+        "updatedAt": "2026-08-01T00:00:00.000Z",
+        "terminalAt": "2026-08-01T00:00:00.000Z",
+        "durationMs": 0,
+        "inputTokens": 10,
+        "outputTokens": 6,
+        "tokensKnown": true,
+        "usdKnown": false,
+        "tokenStatus": "complete",
+        "costStatus": "unknown",
+        "model": "fixture/deterministic",
+        "runner": "pi",
+        "completeness": "unavailable",
+        "contentBytes": 98
+      }
+    ],
+    "sessionUsage": {
+      "turns": {
+        "sourceCount": 1,
+        "input": 10,
+        "output": 6,
+        "tokenStatus": "complete",
+        "costStatus": "unknown",
+        "unknownTokenSources": 0,
+        "unknownCostSources": 1,
+        "callStatus": "unknown",
+        "latencyStatus": "unknown",
+        "unknownCallSources": 1,
+        "unknownLatencySources": 1
+      },
+      "analyses": {
+        "sourceCount": 0,
+        "input": 0,
+        "output": 0,
+        "tokenStatus": "unknown",
+        "costStatus": "unknown",
+        "unknownTokenSources": 0,
+        "unknownCostSources": 0,
+        "callStatus": "unknown",
+        "latencyStatus": "unknown",
+        "unknownCallSources": 0,
+        "unknownLatencySources": 0
+      },
+      "delegated": {
+        "sourceCount": 0,
+        "input": 0,
+        "output": 0,
+        "tokenStatus": "unknown",
+        "costStatus": "unknown",
+        "unknownTokenSources": 0,
+        "unknownCostSources": 0,
+        "callStatus": "unknown",
+        "latencyStatus": "unknown",
+        "unknownCallSources": 0,
+        "unknownLatencySources": 0
+      },
+      "attribution": "complete"
+    },
+    "environments": [],
+    "interactions": [],
+    "queue": [],
+    "activeRunId": null,
+    "focusedRunId": "run-000001",
+    "activeRuns": [],
+    "lastError": null
+  },
+  "view": {
+    "revision": 12,
+    "workspace": "/workspace",
+    "profileName": "Braid starter",
+    "profileDigest": "44ed91c937fd4079fe01c49f6bc76413656886e5aa8b2351590d3a888cfa0a14",
+    "runner": "pi",
+    "model": "fixture/deterministic",
+    "effort": "none",
+    "runOverrides": {},
+    "connection": "deterministic fixture",
+    "conversationId": "conv-1",
+    "conversationTitle": "New conversation",
+    "conversations": [
+      {
+        "id": "conv-1",
+        "title": "New conversation",
+        "branchId": "branch-1",
+        "archived": false,
+        "active": true,
+        "updatedAt": "2026-08-01T00:00:00.000Z"
+      }
+    ],
+    "branch": "branch-1",
+    "status": "completed",
+    "statusText": "completed",
+    "queueCount": 0,
+    "queue": [],
+    "messages": [
+      {
+        "id": "message-000003",
+        "role": "user",
+        "text": "Inspect native children",
+        "status": "complete",
+        "runId": "run-000001",
+        "parts": [
+          {
+            "id": "part-message-000003",
+            "kind": "text",
+            "text": "Inspect native children"
+          }
+        ]
+      },
+      {
+        "id": "message-000004",
+        "role": "assistant",
+        "text": "Offline fixture: two native children reported. Open /activity to inspect them.",
+        "status": "complete",
+        "runId": "run-000001",
+        "parts": [
+          {
+            "id": "run-000001:text",
+            "kind": "text",
+            "text": "Offline fixture: two native children reported. Open /activity to inspect them.",
+            "sourceEventId": "run-000001:runtime:6"
+          }
+        ]
+      }
+    ],
+    "hiddenMessageCount": 0,
+    "runs": [
+      {
+        "id": "run-000001",
+        "turnId": "turn-000002",
+        "conversationId": "conv-1",
+        "branchId": "branch-1",
+        "operationId": "op-terminal-000002",
+        "status": "completed",
+        "profileName": "Braid starter",
+        "profileDigest": "44ed91c937fd4079fe01c49f6bc76413656886e5aa8b2351590d3a888cfa0a14",
+        "model": "fixture/deterministic",
+        "effort": "none",
+        "usage": {
+          "input": 10,
+          "output": 6,
+          "tokenStatus": "complete",
+          "costStatus": "unknown",
+          "model": "fixture/deterministic",
+          "elapsedMs": 0
+        },
+        "runner": "pi",
+        "completeness": "unavailable",
+        "contentBytes": 98
+      }
+    ],
+    "sessionUsage": {
+      "turns": {
+        "sourceCount": 1,
+        "input": 10,
+        "output": 6,
+        "tokenStatus": "complete",
+        "costStatus": "unknown",
+        "unknownTokenSources": 0,
+        "unknownCostSources": 1,
+        "callStatus": "unknown",
+        "latencyStatus": "unknown",
+        "unknownCallSources": 1,
+        "unknownLatencySources": 1
+      },
+      "analyses": {
+        "sourceCount": 0,
+        "input": 0,
+        "output": 0,
+        "tokenStatus": "unknown",
+        "costStatus": "unknown",
+        "unknownTokenSources": 0,
+        "unknownCostSources": 0,
+        "callStatus": "unknown",
+        "latencyStatus": "unknown",
+        "unknownCallSources": 0,
+        "unknownLatencySources": 0
+      },
+      "delegated": {
+        "sourceCount": 0,
+        "input": 0,
+        "output": 0,
+        "tokenStatus": "unknown",
+        "costStatus": "unknown",
+        "unknownTokenSources": 0,
+        "unknownCostSources": 0,
+        "callStatus": "unknown",
+        "latencyStatus": "unknown",
+        "unknownCallSources": 0,
+        "unknownLatencySources": 0
+      },
+      "attribution": "complete"
+    },
+    "environments": [],
+    "focusedRunId": "run-000001",
+    "interactions": [],
+    "activity": [
+      {
+        "id": "run:run-000001",
+        "kind": "run",
+        "title": "run run-000001",
+        "status": "completed",
+        "elapsedMs": 0,
+        "startedAt": "2026-08-01T00:00:00.000Z",
+        "occurredAt": "2026-08-01T00:00:00.000Z",
+        "runId": "run-000001",
+        "entityType": "run",
+        "entityId": "run-000001"
+      },
+      {
+        "id": "activity:run-000001:admission:local:admitted",
+        "kind": "system",
+        "title": "admitted",
+        "status": "completed",
+        "detail": "profile 44ed91c937fd4079fe01c49f6bc76413656886e5aa8b2351590d3a888cfa0a14",
+        "occurredAt": "2026-08-01T00:00:00.000Z",
+        "runId": "run-000001",
+        "entityType": "run",
+        "entityId": "run-000001"
+      },
+      {
+        "id": "native-child:[\"run-000001\",\"native-check\"]",
+        "kind": "native-child",
+        "title": "Check tests",
+        "status": "complete",
+        "detail": "Native child · completed · read only\nchild: native-check\nrunner: codex\nmodel: fixture/native-model\ntokens: not reported\ncost: not reported\nparent child: native-review\nterminal reason: Fixture assertions passed",
+        "elapsedMs": 800,
+        "startedAt": "2026-10-08T12:00:00.100Z",
+        "occurredAt": "2026-10-08T12:00:00.900Z",
+        "sourceEventId": "check-completed",
+        "runId": "run-000001",
+        "parentId": "native-child:[\"run-000001\",\"native-review\"]",
+        "depth": 2
+      },
+      {
+        "id": "native-child:[\"run-000001\",\"native-review\"]",
+        "kind": "native-child",
+        "title": "Review patch",
+        "status": "complete",
+        "detail": "Native child · completed · read only\nchild: native-review\nrunner: codex\nmodel: fixture/native-model\nobserved tokens: 24 in / 8 out\ncost: not reported\nChild usage is shown separately; it is not added to run totals.\nterminal reason: Fixture review complete",
+        "elapsedMs": 1200,
+        "startedAt": "2026-10-08T12:00:00.000Z",
+        "occurredAt": "2026-10-08T12:00:01.200Z",
+        "sourceEventId": "review-completed",
+        "runId": "run-000001",
+        "parentId": "run:run-000001",
+        "depth": 1
+      }
+    ],
+    "graph": [
+      {
+        "id": "conv-1",
+        "type": "conversation",
+        "title": "New conversation",
+        "status": "complete",
+        "depth": 0,
+        "edgeLabel": "attached",
+        "startedAt": "2026-08-01T00:00:00.000Z"
+      },
+      {
+        "id": "branch-1",
+        "type": "branch",
+        "title": "Main",
+        "status": "complete",
+        "depth": 1,
+        "edgeLabel": "attached",
+        "parentIds": [
+          "conversation:conv-1"
+        ],
+        "startedAt": "2026-08-01T00:00:00.000Z"
+      },
+      {
+        "id": "turn-000002",
+        "type": "turn",
+        "title": "Turn",
+        "status": "complete",
+        "depth": 2,
+        "edgeLabel": "continued",
+        "parentIds": [
+          "branch:branch-1"
+        ],
+        "startedAt": "2026-08-01T00:00:00.000Z"
+      },
+      {
+        "id": "run-000001",
+        "type": "run",
+        "title": "Run",
+        "status": "completed",
+        "depth": 3,
+        "edgeLabel": "attached",
+        "parentIds": [
+          "turn:turn-000002"
+        ],
+        "runner": "pi",
+        "elapsedMs": 0,
+        "startedAt": "2026-08-01T00:00:00.000Z"
+      }
+    ],
+    "graphQuery": "",
+    "entityDetails": [],
+    "details": {
+      "title": "run run-000001",
+      "fields": [
+        {
+          "label": "status",
+          "value": "completed"
+        },
+        {
+          "label": "input tokens",
+          "value": "10"
+        },
+        {
+          "label": "output tokens",
+          "value": "6"
+        },
+        {
+          "label": "token measurement",
+          "value": "complete"
+        },
+        {
+          "label": "model",
+          "value": "fixture/deterministic"
+        }
+      ]
+    },
+    "capabilities": {
+      "conversation.create": {
+        "available": true,
+        "source": "application"
+      },
+      "conversation.open": {
+        "available": true,
+        "source": "application"
+      },
+      "run.runner": {
+        "available": true,
+        "source": "application"
+      },
+      "run.model": {
+        "available": true,
+        "source": "application"
+      },
+      "run.effort": {
+        "available": true,
+        "source": "application"
+      },
+      "conversation.branch": {
+        "available": true,
+        "source": "application"
+      },
+      "conversation.clone": {
+        "available": true,
+        "source": "application"
+      },
+      "conversation.fork": {
+        "available": true,
+        "source": "application"
+      },
+      "analysis.ask": {
+        "available": true,
+        "source": "application"
+      },
+      "analysis.recipe": {
+        "available": true,
+        "source": "application"
+      },
+      "analysis.compare": {
+        "available": false,
+        "source": "application",
+        "reason": "Two completed or failed runs are required for comparison"
+      },
+      "interaction.respond": {
+        "available": false,
+        "source": "runtime",
+        "reason": "Interaction response is not exposed by the current runtime adapter"
+      },
+      "interaction.automation": {
+        "available": false,
+        "source": "application",
+        "reason": "Interaction automation requires the shared response contract"
+      },
+      "run.interactive": {
+        "available": false,
+        "source": "application",
+        "reason": "Native terminal mode requires an interactive TUI and a supported provider"
+      },
+      "run.attach": {
+        "available": false,
+        "source": "application",
+        "reason": "Native terminal attachment requires an interactive TUI and a retained session"
+      },
+      "supervisor.worker.attach": {
+        "available": false,
+        "source": "runtime",
+        "reason": "Worker terminal attachment requires the interactive TUI; Runtime retains the exact worker binding"
+      },
+      "export.create": {
+        "available": true,
+        "source": "application"
+      },
+      "analysis.cancel": {
+        "available": false,
+        "source": "application",
+        "reason": "There is no running analysis to cancel"
+      },
+      "application.quit": {
+        "available": true,
+        "source": "local"
+      },
+      "help.read": {
+        "available": true,
+        "source": "local"
+      },
+      "profile.select": {
+        "available": true,
+        "source": "application"
+      },
+      "connection.select": {
+        "available": true,
+        "source": "application"
+      },
+      "settings.open": {
+        "available": true,
+        "source": "application"
+      },
+      "activity.read": {
+        "available": true,
+        "source": "local"
+      },
+      "graph.read": {
+        "available": true,
+        "source": "local"
+      },
+      "feedback.read": {
+        "available": true,
+        "source": "application"
+      },
+      "details.read": {
+        "available": true,
+        "source": "local"
+      },
+      "supervisor.refresh": {
+        "available": true,
+        "source": "runtime"
+      },
+      "supervisor.worker.steer": {
+        "available": false,
+        "source": "runtime",
+        "reason": "There is no running supervised worker to steer"
+      },
+      "supervisor.worker.cancel": {
+        "available": false,
+        "source": "runtime",
+        "reason": "There is no running supervised worker to cancel"
+      },
+      "supervisor.cancel": {
+        "available": false,
+        "source": "runtime",
+        "reason": "There is no running supervisor to cancel"
+      },
+      "draft.write": {
+        "available": true,
+        "source": "application"
+      },
+      "run.send": {
+        "available": true,
+        "source": "provider"
+      },
+      "run.cancel": {
+        "available": false,
+        "source": "runtime",
+        "reason": "There is no active run to cancel"
+      },
+      "run.queue": {
+        "available": false,
+        "source": "provider",
+        "reason": "There is no active run"
+      },
+      "run.steer": {
+        "available": false,
+        "source": "provider",
+        "reason": "There is no active run"
+      },
+      "run.detach": {
+        "available": false,
+        "source": "provider",
+        "reason": "There is no active run"
+      },
+      "run.reconnect": {
+        "available": false,
+        "source": "provider",
+        "reason": "There is no recoverable run to reconnect"
+      },
+      "run.reconcile": {
+        "available": false,
+        "source": "provider",
+        "reason": "There is no recoverable run to reconcile"
+      }
+    },
+    "draft": "",
+    "selectedSurface": "activity",
+    "appearance": {
+      "color": "truecolor",
+      "highContrast": false,
+      "reducedMotion": false
+    }
+  },
+  "events": [
+    {
+      "sequence": 1,
+      "revision": 1,
+      "kind": "workspace.opened",
+      "payload": {
+        "value": {
+          "kind": "workspace.opened",
+          "workspace": "/workspace"
+        }
+      }
+    },
+    {
+      "sequence": 2,
+      "revision": 2,
+      "kind": "draft.recorded",
+      "payload": {
+        "value": {
+          "kind": "draft.recorded",
+          "draft": {
+            "id": "draft-branch-1",
+            "branchId": "branch-1",
+            "text": "Inspect native children",
+            "updatedAt": "2026-08-01T00:00:00.000Z"
+          },
+          "operation": {
+            "id": "op-terminal-000001",
+            "kind": "draft-update",
+            "requestDigest": "b7dc34cf84fd212bd2ff91fd58342618f5e5d584b6348a297784cb2e8e80aa3a",
+            "status": "acknowledged",
+            "target": {
+              "kind": "branch",
+              "id": "branch-1"
+            },
+            "createdAt": "2026-08-01T00:00:00.000Z",
+            "updatedAt": "2026-08-01T00:00:00.000Z",
+            "acknowledgedAt": "2026-08-01T00:00:00.000Z"
+          }
+        }
+      }
+    },
+    {
+      "sequence": 3,
+      "revision": 3,
+      "kind": "run.requested",
+      "payload": {
+        "runId": "run-000001",
+        "text": "Inspect native children",
+        "admission": {
+          "version": 1,
+          "runId": "run-000001",
+          "turnId": "turn-000002",
+          "operationId": "op-terminal-000002",
+          "conversationId": "conv-1",
+          "branchId": "branch-1",
+          "admittedAt": "2026-08-01T00:00:00.000Z",
+          "profileDigest": "44ed91c937fd4079fe01c49f6bc76413656886e5aa8b2351590d3a888cfa0a14",
+          "requested": {
+            "text": "Inspect native children",
+            "profile": {
+              "name": "Braid starter",
+              "description": "A portable starter profile for the Braid terminal",
+              "model": {
+                "default": "fixture/deterministic",
+                "provider": "fixture",
+                "reasoningEffort": "none"
+              },
+              "harness": "pi"
+            },
+            "interactions": {},
+            "model": "fixture/deterministic",
+            "runner": "pi"
+          },
+          "capabilities": {
+            "streaming": {
+              "live": true,
+              "replay": false,
+              "detach": false,
+              "turnIdempotency": true
+            },
+            "sessions": {
+              "continue": false,
+              "messages": false
+            },
+            "controls": {
+              "cancel": true,
+              "steer": false,
+              "queue": true,
+              "status": false,
+              "recreate": false
+            },
+            "events": {
+              "stableIdentity": false,
+              "sequence": true,
+              "cursor": false
+            },
+            "usage": true
+          },
+          "admissionStatus": "admitted",
+          "requestDigest": "480f2b8b6dc1a4d0ae7da43053783eead8b2fe5c5fb75c37c24df918111d5296",
+          "capabilitiesDigest": "93c4c21593f9e2fa1fe68ce73da84f48c173f1e13269633678b512a16a81a001",
+          "digest": "9a3dae8ebb564edec4a40aab790478d00f80f9975705160452219b328abc61bc"
+        },
+        "status": "admitted"
+      }
+    },
+    {
+      "sequence": 4,
+      "revision": 4,
+      "kind": "effect.upserted",
+      "payload": {
+        "value": {
+          "kind": "effect.upserted",
+          "effect": {
+            "id": "effect-op-terminal-000002-cab368051e60aace5b2e9929",
+            "operationId": "op-terminal-000002",
+            "effectKind": "run.execute",
+            "requestDigest": "cab368051e60aace5b2e99291f9686b0af1eedf84808936d57d6c10b5e674493",
+            "kind": "send",
+            "status": "pending",
+            "attempt": 1,
+            "createdAt": "2026-08-01T00:00:00.000Z",
+            "updatedAt": "2026-08-01T00:00:00.000Z"
+          }
+        }
+      }
+    },
+    {
+      "sequence": 5,
+      "revision": 5,
+      "kind": "run.provider.event",
+      "payload": {
+        "runId": "run-000001",
+        "source": {
+          "eventId": "run-000001:runtime:1",
+          "providerSequence": 1,
+          "receivedAt": "2026-08-01T00:00:00.000Z"
+        },
+        "unknown": {
+          "type": "child-task",
+          "childId": "native-review",
+          "status": "running",
+          "title": "Review patch",
+          "time": {
+            "started": 1791460800000,
+            "updated": 1791460800000
+          },
+          "runner": "codex",
+          "model": "fixture/native-model",
+          "sourceEventId": "review-started"
+        }
+      }
+    },
+    {
+      "sequence": 6,
+      "revision": 6,
+      "kind": "run.provider.event",
+      "payload": {
+        "runId": "run-000001",
+        "source": {
+          "eventId": "run-000001:runtime:2",
+          "providerSequence": 2,
+          "receivedAt": "2026-08-01T00:00:00.000Z"
+        },
+        "unknown": {
+          "type": "child-task",
+          "childId": "native-check",
+          "parentChildId": "native-review",
+          "status": "running",
+          "title": "Check tests",
+          "time": {
+            "started": 1791460800100,
+            "updated": 1791460800100
+          },
+          "runner": "codex",
+          "model": "fixture/native-model",
+          "sourceEventId": "check-started"
+        }
+      }
+    },
+    {
+      "sequence": 7,
+      "revision": 7,
+      "kind": "run.provider.event",
+      "payload": {
+        "runId": "run-000001",
+        "source": {
+          "eventId": "run-000001:runtime:3",
+          "providerSequence": 3,
+          "receivedAt": "2026-08-01T00:00:00.000Z"
+        },
+        "unknown": {
+          "type": "child-task",
+          "childId": "native-check",
+          "parentChildId": "native-review",
+          "status": "completed",
+          "title": "Check tests",
+          "time": {
+            "started": 1791460800100,
+            "updated": 1791460800900,
+            "ended": 1791460800900
+          },
+          "runner": "codex",
+          "model": "fixture/native-model",
+          "terminalReason": "Fixture assertions passed",
+          "sourceEventId": "check-completed"
+        }
+      }
+    },
+    {
+      "sequence": 8,
+      "revision": 8,
+      "kind": "run.provider.event",
+      "payload": {
+        "runId": "run-000001",
+        "source": {
+          "eventId": "run-000001:runtime:4",
+          "providerSequence": 4,
+          "receivedAt": "2026-08-01T00:00:00.000Z"
+        },
+        "unknown": {
+          "type": "child-task",
+          "childId": "native-review",
+          "status": "completed",
+          "title": "Review patch",
+          "time": {
+            "started": 1791460800000,
+            "updated": 1791460801200,
+            "ended": 1791460801200
+          },
+          "runner": "codex",
+          "model": "fixture/native-model",
+          "usage": {
+            "inputTokens": "[redacted]",
+            "outputTokens": "[redacted]"
+          },
+          "terminalReason": "Fixture review complete",
+          "sourceEventId": "review-completed"
+        }
+      }
+    },
+    {
+      "sequence": 9,
+      "revision": 9,
+      "kind": "run.provider.event",
+      "payload": {
+        "runId": "run-000001",
+        "source": {
+          "eventId": "run-000001:runtime:5",
+          "providerSequence": 5,
+          "receivedAt": "2026-08-01T00:00:00.000Z"
+        },
+        "unknown": {
+          "type": "child-task",
+          "childId": "native-review",
+          "status": "running",
+          "title": "Review patch",
+          "time": {
+            "started": 1791460800000,
+            "updated": 1791460800000
+          },
+          "runner": "codex",
+          "model": "fixture/native-model",
+          "sourceEventId": "review-started"
+        }
+      }
+    },
+    {
+      "sequence": 10,
+      "revision": 10,
+      "kind": "run.finished",
+      "payload": {
+        "runId": "run-000001",
+        "source": {
+          "eventId": "run-000001:runtime:6",
+          "providerSequence": 6,
+          "occurredAt": "2026-10-08T12:00:02.000Z",
+          "receivedAt": "2026-08-01T00:00:00.000Z"
+        },
+        "status": "completed",
+        "completeness": "complete",
+        "finalText": "Offline fixture: two native children reported. Open /activity to inspect them.",
+        "usage": {
+          "input": 10,
+          "output": 6,
+          "usdKnown": false
+        },
+        "reason": "RUNTIME_FINAL_REASON"
+      }
+    },
+    {
+      "sequence": 11,
+      "revision": 11,
+      "kind": "effect.upserted",
+      "payload": {
+        "value": {
+          "kind": "effect.upserted",
+          "effect": {
+            "id": "effect-op-terminal-000002-cab368051e60aace5b2e9929",
+            "operationId": "op-terminal-000002",
+            "effectKind": "run.execute",
+            "requestDigest": "cab368051e60aace5b2e99291f9686b0af1eedf84808936d57d6c10b5e674493",
+            "kind": "send",
+            "status": "terminal",
+            "attempt": 1,
+            "outcomeDigest": "b82069d6893c46ce5ac5dc805ef96d7f3999afb6c6ecd8ec2e4332ec92d0b067",
+            "createdAt": "2026-08-01T00:00:00.000Z",
+            "updatedAt": "2026-08-01T00:00:00.000Z"
+          }
+        }
+      }
+    },
+    {
+      "sequence": 12,
+      "revision": 12,
+      "kind": "draft.recorded",
+      "payload": {
+        "value": {
+          "kind": "draft.recorded",
+          "draft": {
+            "id": "draft-branch-1",
+            "branchId": "branch-1",
+            "text": "",
+            "updatedAt": "2026-08-01T00:00:00.000Z"
+          },
+          "operation": {
+            "id": "op-terminal-000003",
+            "kind": "draft-update",
+            "requestDigest": "5047a045e4c339a7598847f36d4f31a4192d5c2b83606eb77a3a146984803700",
+            "status": "acknowledged",
+            "target": {
+              "kind": "branch",
+              "id": "branch-1"
+            },
+            "createdAt": "2026-08-01T00:00:00.000Z",
+            "updatedAt": "2026-08-01T00:00:00.000Z",
+            "acknowledgedAt": "2026-08-01T00:00:00.000Z"
+          }
+        }
+      }
+    }
+  ]
+}

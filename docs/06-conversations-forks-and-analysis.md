@@ -427,10 +427,6 @@ Each automatic response uses an identifier derived from the interaction and the 
 
 The response operation and exact reserved non-secret rule are part of materialized interaction state, so snapshot compaction cannot discard automatic-response ownership or change the answer on restart.
 
-Native child observations and their source event identities are retained on the owning run. Snapshot projection version 2 is stored inside the encrypted state payload. Earlier snapshots rebuild from the retained journal so historical child events enter the new projection. Children are deduplicated within each run, including after restart; identical child identifiers in different runs remain distinct.
-
-The projection retains at most 512 children and 8,192 source event identities per run. Reaching either limit freezes further child updates and marks that history incomplete. The last observed child status remains visible and is not inferred from the parent run.
-
 Every provider response attempt has a bounded acknowledgement deadline and abort signal; a provider that does not settle becomes an explicit unknown result without blocking rule changes or application shutdown.
 
 Conflicting rules fail closed and require user response.
@@ -442,6 +438,12 @@ Conflicting rules fail closed and require user response.
 `/automate dry-run <run-id> <interaction-id>` evaluates a pending interaction without sending a response.
 
 `/automate disable <rule-id>` and `/automate delete <rule-id>` preserve their audited lifecycle through the same application actions used by headless clients.
+
+## Native child history
+
+Native child observations and their source event identities are retained on the owning run. Snapshot projection version 2 is stored inside the encrypted state payload. Earlier snapshots rebuild from the retained journal so valid historical child events enter the new projection. Children are deduplicated within each run, including after restart; identical child identifiers in different runs remain distinct.
+
+The projection retains at most 512 children and 8,192 source event identities per run. An observation that would exceed either limit freezes further child updates and marks that history incomplete. The last observed child status remains visible and is not inferred from the parent run.
 
 ## Graph and analysis acceptance
 

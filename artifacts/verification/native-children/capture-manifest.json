@@ -1,0 +1,579 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-08T22:49:23.648Z",
+  "command": "node scripts/capture-native-children.mjs",
+  "execution": "Real packed Braid binary in node-pty with deterministic ExecutionPort events. No live native runner or cloud integration claim.",
+  "source": {
+    "commit": "bd5672e7e3d1f0adbc63aa271bfdbd0d9bc0336c",
+    "digest": "5ebfade1f43574c85ef3152130d63bf86bdcd8d82cb10349d4b9c66ba992cdfc"
+  },
+  "package": {
+    "tarball": "tangle-network-braid-0.3.4.tgz",
+    "sha256": "5a881fed34d0038b67d5869dc8d8cca057e48cd8b016f38f54bab3bac0fda185",
+    "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f"
+  },
+  "provenance": {
+    "renderer": {
+      "package": "@earendil-works/pi-tui@1.1.0",
+      "pty": "node-pty@1.1.0",
+      "emulator": "@xterm/headless@6.0.0",
+      "node": "v24.21.0",
+      "terminal": "xterm-256color"
+    },
+    "raster": {
+      "agg": "agg 1.9.0",
+      "imagemagick": "Version: ImageMagick 6.9.12-98 Q16 x86_64 18038 https://legacy.imagemagick.org",
+      "fontFamily": "DejaVu Sans Mono",
+      "font": "DejaVu Sans Mono | Book | /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+      "colorMode": "sRGB 8-bit"
+    }
+  },
+  "keyboard": [
+    "submit fixture turn",
+    "/activity",
+    "Tab to workers",
+    "Enter parent and inspect usage",
+    "Down to nested child",
+    "PageDown through parent identity",
+    "x refuses Runtime worker controls",
+    "Escape",
+    "Ctrl+C twice"
+  ],
+  "assertions": [
+    "two native children",
+    "parent identity retained",
+    "completed lifecycle retained after duplicate",
+    "zero Runtime worker activities",
+    "child usage does not change run totals",
+    "bounded frame widths",
+    "read-only controls"
+  ],
+  "artifacts": [
+    {
+      "path": "40x12-activity.txt",
+      "sha256": "18ae327d1a8b165f88d1c973a7ecc5c61e868655f2701cc4a90499d5135b6212",
+      "kind": "terminal-frame",
+      "state": "activity",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "raw/40x12-activity.cast",
+      "sha256": "a74edbe414105ecb3bae3aa6c076ac36676ae75971cd7d89a2e2701805dec928",
+      "kind": "asciicast",
+      "state": "activity",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "40x12-activity.png",
+      "sha256": "72bcb889fcc3ed1832489e0c4d6cfbb7635f3933aacc3670a55e740f0b4b93ca",
+      "kind": "png",
+      "state": "activity",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "40x12-parent-detail.txt",
+      "sha256": "b5664672a667d88834b4bc40027347ce5097236b8a4d3d375101d1c7cc28cc9f",
+      "kind": "terminal-frame",
+      "state": "parent-detail",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "raw/40x12-parent-detail.cast",
+      "sha256": "02d4d4d8247c3857843e12de0efaa5cba3cac8c1df3e4e92c98210e375e31ad3",
+      "kind": "asciicast",
+      "state": "parent-detail",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "40x12-parent-detail.png",
+      "sha256": "b3d898c7cb61c2b050dc782493a191e0390b57321aab77cc22e1c2f54f399782",
+      "kind": "png",
+      "state": "parent-detail",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "40x12-parent-usage.txt",
+      "sha256": "489fa3a6add717831ce98b9559fbcea6a040de4107dfc3ec66e9a1996405a39d",
+      "kind": "terminal-frame",
+      "state": "parent-usage",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "raw/40x12-parent-usage.cast",
+      "sha256": "7c40195eddb33115f78bf85a8ddfd84f7be9b88e2ccda7e0f6336cfbb7111216",
+      "kind": "asciicast",
+      "state": "parent-usage",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "40x12-parent-usage.png",
+      "sha256": "42bbd58764b52f0997e45df96a4bc744105629ae62ff95b225314828ee68d548",
+      "kind": "png",
+      "state": "parent-usage",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "40x12-nested-detail.txt",
+      "sha256": "281711cfc83899efe159937c010a1cfbbc37208c93e85d4a4e68070a794305bf",
+      "kind": "terminal-frame",
+      "state": "nested-detail",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "raw/40x12-nested-detail.cast",
+      "sha256": "272c77f36076bb0ca7ac9dcdffe4b591dc6f4382d96b4fbe08c6516143b916e8",
+      "kind": "asciicast",
+      "state": "nested-detail",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "40x12-nested-detail.png",
+      "sha256": "d1c5d6fce4359f82ac7d6329b228b231165b43d7be84d3ad9c965e609f42f305",
+      "kind": "png",
+      "state": "nested-detail",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "40x12-semantic.json",
+      "sha256": "38ae31d5f31b6b420b78bbe1747e5b639de00ecf555fbd444d589331218c104c",
+      "kind": "semantic-state",
+      "state": "nested-detail",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "40x12-nested-parent.txt",
+      "sha256": "a5be5d736ad80cfdfeba918159f56511b214e3ceac71d64f8d17586cd0fcb8dc",
+      "kind": "terminal-frame",
+      "state": "nested-parent",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "raw/40x12-nested-parent.cast",
+      "sha256": "fc4e52ee31f73dcfea567687833c2002e18a41f44b77ca75db36df457089b341",
+      "kind": "asciicast",
+      "state": "nested-parent",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "40x12-nested-parent.png",
+      "sha256": "6e803e5d7547452d21f9025ba064f217f6d1c224819ebec0029e2f416e12d56f",
+      "kind": "png",
+      "state": "nested-parent",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "80x24-activity.txt",
+      "sha256": "c1df57bbf8c8e49304b183e4121c7d15daa61330be623dcc2b60feaa05da0028",
+      "kind": "terminal-frame",
+      "state": "activity",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "raw/80x24-activity.cast",
+      "sha256": "ed84f2956f1e5720a71845997bc0798dd2408c1acd7320bde683fd768df60273",
+      "kind": "asciicast",
+      "state": "activity",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "80x24-activity.png",
+      "sha256": "c3f2ceb8cb0b99a7d984bcf48f28ef2111f1fcc32d2650ae710e52ab16e4da4b",
+      "kind": "png",
+      "state": "activity",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "80x24-parent-detail.txt",
+      "sha256": "8472651782c9b5032780c9f00b8f35f2541dec52d93d54731c842b25da52e543",
+      "kind": "terminal-frame",
+      "state": "parent-detail",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "raw/80x24-parent-detail.cast",
+      "sha256": "ab32ab6d3843a872fbace02fca0d971369d05c0d06e67e02a778a3990892ac0b",
+      "kind": "asciicast",
+      "state": "parent-detail",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "80x24-parent-detail.png",
+      "sha256": "44abb51017bdf66b7f14a521520690247ec21bec5b9a7783575c3f1aacf00d0d",
+      "kind": "png",
+      "state": "parent-detail",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "80x24-parent-usage.txt",
+      "sha256": "8472651782c9b5032780c9f00b8f35f2541dec52d93d54731c842b25da52e543",
+      "kind": "terminal-frame",
+      "state": "parent-usage",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "raw/80x24-parent-usage.cast",
+      "sha256": "b883bcabadddfd46a34311ce9bb4cb231e0f56c09cb0852116a5e1d4b8e68a1e",
+      "kind": "asciicast",
+      "state": "parent-usage",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "80x24-parent-usage.png",
+      "sha256": "04e0bdedc896e0415e866a0c225978a325dffa14e08934d76e1cf3fa012c1966",
+      "kind": "png",
+      "state": "parent-usage",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "80x24-nested-detail.txt",
+      "sha256": "7062e76fa30295280399245031337139b9735d0678103147f139515107156040",
+      "kind": "terminal-frame",
+      "state": "nested-detail",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "raw/80x24-nested-detail.cast",
+      "sha256": "c924f035b27447ba45aba9c0a2314ba60ec269c3add4a3161989533108c9bf43",
+      "kind": "asciicast",
+      "state": "nested-detail",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "80x24-nested-detail.png",
+      "sha256": "fa1f7a12ccb3c026254db0d33b87de799448575cba3d88f35588e64cb0323e86",
+      "kind": "png",
+      "state": "nested-detail",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "80x24-semantic.json",
+      "sha256": "3d8d1db80b6c3eecec5f608a6e68c215249f3edf2aca8b4e19bde97a0f6a1c3f",
+      "kind": "semantic-state",
+      "state": "nested-detail",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "80x24-nested-parent.txt",
+      "sha256": "7062e76fa30295280399245031337139b9735d0678103147f139515107156040",
+      "kind": "terminal-frame",
+      "state": "nested-parent",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "raw/80x24-nested-parent.cast",
+      "sha256": "249bd7066aaed62f5c38ae1093619db742ef7786cb3bbc7d632cec0a9eb42c4b",
+      "kind": "asciicast",
+      "state": "nested-parent",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "80x24-nested-parent.png",
+      "sha256": "eaae365cf207f4282d89e8d95366eff3d1cf9125c3e5d766e5745f5106506f30",
+      "kind": "png",
+      "state": "nested-parent",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "native-children-keyboard.cast",
+      "sha256": "11b7fbc33348ef799a7025c1c7305c6558b7a137f90cc9cfa6df6616a37cff43",
+      "kind": "keyboard-asciicast",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "80x24-native-children-keyboard.gif",
+      "sha256": "238441b1d2798a48b134c2e8153dde09e63851cf5a6304e70c181ae1e575c54b",
+      "kind": "keyboard-recording",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "120x40-activity.txt",
+      "sha256": "a69a57cb4a53547e20ee5daaa1e0d89abc8f38380791de0d8108b9df1449b90f",
+      "kind": "terminal-frame",
+      "state": "activity",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "raw/120x40-activity.cast",
+      "sha256": "4226e2403088a0f2985befe6c934cfd3bd8c00bec9f0335275dab67c15a1fe42",
+      "kind": "asciicast",
+      "state": "activity",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "120x40-activity.png",
+      "sha256": "2c1bdb584b117bff8fe62cf2b229539402e64e4ec761c6e3e936947573e64418",
+      "kind": "png",
+      "state": "activity",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "120x40-parent-detail.txt",
+      "sha256": "a69a57cb4a53547e20ee5daaa1e0d89abc8f38380791de0d8108b9df1449b90f",
+      "kind": "terminal-frame",
+      "state": "parent-detail",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "raw/120x40-parent-detail.cast",
+      "sha256": "a8f35d05b93390e275db7d720b6a9ee49f393235da2d8d56ffaea616903c05cc",
+      "kind": "asciicast",
+      "state": "parent-detail",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "120x40-parent-detail.png",
+      "sha256": "48179274671db0c63daee96cf97b088bd465e4ea722398a44e40893e615ce047",
+      "kind": "png",
+      "state": "parent-detail",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "120x40-parent-usage.txt",
+      "sha256": "a69a57cb4a53547e20ee5daaa1e0d89abc8f38380791de0d8108b9df1449b90f",
+      "kind": "terminal-frame",
+      "state": "parent-usage",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "raw/120x40-parent-usage.cast",
+      "sha256": "75e9ef8e5862eb73e1237e41c35630fc021c85f13abcbd9260d4ac0a3afdfcc5",
+      "kind": "asciicast",
+      "state": "parent-usage",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "120x40-parent-usage.png",
+      "sha256": "48179274671db0c63daee96cf97b088bd465e4ea722398a44e40893e615ce047",
+      "kind": "png",
+      "state": "parent-usage",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "120x40-nested-detail.txt",
+      "sha256": "2009ea1ca5dc063aa34442252a6a551239bb7675e10f081d3bad8009520f4bf6",
+      "kind": "terminal-frame",
+      "state": "nested-detail",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "raw/120x40-nested-detail.cast",
+      "sha256": "5b19e97638b1d113f828bdc6dd59ae12f052c68b99d79e75d9b9f8b96999beef",
+      "kind": "asciicast",
+      "state": "nested-detail",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "120x40-nested-detail.png",
+      "sha256": "8412b04941dd559a3442a0b795906458d58951170f1a6a3d012eae6789e956dd",
+      "kind": "png",
+      "state": "nested-detail",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "120x40-semantic.json",
+      "sha256": "c400d89addf24b6ab5cf25a380ca93acb557d0d0acbb22b54551044ac23c3251",
+      "kind": "semantic-state",
+      "state": "nested-detail",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "120x40-nested-parent.txt",
+      "sha256": "2009ea1ca5dc063aa34442252a6a551239bb7675e10f081d3bad8009520f4bf6",
+      "kind": "terminal-frame",
+      "state": "nested-parent",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "raw/120x40-nested-parent.cast",
+      "sha256": "a1df2f2e13d9079cf5dee1a77cf32b78c33aed673586a3d7b8f7c16bec9409e0",
+      "kind": "asciicast",
+      "state": "nested-parent",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "120x40-nested-parent.png",
+      "sha256": "8412b04941dd559a3442a0b795906458d58951170f1a6a3d012eae6789e956dd",
+      "kind": "png",
+      "state": "nested-parent",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "200x60-activity.txt",
+      "sha256": "1e5e8dbbf21c4c0be0ae6310a79e67d71c0a5bfcc2e526c14ae154ff0ce995c7",
+      "kind": "terminal-frame",
+      "state": "activity",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "raw/200x60-activity.cast",
+      "sha256": "c5b94df43f8de5141c803c3edf20421a90f37a42faa93e6710c13b98fa645fce",
+      "kind": "asciicast",
+      "state": "activity",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "200x60-activity.png",
+      "sha256": "fe2dbf4fb3ffc0ebab76beed23affc86531f8efe63d923c07a906f097e301c71",
+      "kind": "png",
+      "state": "activity",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "200x60-parent-detail.txt",
+      "sha256": "1e5e8dbbf21c4c0be0ae6310a79e67d71c0a5bfcc2e526c14ae154ff0ce995c7",
+      "kind": "terminal-frame",
+      "state": "parent-detail",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "raw/200x60-parent-detail.cast",
+      "sha256": "691d6eb42646c738e8c58cb239cf2a98b91264799057bb70b7647dd346cc7cb0",
+      "kind": "asciicast",
+      "state": "parent-detail",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "200x60-parent-detail.png",
+      "sha256": "d322a775037502a934739f127d76456ec2bf3f01a021afb1a0565b3fec474331",
+      "kind": "png",
+      "state": "parent-detail",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "200x60-parent-usage.txt",
+      "sha256": "1e5e8dbbf21c4c0be0ae6310a79e67d71c0a5bfcc2e526c14ae154ff0ce995c7",
+      "kind": "terminal-frame",
+      "state": "parent-usage",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "raw/200x60-parent-usage.cast",
+      "sha256": "2f46674c04bf038a3284eebf02096d7bf16a2548243603b099f2ab1cd3120b8e",
+      "kind": "asciicast",
+      "state": "parent-usage",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "200x60-parent-usage.png",
+      "sha256": "83bc9ca333f1a96fedd5dc1e6fe4c2fe9366dcd95d24f7427511c7068451c673",
+      "kind": "png",
+      "state": "parent-usage",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "200x60-nested-detail.txt",
+      "sha256": "1896b0061b028a3b715ec17b5a673618b26222a0790ab41ca3d7e13d68e68f9e",
+      "kind": "terminal-frame",
+      "state": "nested-detail",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "raw/200x60-nested-detail.cast",
+      "sha256": "00d7c74f1aebd57caf4f9010caf74ce7ddcecf522c46110f119b83f1c57c7138",
+      "kind": "asciicast",
+      "state": "nested-detail",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "200x60-nested-detail.png",
+      "sha256": "45b7dcd2e6adbda7b082b817600a7e0157455cc60cb04f975c2286a78941512d",
+      "kind": "png",
+      "state": "nested-detail",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "200x60-semantic.json",
+      "sha256": "5f598e41afdd08c26cd5e79ecb8e80fde421028dff163c9e0736804e5954f720",
+      "kind": "semantic-state",
+      "state": "nested-detail",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "200x60-nested-parent.txt",
+      "sha256": "1896b0061b028a3b715ec17b5a673618b26222a0790ab41ca3d7e13d68e68f9e",
+      "kind": "terminal-frame",
+      "state": "nested-parent",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "raw/200x60-nested-parent.cast",
+      "sha256": "1e5f5d84e98c47a10174229127a33fba7e2666fb2ef826b81efa6b743d02fa46",
+      "kind": "asciicast",
+      "state": "nested-parent",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "200x60-nested-parent.png",
+      "sha256": "d99e2750ef9eb76d6f0440ca9f470d41954ea42a6993b02c756c7f7b9b238aac",
+      "kind": "png",
+      "state": "nested-parent",
+      "columns": 200,
+      "rows": 60
+    }
+  ]
+}

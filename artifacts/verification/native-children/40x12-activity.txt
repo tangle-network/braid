@@ -1,0 +1,12 @@
+ workers · 2                            
+────────────────────────────────────────
+ ›   └ ✓ Review patch · native-child · …
+       └ ✓ Check tests · native-child ·…
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+────────────────────────────────────────
+ ↑↓ move · → open · ←/esc close         

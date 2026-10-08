@@ -1,0 +1,24 @@
+ workers · 2                                                                    
+────────────────────────────────────────────────────────────────────────────────
+ ›   └ ✓ Review patch · native-child · complete · 1.2s                          
+       └ ✓ Check tests · native-child · complete · 800ms                        
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+────────────────────────────────────────────────────────────────────────────────
+ ↑↓ move · enter/→ open · ←/esc close · native child: read only · tab filter    

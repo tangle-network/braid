@@ -132,7 +132,7 @@ async function openTerminal(binary, columns, rows, root) {
   const input = async (value) => {
     record('i', value)
     session.write(value)
-    await sleep(30)
+    await sleep(value === '\u001b' ? 300 : 30)
     await stable()
   }
   return {
@@ -247,7 +247,7 @@ async function capture(binary, columns, rows, artifacts) {
     const reviewer = children.find((child) => child.title === 'Review patch')
     assert(checker && reviewer, 'Missing child identities')
     assert.equal(checker.parentId, reviewer.id)
-    assert(children.every((child) => child.status === 'completed'))
+    assert(children.every((child) => child.status === 'complete'))
     assert.equal(snapshot.view.activity.filter((item) => item.kind === 'worker').length, 0)
     assert.equal(snapshot.state.runs[0]?.inputTokens, 10, 'Child usage changed run totals')
     assert.equal(snapshot.state.runs[0]?.outputTokens, 6, 'Child usage changed run totals')

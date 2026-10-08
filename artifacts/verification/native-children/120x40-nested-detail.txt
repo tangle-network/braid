@@ -1,0 +1,40 @@
+ workers › Check tests                                                                                                  
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+     └ ✓ Review patch · native-child · …│ time: 2026-10-08T12:00:00.900Z                                                
+ ›     └ ✓ Check tests · native-child ·…│ elapsed: 800ms                                                                
+                                        │ run: run-000001                                                               
+                                        │ parent: native-child:["run-000001","native-review"]                           
+                                        │ source event: check-completed                                                 
+                                        │ Native child · completed · read only                                          
+                                        │ child: native-check                                                           
+                                        │ runner: codex                                                                 
+                                        │ model: fixture/native-model                                                   
+                                        │ tokens: not reported                                                          
+                                        │ cost: not reported                                                            
+                                        │ parent child: native-review                                                   
+                                        │ terminal reason: Fixture assertions passed                                    
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ↑↓ select · PgUp/PgDn detail · home/end jump · ←/esc close · native child: read only · tab filter                      
