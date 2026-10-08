@@ -68,6 +68,7 @@ test('keyboard diagnostics name Kitty limits and preserve the legacy route', () 
 test('plain terminal output strips complete and split OSC metadata but preserves CSI', () => {
   const writes: string[] = []
   const terminal = {
+    start: (_onInput: (data: string) => void, _onResize: () => void) => {},
     setProgress: (_active: boolean) => {},
     setTitle: (_title: string) => {},
     write: (data: string) => writes.push(data),
@@ -85,6 +86,7 @@ test('plain terminal output strips complete and split OSC metadata but preserves
 test('plain terminal output discards oversized split OSC data through BEL and ST', () => {
   const writes: string[] = []
   const terminal = {
+    start: (_onInput: (data: string) => void, _onResize: () => void) => {},
     setProgress: (_active: boolean) => {},
     setTitle: (_title: string) => {},
     write: (data: string) => writes.push(data),
@@ -100,6 +102,54 @@ test('plain terminal output discards oversized split OSC data through BEL and ST
   terminal.write('\\after ST')
   restore()
   assert.deepEqual(writes, ['before', 'after BEL', 'after ST'])
+})
+
+test('accessibility startup scopes the renderer metadata setting across resume and failure', () => {
+  const previous = process.env.PI_PROGRAM_STATUS
+  const observed: Array<string | undefined> = []
+  const terminal = new VirtualTerminal(80, 24)
+  let fail = false
+  terminal.start = () => {
+    observed.push(process.env.PI_PROGRAM_STATUS)
+    if (fail) throw new Error('terminal startup failed')
+  }
+  const restore = installTerminalOutputPolicy(terminal, true)
+  try {
+    process.env.PI_PROGRAM_STATUS = '1'
+    terminal.start(
+      () => {},
+      () => {},
+    )
+    assert.equal(process.env.PI_PROGRAM_STATUS, '1')
+    delete process.env.PI_PROGRAM_STATUS
+    terminal.start(
+      () => {},
+      () => {},
+    )
+    assert.equal(process.env.PI_PROGRAM_STATUS, undefined)
+    fail = true
+    assert.throws(
+      () =>
+        terminal.start(
+          () => {},
+          () => {},
+        ),
+      /terminal startup failed/u,
+    )
+    assert.equal(process.env.PI_PROGRAM_STATUS, undefined)
+    fail = false
+    restore()
+    process.env.PI_PROGRAM_STATUS = '1'
+    terminal.start(
+      () => {},
+      () => {},
+    )
+    assert.deepEqual(observed, ['0', '0', '0', '1'])
+  } finally {
+    restore()
+    if (previous === undefined) delete process.env.PI_PROGRAM_STATUS
+    else process.env.PI_PROGRAM_STATUS = previous
+  }
 })
 
 test('global shortcuts do not steal question marks, Unicode, or Kitty printable input', async () => {

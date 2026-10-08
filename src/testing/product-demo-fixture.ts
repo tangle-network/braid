@@ -1,5 +1,5 @@
 import type { AgentProfile } from '@tangle-network/agent-interface'
-import { defineAgentProfile } from '../adapters/agent-interface/profile-runtime.js'
+import { defineAgentProfile } from '@tangle-network/agent-interface/profile'
 import type { ConnectionRecord } from '../domain/entities.js'
 import { createConnectionId, createCredentialRefId } from '../domain/ids.js'
 

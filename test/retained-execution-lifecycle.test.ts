@@ -159,10 +159,6 @@ test('retained controls follow complete provider capabilities', () => {
     status: true,
     recreate: true,
   })
-  assert.equal(
-    retainedCapabilities(capableEnvironment, { exactStatus: false }).controls.status,
-    false,
-  )
 })
 
 test('retained observations use the exact provider environment identity', async () => {

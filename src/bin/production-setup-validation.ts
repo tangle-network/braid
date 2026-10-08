@@ -1,7 +1,7 @@
 import {
   harnessHonorsEffort,
   harnessHonorsModel,
-} from '../adapters/agent-interface/harness-runtime.js'
+} from '@tangle-network/agent-interface/harness-capabilities'
 import { cliBridgeModelValidationRequest } from '../adapters/connections/cli-bridge-model-validation.js'
 import { readConnectionCredential } from '../adapters/connections/production-connections.js'
 import type {

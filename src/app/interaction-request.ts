@@ -7,7 +7,7 @@ import type {
 import {
   InteractionRequestSchema,
   interactionRequestDigest,
-} from '../adapters/agent-interface/interaction-runtime.js'
+} from '@tangle-network/agent-interface/interaction'
 
 type ParsedInteractionRequest = ReturnType<typeof InteractionRequestSchema.parse>
 

@@ -1,8 +1,6 @@
 import type { AgentProfile } from '@tangle-network/agent-interface'
-import {
-  canonicalAgentProfileDigestHex,
-  snapshotAgentProfile,
-} from '../adapters/agent-interface/profile-runtime.js'
+import { canonicalAgentProfileDigestHex } from '../adapters/agent-interface/profile-runtime.js'
+import { snapshotAgentProfile } from '@tangle-network/agent-interface/profile-snapshot'
 import { canonicalDigest } from '../domain/canonical.js'
 import type { ConnectionRecord } from '../domain/entities.js'
 import type { ConnectionId, ProfileId } from '../domain/ids.js'

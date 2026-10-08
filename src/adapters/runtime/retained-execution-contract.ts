@@ -29,8 +29,6 @@ export type RetainedTurnResult = Extract<
 /** Provider-specific facts and operations needed by the retained lifecycle. */
 export interface RetainedExecutionPlan {
   readonly providerName: string
-  /** False when the provider cannot bind status to this exact execution. */
-  readonly exactStatus?: boolean
   /** Unknown until a provider with server-issued ids admits the first run. */
   readonly environmentId?: string
   readonly providerSessionId?: string

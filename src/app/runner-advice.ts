@@ -1,8 +1,6 @@
 import type { FeedbackTrajectory } from '@tangle-network/agent-eval'
-import {
-  harnessSupportsModel,
-  harnessTypeSchema,
-} from '../adapters/agent-interface/harness-runtime.js'
+import { harnessSupportsModel } from '@tangle-network/agent-interface/harness-capabilities'
+import { harnessTypeSchema } from '@tangle-network/agent-interface/harness'
 import { redactSensitiveText } from '../domain/redaction.js'
 import { AppError } from './errors.js'
 import type { ProfileSummary } from './profiles.js'

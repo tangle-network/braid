@@ -21,10 +21,8 @@ import type { ConnectionRecord } from '../../domain/entities.js'
 import { safePublicIdentifier } from '../../domain/provider-values.js'
 import { redactProviderError } from '../../domain/redaction.js'
 import type { RetainedRunAdmissionRecord } from '../../domain/run-contracts.js'
-import {
-  canonicalAgentProfileDigestHex,
-  snapshotAgentProfile,
-} from '../agent-interface/profile-runtime.js'
+import { canonicalAgentProfileDigestHex } from '../agent-interface/profile-runtime.js'
+import { snapshotAgentProfile } from '@tangle-network/agent-interface/profile-snapshot'
 import { portableBridgeModel } from '../connections/cli-bridge-model-route.js'
 import { withTangleRouterClient } from '../connections/tangle-router-client.js'
 import { AGENT_RUNTIME_VERSION } from '../runtime/agent-runtime-version.js'

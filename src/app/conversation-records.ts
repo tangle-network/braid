@@ -1,8 +1,6 @@
 import type { ReasoningEffort } from '@tangle-network/agent-interface'
-import {
-  harnessTypeSchema,
-  reasoningEffortSchema,
-} from '../adapters/agent-interface/harness-runtime.js'
+import { harnessTypeSchema } from '@tangle-network/agent-interface/harness'
+import { reasoningEffortSchema } from '@tangle-network/agent-interface/profile-schema'
 import type {
   BranchBoundary,
   BranchRecord,

@@ -1,0 +1,46 @@
+{
+  "schema": "braid.runtime-refresh-gate.v1",
+  "status": "passed",
+  "completedAt": "2026-10-08T09:46:34.528793+00:00",
+  "host": "beelink2 Ubuntu-24.04",
+  "baseCommit": "db2f8dbad5b9b69dc8f04cb3e76cdb218da69af1",
+  "node": "24.21.0",
+  "pnpm": "11.24.0",
+  "versions": {
+    "agent-runtime": "0.312.0",
+    "agent-provider-tangle": "3.6.6",
+    "sandbox": "0.60.27",
+    "agent-interface": "3.1.1",
+    "agent-eval": "0.209.1",
+    "pi-tui": "1.1.0"
+  },
+  "commands": [
+    "pnpm install --frozen-lockfile",
+    "pnpm peers check",
+    "pnpm run build",
+    "pnpm run typecheck",
+    "100 affected TypeScript checks",
+    "103 proof checks",
+    "pnpm run check"
+  ],
+  "exitCode": 0,
+  "testGroups": [
+    100,
+    103,
+    911,
+    16,
+    36,
+    20,
+    2,
+    35,
+    173,
+    4
+  ],
+  "failed": 0,
+  "skipped": 0,
+  "gateLogSha256": "f4ecc082164bc10f39ea83b0e35028bf18b609c9474fefa7ff637a4a8a3f455b",
+  "sourceManifestSha256": "57dfd35da1aa4345d68be7c86f538cfd87746fea08a9c29740d0ee52aa5b3c16",
+  "lockfileSha256": "2ef327d6ca163b65cb88d418f7e69a83fb0a20974b7ce687d7044d850304cea2",
+  "sourceParity": "All 79 changed paths, including deletions, matched Mac and Beelink before the gate completed.",
+  "scope": "Published registry dependency cohort; actual cloud proof is recorded separately. No recursive root admission or fleet topology claim."
+}

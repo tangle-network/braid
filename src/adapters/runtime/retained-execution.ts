@@ -350,9 +350,6 @@ export class RetainedExecutionPort implements ExecutionPort {
     }
     let effect = result.effect
     if (effect === 'cancel_requested' || effect === 'unknown' || effect === 'not_live') {
-      if (resolved.plan.exactStatus === false) {
-        return { operationId: input.operationId, outcome: 'unknown', detail: result.effect }
-      }
       const reconciled = await this.#reconcileCancelled(
         resolved,
         input,
@@ -408,7 +405,6 @@ export class RetainedExecutionPort implements ExecutionPort {
       input,
     )
     if (!resolved) return null
-    if (resolved.plan.exactStatus === false) return null
     const snapshot = await resolved.handle.status({
       ...(input.signal === undefined ? {} : { signal: input.signal }),
     })

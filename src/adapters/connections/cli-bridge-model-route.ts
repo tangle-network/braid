@@ -1,5 +1,6 @@
 import type { HarnessType } from '@tangle-network/agent-interface'
-import { harnessSupportsModel, harnessTypeSchema } from '../agent-interface/harness-runtime.js'
+import { harnessSupportsModel } from '@tangle-network/agent-interface/harness-capabilities'
+import { harnessTypeSchema } from '@tangle-network/agent-interface/harness'
 
 /** Returns the runner encoded by a CLI Bridge `<runner>/<model>` route. */
 export function bridgeRouteRunner(model: string): HarnessType | undefined {

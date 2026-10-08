@@ -10,7 +10,7 @@ import {
   InteractionResponseSchema,
   interactionResponseCommandDigest,
   validateInteractionResponse,
-} from '../adapters/agent-interface/interaction-runtime.js'
+} from '@tangle-network/agent-interface/interaction'
 import { isSensitiveFieldName } from '../domain/bounded-structured.js'
 import { canonicalDigest } from '../domain/canonical.js'
 import type {

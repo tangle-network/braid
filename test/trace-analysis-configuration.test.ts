@@ -13,7 +13,6 @@ import {
 import type { AgentProfile } from '@tangle-network/agent-interface'
 import { AgentEvalAnalystAdapter } from '../src/adapters/analysis/eval-analyst.js'
 import {
-  MANAGED_AGENT_EVAL_RPC_RESOLUTION_CUTOFF,
   MANAGED_AGENT_EVAL_RPC_VERSION,
   MANAGED_ANALYSIS_PYTHON_VERSION,
   MANAGED_ANALYSIS_RESOLUTION_CUTOFF,
@@ -53,10 +52,10 @@ const NOW = '2026-08-03T20:00:00.000Z'
 const PRICING = { inputUsdPerMillion: 1, outputUsdPerMillion: 2 }
 
 test('managed analysis cutoff includes the pinned RPC release artifacts', () => {
-  assert.equal(MANAGED_AGENT_EVAL_RPC_VERSION, '0.187.2')
-  // https://pypi.org/pypi/agent-eval-rpc/0.187.2/json
-  const lastArtifactPublishedAt = Date.parse('2026-09-24T10:53:16.342Z')
-  assert.ok(Date.parse(MANAGED_AGENT_EVAL_RPC_RESOLUTION_CUTOFF) > lastArtifactPublishedAt)
+  assert.equal(MANAGED_AGENT_EVAL_RPC_VERSION, '0.209.1')
+  // https://pypi.org/pypi/agent-eval-rpc/0.209.1/json
+  const lastArtifactPublishedAt = Date.parse('2026-10-06T07:30:18.018Z')
+  assert.ok(Date.parse(MANAGED_ANALYSIS_RESOLUTION_CUTOFF) > lastArtifactPublishedAt)
 })
 
 test('managed analysis uses bundled uv with exact isolated runtime versions', () => {
@@ -85,8 +84,6 @@ test('managed analysis uses bundled uv with exact isolated runtime versions', ()
     `agent-eval-rpc[dspy]==${MANAGED_AGENT_EVAL_RPC_VERSION}`,
     '--exclude-newer',
     MANAGED_ANALYSIS_RESOLUTION_CUTOFF,
-    '--exclude-newer-package',
-    `agent-eval-rpc=${MANAGED_AGENT_EVAL_RPC_RESOLUTION_CUTOFF}`,
     '--default-index',
     'https://pypi.org/simple',
     '--keyring-provider',
@@ -113,8 +110,6 @@ test('managed analysis uses bundled uv with exact isolated runtime versions', ()
     `agent-eval-rpc[dspy]==${MANAGED_AGENT_EVAL_RPC_VERSION}`,
     '--exclude-newer',
     MANAGED_ANALYSIS_RESOLUTION_CUTOFF,
-    '--exclude-newer-package',
-    `agent-eval-rpc=${MANAGED_AGENT_EVAL_RPC_RESOLUTION_CUTOFF}`,
     '--default-index',
     'https://pypi.org/simple',
     '--keyring-provider',

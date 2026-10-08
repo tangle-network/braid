@@ -43,7 +43,6 @@ if (scopeIndex !== -1 && !scope) {
 
 const scopeFiles = {
   unit: [
-    'agent-interface-runtime-parity.test.js',
     'canonical.test.js',
     'analysis-model-call-observability.test.js',
     'analysis-model-call-roundtrip.test.js',
@@ -73,7 +72,6 @@ const scopeFiles = {
     'w6-ui.test.js',
   ],
   contract: [
-    'agent-interface-runtime-parity.test.js',
     'analysis-model-call-observability.test.js',
     'analysis-model-call-roundtrip.test.js',
     'application.test.js',

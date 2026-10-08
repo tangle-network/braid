@@ -17,8 +17,6 @@ const requiredInputs = [
   'src/domain/secret-sanitizer.ts',
   'src/domain/terminal-sanitizer.ts',
   'src/adapters/connections/cli-bridge-model-route.ts',
-  'src/adapters/agent-interface/harness-runtime.ts',
-  'src/adapters/agent-interface/module-url.ts',
   'package.json',
   'pnpm-lock.yaml',
 ]

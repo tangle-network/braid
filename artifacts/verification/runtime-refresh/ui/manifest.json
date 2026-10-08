@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 3,
+  "generatedAt": "2026-10-07T22:41:54.559Z",
+  "command": "pnpm capture:visual",
+  "binary": "clean npm install from generated tarball",
+  "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
+  "tarball": "tangle-network-braid-0.3.4.tgz",
+  "tarballSha256": "3efa667836fecbfb41b8f4448ab8289a3018c7cf1737ec342b3a54d9cce86e48",
+  "stateFixture": "deterministic",
+  "terminal": "node-pty/xterm-256color",
+  "node": "v24.21.0",
+  "provenance": {
+    "renderer": {
+      "package": "@earendil-works/pi-tui@1.1.0",
+      "pty": "node-pty@1.1.0",
+      "emulator": "@xterm/headless@6.0.0",
+      "node": "v24.21.0",
+      "terminal": "xterm-256color"
+    },
+    "raster": {
+      "agg": "agg 1.9.0",
+      "imagemagick": "Version: ImageMagick 6.9.12-98 Q16 x86_64 18038 https://legacy.imagemagick.org",
+      "fontFamily": "DejaVu Sans Mono",
+      "font": "DejaVu Sans Mono | Book | /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+      "colorMode": "sRGB 8-bit"
+    }
+  },
+  "keyboardFlow": {
+    "steps": [
+      "8 completed turns",
+      "Page Up",
+      "Alt+Home",
+      "Page Down",
+      "Alt+End"
+    ],
+    "artifacts": [
+      "80x24-transcript-keyboard.gif"
+    ]
+  },
+  "scope": "Selected stills and keyboard recording from the complete 159-artifact capture. The full manifest remains with the retained local verification evidence.",
+  "files": [
+    {
+      "path": "40x12.png",
+      "sha256": "0afdba4b72f29bb1e07cd0d8eacc19d78e28f3affd2316f5c2cc71ab9032aa44"
+    },
+    {
+      "path": "80x24.png",
+      "sha256": "fc8e5ffc8eedc40161782364f23ba3bb27e834d0c89cabdb76654f2bf60291c2"
+    },
+    {
+      "path": "120x40.png",
+      "sha256": "c5ecc20ba64e19c01f3f79b2cc280d8c256d1800a73f30635061b3ff9fcbb1bc"
+    },
+    {
+      "path": "200x60.png",
+      "sha256": "9e5599b2a21a2b5935426c14449a81bfb480c2caa460462aaeab49526f4c2bff"
+    },
+    {
+      "path": "80x24-transcript-keyboard.gif",
+      "sha256": "340604bccc7b956c5e369925aef9dcf99eac4309683f3c0c6d1e5db5309bc0ee"
+    }
+  ],
+  "source_files": {
+    "src/views/tui/terminal-compatibility.ts": "e4280567b6ef59405127438c59d26080038ed1879c44433da2d9a31d82099b88",
+    "test/keyboard.test.ts": "343cd0c6f90969631d189546a0e8ab7c75868f06c9670e922d123bba3b6cf53b",
+    "scripts/test-pty.mjs": "5a982e68af64c9f2a783c12fcaf3978d370328fb6e78b39e95c41af826507af6",
+    "scripts/live-required/tangle-sandbox-braid-stress.mjs": "93c853ad4ca366a74aab37c544533a7c5a2c3c3dad50c60a0719b523a1504b4c",
+    "test/tangle-sandbox-braid-stress-script.test.mjs": "1795d9b5994f6d2de58508b496c4640331ddb41eb3eedc6f9e8576e18085b1c0"
+  }
+}

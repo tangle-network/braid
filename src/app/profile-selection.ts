@@ -9,11 +9,9 @@ import {
   reasoningEffortsFor,
   snapHarnessToModel,
   snapModelToHarness,
-} from '../adapters/agent-interface/harness-runtime.js'
-import {
-  mergeAgentProfiles,
-  snapshotAgentProfile,
-} from '../adapters/agent-interface/profile-runtime.js'
+} from '@tangle-network/agent-interface/harness-capabilities'
+import { mergeAgentProfiles } from '@tangle-network/agent-interface/profile'
+import { snapshotAgentProfile } from '@tangle-network/agent-interface/profile-snapshot'
 import type {
   EffectiveProfileInput,
   EffectiveProfileResult,

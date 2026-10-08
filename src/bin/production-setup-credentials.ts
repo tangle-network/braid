@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { mkdir } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
-import { canonicalCandidateJson } from '../adapters/agent-interface/profile-runtime.js'
+import { canonicalCandidateJson } from '@tangle-network/agent-interface'
 import { bindCredentialToOrigin } from '../adapters/connections/production-connection-credentials.js'
 import {
   connectionEndpoint,

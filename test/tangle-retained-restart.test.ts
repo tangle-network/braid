@@ -92,7 +92,7 @@ test('one retained cloud session survives restart and continues in the same sand
     const firstRun = first.app.state().runs.find((candidate) => candidate.id === turn.runId)
     assert.equal(sandbox.dispatches[0]?.turnId, firstRun?.turnId)
     assert.equal(firstRun?.capabilities.sessions.continue, true)
-    assert.equal(firstRun?.capabilities.controls.status, false)
+    assert.equal(firstRun?.capabilities.controls.status, true)
     assert.equal(firstRun?.capabilities.streaming.replay, true)
     assert.equal(firstRun?.capabilities.streaming.detach, true)
     assert.equal(sandbox.createCalls[0]?.idleTimeoutSeconds, idleTtlSeconds)
@@ -280,8 +280,16 @@ test('provider lookup recovers the pre-journal crash window without a saved refe
     if (restarted.status === undefined || restarted.cancelRun === undefined) {
       throw new Error('Retained recovery controls are unavailable')
     }
-    assert.equal(await restarted.status({ runId, providerSessionId }), null)
-    assert.equal(await restarted.status({ runId, providerSessionId, controlRef }), null)
+    assert.deepEqual(await restarted.status({ runId, providerSessionId }), {
+      runId,
+      sessionId: providerSessionId,
+      status: 'streaming',
+    })
+    assert.deepEqual(await restarted.status({ runId, providerSessionId, controlRef }), {
+      runId,
+      sessionId: providerSessionId,
+      status: 'streaming',
+    })
     const cancelled = await restarted.cancelRun({
       operationId: 'operation-tangle-crash-window-cancel',
       runId,
@@ -290,8 +298,72 @@ test('provider lookup recovers the pre-journal crash window without a saved refe
     assert.equal(cancelled.outcome, 'accepted')
     assert.equal(sandbox.cancellations.length, 1)
     assert.equal(sandbox.cancellations[0]?.run.runId, providerRunId)
+    assert.deepEqual(await restarted.status({ runId, providerSessionId, controlRef }), {
+      runId,
+      sessionId: providerSessionId,
+      status: 'cancelled',
+    })
   } finally {
     abort.abort()
     await rm(root, { recursive: true, force: true })
   }
+})
+
+test('retained status rejects a newer execution in the same provider session after restart', async () => {
+  const sandbox = new FakeTangleRetainedSandbox()
+  const sessionId = 'session-exact-status-restart'
+  const start = async (runId: string) => {
+    const execution = retainedExecution(sandbox)
+    const input = {
+      operationId: `operation-${runId}`,
+      runId,
+      turnId: `turn-${runId}`,
+      text: 'Report this exact execution only.',
+      profile,
+      sessionId,
+      signal: new AbortController().signal,
+      onRetainedAdmission: async () => {},
+    }
+    await execution.admit(input)
+    const stream = execution.streamTurn(input)[Symbol.asyncIterator]()
+    try {
+      const first = await stream.next()
+      if (first.value === undefined || !isRuntimeEventEnvelope(first.value)) {
+        throw new Error('Expected an exact execution observation')
+      }
+      const event = first.value.event
+      if (event.type !== 'braid.execution.observed' || event.controlRef === undefined) {
+        throw new Error('Expected an exact retained control reference')
+      }
+      return event.controlRef
+    } finally {
+      await stream.return?.(undefined)
+    }
+  }
+
+  const firstRunId = 'run-exact-status-first'
+  const firstRef = await start(firstRunId)
+  sandbox.complete(firstRef.executionId, 'FIRST_DONE')
+  const restarted = retainedExecution(sandbox)
+  const exact = await restarted.status({
+    runId: firstRunId,
+    providerSessionId: sessionId,
+    controlRef: firstRef,
+  })
+  assert.equal(exact?.status, 'completed')
+  assert.equal(exact?.finalText, 'FIRST_DONE')
+
+  const nextRunId = 'run-exact-status-next'
+  const nextRef = await start(nextRunId)
+  sandbox.complete(nextRef.executionId, 'NEXT_DONE')
+  assert.deepEqual(
+    await retainedExecution(sandbox).status({
+      runId: firstRunId,
+      providerSessionId: sessionId,
+      controlRef: firstRef,
+    }),
+    { runId: firstRunId, sessionId, status: 'unknown' },
+  )
+  assert.equal(sandbox.boxes.length, 1)
+  assert.equal(sandbox.dispatches.length, 2)
 })

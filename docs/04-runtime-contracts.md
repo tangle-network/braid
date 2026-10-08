@@ -10,59 +10,46 @@ When a current package blocks a real Braid flow, Braid records the unavailable a
 
 ## Evidence baseline
 
-The following published versions were resolved in this worktree.
-Their installed manifests, declarations, and implementations were inspected directly on 2026-09-30.
+The following published versions were resolved and their installed manifests and declarations inspected on 2026-10-08.
 
 | Package | Installed version | Braid boundary |
 | --- | ---: | --- |
-| [`@tangle-network/agent-interface`](https://github.com/tangle-network/agent-sdk/tree/main/packages/agent-interface) | `2.13.1` | Canonical profile, capabilities, environment, stream, portable context, native continuation, interaction, and explicitly based workspace contracts |
-| [`@tangle-network/agent-runtime`](https://github.com/tangle-network/agent-runtime) | `0.263.0` | Sole execution layer; exact executor, retained-run, interactive-run, environment-provider, and terminal-monitor exports |
-| [`@tangle-network/agent-eval`](https://github.com/tangle-network/agent-eval) | `0.187.2` | Run records, judges, trace analysts, comparisons, and feedback trajectories |
-| `@tangle-network/agent-provider-cli-bridge` | `1.1.1` | CLI Bridge environment adapter with capability discovery, native retained sessions, bounded terminal results, live streaming, replay, retry-safe turns, retained control, exact native session close, durable interaction response, explicit cancel, and host cwd support |
-| `@tangle-network/agent-provider-tangle` | `1.6.0` | Tangle environment adapter over Sandbox, including deployment-gated retained control, interaction response, repository-relative cwd support, workspace branching, and interactive-agent operations |
-| `@tangle-network/sandbox` | `0.45.0` | Tangle cloud client used by the provider, including keyed checkpoint/fork and interactive-agent operations |
+| [`@tangle-network/agent-interface`](https://github.com/tangle-network/agent-sdk/tree/main/packages/agent-interface) | `3.1.1` | Canonical profile, capabilities, environment, stream, portable context, native continuation, interaction, and explicitly based workspace contracts |
+| [`@tangle-network/agent-runtime`](https://github.com/tangle-network/agent-runtime) | `0.312.0` | Sole execution layer; exact executor, retained-run, interactive-run, environment-provider, and terminal-monitor exports |
+| [`@tangle-network/agent-eval`](https://github.com/tangle-network/agent-eval) | `0.209.1` | Run records, judges, trace analysts, comparisons, and feedback trajectories |
+| `@tangle-network/agent-provider-cli-bridge` | `1.1.2` | CLI Bridge environment adapter with retained sessions, live streaming, replay, retry-safe turns, exact native session close, durable interaction response, explicit cancel, and host cwd support |
+| `@tangle-network/agent-provider-tangle` | `3.6.6` | Tangle environment adapter with retained control, interaction response, workspace branching, interactive-agent operations, and stopped-environment recovery |
+| `@tangle-network/sandbox` | `0.60.27` | Tangle cloud client used by the provider, including keyed checkpoint/fork and interactive-agent operations |
 
-The effective local Runtime installation resolves `agent-eval >=0.185.0 <0.188.0`, `agent-interface ^2.11.0`, and `sandbox >=0.36.4 <0.48.0 || ^0.49.0-0 || ^0.50.0` through the exact workspace lockfile.
+Runtime declares peers `agent-eval >=0.209.1 <0.210.0`, `agent-interface ^3.1.1`, and `sandbox >=0.58.4 <0.61.0`.
+The Tangle provider requires Sandbox `>=0.60.27 <1.0.0` and depends on Interface `^3.0.0`.
+The CLI Bridge provider also depends on Interface `^3.0.0`.
+The exact installed cohort satisfies these ranges, and `pnpm peers check` reports no peer issues.
+The lockfile pins the registry integrity for every installed package.
 
-Runtime `0.263.0` declares those peer ranges.
-Sandbox `0.45.0` and Eval `0.187.2` are inside them.
+Sandbox publishes optional peers `@mastra/core ^1.36.0`, `@modelcontextprotocol/sdk ^1.30.0`, `ai ^6.0.175 || ^7.0.107`, `openai ^6.36.0`, and `viem ^2.0.0`.
+
+Braid uses the public Interface subpaths for profile construction, snapshots, security, schema, harness capabilities, and interactions.
+Canonical digest and profile-diff helpers still come from the public root entry point.
+The local profile adapter only converts the canonical digest into Braid's persisted unprefixed representation.
+The private-file URL loader and export-parity test are retired because Braid no longer reaches unpublished package files.
+[Agent-sdk issue 135](https://github.com/tangle-network/agent-sdk/issues/135) records the request for narrow public entry points.
 
 Sandbox interaction bindings name the inner adapter, such as `opencode`.
 The outer retained control reference names `tangle-sandbox`.
-Runtime `0.263.0` checks exact run, environment, session, execution, interaction, and response identity without equating those providers.
-Braid checks the same exact run, environment, session, and execution coordinates before responding.
-It keeps the inner provider in the response binding and does not equate it with the outer control provider.
-If the provider closes that question after Braid accepts an answer, Braid keeps the accepted decision and advances provider progress.
-The live release requirements remain in `docs/08-verification.md` and `docs/09-delivery-plan.md`.
+Runtime checks exact run, environment, session, execution, interaction, and response identity without equating those providers.
+Braid checks the same exact coordinates and preserves the inner provider in response bindings.
+An accepted answer remains accepted when the provider later closes the question.
 
-The installed Tangle provider publishes `sandbox >=0.39.0 <1.0.0` as a peer range and depends on `agent-interface ^2.10.0`.
-Provider `1.6.0` accepts an id-less `stream.terminal` replay frame and has no string bound on replayed event data.
-Sandbox `0.45.0` ends a failed run's stream with an id-less synthetic `done` frame.
-That frame carries the harness-native session id that `streamPrompt` adopted from `session.updated`, so the provider rejects it.
-Braid reads the exact retained result when the stream fails after it has already reported a terminal status.
+The newer Tangle provider recovers a retained stopped Sandbox before reading its backend.
+Braid continues to use Runtime's retained-run recovery and does not add a second recovery protocol.
+Retained status is enabled when the provider reports the complete exact-control capability.
+The provider must bind session status to the admitted execution; an unbound status or a newer execution in the same session stays unknown.
+Braid uses that exact status to reconcile pending cancellation acknowledgements.
+Installed-package checks do not prove a deployment supports a capability; the live release requirements remain in `docs/08-verification.md` and `docs/09-delivery-plan.md`.
 
-Sandbox `0.45.0` publishes peers `@mastra/core ^1.36.0`, `@modelcontextprotocol/sdk ^1.30.0`, `ai ^6.0.175`, `openai ^6.36.0`, and `viem ^2.0.0`.
-
-Braid exercises the exact dependency cohort in the table above through the workspace lockfile.
-
-The installed set is peer-compatible.
-Runtime `0.263.0` accepts Sandbox `0.45.0`, and the Tangle provider requires Sandbox `>=0.39.0`.
-
-The lockfile pins the registry integrity for every installed package.
-
-`pnpm peers check` reports no peer dependency issues for this worktree.
-
-The workspace overrides pin Interface `2.13.1`, Knowledge `17.1.3`, and Undici `8.11.2`.
-
-Historical snapshot: [Agent-runtime issue 803](https://github.com/tangle-network/agent-runtime/issues/803) records the interface peer mismatch fixed in Runtime `0.132.11`.
-
-Historical snapshot: [Agent-runtime issue 737](https://github.com/tangle-network/agent-runtime/issues/737) records the Sandbox peer mismatch fixed in Runtime `0.132.11`.
-
-Braid imports only the canonical root `agent-interface` entry point behind two local modules.
-
-An exact parity test compares every local export with the root package export and rejects path escapes.
-
-[Agent-sdk issue 135](https://github.com/tangle-network/agent-sdk/issues/135) requests supported narrow entry points to remove the root import cost.
+Historical evidence for the prior cohort remains in Git history.
+[Agent-runtime issue 803](https://github.com/tangle-network/agent-runtime/issues/803) and [issue 737](https://github.com/tangle-network/agent-runtime/issues/737) record peer mismatches fixed in Runtime `0.132.11`.
 
 ### Installed package boundary
 
@@ -238,7 +225,7 @@ Braid therefore reports that path as unsupported instead of treating environment
 
 ### Runtime cancellation contract
 
-Runtime `0.263.0` publishes the following provider-neutral operation:
+Runtime publishes the following provider-neutral cancellation operation:
 
 ```ts
 cancel(request: {
@@ -262,9 +249,7 @@ cancel(request: {
 
 The handle fails loudly before binding and after release, which is correct for an in-process capability.
 
-`RootSignal` includes pause, resume, cancel, and ask.
-
-The current signal sink acts only on cancel; pause, resume, and ask are accepted for observation but have no runtime behavior.
+`RootSignal` supports cancel only. Since Runtime 0.309.0, stale pause, resume, and ask signals are rejected explicitly rather than accepted without an effect.
 
 Braid must not advertise pause, resume, or ask as runtime controls until each signal has an acknowledged effect contract.
 

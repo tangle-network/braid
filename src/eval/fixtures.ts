@@ -1,6 +1,6 @@
 import type { AnalystFinding } from '@tangle-network/agent-eval'
 import type { AgentProfile, InteractionRequest } from '@tangle-network/agent-interface'
-import { permissionAnswerSpec } from '../adapters/agent-interface/interaction-runtime.js'
+import { permissionAnswerSpec } from '@tangle-network/agent-interface/interaction'
 import { mapAnalystFinding } from '../adapters/analysis/citations.js'
 import { buildAnalysisTraceStore } from '../adapters/analysis/trace-store.js'
 import { compareFrozenRuns } from '../app/analysis-comparison-facts.js'

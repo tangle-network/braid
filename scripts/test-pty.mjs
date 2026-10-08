@@ -61,6 +61,8 @@ async function run(columns, rows, options = {}) {
   delete environment.FORCE_COLOR
   if (noColorEnvironment) environment.NO_COLOR = '1'
   else delete environment.NO_COLOR
+  // Accessibility policy must suppress optional metadata even when the terminal opts in.
+  environment.PI_PROGRAM_STATUS = '1'
   if (keymap === undefined) delete environment.BRAID_KEYMAP
   else environment.BRAID_KEYMAP = keymap
   const args = [binary, '--fixture', 'deterministic']

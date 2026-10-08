@@ -1,5 +1,5 @@
 import { resolve } from 'node:path'
-import { canonicalCandidateJson } from '../adapters/agent-interface/profile-runtime.js'
+import { canonicalCandidateJson } from '@tangle-network/agent-interface'
 import type { ProductionConnectionOptions } from '../adapters/connections/production-connections.js'
 import { readNoFollow } from '../adapters/persistence/safe-file.js'
 import { createCredentialRefId, parseConnectionId, parseOperationId } from '../domain/ids.js'

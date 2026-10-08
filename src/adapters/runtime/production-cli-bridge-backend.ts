@@ -8,7 +8,7 @@ import type { CliBridgeProvider } from '@tangle-network/agent-provider-cli-bridg
 import { ConnectionError } from '../../app/connection-errors.js'
 import type { ConnectionId } from '../../domain/ids.js'
 import type { ExecuteTurnInput } from '../../ports/execution.js'
-import { snapHarnessToModel } from '../agent-interface/harness-runtime.js'
+import { snapHarnessToModel } from '@tangle-network/agent-interface/harness-capabilities'
 import {
   bridgeRunnerSupportsModel,
   materializeBridgeModelRoute,

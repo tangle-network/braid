@@ -5,8 +5,8 @@ import {
   canonicalCandidateDigest,
   canonicalCandidateJson,
   sha256Bytes,
-  snapshotAgentProfile,
-} from '../adapters/agent-interface/profile-runtime.js'
+} from '@tangle-network/agent-interface'
+import { snapshotAgentProfile } from '@tangle-network/agent-interface/profile-snapshot'
 import {
   readNoFollow,
   replacePrivateFile,

@@ -1,5 +1,5 @@
 import type { AgentProfile } from '@tangle-network/agent-interface'
-import { snapshotAgentProfile } from '../adapters/agent-interface/profile-runtime.js'
+import { snapshotAgentProfile } from '@tangle-network/agent-interface/profile-snapshot'
 import { canonicalDigest } from '../domain/canonical.js'
 import type {
   AnalysisCitation,
