@@ -1,6 +1,6 @@
 # GPT-6 Pro review packet
 
-Prepared 2026-10-07 at the user's request for full, deep independent opinions. **All three reviews are verified as sent to GPT-6 Pro. Answers are pending.** These are review inputs and delivery receipts, not audit findings.
+Prepared 2026-10-07 at the user's request for full, deep independent opinions. **All three GPT-6 Pro answers are received and read.** Read the [synthesis and decisions](synthesis.md), [architecture answer](architecture.answer.md), [learning answer](learning.answer.md), and [product answer](product.answer.md). These independent source reviews did not execute tests or prove production behavior.
 
 | Review | Question | Exact prompt | Conversation |
 | --- | --- | --- | --- |
@@ -24,13 +24,13 @@ Fleet recorded each `start` after checking the stored full user message and requ
 | Architecture | `it-3a4ad00c94` | 2026-10-07 23:24:44.205 |
 | Product | `it-8401b4cbf5` | 2026-10-07 23:29:26.053 |
 
-The dispatch receipt snapshot does not yet identify served reply models. Reply metadata and completed answers will be recorded separately. A verified send is not a completed review.
+The original dispatch snapshot predates replies. Separate [answer receipts](answer-receipts.json) bind all three saved texts to verified `gpt-6-pro` replies, original conversation and user-message IDs, and SHA-256 hashes. Each item has exactly one verified send. Full native exports remain deferred or pending; saved answer text is not a native-export receipt.
 
 Earlier attempts stopped before submission. Temporary account contention was repaired in [Tangle Tools PR #785](https://github.com/tangle-network/tangle-tools/pull/785). The changed model picker was repaired in [PR #797](https://github.com/tangle-network/tangle-tools/pull/797), which verifies the checked GPT-6 family separately from Pro effort. Both fixes were deployed through the maintained updater. Request-body and returned-model guards remain enforced. The same three items were retained throughout; no alternate model or duplicate question was substituted. Historical blockers remain in the manifest.
 
 ## Completion owner and next check
 
-Owner: `codex-braid-root-vision-20261007`. The existing one-shot `pickerfix` services on `drew-gtr-pro` own reply waits and answer files. Their unit names and log paths are in the manifest. They use the `Tangle Agent Managed` project. These research items do not authorize PRs, implementation, external outreach, or cloud provisioning.
+Owner: `codex-braid-root-vision-20261007`. The one-shot `replycapture` services on `drew-gtr-pro` recovered these existing items. Their unit names and receipt snapshots are in the manifest. [Fleet PR #812](https://github.com/tangle-network/tangle-tools/pull/812) fixed answer persistence before optional title/export work; an actual post-answer admission failure then left the saved architecture answer intact. They use the `Tangle Agent Managed` project. These research items do not authorize PRs, implementation, external outreach, or cloud provisioning.
 
 Observe the local ledger without consuming an account API lease:
 
@@ -38,7 +38,7 @@ Observe the local ledger without consuming an account API lease:
 chatgpt-fleet runs --all --json --limit 10000 --session codex-braid-root-vision-20261007
 ```
 
-The next completion check is a complete answer for each existing item, with served-model metadata and retained provenance. Do not start another send while its worker is active. If a worker stops, inspect its recorded disposition and resume the existing item's reply wait through the maintained fleet command. Do not recreate the question.
+All complete answer texts and served-model checks are retained. The remaining administrative check is acknowledgement of the recorded synthesis and any deferred native export. Do not start another send while its worker is active. If a worker stops, inspect its recorded disposition and resume the existing item's reply wait through the maintained fleet command. Do not recreate the question.
 
 Read each complete answer before acknowledging it. Check repository claims against actual source and open primary references before relying on them. Retain raw answers and conversation provenance; a reviewer assertion is not a verified implementation fact.
 

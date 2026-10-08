@@ -40,7 +40,7 @@ flowchart TD
     V -. Apply under the update policy .-> R
 ```
 
-This extends [Discovery's recursive approach](https://github.com/tangle-network/discovery/blob/main/docs/02-architecture.md). Native children and Runtime workers retain their distinct execution contracts.
+This extends [Discovery's recursive approach](https://github.com/tangle-network/discovery/blob/9e6118f764bae60017dc3fc99c90fb93bd6dbf0f/docs/02-architecture.md). Native children and Runtime workers retain their distinct execution contracts.
 
 The general action is to solve or obtain a solution to a subproblem. Another AI is one option. A deterministic program, procedure, dataset, experiment, trained small model, or human contribution may fit better. Capability-building earns its cost when it improves this task or enough future tasks after training, checking, integration, and maintenance are counted.
 
@@ -52,8 +52,8 @@ Retain each applied profile revision, its reason, and the evidence used. Existin
 
 Two users can start from the same seed and develop different profiles, capabilities, objectives, and delegation structures. Preserve that history so they can understand, export, or fork their own evolution. Sharing a starting profile does not share private state or promise identical outcomes.
 
-An always-available agent also needs Runtime-owned persistence, event delivery, scheduling and recovery. The profile defines when and why it should continue. Keeping a terminal open or repeatedly calling a model does not provide those guarantees.
+An always-available agent also needs Runtime execution persistence and recovery, Platform-owned sleeping event and timer waits, and Sandbox workspace recovery. The profile defines when and why it should continue. Keeping a terminal open or repeatedly calling a model does not provide those guarantees.
 
 The [durable lifecycle requirements](root-lifecycle.md) define how this root receives child outcomes, stays responsive, pauses and resumes an active topology, and accounts for shared resources. These guarantees precede autonomous profile evolution. The same logical root may span many admitted runs with exact profile versions.
 
-First proof: start two bounded interactions from the same profile with different user needs. Let the agent propose objectives, author a useful child profile or capability, and propose a justified root revision. Check that each result fits its user, survives restart, and preserves exact provenance. Include a case where the right behavior is conversation without delegation or a new objective.
+First proof: start two bounded interactions from the same profile with different user needs. Allow objectives, child profiles, capabilities, and root revisions where justified. Do not require them in every interaction. Check that each result fits its user, survives restart, and preserves exact provenance. Include a case where the right behavior is conversation without delegation or a new objective.
