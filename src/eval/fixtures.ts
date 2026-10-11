@@ -120,7 +120,7 @@ function textMessage(
   }
 }
 
-function forkPlan(suffix: string, kind: 'conversation' | 'workspace', runner: string) {
+async function forkPlan(suffix: string, kind: 'conversation' | 'workspace', runner: string) {
   const conversationId = createConversationId(`conversation-eval-${suffix}`)
   const branchId = createBranchId(`branch-eval-${suffix}`)
   const user = textMessage(
@@ -138,7 +138,7 @@ function forkPlan(suffix: string, kind: 'conversation' | 'workspace', runner: st
     'The repository is ready for the next step.',
   )
   const state = conversationState(suffix, [user, assistant])
-  const plan = new ConversationBranches({
+  const plan = await new ConversationBranches({
     state: () => state,
     now: () => EVAL_NOW,
     commit: async () => undefined,
@@ -499,7 +499,7 @@ const CALIBRATION_FIXTURES: CaseFixtureMap<CalibrationFixture> = {
   'EVAL-01': [
     {
       id: 'cal-fork-shared-conversation',
-      semanticOutput: forkPlan('cal-fork-shared-conversation', 'conversation', 'opencode'),
+      semanticOutput: await forkPlan('cal-fork-shared-conversation', 'conversation', 'opencode'),
       goodOutput:
         'The conversation context is copied through the assistant boundary, the destination provider session is new, the environment remains shared, and no checkpoint is made. Omitted provider-owned reasoning and tool state are not copied, so this is not a resumed session.',
       badOutput:
@@ -508,7 +508,7 @@ const CALIBRATION_FIXTURES: CaseFixtureMap<CalibrationFixture> = {
     },
     {
       id: 'cal-fork-workspace-unavailable',
-      semanticOutput: forkPlan('cal-fork-workspace-unavailable', 'workspace', 'pi'),
+      semanticOutput: await forkPlan('cal-fork-workspace-unavailable', 'workspace', 'pi'),
       goodOutput:
         'The workspace fork is unavailable: conversation context is portable, but the environment and checkpoint are unavailable. Braid cannot claim a new workspace or resumed provider session; choose a conversation fork or configure the missing capabilities.',
       badOutput:
@@ -517,7 +517,7 @@ const CALIBRATION_FIXTURES: CaseFixtureMap<CalibrationFixture> = {
     },
     {
       id: 'cal-fork-runner-boundary',
-      semanticOutput: forkPlan('cal-fork-runner-boundary', 'conversation', 'codex'),
+      semanticOutput: await forkPlan('cal-fork-runner-boundary', 'conversation', 'codex'),
       goodOutput:
         'This conversation fork copies the selected messages and starts a new codex provider session. The environment is shared, checkpoint is none, and provider-owned reasoning and tool internals are omitted.',
       badOutput:
@@ -691,9 +691,9 @@ const CALIBRATION_FIXTURES: CaseFixtureMap<CalibrationFixture> = {
 
 const RELEASE_SEMANTIC_OUTPUTS: CaseFixtureMap<unknown> = {
   'EVAL-01': [
-    forkPlan('heldout-fork-conversation', 'conversation', 'opencode'),
-    forkPlan('heldout-fork-workspace', 'workspace', 'pi'),
-    forkPlan('heldout-fork-codex', 'conversation', 'codex'),
+    await forkPlan('heldout-fork-conversation', 'conversation', 'opencode'),
+    await forkPlan('heldout-fork-workspace', 'workspace', 'pi'),
+    await forkPlan('heldout-fork-codex', 'conversation', 'codex'),
   ],
   'EVAL-02': [
     permissionOutput('heldout-permission-read', 'git diff -- package.json', 'package.json', [
