@@ -553,6 +553,8 @@ test('same-runner handoff binds the selected destination connection through rest
     clock: new FixedClock(AT), journal, effectStorage: journal })
   await prepareSource(app)
   await app.send({ operationId: 'op-connection-source', text: 'source history' }).completion
+  const sourceBranch = structuredClone(app.state().branches[0])
+  assert(sourceBranch)
   const destination: ConnectionRecord = {
     ...sourceConnection(), id: createConnectionId('connection-branch-effects-destination'),
     kind: 'cli-bridge', name: 'destination connection',
@@ -578,8 +580,8 @@ test('same-runner handoff binds the selected destination connection through rest
   assert.equal(replay.connectionId, destination.id)
   assert.equal(replay.id, branch.id)
   assert.equal(contextState.transfers.length, 1)
-  assert.equal(restarted.state().branches.find((candidate) => candidate.id === branch.source?.branchId)?.connectionId,
-    sourceConnection().id)
+  assert.deepEqual(restarted.state().branches.find((candidate) => candidate.id === sourceBranch.id), sourceBranch)
+  assert.equal(restarted.state().selectedConnectionId, sourceConnection().id)
 })
 
 test('handoff rejects a removed or changed destination before provider transfer', async () => {
