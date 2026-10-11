@@ -64,6 +64,12 @@ function nonnegative(value, label) {
   }
 }
 
+function sumUsd(values) {
+  const nanos = values.reduce((sum, value) => sum + Math.round(value * 1e9), 0)
+  if (!Number.isSafeInteger(nanos)) throw new Error('Observed charge total exceeds safe fixed-point accounting')
+  return nanos / 1e9
+}
+
 function timestamp(value, label) {
   if (typeof value !== 'string' || !Number.isFinite(Date.parse(value))) {
     throw new Error(`${label} must be a timestamp`)
@@ -206,6 +212,10 @@ export function assertComparisonAttempt(plan, attempt) {
     exactKeys(attempt.measurements[group], fields, `measurements.${group}`)
     for (const field of fields) assertMeasurement(attempt.measurements[group][field], attempt.proof, group, field, attempt)
   }
+  const retained = attempt.measurements.actual.retentionMs
+  if (retained.status === 'observed' && retained.value > completed - started && Object.values(attempt.measurements.persistence).some((measurement) => measurement.status === 'observed' && measurement.value)) {
+    throw new Error('Retention observation cannot exceed the measured attempt duration')
+  }
   return attempt
 }
 
@@ -214,7 +224,8 @@ export function captureComparisonAttempt({ plan, id, proof, startedAt, completed
   assertComparisonPlan(plan)
   const cell = plan.attempts.find((entry) => entry.id === id)
   if (cell === undefined) throw new Error('Cannot capture an undeclared comparison attempt')
-  const sanitized = JSON.parse(safeJson(proof))
+  // Sanitize at the report's wrapper depth so a write/read cannot change the proof digest.
+  const sanitized = JSON.parse(safeJson({ attempts: [{ proof }] })).attempts[0].proof
   const attempt = {
     schema: COMPARISON_ATTEMPT_SCHEMA,
     id,
@@ -270,16 +281,16 @@ function summarizeProvider(plan, provider, attempts) {
   const distribution = (group, field) => comparisonDistribution(attempts.map((attempt) => attempt.measurements[group][field]), requested)
   const costs = Object.fromEntries(COST_FIELDS.map((field) => {
     const values = distribution('costs', field)
-    return [field, { ...values, observedUsd: values.values.reduce((sum, value) => sum + value, 0) }]
+    return [field, { ...values, observedUsd: sumUsd(values.values) }]
   }))
   const totals = attempts.map((attempt) => {
     const fields = COST_FIELDS.map((field) => attempt.measurements.costs[field])
     return fields.every((entry) => entry.status === 'observed')
-      ? { status: 'observed', value: fields.reduce((sum, entry) => sum + entry.value, 0) }
+      ? { status: 'observed', value: sumUsd(fields.map((entry) => entry.value)) }
       : unavailableMeasurement('incomplete-charge-accounting')
   })
   const cost = comparisonDistribution(totals, requested)
-  const observedTotalUsd = totals.filter((entry) => entry.status === 'observed').reduce((sum, entry) => sum + entry.value, 0)
+  const observedTotalUsd = sumUsd(totals.filter((entry) => entry.status === 'observed').map((entry) => entry.value))
   const cells = attempts.map((attempt) => {
     const mismatches = COHORT_FIELDS.filter((field) => attempt.measurements.actual[field].status === 'observed' && attempt.measurements.actual[field].value !== plan.cohort[field])
     const unknown = COHORT_FIELDS.filter((field) => attempt.measurements.actual[field].status !== 'observed')
@@ -295,7 +306,7 @@ function summarizeProvider(plan, provider, attempts) {
     outcomes: count,
     cells,
     comparable: cells.length === requested && cells.every((cell) => cell.comparable),
-    costs: { components: costs, total: cost, observedTotalUsd, knownComponentUsd: Object.values(costs).reduce((sum, component) => sum + component.observedUsd, 0), totalUsd: complete(cost) ? observedTotalUsd : null, usdPerSuccessfulAttempt: complete(cost) && count.passed > 0 ? observedTotalUsd / count.passed : null },
+    costs: { components: costs, total: cost, observedTotalUsd, knownComponentUsd: sumUsd(Object.values(costs).map((component) => component.observedUsd)), totalUsd: complete(cost) ? observedTotalUsd : null, usdPerSuccessfulAttempt: complete(cost) && count.passed > 0 ? observedTotalUsd / count.passed : null },
     timing: Object.fromEntries(TIMING_FIELDS.map((field) => [field, distribution('timing', field)])),
     persistence,
     ease: Object.fromEntries(EASE_FIELDS.map((field) => [field, distribution('ease', field)])),
