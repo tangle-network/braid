@@ -353,7 +353,8 @@ function connectionForkPreviewDefinition(columns, normalized) {
       if (
         preview?.allowed !== false ||
         !preview.fields.some(
-          (field) => field.label === 'connection' && field.destination === 'connection-local-cli-bridge',
+          (field) =>
+            field.label === 'connection' && field.destination === 'connection-local-cli-bridge',
         )
       )
         throw new Error('connection fork fixture did not preserve its destination or fail closed')
