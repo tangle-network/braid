@@ -404,8 +404,8 @@ function outcomes(attempts, requested) {
 function summarizeProvider(plan, provider, attempts) {
   const requested = plan.attempts.filter((cell) => cell.provider === provider).length
   const count = outcomes(attempts, requested)
-  const distribution = (group, field) =>
-    comparisonDistribution(
+  const distribution = (group, field) => {
+    const summary = comparisonDistribution(
       attempts.map((attempt) => {
         const measurement = attempt.measurements[group][field]
         if (
@@ -423,6 +423,13 @@ function summarizeProvider(plan, provider, attempts) {
       }),
       requested,
     )
+    return {
+      ...summary,
+      conditioning: ['timing', 'ease'].includes(group)
+        ? 'completed-successful-workflow'
+        : 'all-attempts',
+    }
+  }
   const costs = Object.fromEntries(
     COST_FIELDS.map((field) => {
       const values = distribution('costs', field)

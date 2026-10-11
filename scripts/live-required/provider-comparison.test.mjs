@@ -169,6 +169,7 @@ test('comparison retains planned, failed, unavailable and unstarted denominators
   assert.equal(target.costs.total.unavailable, 1)
   assert.equal(target.timing.createMs.observed, 1)
   assert.equal(target.timing.createMs.excluded, 1)
+  assert.equal(target.timing.createMs.conditioning, 'completed-successful-workflow')
   assert.deepEqual(target.timing.createMs.excludedValues, [
     { value: 100, reason: 'workflow-did-not-complete-successfully' },
   ])
