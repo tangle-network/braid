@@ -325,6 +325,109 @@ They never use mocked HTTP responses to claim provider success.
 
 Each live check records date, region, machine, operating system, package versions and integrities, bridge and server versions, runner versions, profile digest, command, attempts, event counts, identifiers, usage, cost, wall time, outcome, cleanup result, and artifact hashes.
 
+### Provider comparison through the existing live proof command
+
+The infrastructure goal is Tangle ahead of each declared competitor on cost, latency, persistence,
+and ease. A tie or an unknown dimension leaves leadership unproved. Collection does not lower
+that goal or establish a provider integration on its own.
+
+`scripts/live-required/provider-comparison.mjs` owns the comparison plan, per-attempt records,
+and deterministic scorecard. Existing producers use `captureComparisonAttempt` with their
+retained live proof. Each observed value names its exact field in that proof. The record embeds
+the sanitized proof and binds it with a SHA-256 digest. Unit-test fixtures prove the accounting
+contract only.
+
+Freeze a `braid.provider-comparison.plan.v1` JSON file before the first measured provider call.
+It contains `id`, `createdAt`, `targetProvider`, `minimumSamples`, `cohort`, and `attempts`.
+Its `analysis` also freezes the independent allocation-window sampling unit, useful effects,
+fixed stopping rule, family error, precision limits, seed, resample count, and quantile cutpoints.
+`uncertaintyMethod` is `owner-assessment-required`. Braid retains this registration; the
+infrastructure owner evaluates it. Every attempt declares its unique `id`, `provider`, and
+`unitId`. Providers must declare the same windows; repeated measurements of an environment
+cannot become additional independent units. The cohort fixes CPU, memory and disk
+allocation, region, model and model provider, runner and version, image, task, profile and
+Braid binary digests, concurrency, cold or warm start, and retention duration. The exported
+`COHORT_FIELDS` lists the exact field names. Keep credential values out of this file.
+
+For the existing Tangle retained proof producer, set `BRAID_LIVE_PROVIDER_PLAN` to that file
+and `BRAID_LIVE_PROVIDER_RECORDS` to a new output path, then use the existing command:
+
+```sh
+pnpm test:live:tangle:sandbox:stress -- --runs 20 --concurrency 1 --output /path/to/tangle-proof.json
+```
+
+The Tangle attempt count and concurrency must match the plan. The producer refuses an
+existing records path before making a provider call. It retains the frozen plan first, records
+an incomplete attempt before execution, and atomically writes each completion. Concurrent
+attempts serialize those writes. An interrupted attempt remains visibly incomplete;
+collection never launches replacements or retries paid work. Existing credential and resource
+guards still apply.
+
+Collect those records and the records from other existing provider proof producers:
+
+```sh
+node scripts/live-required.mjs live-tangle \
+  --comparison /path/to/plan.json \
+  --attempt /path/to/tangle-records.json \
+  --attempt /path/to/daytona-records.json \
+  --attempt /path/to/e2b-records.json \
+  --infrastructure-evidence /path/to/adc-reference.json \
+  --output /path/to/provider-comparison.json
+```
+
+This option consumes evidence without starting a provider run. Exit 2 means leadership
+is unproved; malformed or conflicting evidence exits 1. The current owner exports do not
+certify leadership on all four dimensions, so this consumer cannot emit a leadership pass.
+It emits no release pass marker and cannot satisfy LIVE-06 through LIVE-10.
+Repeated identical attempt records reconcile once. A completed record supersedes its incomplete
+record with the same start timestamp. Conflicting terminal records for one attempt,
+changed plan digests, retroactive plans, and values that differ from their proof sources fail.
+The report retains every planned cell, failure, unavailable field, and missing attempt.
+Latency and setup distributions cover completed successful workflows. Observed elapsed values
+from failed, unavailable or interrupted workflows remain in the raw records and explicit
+excluded-value lists. Those exclusions keep their outcome denominators and cannot be counted
+as unstarted attempts or successful latency. Failed-attempt charges remain in the cost totals.
+
+Infrastructure measurement belongs to `agent-dev-container/products/sandbox/evals`, including
+its existing `speed:board`, `speed:experiment`, lifecycle-cost calculation, and scorecard.
+Braid consumes these outputs and adds evidence from its handoff workflow. It does not create
+another infrastructure runner or significance implementation. A reference file contains
+`schema: braid.provider-comparison.infrastructure-reference.v1`,
+`owner: tangle-network/agent-dev-container`, the exact `sourceRevision`, `kind`, `artifactPath`,
+and `artifactSha256`. Paths resolve relative to that reference. Supported existing export kinds
+are `benchmark-records`, `speed-board`, `speed-experiment`, `scorecard`, and `lifecycle-cost`.
+The reader checks the bytes, required identity/outcome fields, and the export's scope. It keeps
+failed and skipped owner rows. A model `cost_usd` field is never an infrastructure bill;
+amortized host cost is never a settled customer charge. A create-p50 knob comparison or an
+owner quality score does not establish a provider comparison on all four dimensions.
+
+The scorecard includes these measurements:
+
+| Dimension | Required observation and decision |
+| --- | --- |
+| Cost | Settled compute, storage, egress, model and other charges, including failed attempts; total charges divided by successful attempts must be lower. An observed cost points to an exact receipt with `status: settled`, `currency: USD`, `scope: owned-attempt`, `provider`, `attemptId`, `component`, `receiptId`, and `usd`. Account totals, estimates, credits inferred from a missing field, and an unqualified model cost of zero cannot fill a charge component. Partial known charges remain visible while the total is null. |
+| Latency | Create request to usable environment, and task submission to first useful task output, measured by the producer's monotonic clock. Report each phase's nearest-rank p50 and p95, min, max and every value. Tangle must improve at least one and regress none. Time to failure is not successful phase latency. |
+| Persistence | Actual provider environment process restart plus conversation context, tracked files and untracked files retained for the frozen duration. Compare each check's passing share over all declared attempts; Tangle must improve at least one and regress none. A local Braid process restart or a retained transcript cannot prove cloud process or file recovery. |
+| Ease | Setup duration and actual manual-step count under the same setup policy. Compare p50 and p95 for both; Tangle must improve at least one and regress none. Unobserved setup remains unavailable. |
+
+All declared attempts need verified matching cohort values and confirmed cleanup.
+Requested allocation does not prove actual allocation. Sample
+counts must meet the frozen minimum for both providers; unequal counts remain an explicit
+limitation. Tangle may not have a lower task-success share. Percentiles are descriptive
+observations, and the minimum sample count does not establish power, a confidence interval,
+or a causal result. Favorable point estimates receive `ahead-candidate` only. Leadership
+remains unproved until the maintained owner supports the registered useful effects, uncertainty,
+and regression limits for every declared competitor. Braid does not replace an unsupported
+owner analysis with a weaker success rule.
+
+The current Tangle retained proof automatically captures the model, runner, model provider,
+verified region when reported, and cleanup result. It leaves unavailable cloud restart,
+tracked/untracked retention, create latency, first useful output latency, exact allocation,
+image identity, full billed costs, and setup observations explicit. Its existing phase timers,
+model usage and hidden-file continuity are retained evidence, but cannot be relabeled as
+the missing observations. Provider comparison therefore remains unproved until the owning
+live producers supply them.
+
 The public demo must use the same immutable tarball as package proof.
 
 Its manifest records observed and estimated cost separately.

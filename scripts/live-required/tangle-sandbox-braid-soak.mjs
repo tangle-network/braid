@@ -4,6 +4,11 @@ import { fileURLToPath } from 'node:url'
 import { safeJson, safeMessage } from './contracts.mjs'
 import { runBraidSandboxStress } from './tangle-sandbox-braid-stress.mjs'
 import { resourceDelta } from './tangle-sandbox-braid-stress-support.mjs'
+import {
+  captureTangleComparison,
+  prepareTangleComparison,
+  retainTangleComparison,
+} from './tangle-comparison.mjs'
 
 const scriptPath = fileURLToPath(import.meta.url)
 const repository = resolve(dirname(scriptPath), '../..')
@@ -963,12 +968,37 @@ export async function runBraidSandboxSoak({
   if (afterCanary !== undefined && (requestedRuns !== 3 || requestedConcurrency !== 2))
     throw new Error('Post-canary overlap requires the frozen three-proof, two-worker cohort')
   const startedAt = new Date().toISOString()
+  const comparison = await prepareTangleComparison(environment, requestedRuns, requestedConcurrency)
+  const comparableAttempts = new Map()
+  let comparisonWrite = Promise.resolve()
+  const retainAttempt = async (attempt) => {
+    if (comparison === undefined) return
+    const record = captureTangleComparison(comparison, [attempt])[0]
+    comparableAttempts.set(record.id, record)
+    // Serialize retention even when the existing producer runs concurrent attempts.
+    const snapshot = [...comparableAttempts.values()]
+    comparisonWrite = comparisonWrite.then(() => retainTangleComparison(comparison, snapshot))
+    await comparisonWrite
+  }
+  const finishCohort = async (options) => {
+    const result = finish(options)
+    if (comparison === undefined) return result
+    result.comparableAttempts = captureTangleComparison(comparison, result.attempts)
+    await comparisonWrite
+    return result
+  }
   const attempts = []
   let completionSequence = 0
   let proofWindow = suppliedProofWindow
 
   const attempt = async (index, requireZeroActiveResourceDelta) => {
     const attemptStartedAt = new Date().toISOString()
+    await retainAttempt({
+      index,
+      startedAt: attemptStartedAt,
+      completedAt: null,
+      proof: { status: 'incomplete' },
+    })
     let proof
     try {
       proof = await stressRunner({
@@ -993,9 +1023,15 @@ export async function runBraidSandboxSoak({
     } catch (error) {
       if (proofWindow !== undefined && (index !== 0 || suppliedProofWindow !== undefined))
         proofWindow.cleaned(`stress-${index}`, false)
-      if (error && typeof error === 'object' && error.unavailable === true) throw error
+      if (
+        error &&
+        typeof error === 'object' &&
+        error.unavailable === true &&
+        comparison === undefined
+      )
+        throw error
       proof = {
-        status: 'failed',
+        status: error?.unavailable === true ? 'unavailable' : 'failed',
         failure: {
           name: error instanceof Error ? error.name : 'Error',
           message: error instanceof Error ? error.message : String(error),
@@ -1008,7 +1044,7 @@ export async function runBraidSandboxSoak({
       proof?.status !== 'passed'
     )
       proofWindow.cleaned(`stress-${index}`, false)
-    return {
+    const completed = {
       index,
       completionSequence: completionSequence++,
       startedAt: attemptStartedAt,
@@ -1016,6 +1052,8 @@ export async function runBraidSandboxSoak({
       requireZeroActiveResourceDelta,
       proof,
     }
+    await retainAttempt(completed)
+    return completed
   }
 
   if (suppliedProofWindow !== undefined) {
@@ -1030,7 +1068,7 @@ export async function runBraidSandboxSoak({
       if (entry.status === 'rejected') throw entry.reason
       attempts.push(entry.value)
     }
-    return finish({
+    return finishCohort({
       attempts,
       requestedRuns,
       concurrency: requestedConcurrency,
@@ -1046,7 +1084,7 @@ export async function runBraidSandboxSoak({
   const canary = await attempt(0, false)
   attempts.push(canary)
   if (!proofPassed(canary.proof, requestedConcurrency) || requestedRuns === 1) {
-    return finish({
+    return finishCohort({
       attempts,
       requestedRuns,
       concurrency: requestedConcurrency,
@@ -1074,7 +1112,7 @@ export async function runBraidSandboxSoak({
   const settledWorkers = await Promise.allSettled(workers)
   for (const result of settledWorkers) if (result.status === 'rejected') throw result.reason
   attempts.sort((left, right) => left.index - right.index)
-  return finish({
+  return finishCohort({
     attempts,
     requestedRuns,
     concurrency: requestedConcurrency,

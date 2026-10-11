@@ -65,6 +65,7 @@ import {
 import { runWorker } from './live-required/tangle-sandbox-worker.mjs'
 import { sandboxConfiguration as workspaceSandboxConfiguration } from './live-required/tangle-workspace-proof.mjs'
 import './live-required/tangle-sandbox-braid-multirun.test.mjs'
+import './live-required/provider-comparison.test.mjs'
 import { MULTIRUN_REQUIRED_PHASES } from './live-required/multirun-contract.mjs'
 import { readLiveTangleProof } from './release/live-tangle-proof.mjs'
 
