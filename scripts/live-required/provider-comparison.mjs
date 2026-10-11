@@ -372,6 +372,10 @@ export function comparisonDistribution(measurements, requested) {
     requested,
     observed: values.length,
     unavailable: measurements.filter((entry) => entry?.status === 'unavailable').length,
+    excluded: measurements.filter((entry) => entry?.status === 'excluded').length,
+    excludedValues: measurements
+      .filter((entry) => entry?.status === 'excluded')
+      .map(({ value, reason }) => ({ value, reason })),
     notStarted: requested - measurements.length,
     min: values[0] ?? null,
     p50: percentile(0.5),
@@ -402,7 +406,21 @@ function summarizeProvider(plan, provider, attempts) {
   const count = outcomes(attempts, requested)
   const distribution = (group, field) =>
     comparisonDistribution(
-      attempts.map((attempt) => attempt.measurements[group][field]),
+      attempts.map((attempt) => {
+        const measurement = attempt.measurements[group][field]
+        if (
+          ['timing', 'ease'].includes(group) &&
+          attempt.status !== 'passed' &&
+          measurement.status === 'observed'
+        ) {
+          return {
+            status: 'excluded',
+            reason: 'workflow-did-not-complete-successfully',
+            value: measurement.value,
+          }
+        }
+        return measurement
+      }),
       requested,
     )
   const costs = Object.fromEntries(

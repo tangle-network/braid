@@ -167,7 +167,12 @@ test('comparison retains planned, failed, unavailable and unstarted denominators
   assert.equal(target.costs.knownComponentUsd, 6)
   assert.equal(target.costs.components.compute.observedUsd, 6)
   assert.equal(target.costs.total.unavailable, 1)
-  assert.equal(target.timing.createMs.observed, 2)
+  assert.equal(target.timing.createMs.observed, 1)
+  assert.equal(target.timing.createMs.excluded, 1)
+  assert.deepEqual(target.timing.createMs.excludedValues, [
+    { value: 100, reason: 'workflow-did-not-complete-successfully' },
+  ])
+  assert.equal(target.ease.setupMs.excluded, 1)
   assert.equal(target.timing.createMs.notStarted, 1)
   assert.equal(report.providers[2].outcomes.notStarted, 3)
   assert.equal(report.status, 'unproved')

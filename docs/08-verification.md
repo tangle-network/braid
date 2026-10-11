@@ -383,6 +383,10 @@ Repeated identical attempt records reconcile once. A completed record supersedes
 record with the same start timestamp. Conflicting terminal records for one attempt,
 changed plan digests, retroactive plans, and values that differ from their proof sources fail.
 The report retains every planned cell, failure, unavailable field, and missing attempt.
+Latency and setup distributions cover completed successful workflows. Observed elapsed values
+from failed, unavailable or interrupted workflows remain in the raw records and explicit
+excluded-value lists. Those exclusions keep their outcome denominators and cannot be counted
+as unstarted attempts or successful latency. Failed-attempt charges remain in the cost totals.
 
 Infrastructure measurement belongs to `agent-dev-container/products/sandbox/evals`, including
 its existing `speed:board`, `speed:experiment`, lifecycle-cost calculation, and scorecard.
