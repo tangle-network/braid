@@ -969,8 +969,17 @@ export async function runBraidSandboxSoak({
     throw new Error('Post-canary overlap requires the frozen three-proof, two-worker cohort')
   const startedAt = new Date().toISOString()
   const comparison = await prepareTangleComparison(environment, requestedRuns, requestedConcurrency)
-  const comparableAttempts = []
+  const comparableAttempts = new Map()
   let comparisonWrite = Promise.resolve()
+  const retainAttempt = async (attempt) => {
+    if (comparison === undefined) return
+    const record = captureTangleComparison(comparison, [attempt])[0]
+    comparableAttempts.set(record.id, record)
+    // Serialize retention even when the existing producer runs concurrent attempts.
+    const snapshot = [...comparableAttempts.values()]
+    comparisonWrite = comparisonWrite.then(() => retainTangleComparison(comparison, snapshot))
+    await comparisonWrite
+  }
   const finishCohort = async (options) => {
     const result = finish(options)
     if (comparison === undefined) return result
@@ -984,6 +993,12 @@ export async function runBraidSandboxSoak({
 
   const attempt = async (index, requireZeroActiveResourceDelta) => {
     const attemptStartedAt = new Date().toISOString()
+    await retainAttempt({
+      index,
+      startedAt: attemptStartedAt,
+      completedAt: null,
+      proof: { status: 'incomplete' },
+    })
     let proof
     try {
       proof = await stressRunner({
@@ -1008,7 +1023,13 @@ export async function runBraidSandboxSoak({
     } catch (error) {
       if (proofWindow !== undefined && (index !== 0 || suppliedProofWindow !== undefined))
         proofWindow.cleaned(`stress-${index}`, false)
-      if (error && typeof error === 'object' && error.unavailable === true && comparison === undefined) throw error
+      if (
+        error &&
+        typeof error === 'object' &&
+        error.unavailable === true &&
+        comparison === undefined
+      )
+        throw error
       proof = {
         status: error?.unavailable === true ? 'unavailable' : 'failed',
         failure: {
@@ -1031,13 +1052,7 @@ export async function runBraidSandboxSoak({
       requireZeroActiveResourceDelta,
       proof,
     }
-    if (comparison !== undefined) {
-      comparableAttempts.push(...captureTangleComparison(comparison, [completed]))
-      // Serialize retention even when the existing producer runs concurrent attempts.
-      const snapshot = [...comparableAttempts]
-      comparisonWrite = comparisonWrite.then(() => retainTangleComparison(comparison, snapshot))
-      await comparisonWrite
-    }
+    await retainAttempt(completed)
     return completed
   }
 

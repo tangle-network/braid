@@ -73,23 +73,42 @@ async function writeReleaseEvidence(scopeName, result) {
 async function run() {
   const comparisonIndex = process.argv.indexOf('--comparison')
   if (comparisonIndex >= 0) {
-    if (scope !== 'live-tangle') throw new Error('--comparison extends the existing live-tangle proof scope')
+    if (scope !== 'live-tangle')
+      throw new Error('--comparison extends the existing live-tangle proof scope')
     const planPath = process.argv[comparisonIndex + 1]
     const outputIndex = process.argv.indexOf('--output')
     const attemptPaths = []
+    const infrastructurePaths = []
     for (let index = 3; index < process.argv.length; index += 1) {
       if (process.argv[index] === '--attempt') {
         const path = process.argv[index + 1]
-        if (path === undefined || path.startsWith('--')) throw new Error('--attempt requires an evidence path')
+        if (path === undefined || path.startsWith('--'))
+          throw new Error('--attempt requires an evidence path')
         attemptPaths.push(path)
         index += 1
       }
+      if (process.argv[index] === '--infrastructure-evidence') {
+        const path = process.argv[index + 1]
+        if (path === undefined || path.startsWith('--'))
+          throw new Error('--infrastructure-evidence requires an owner reference path')
+        infrastructurePaths.push(path)
+        index += 1
+      }
     }
-    if (planPath === undefined || planPath.startsWith('--')) throw new Error('--comparison requires a frozen plan path')
+    if (planPath === undefined || planPath.startsWith('--'))
+      throw new Error('--comparison requires a frozen plan path')
     const outputPath = outputIndex < 0 ? undefined : process.argv[outputIndex + 1]
-    if (outputIndex >= 0 && (outputPath === undefined || outputPath.startsWith('--'))) throw new Error('--output requires a report path')
-    const report = await collectProviderComparison({ planPath, attemptPaths, outputPath })
-    process.stdout.write(`${safeJson({ schema: report.schema, status: report.status, requested: report.requested, attempted: report.attempted, providers: report.providers, comparisons: report.comparisons, statisticalLimits: report.statisticalLimits })}\n`)
+    if (outputIndex >= 0 && (outputPath === undefined || outputPath.startsWith('--')))
+      throw new Error('--output requires a report path')
+    const report = await collectProviderComparison({
+      planPath,
+      attemptPaths,
+      outputPath,
+      infrastructurePaths,
+    })
+    process.stdout.write(
+      `${safeJson({ schema: report.schema, status: report.status, requested: report.requested, attempted: report.attempted, providers: report.providers, comparisons: report.comparisons, infrastructureEvidence: report.infrastructureEvidence.map(({ owner, sourceRevision, kind, artifactSha256, observation }) => ({ owner, sourceRevision, kind, artifactSha256, observation })), statisticalLimits: report.statisticalLimits })}\n`,
+    )
     // Comparison is separate evidence and cannot satisfy the LIVE-06..09 release rows.
     process.exitCode = report.status === 'passed' ? EXIT_CODES.passed : EXIT_CODES.unavailable
     return undefined
