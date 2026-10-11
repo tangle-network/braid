@@ -27,7 +27,10 @@ export function createProviderContextTransferPort(
   options: ProviderContextTransferOptions,
 ): ContextTransferExecutionPort {
   return Object.freeze({
-    supports: async (destination: ContextTransferRequest['plan']['destination'], target?: { readonly connectionId: string; readonly connectionDigest?: string }) => {
+    supports: async (
+      destination: ContextTransferRequest['plan']['destination'],
+      target?: { readonly connectionId: string; readonly connectionDigest?: string },
+    ) => {
       const validated = PortableContextDestinationSchema.parse(destination)
       return supportsContextTransfer(await options.resolve(validated, target), validated)
     },
