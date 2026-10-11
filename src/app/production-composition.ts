@@ -26,6 +26,7 @@ import { RuntimeSupervisorController } from '../adapters/runtime/supervisor-cont
 import { TangleRetainedExecutionPort } from '../adapters/runtime/tangle-retained-execution.js'
 import { TangleRetainedInteractiveExecutionPort } from '../adapters/runtime/tangle-retained-interactive-execution.js'
 import type { ConnectionRecord } from '../domain/entities.js'
+import { canonicalDigest } from '../domain/canonical.js'
 import type {
   ExecuteTurnInput,
   ExecutionPort,
@@ -271,6 +272,9 @@ export function createProductionComposition(
       const destinationConnection = connections.select({
         connectionId: target?.connectionId ?? connection.id,
       }).record
+      if (target?.connectionDigest !== undefined && canonicalDigest(destinationConnection) !== target.connectionDigest) {
+        throw new ConnectionError('CONNECTION_REVISION_MISMATCH', 'The destination connection changed after the accepted context plan', { connectionId: destinationConnection.id })
+      }
       if (destinationConnection.kind === 'tangle-sandbox') {
         const provider = await createTangleEnvironmentProvider(destinationConnection, resolverOptions)
         return { provider, capabilities: await provider.capabilities() }

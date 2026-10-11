@@ -17,7 +17,7 @@ export interface ProviderContextTransferResolution {
 export interface ProviderContextTransferOptions {
   readonly resolve: (
     request: ContextTransferRequest,
-    target?: { readonly connectionId: string },
+    target?: { readonly connectionId: string; readonly connectionDigest?: string },
   ) => Promise<ProviderContextTransferResolution | undefined>
 }
 
@@ -26,14 +26,14 @@ export function createProviderContextTransferPort(
   options: ProviderContextTransferOptions,
 ): ContextTransferExecutionPort {
   return Object.freeze({
-    lookup: async (request: ContextTransferRequest, target?: { readonly connectionId: string }) => {
+    lookup: async (request: ContextTransferRequest, target?: { readonly connectionId: string; readonly connectionDigest?: string }) => {
       const validated = ContextTransferRequestSchema.parse(request)
       const resolved = await options.resolve(validated, target)
       if (!supportsContextTransfer(resolved, validated)) return undefined
       const result = await resolved?.provider.contextTransfer?.lookup(validated)
       return result === undefined ? undefined : checkedResult(validated, result)
     },
-    transfer: async (request: ContextTransferRequest, target?: { readonly connectionId: string }) => {
+    transfer: async (request: ContextTransferRequest, target?: { readonly connectionId: string; readonly connectionDigest?: string }) => {
       const validated = ContextTransferRequestSchema.parse(request)
       const resolved = await options.resolve(validated, target)
       if (!supportsContextTransfer(resolved, validated)) return unavailableContextTransfer(validated)

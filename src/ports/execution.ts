@@ -78,11 +78,11 @@ export interface ContextTransferExecutionPort {
   readonly plan?: (input: PortableContextPlanRequest) => Promise<PortableContextPlanResult>
   readonly transfer?: (
     input: ContextTransferRequest,
-    target?: { readonly connectionId: string },
+    target?: { readonly connectionId: string; readonly connectionDigest?: string },
   ) => Promise<ContextTransferResult>
   readonly lookup?: (
     input: ContextTransferRequest,
-    target?: { readonly connectionId: string },
+    target?: { readonly connectionId: string; readonly connectionDigest?: string },
   ) => Promise<ContextTransferResult | undefined>
 }
 
