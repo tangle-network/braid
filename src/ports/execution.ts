@@ -11,7 +11,6 @@ import type {
   NativeContextBoundaryProof,
   PortableContextPlanRequest,
   PortableContextPlanResult,
-  PortableContextDestination,
   WorkspaceRequest,
 } from '@tangle-network/agent-interface'
 import type { TurnUsage } from '../domain/entities.js'
@@ -77,7 +76,7 @@ export interface ExecutionAdmission {
  */
 export interface ContextTransferExecutionPort {
   readonly supports?: (
-    destination: PortableContextDestination,
+    destination: ContextTransferRequest['plan']['destination'],
     target?: { readonly connectionId: string; readonly connectionDigest?: string },
   ) => Promise<boolean>
   readonly plan?: (input: PortableContextPlanRequest) => Promise<PortableContextPlanResult>

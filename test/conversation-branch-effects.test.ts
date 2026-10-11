@@ -661,19 +661,36 @@ test('handoff rejects a removed or changed destination before provider transfer'
 test('handoff preview refuses an unsupported destination without admission effects', async () => {
   const contextState: ContextProviderState = { transfers: [] }
   const execution = executionFor({ capabilities: branchCapabilities(), contextState })
-  const app = createBraidApplication({ fixture: 'deterministic', clock: new FixedClock(AT),
-    execution: { ...execution, context: { ...execution.context, async supports() { return false } } } })
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    clock: new FixedClock(AT),
+    execution: {
+      ...execution,
+      context: {
+        ...execution.context,
+        async supports() {
+          return false
+        },
+      },
+    },
+  })
   await prepareSource(app)
   await app.send({ operationId: 'op-preflight-source', text: 'source history' }).completion
   const before = app.state()
-  const input = { operationId: 'op-preflight-refusal', connectionId: sourceConnection().id, runner: 'codex' }
+  const input = {
+    operationId: 'op-preflight-refusal',
+    connectionId: sourceConnection().id,
+    runner: 'codex',
+  }
   const plan = await app.conversations.branches.plan(input)
   assert.equal(plan.allowed, false)
   assert.equal(plan.environment, 'unavailable')
   assert.match(plan.reason ?? '', /does not report retry-safe/)
   assert.deepEqual(app.state(), before)
-  await assert.rejects(() => app.conversations.branches.execute({ ...input, planDigest: plan.digest }),
-    /does not report retry-safe/)
+  await assert.rejects(
+    () => app.conversations.branches.execute({ ...input, planDigest: plan.digest }),
+    /does not report retry-safe/,
+  )
   assert.equal(contextState.transfers.length, 0)
   assert.equal(app.state().branches.length, before.branches.length)
 })
@@ -683,20 +700,42 @@ test('handoff preflight detects destination changes while capabilities are being
   const finish = deferred()
   const contextState: ContextProviderState = { transfers: [] }
   const execution = executionFor({ capabilities: branchCapabilities(), contextState })
-  const app = createBraidApplication({ fixture: 'deterministic', clock: new FixedClock(AT),
-    execution: { ...execution, context: { ...execution.context, async supports() {
-      reading.resolve(); await finish.promise; return true
-    } } } })
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    clock: new FixedClock(AT),
+    execution: {
+      ...execution,
+      context: {
+        ...execution.context,
+        async supports() {
+          reading.resolve()
+          await finish.promise
+          return true
+        },
+      },
+    },
+  })
   await prepareSource(app)
   await app.send({ operationId: 'op-preflight-race-source', text: 'source history' }).completion
   const connection = sourceConnection()
-  const pending = app.conversations.branches.plan({ operationId: 'op-preflight-race',
-    connectionId: connection.id, runner: 'codex' })
+  const pending = app.conversations.branches.plan({
+    operationId: 'op-preflight-race',
+    connectionId: connection.id,
+    runner: 'codex',
+  })
   await reading.promise
-  await app.configuration.upsertConnection({ connection: { ...connection, endpoint: 'http://127.0.0.1:9999' },
-    operation: { id: createOperationId('operation-preflight-change'), kind: 'connection-change',
-      requestDigest: canonicalDigest({ endpoint: 'http://127.0.0.1:9999' }), status: 'acknowledged',
-      createdAt: AT, updatedAt: AT, acknowledgedAt: AT } })
+  await app.configuration.upsertConnection({
+    connection: { ...connection, endpoint: 'http://127.0.0.1:9999' },
+    operation: {
+      id: createOperationId('operation-preflight-change'),
+      kind: 'connection-change',
+      requestDigest: canonicalDigest({ endpoint: 'http://127.0.0.1:9999' }),
+      status: 'acknowledged',
+      createdAt: AT,
+      updatedAt: AT,
+      acknowledgedAt: AT,
+    },
+  })
   finish.resolve()
   await assert.rejects(pending, /changed during capability preflight/)
   assert.equal(contextState.transfers.length, 0)

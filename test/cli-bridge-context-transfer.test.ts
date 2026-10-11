@@ -148,7 +148,10 @@ test('portable context routes any capable provider by exact destination connecti
       return { provider, capabilities: capability }
     },
   })
-  assert.equal(await port.supports?.(request.plan.destination, { connectionId: 'connection-daytona' }), true)
+  assert.equal(
+    await port.supports?.(request.plan.destination, { connectionId: 'connection-daytona' }),
+    true,
+  )
   assert.equal(await port.lookup?.(request, { connectionId: 'connection-daytona' }), undefined)
   assert.deepEqual(await port.transfer?.(request, { connectionId: 'connection-daytona' }), result)
   assert.equal(target, 'connection-daytona')

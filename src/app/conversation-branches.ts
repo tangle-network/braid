@@ -283,19 +283,37 @@ export class ConversationBranches {
   async plan(input: ForkPlanInput): Promise<ForkPlan> {
     const plan = this.#plan(input)
     const context = contextTransferPort(this.#host.execution)
-    if (plan.kind !== 'cross-runner' || !plan.allowed || plan.portableContextPlan === undefined || context?.supports === undefined)
+    if (
+      plan.kind !== 'cross-runner' ||
+      !plan.allowed ||
+      plan.portableContextPlan === undefined ||
+      context?.supports === undefined
+    )
       return plan
-    const target = plan.destinationConnectionId === undefined ? undefined : {
-      connectionId: plan.destinationConnectionId,
-      ...(plan.destinationConnectionDigest === undefined ? {} : { connectionDigest: plan.destinationConnectionDigest }),
-    }
+    const target =
+      plan.destinationConnectionId === undefined
+        ? undefined
+        : {
+            connectionId: plan.destinationConnectionId,
+            ...(plan.destinationConnectionDigest === undefined
+              ? {}
+              : { connectionDigest: plan.destinationConnectionDigest }),
+          }
     const available = await context.supports(plan.portableContextPlan.destination, target)
     if (this.#plan(input).digest !== plan.digest)
-      throw new AppError('FORK_PLAN_CONFLICT', 'The source or destination changed during capability preflight')
+      throw new AppError(
+        'FORK_PLAN_CONFLICT',
+        'The source or destination changed during capability preflight',
+      )
     if (available) return plan
     const { digest: _digest, ...material } = plan
-    const unavailable = { ...material, allowed: false, environment: 'unavailable' as const,
-      reason: 'The selected destination provider does not report retry-safe portable context transfer' }
+    const unavailable = {
+      ...material,
+      allowed: false,
+      environment: 'unavailable' as const,
+      reason:
+        'The selected destination provider does not report retry-safe portable context transfer',
+    }
     return { ...unavailable, digest: canonicalDigest(unavailable) }
   }
 

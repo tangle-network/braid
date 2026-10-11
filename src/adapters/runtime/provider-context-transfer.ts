@@ -7,7 +7,6 @@ import {
   type AgentEnvironmentProvider,
   type ContextTransferRequest,
   type ContextTransferResult,
-  type PortableContextDestination,
 } from '@tangle-network/agent-interface'
 import type { ContextTransferExecutionPort } from '../../ports/execution.js'
 
@@ -18,7 +17,7 @@ export interface ProviderContextTransferResolution {
 
 export interface ProviderContextTransferOptions {
   readonly resolve: (
-    destination: PortableContextDestination,
+    destination: ContextTransferRequest['plan']['destination'],
     target?: { readonly connectionId: string; readonly connectionDigest?: string },
   ) => Promise<ProviderContextTransferResolution | undefined>
 }
@@ -28,7 +27,7 @@ export function createProviderContextTransferPort(
   options: ProviderContextTransferOptions,
 ): ContextTransferExecutionPort {
   return Object.freeze({
-    supports: async (destination: PortableContextDestination, target?: { readonly connectionId: string; readonly connectionDigest?: string }) => {
+    supports: async (destination: ContextTransferRequest['plan']['destination'], target?: { readonly connectionId: string; readonly connectionDigest?: string }) => {
       const validated = PortableContextDestinationSchema.parse(destination)
       return supportsContextTransfer(await options.resolve(validated, target), validated)
     },
@@ -70,7 +69,7 @@ function checkedResult(
 
 function supportsContextTransfer(
   resolved: ProviderContextTransferResolution | undefined,
-  destination: PortableContextDestination,
+  destination: ContextTransferRequest['plan']['destination'],
 ): boolean {
   if (resolved === undefined) return false
   const capability = resolved.capabilities.contextTransfer
