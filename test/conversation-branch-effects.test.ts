@@ -536,6 +536,74 @@ test('cross-runner handoff transfers canonical history and replays after restart
   )
 })
 
+test('same-runner handoff binds the selected destination connection through restart', async () => {
+  const contextState: ContextProviderState = { transfers: [] }
+  const journal = new MemoryJournal(new FixedClock(AT))
+  const routeTargets: (string | undefined)[] = []
+  const execution = executionFor({ capabilities: branchCapabilities(), contextState })
+  const transfer = execution.context?.transfer
+  assert(transfer)
+  const routedExecution = { ...execution, context: {
+    async transfer(request: ContextTransferRequest, target?: { readonly connectionId: string }) {
+      routeTargets.push(target?.connectionId)
+      return transfer(request)
+    },
+  } }
+  const app = createBraidApplication({ fixture: 'deterministic', execution: routedExecution,
+    clock: new FixedClock(AT), journal, effectStorage: journal })
+  await prepareSource(app)
+  await app.send({ operationId: 'op-connection-source', text: 'source history' }).completion
+  const destination: ConnectionRecord = {
+    ...sourceConnection(), id: createConnectionId('connection-branch-effects-destination'),
+    kind: 'cli-bridge', name: 'destination connection',
+  }
+  await app.configuration.upsertConnection({ connection: destination, operation: {
+    id: createOperationId('operation-register-destination'), kind: 'connection-change',
+    requestDigest: canonicalDigest(destination), status: 'acknowledged',
+    createdAt: AT, updatedAt: AT, acknowledgedAt: AT,
+  } })
+  const input = { operationId: 'op-same-runner-connection', connectionId: destination.id,
+    runner: app.state().profile.harness ?? 'pi' }
+  const plan = app.conversations.branches.plan(input)
+  assert.equal(plan.kind, 'cross-runner')
+  assert.equal(plan.destinationConnectionId, destination.id)
+  assert.equal(plan.destinationConnectionDigest, canonicalDigest(destination))
+  assert.equal(plan.portableContextPlan?.destination.provider, destination.kind)
+  const branch = await app.conversations.branches.execute({ ...input, planDigest: plan.digest })
+  assert.equal(branch.connectionId, destination.id)
+  assert.deepEqual(routeTargets, [destination.id])
+  const restarted = createBraidApplication({ fixture: 'deterministic', execution: routedExecution,
+    clock: new FixedClock(AT), journal, effectStorage: journal })
+  const replay = await restarted.conversations.branches.execute({ ...input, planDigest: plan.digest })
+  assert.equal(replay.connectionId, destination.id)
+  assert.equal(replay.id, branch.id)
+  assert.equal(contextState.transfers.length, 1)
+  assert.equal(restarted.state().branches.find((candidate) => candidate.id === branch.source?.branchId)?.connectionId,
+    sourceConnection().id)
+})
+
+test('handoff rejects a removed or changed destination before provider transfer', async () => {
+  const contextState: ContextProviderState = { transfers: [] }
+  const app = createBraidApplication({ fixture: 'deterministic',
+    execution: executionFor({ capabilities: branchCapabilities(), contextState }), clock: new FixedClock(AT) })
+  await prepareSource(app)
+  await app.send({ operationId: 'op-destination-change-source', text: 'source history' }).completion
+  const connection = sourceConnection()
+  const input = { operationId: 'op-destination-change-handoff', connectionId: connection.id, runner: 'codex' }
+  const plan = app.conversations.branches.plan(input)
+  await app.configuration.upsertConnection({ connection: { ...connection, endpoint: 'http://127.0.0.1:9999' },
+    operation: { id: createOperationId('operation-change-destination'), kind: 'connection-change',
+      requestDigest: canonicalDigest({ endpoint: 'http://127.0.0.1:9999' }), status: 'acknowledged',
+      createdAt: AT, updatedAt: AT, acknowledgedAt: AT } })
+  await assert.rejects(() => app.conversations.branches.execute({ ...input, planDigest: plan.digest }),
+    /accepted fork plan no longer matches/)
+  assert.throws(() => app.conversations.branches.plan({ ...input, connectionId: 'connection-removed' }),
+    /destination connection does not exist/)
+  assert.throws(() => app.conversations.branches.plan({ ...input, destinationProvider: 'cli-bridge' }),
+    /provider does not match/)
+  assert.equal(contextState.transfers.length, 0)
+})
+
 test('cross-runner planning resolves a completed run inherited by a child branch', async () => {
   const contextState: ContextProviderState = { transfers: [] }
   const execution = executionFor({

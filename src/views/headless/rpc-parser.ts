@@ -65,6 +65,7 @@ const PARAMETER_KEYS: Readonly<Record<HeadlessCommandName, readonly string[]>> =
   branch: ['conversationId', 'branchId', 'messageId', 'text'],
   clone: ['conversationId', 'branchId', 'title'],
   plan_fork: [
+    'connectionId',
     'conversationId',
     'branchId',
     'messageId',
@@ -77,6 +78,7 @@ const PARAMETER_KEYS: Readonly<Record<HeadlessCommandName, readonly string[]>> =
     'confidential',
   ],
   execute_fork: [
+    'connectionId',
     'planDigest',
     'conversationId',
     'branchId',
@@ -164,6 +166,7 @@ const PARAMETER_TYPES: Readonly<
   branch: { conversationId: 'string', branchId: 'string', messageId: 'string', text: 'string' },
   clone: { conversationId: 'string', branchId: 'string', title: 'string' },
   plan_fork: {
+    connectionId: 'string',
     conversationId: 'string',
     branchId: 'string',
     messageId: 'string',
@@ -176,6 +179,7 @@ const PARAMETER_TYPES: Readonly<
     confidential: 'record',
   },
   execute_fork: {
+    connectionId: 'string',
     planDigest: 'string',
     conversationId: 'string',
     branchId: 'string',

@@ -59,6 +59,8 @@ export interface CreateBranchInput {
   readonly operationId: string
   readonly destinationBranchId?: string
   readonly conversationId?: string
+  /** Exact destination connection; absent means inherit the source connection. */
+  readonly connectionId?: string
   readonly branchId?: string
   readonly throughMessageId?: string
   readonly text?: string
@@ -134,6 +136,8 @@ export interface ForkPlan {
   readonly confidential?: ConfidentialExecutionRequest
   readonly text?: string
   readonly destinationProvider?: string
+  readonly destinationConnectionId?: string
+  readonly destinationConnectionDigest?: string
   readonly allowed: boolean
   readonly reason?: string
   readonly digest: string

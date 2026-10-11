@@ -19,6 +19,7 @@ import type {
   CancelRunInput,
   CancelRunResult,
   ControlAcknowledgement,
+  ContextTransferExecutionPort,
   ExecuteTurnInput,
   ExecutionAdmission,
   ExecutionPort,
@@ -46,12 +47,14 @@ export type AgentTurnCancelResolver = (
 ) => CancelRunResult | Promise<CancelRunResult>
 
 export interface AgentRuntimeExecutionOptions {
+  readonly context?: ContextTransferExecutionPort
   readonly admissionMode?: 'sync' | 'async'
   readonly workspaceBranchingProvider?: AgentWorkspaceBranchingProvider
   readonly confidentialAttestationVerifier?: ConfidentialAttestationVerifier
 }
 
 export class AgentRuntimeExecutionPort implements ExecutionPort {
+  readonly context?: ContextTransferExecutionPort
   readonly admissionMode: 'sync' | 'async'
   readonly #resolveBackend: AgentTurnBackendResolver
   readonly #cancel: AgentTurnCancelResolver | undefined
@@ -86,6 +89,7 @@ export class AgentRuntimeExecutionPort implements ExecutionPort {
         streaming: { ...UNKNOWN_RUN_CAPABILITIES.streaming, live: true },
       }
     }
+    if (options.context !== undefined) this.context = options.context
     if (options.workspaceBranchingProvider !== undefined)
       this.workspaceBranchingProvider = options.workspaceBranchingProvider
     if (options.confidentialAttestationVerifier !== undefined)

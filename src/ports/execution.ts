@@ -76,8 +76,14 @@ export interface ExecutionAdmission {
  */
 export interface ContextTransferExecutionPort {
   readonly plan?: (input: PortableContextPlanRequest) => Promise<PortableContextPlanResult>
-  readonly transfer?: (input: ContextTransferRequest) => Promise<ContextTransferResult>
-  readonly lookup?: (input: ContextTransferRequest) => Promise<ContextTransferResult | undefined>
+  readonly transfer?: (
+    input: ContextTransferRequest,
+    target?: { readonly connectionId: string },
+  ) => Promise<ContextTransferResult>
+  readonly lookup?: (
+    input: ContextTransferRequest,
+    target?: { readonly connectionId: string },
+  ) => Promise<ContextTransferResult | undefined>
 }
 
 export interface ProviderRunSnapshot {

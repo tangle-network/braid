@@ -12,6 +12,11 @@ Render that view in `ForkPreviewPanel` without re-deriving capability or identit
 
 Execute only the plan digest the user reviewed.
 
+`/fork --connection <id>` selects an exact destination connection, including when the runner stays the same.
+The preview names that connection and execution refuses a plan whose destination configuration changed.
+RPC `plan_fork` and `execute_fork` accept the same `connectionId` field.
+Selecting a destination does not establish that its provider supports portable context transfer; the provider must return a matching receipt before the destination branch is created.
+
 Use the shared runtime and provider fork ports for external work.
 
 Do not copy provider sessions, checkpoints, or workspaces inside the terminal client.

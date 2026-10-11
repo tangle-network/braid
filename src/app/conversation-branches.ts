@@ -7,6 +7,7 @@ import {
   type ConversationId,
   type OperationId,
   parseBranchId,
+  parseConnectionId,
   parseConversationId,
   parseEnvironmentId,
   parseMessageId,
@@ -157,9 +158,9 @@ export class ConversationBranches {
       ...(source.branch.profileSnapshotId === undefined
         ? {}
         : { profileSnapshotId: source.branch.profileSnapshotId }),
-      ...(source.branch.connectionId === undefined
+      ...(input.connectionId === undefined && source.branch.connectionId === undefined
         ? {}
-        : { connectionId: source.branch.connectionId }),
+        : { connectionId: parseConnectionId(input.connectionId ?? String(source.branch.connectionId)) }),
       overrides: runOverrides({
         inherited: source.branch.overrides,
         ...(input.runner === undefined ? {} : { runner: input.runner }),
@@ -278,6 +279,16 @@ export class ConversationBranches {
   plan(input: ForkPlanInput): ForkPlan {
     const state = this.#host.state()
     const source = resolveSource(state, input)
+    const destinationConnectionId = input.connectionId === undefined ? undefined : parseConnectionId(input.connectionId)
+    const destinationConnection = destinationConnectionId === undefined
+      ? undefined
+      : state.connections.find((connection) => connection.id === destinationConnectionId)
+    if (input.connectionId !== undefined && destinationConnection === undefined)
+      throw new AppError('CONNECTION_NOT_FOUND', 'The selected destination connection does not exist')
+    const destinationProvider = input.destinationProvider ?? destinationConnection?.kind
+    if (destinationConnection !== undefined && input.destinationProvider !== undefined &&
+      input.destinationProvider !== destinationConnection.kind)
+      throw new AppError('FORK_PLAN_CONFLICT', 'The destination provider does not match the selected connection')
     const operationId = parseOperation(input.operationId, 'plan_fork')
     const confidential = parseConfidentialWorkspaceForkRequest(input.confidential)
     const normalized = branchRequest(source, input, confidential)
@@ -304,7 +315,8 @@ export class ConversationBranches {
     const sourceEnvironmentId = source.branch.environmentId ?? sourceRun?.environmentId
     const kind =
       input.kind ??
-      (input.runner !== undefined && input.runner !== sourceRunner
+      ((input.runner !== undefined && input.runner !== sourceRunner) ||
+        (input.connectionId !== undefined && input.connectionId !== source.branch.connectionId)
         ? ('cross-runner' as const)
         : ('conversation' as const))
     if (confidential?.requested === true && kind !== 'workspace')
@@ -328,9 +340,9 @@ export class ConversationBranches {
             branchId: source.branch.id,
             ...(source.through === undefined ? {} : { throughMessageId: source.through.id }),
             destinationRunner: requestedRunner ?? 'unknown-runner',
-            ...(input.destinationProvider === undefined
+            ...(destinationProvider === undefined
               ? {}
-              : { destinationProvider: input.destinationProvider }),
+              : { destinationProvider }),
             ...(targetProfile.model?.default === undefined
               ? {}
               : { destinationModel: targetProfile.model.default }),
@@ -367,9 +379,13 @@ export class ConversationBranches {
         : { destinationEnvironmentId: portableContextPlan.destination.environmentId }),
       ...(input.placement === undefined ? {} : { placement: input.placement }),
       ...(input.text === undefined ? {} : { text: input.text }),
-      ...(input.destinationProvider === undefined
+      ...(destinationProvider === undefined
         ? {}
-        : { destinationProvider: input.destinationProvider }),
+        : { destinationProvider }),
+      ...(destinationConnection === undefined ? {} : {
+        destinationConnectionId: destinationConnection.id,
+        destinationConnectionDigest: canonicalDigest(destinationConnection),
+      }),
       ...(confidential === undefined ? {} : { confidential }),
       environment:
         kind === 'conversation'
@@ -500,6 +516,7 @@ function branchRequest(
     conversationId: source.conversation.id,
     branchId: source.branch.id,
     throughMessageId: source.through?.id ?? null,
+    ...(input.connectionId === undefined ? {} : { connectionId: input.connectionId }),
     text: input.text ?? '',
     runner: input.runner ?? source.branch.overrides.runner ?? null,
     model: input.model ?? source.branch.overrides.model ?? null,

@@ -11,7 +11,7 @@ import {
   AgentRuntimeExecutionPort,
   type AgentTurnBackendResolver,
 } from '../adapters/runtime/agent-runtime-execution.js'
-import { createCliBridgeContextTransferPort } from '../adapters/runtime/cli-bridge-context-transfer.js'
+import { createProviderContextTransferPort } from '../adapters/runtime/provider-context-transfer.js'
 import { CliBridgeRetainedExecutionPort } from '../adapters/runtime/cli-bridge-retained-execution.js'
 import { ModeRoutingExecutionPort } from '../adapters/runtime/mode-routing-execution.js'
 import { NativeInteractiveRunBroker } from '../adapters/runtime/native-interactive-run-broker.js'
@@ -266,26 +266,32 @@ export function createProductionComposition(
     }
   }
   let nativeInteractive: NativeInteractiveExecutionControl | undefined
+  const context = createProviderContextTransferPort({
+    resolve: async (request, target) => {
+      const destinationConnection = connections.select({
+        connectionId: target?.connectionId ?? connection.id,
+      }).record
+      if (destinationConnection.kind === 'tangle-sandbox') {
+        const provider = await createTangleEnvironmentProvider(destinationConnection, resolverOptions)
+        return { provider, capabilities: await provider.capabilities() }
+      }
+      if (destinationConnection.kind !== 'cli-bridge') return undefined
+      const destination = request.plan.destination
+      const runner = harnessTypeSchema.safeParse(destination.runner)
+      if (!runner.success || destination.model === undefined) {
+        throw new Error('The portable context destination requires a supported runner and exact model')
+      }
+      return prepareCliBridgeProviderRoute(
+        resolverOptions,
+        destinationConnection.id,
+        connectionEndpoint(destinationConnection, resolverOptions),
+        runner.data,
+        materializeBridgeModelRoute(runner.data, destination.model),
+      )
+    },
+  })
   const execution = (() => {
     if (connection.kind === 'cli-bridge') {
-      const context = createCliBridgeContextTransferPort({
-        resolve: (request) => {
-          const destination = request.plan.destination
-          const runner = harnessTypeSchema.safeParse(destination.runner)
-          if (!runner.success || destination.model === undefined) {
-            throw new Error(
-              'The portable context destination requires a supported runner and exact model',
-            )
-          }
-          return prepareCliBridgeProviderRoute(
-            resolverOptions,
-            connection.id,
-            connectionEndpoint(connection, resolverOptions),
-            runner.data,
-            materializeBridgeModelRoute(runner.data, destination.model),
-          )
-        },
-      })
       return new CliBridgeRetainedExecutionPort({
         context,
         resolve: (input) => resolveProductionCliBridgeConnection(resolverOptions, input),
@@ -301,6 +307,7 @@ export function createProductionComposition(
       connection.providerOptions.lifecycle === 'retained'
     ) {
       const headless = new TangleRetainedExecutionPort({
+        context,
         resolve: (input) => resolveProductionTangleRetainedConnection(resolverOptions, input),
         recover: ({ runId, providerSessionId, signal, ...recovery }) =>
           resolveProductionTangleRetainedConnection(
@@ -326,6 +333,7 @@ export function createProductionComposition(
       return new ModeRoutingExecutionPort({ headless, interactive })
     }
     return new AgentRuntimeExecutionPort(backendResolver, undefined, {
+      context,
       ...(workspaceBranchingProvider === undefined ? {} : { workspaceBranchingProvider }),
       ...(resolverOptions.confidentialAttestationVerifier === undefined
         ? {}

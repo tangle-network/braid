@@ -74,15 +74,17 @@ export async function dispatchConversationRunCommand(
       const workspace = intent.args.includes('--workspace')
       const runner = flagValue(intent.args, '--runner')
       const destinationProvider = flagValue(intent.args, '--provider')
+      const connectionId = flagValue(intent.args, '--connection')
       const throughMessageId = intent.args.find((argument) => argument.startsWith('message-'))
       const confidential = confidentialRequestForForkArgs(intent.args)
       const text = forkText(intent.args, throughMessageId)
       const plan = context.app.conversations.branches.plan({
         operationId,
-        kind: workspace ? 'workspace' : runner === undefined ? 'conversation' : 'cross-runner',
+        kind: workspace ? 'workspace' : runner === undefined && connectionId === undefined ? 'conversation' : 'cross-runner',
         ...(throughMessageId === undefined ? {} : { throughMessageId }),
         ...(runner === undefined ? {} : { runner }),
         ...(destinationProvider === undefined ? {} : { destinationProvider }),
+        ...(connectionId === undefined ? {} : { connectionId }),
         ...(confidential === undefined ? {} : { confidential }),
         ...(text === undefined ? {} : { text }),
       })
@@ -301,11 +303,12 @@ function forkInput(params: Readonly<Record<string, unknown>>, operationId: strin
     operationId,
     kind: workspace
       ? ('workspace' as const)
-      : runner === undefined
+      : runner === undefined && params.connectionId === undefined
         ? ('conversation' as const)
         : ('cross-runner' as const),
     ...optionalString(params, 'conversationId'),
     ...optionalString(params, 'branchId'),
+    ...optionalString(params, 'connectionId'),
     ...renamedOptionalString(params, 'messageId', 'throughMessageId'),
     ...optionalString(params, 'runner'),
     ...optionalString(params, 'model'),
@@ -351,13 +354,14 @@ function forkText(args: readonly string[], boundary: string | undefined): string
     const value = args[index]
     if (value === undefined) continue
     if (value === '--workspace' || value === boundary) continue
-    if (value === '--runner' || value === '--provider' || value === '--confidential') {
+    if (value === '--runner' || value === '--provider' || value === '--confidential' || value === '--connection') {
       index += 1
       continue
     }
     if (
       value.startsWith('--runner=') ||
       value.startsWith('--provider=') ||
+      value.startsWith('--connection=') ||
       value.startsWith('--confidential=')
     )
       continue
@@ -387,6 +391,9 @@ function forkPreview(plan: ForkPlan): ForkPreviewView {
         destination: `${plan.context.messages.length} messages`,
       },
       { label: 'provider session', source: 'current', destination: 'new' },
+      ...(plan.destinationConnectionId === undefined ? [] : [{
+        label: 'connection', source: 'source connection', destination: plan.destinationConnectionId,
+      }]),
       { label: 'workspace', source: 'current', destination: plan.environment },
     ],
     allowed: plan.allowed,
