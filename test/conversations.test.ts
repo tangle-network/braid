@@ -248,12 +248,12 @@ test('branch, clone, context, and fork use one canonical conversation graph', as
     conversationId: sourceConversationId,
     branchId: sourceBranchId,
   })
-  const plan = app.conversations.branches.plan({
+  const plan = await app.conversations.branches.plan({
     operationId: 'op-fork-conversation',
     kind: 'conversation',
     throughMessageId: boundary.id,
   })
-  const repeatedPlan = app.conversations.branches.plan({
+  const repeatedPlan = await app.conversations.branches.plan({
     operationId: 'op-fork-conversation',
     kind: 'conversation',
     throughMessageId: boundary.id,
@@ -277,7 +277,7 @@ test('branch, clone, context, and fork use one canonical conversation graph', as
       }),
     (error: unknown) => error instanceof AppError && error.code === 'FORK_PLAN_CONFLICT',
   )
-  const workspacePlan = app.conversations.branches.plan({
+  const workspacePlan = await app.conversations.branches.plan({
     operationId: 'op-workspace-fork',
     kind: 'workspace',
   })

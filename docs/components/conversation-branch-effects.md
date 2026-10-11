@@ -19,6 +19,10 @@ Changing that connection after preview invalidates the plan before transfer.
 The destination branch keeps that connection after journal replay; the source branch retains its own connection.
 Provider-neutral context routing validates the canonical request before resolving credentials and validates every lookup or transfer result before returning it to the application.
 
+Fork planning reads the destination provider's transfer capability asynchronously before confirmation.
+It creates no environment or session.
+A source or destination change during that read invalidates the preview.
+
 ## Inputs and outputs
 
 The planner reads immutable Braid state, the selected branch boundary, and the execution port capabilities.

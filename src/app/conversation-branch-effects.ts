@@ -292,7 +292,12 @@ async function executeCrossRunner(
     ...transferMaterial,
     requestDigest: contextTransferRequestDigest(transferMaterial),
   }
-  const transfer = await lookupOrTransfer(contextPort, transferRequest, plan.destinationConnectionId, plan.destinationConnectionDigest)
+  const transfer = await lookupOrTransfer(
+    contextPort,
+    transferRequest,
+    plan.destinationConnectionId,
+    plan.destinationConnectionDigest,
+  )
   if (!contextTransferResultMatchesRequest(transferRequest, transfer))
     throw new AppError(
       'CONTEXT_RECEIPT_CONFLICT',
@@ -537,7 +542,10 @@ async function lookupOrTransfer(
   connectionId?: string,
   connectionDigest?: string,
 ): Promise<ContextTransferResult> {
-  const target = connectionId === undefined ? undefined : { connectionId, ...(connectionDigest === undefined ? {} : { connectionDigest }) }
+  const target =
+    connectionId === undefined
+      ? undefined
+      : { connectionId, ...(connectionDigest === undefined ? {} : { connectionDigest }) }
   const found = port.lookup === undefined ? undefined : await port.lookup(request, target)
   if (found !== undefined) return found
   return (

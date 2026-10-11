@@ -78,9 +78,13 @@ export async function dispatchConversationRunCommand(
       const throughMessageId = intent.args.find((argument) => argument.startsWith('message-'))
       const confidential = confidentialRequestForForkArgs(intent.args)
       const text = forkText(intent.args, throughMessageId)
-      const plan = context.app.conversations.branches.plan({
+      const plan = await context.app.conversations.branches.plan({
         operationId,
-        kind: workspace ? 'workspace' : runner === undefined && connectionId === undefined ? 'conversation' : 'cross-runner',
+        kind: workspace
+          ? 'workspace'
+          : runner === undefined && connectionId === undefined
+            ? 'conversation'
+            : 'cross-runner',
         ...(throughMessageId === undefined ? {} : { throughMessageId }),
         ...(runner === undefined ? {} : { runner }),
         ...(destinationProvider === undefined ? {} : { destinationProvider }),
@@ -260,7 +264,7 @@ export async function dispatchConversationHeadlessCommand(
     }
     case 'plan_fork': {
       const operationId = requiredOperationId(intent.operationId, intent.command)
-      const plan = context.app.conversations.branches.plan(forkInput(params, operationId))
+      const plan = await context.app.conversations.branches.plan(forkInput(params, operationId))
       context.setForkPreview(forkPreview(plan))
       return accepted(context, operationId, plan, plan.reason)
     }
@@ -354,7 +358,12 @@ function forkText(args: readonly string[], boundary: string | undefined): string
     const value = args[index]
     if (value === undefined) continue
     if (value === '--workspace' || value === boundary) continue
-    if (value === '--runner' || value === '--provider' || value === '--confidential' || value === '--connection') {
+    if (
+      value === '--runner' ||
+      value === '--provider' ||
+      value === '--confidential' ||
+      value === '--connection'
+    ) {
       index += 1
       continue
     }
@@ -391,9 +400,15 @@ function forkPreview(plan: ForkPlan): ForkPreviewView {
         destination: `${plan.context.messages.length} messages`,
       },
       { label: 'provider session', source: 'current', destination: 'new' },
-      ...(plan.destinationConnectionId === undefined ? [] : [{
-        label: 'connection', source: 'source connection', destination: plan.destinationConnectionId,
-      }]),
+      ...(plan.destinationConnectionId === undefined
+        ? []
+        : [
+            {
+              label: 'connection',
+              source: 'source connection',
+              destination: plan.destinationConnectionId,
+            },
+          ]),
       { label: 'workspace', source: 'current', destination: plan.environment },
     ],
     allowed: plan.allowed,

@@ -102,21 +102,44 @@ test('portable context routes any capable provider by exact destination connecti
   const profile = defineAgentProfile({ name: 'portable destination' })
   const request = contextTransfer(profile, 'daytona')
   const capability = {
-    ...execOnlyEnvironmentCapabilities({ read: false, write: false, exec: false, git: false, upload: false, download: false }),
-    contextTransfer: { freshSession: true as const, requestIdempotency: true as const, lookup: true as const },
+    ...execOnlyEnvironmentCapabilities({
+      read: false,
+      write: false,
+      exec: false,
+      git: false,
+      upload: false,
+      download: false,
+    }),
+    contextTransfer: {
+      freshSession: true as const,
+      requestIdempotency: true as const,
+      lookup: true as const,
+    },
   }
   let target: string | undefined
   let calls = 0
   const result: ContextTransferResult = {
-    status: 'unknown', operationId: request.operationId,
-    requestDigest: request.requestDigest, message: 'No prior admission', retryable: true,
+    status: 'unknown',
+    operationId: request.operationId,
+    requestDigest: request.requestDigest,
+    message: 'No prior admission',
+    retryable: true,
   }
   const provider: AgentEnvironmentProvider = {
-    name: 'daytona', capabilities: () => capability,
-    async create() { throw new Error('Transfer routing must not create an environment') },
+    name: 'daytona',
+    capabilities: () => capability,
+    async create() {
+      throw new Error('Transfer routing must not create an environment')
+    },
     contextTransfer: {
-      async lookup() { return undefined },
-      async transfer(input) { calls += 1; assert.deepEqual(input, request); return result },
+      async lookup() {
+        return undefined
+      },
+      async transfer(input) {
+        calls += 1
+        assert.deepEqual(input, request)
+        return result
+      },
     },
   }
   const port = createProviderContextTransferPort({
@@ -125,21 +148,35 @@ test('portable context routes any capable provider by exact destination connecti
       return { provider, capabilities: capability }
     },
   })
+  assert.equal(await port.supports?.(request.plan.destination, { connectionId: 'connection-daytona' }), true)
   assert.equal(await port.lookup?.(request, { connectionId: 'connection-daytona' }), undefined)
   assert.deepEqual(await port.transfer?.(request, { connectionId: 'connection-daytona' }), result)
   assert.equal(target, 'connection-daytona')
   assert.equal(calls, 1)
   const wrongProvider = createProviderContextTransferPort({
-    async resolve() { return { provider: { ...provider, name: 'another-provider' }, capabilities: capability } },
+    async resolve() {
+      return { provider: { ...provider, name: 'another-provider' }, capabilities: capability }
+    },
   })
+  assert.equal(await wrongProvider.supports?.(request.plan.destination), false)
   assert.equal((await wrongProvider.transfer?.(request))?.status, 'unknown')
   assert.equal(calls, 1)
   const wrongReceipt = createProviderContextTransferPort({
     async resolve() {
-      return { provider: { ...provider, contextTransfer: {
-        async lookup() { return { ...result, operationId: 'another-operation' } },
-        async transfer() { return { ...result, requestDigest: `sha256:${'f'.repeat(64)}` } },
-      } }, capabilities: capability }
+      return {
+        provider: {
+          ...provider,
+          contextTransfer: {
+            async lookup() {
+              return { ...result, operationId: 'another-operation' }
+            },
+            async transfer() {
+              return { ...result, requestDigest: `sha256:${'f'.repeat(64)}` }
+            },
+          },
+        },
+        capabilities: capability,
+      }
     },
   })
   await assert.rejects(() => wrongReceipt.lookup!(request), /does not match the exact request/)
@@ -148,13 +185,23 @@ test('portable context routes any capable provider by exact destination connecti
 
 test('portable context validates the request before selecting a credential route', async () => {
   let resolutions = 0
-  const port = createProviderContextTransferPort({ async resolve() { resolutions += 1; return undefined } })
+  const port = createProviderContextTransferPort({
+    async resolve() {
+      resolutions += 1
+      return undefined
+    },
+  })
   const request = contextTransfer(defineAgentProfile({ name: 'invalid destination' }))
-  await assert.rejects(() => port.transfer!({ ...request, requestDigest: `sha256:${'f'.repeat(64)}` }))
+  await assert.rejects(() =>
+    port.transfer!({ ...request, requestDigest: `sha256:${'f'.repeat(64)}` }),
+  )
   assert.equal(resolutions, 0)
 })
 
-function contextTransfer(profile: ReturnType<typeof defineAgentProfile>, provider = 'cli-bridge'): ContextTransferRequest {
+function contextTransfer(
+  profile: ReturnType<typeof defineAgentProfile>,
+  provider = 'cli-bridge',
+): ContextTransferRequest {
   const sourceMaterial = {
     source: {
       runId: 'run-context-source',

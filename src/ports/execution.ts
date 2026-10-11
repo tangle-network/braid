@@ -11,6 +11,7 @@ import type {
   NativeContextBoundaryProof,
   PortableContextPlanRequest,
   PortableContextPlanResult,
+  PortableContextDestination,
   WorkspaceRequest,
 } from '@tangle-network/agent-interface'
 import type { TurnUsage } from '../domain/entities.js'
@@ -75,6 +76,10 @@ export interface ExecutionAdmission {
  * describes how Braid reaches an adapter that implements them.
  */
 export interface ContextTransferExecutionPort {
+  readonly supports?: (
+    destination: PortableContextDestination,
+    target?: { readonly connectionId: string; readonly connectionDigest?: string },
+  ) => Promise<boolean>
   readonly plan?: (input: PortableContextPlanRequest) => Promise<PortableContextPlanResult>
   readonly transfer?: (
     input: ContextTransferRequest,

@@ -268,22 +268,33 @@ export function createProductionComposition(
   }
   let nativeInteractive: NativeInteractiveExecutionControl | undefined
   const context = createProviderContextTransferPort({
-    resolve: async (request, target) => {
+    resolve: async (destination, target) => {
       const destinationConnection = connections.select({
         connectionId: target?.connectionId ?? connection.id,
       }).record
-      if (target?.connectionDigest !== undefined && canonicalDigest(destinationConnection) !== target.connectionDigest) {
-        throw new ConnectionError('CONNECTION_REVISION_MISMATCH', 'The destination connection changed after the accepted context plan', { connectionId: destinationConnection.id })
+      if (
+        target?.connectionDigest !== undefined &&
+        canonicalDigest(destinationConnection) !== target.connectionDigest
+      ) {
+        throw new ConnectionError(
+          'CONNECTION_REVISION_MISMATCH',
+          'The destination connection changed after the accepted context plan',
+          { connectionId: destinationConnection.id },
+        )
       }
       if (destinationConnection.kind === 'tangle-sandbox') {
-        const provider = await createTangleEnvironmentProvider(destinationConnection, resolverOptions)
+        const provider = await createTangleEnvironmentProvider(
+          destinationConnection,
+          resolverOptions,
+        )
         return { provider, capabilities: await provider.capabilities() }
       }
       if (destinationConnection.kind !== 'cli-bridge') return undefined
-      const destination = request.plan.destination
       const runner = harnessTypeSchema.safeParse(destination.runner)
       if (!runner.success || destination.model === undefined) {
-        throw new Error('The portable context destination requires a supported runner and exact model')
+        throw new Error(
+          'The portable context destination requires a supported runner and exact model',
+        )
       }
       return prepareCliBridgeProviderRoute(
         resolverOptions,
