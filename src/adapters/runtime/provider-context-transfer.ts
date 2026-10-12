@@ -40,7 +40,7 @@ export function createProviderContextTransferPort(
     ) => {
       const validated = ContextTransferRequestSchema.parse(request)
       const resolved = await options.resolve(validated.plan.destination, target)
-      if (!supportsContextTransfer(resolved, validated.plan.destination)) return undefined
+      if (!supportsContextTransferLookup(resolved, validated.plan.destination)) return undefined
       const result = await resolved?.provider.contextTransfer?.lookup(validated)
       return result === undefined ? undefined : checkedResult(validated, result)
     },
@@ -70,17 +70,27 @@ function checkedResult(
   return validated
 }
 
+function supportsContextTransferLookup(
+  resolved: ProviderContextTransferResolution | undefined,
+  destination: ContextTransferRequest['plan']['destination'],
+): boolean {
+  return (
+    resolved !== undefined &&
+    destination.provider === resolved.provider.name &&
+    resolved.capabilities.contextTransfer?.lookup === true &&
+    resolved.provider.contextTransfer?.lookup !== undefined
+  )
+}
+
 function supportsContextTransfer(
   resolved: ProviderContextTransferResolution | undefined,
   destination: ContextTransferRequest['plan']['destination'],
 ): boolean {
-  if (resolved === undefined) return false
+  if (resolved === undefined || !supportsContextTransferLookup(resolved, destination)) return false
   const capability = resolved.capabilities.contextTransfer
   return (
-    destination.provider === resolved.provider.name &&
     capability?.freshSession === true &&
     capability.requestIdempotency === true &&
-    capability.lookup === true &&
     capability.attach === true &&
     resolved.provider.get !== undefined &&
     resolved.capabilities.retainedControl?.exactRunIdentity === true &&
@@ -91,9 +101,8 @@ function supportsContextTransfer(
     resolved.capabilities.streaming.detach &&
     resolved.capabilities.streaming.turnIdempotency &&
     (destination.workspaceSnapshotDigest === undefined ||
-      resolved.capabilities.create?.workspaceSnapshot === true) &&
-    resolved.provider.contextTransfer?.transfer !== undefined &&
-    resolved.provider.contextTransfer.lookup !== undefined
+      capability.workspaceSnapshot === true) &&
+    resolved.provider.contextTransfer?.transfer !== undefined
   )
 }
 

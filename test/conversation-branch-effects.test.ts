@@ -1070,6 +1070,7 @@ test('workspace fork rejects a source control reference from another provider', 
 
 test('cross-runner retry reuses the original acceptance timestamp in its request digest', async () => {
   const contextState: ContextProviderState = { transfers: [] }
+  const lookups: ContextTransferRequest[] = []
   let failOnce = true
   const baseExecution = executionFor({
     capabilities: branchCapabilities(),
@@ -1078,6 +1079,17 @@ test('cross-runner retry reuses the original acceptance timestamp in its request
   const execution: ExecutionPort = {
     ...baseExecution,
     context: {
+      async lookup(request) {
+        lookups.push(request)
+        if (failOnce) return undefined
+        return {
+          status: 'unknown',
+          operationId: request.operationId,
+          requestDigest: request.requestDigest,
+          message: 'The original admission is pending',
+          retryable: true,
+        }
+      },
       async transfer(request) {
         contextState.transfers.push(request)
         if (failOnce) {
@@ -1135,12 +1147,157 @@ test('cross-runner retry reuses the original acceptance timestamp in its request
   await restarted.conversations.branches.execute(input)
 
   assert.equal(contextState.transfers.length, 2)
+  assert.equal(lookups.length, 2)
+  assert.equal(lookups[0]?.operationId, lookups[1]?.operationId)
+  assert.equal(lookups[0]?.requestDigest, lookups[1]?.requestDigest)
   assert.equal(
     contextState.transfers[0]?.acceptance.acceptedAt,
     contextState.transfers[1]?.acceptance.acceptedAt,
   )
   assert.equal(contextState.transfers[0]?.requestDigest, contextState.transfers[1]?.requestDigest)
 })
+
+test('pending handoff recovers its original receipt after fresh transfer support disappears', async () => {
+  const contextState: ContextProviderState = { transfers: [] }
+  const lookups: ContextTransferRequest[] = []
+  let freshSupported = true
+  let capabilityReads = 0
+  let acceptedReceipt: ContextTransferResult | undefined
+  const baseExecution = executionFor({ capabilities: branchCapabilities(), contextState })
+  const execution: ExecutionPort = {
+    ...baseExecution,
+    context: {
+      async supports() {
+        capabilityReads += 1
+        return freshSupported
+      },
+      async lookup(request) {
+        lookups.push(request)
+        return acceptedReceipt
+      },
+      async transfer(request) {
+        contextState.transfers.push(request)
+        acceptedReceipt = contextResult(request)
+        return {
+          status: 'unknown',
+          operationId: request.operationId,
+          requestDigest: request.requestDigest,
+          message: 'The acceptance acknowledgement was lost',
+          retryable: true,
+        }
+      },
+    },
+  }
+  const journal = new MemoryJournal(new FixedClock(AT))
+  const app = createBraidApplication({
+    fixture: 'deterministic', execution, clock: new FixedClock(AT), journal, effectStorage: journal,
+  })
+  await prepareSource(app)
+  await app.send({ operationId: 'op-source-historical-recovery', text: 'source history' }).completion
+  const planInput = {
+    operationId: 'op-historical-recovery', kind: 'cross-runner' as const,
+    runner: 'codex', destinationProvider: TARGET_PROVIDER,
+  }
+  const plan = await app.conversations.branches.plan(planInput)
+  const portablePlan = plan.portableContextPlan
+  assert(portablePlan)
+  assert.equal(plan.allowed, true)
+  const input = {
+    ...planInput, planDigest: plan.digest,
+    ...(portablePlan.requiresAcceptance ? { acceptedDigest: portablePlan.digest } : {}),
+  }
+  await assert.rejects(() => app.conversations.branches.execute(input), /acknowledgement was lost/)
+  assert.equal(app.state().operations.find((operation) => operation.id === input.operationId)?.status, 'pending')
+  freshSupported = false
+  const readsBeforeRecovery = capabilityReads
+  const restarted = createBraidApplication({
+    fixture: 'deterministic', execution, clock: new FixedClock('2026-08-29T00:00:00.000Z'),
+    journal, effectStorage: journal,
+  })
+  await assert.rejects(
+    () => restarted.conversations.branches.execute({ ...input, text: 'changed-request' }),
+    /accepted fork plan no longer matches/,
+  )
+  await assert.rejects(
+    () => restarted.conversations.branches.execute({ ...input, acceptedDigest: 'changed-acceptance' }),
+    portablePlan.requiresAcceptance ? /requires explicit acceptance/ : /already used with different input/,
+  )
+  assert.equal(lookups.length, 1)
+  const recovered = await restarted.conversations.branches.execute(input)
+  assert.equal(recovered.id, plan.destinationBranchId)
+  assert.equal(contextState.transfers.length, 1)
+  assert.equal(lookups.length, 2)
+  assert.deepEqual(lookups[1], lookups[0])
+  assert.equal(capabilityReads, readsBeforeRecovery)
+  const operation = restarted.state().operations.find((candidate) => candidate.id === input.operationId)
+  assert.equal(operation?.status, 'acknowledged')
+  assert.equal(operation?.result?.planDigest, plan.digest)
+  assert.equal((await restarted.conversations.branches.execute(input)).id, recovered.id)
+  assert.equal(lookups.length, 2)
+  assert.equal(contextState.transfers.length, 1)
+  const newPlan = await restarted.conversations.branches.plan({
+    ...planInput, operationId: 'op-new-unsupported-handoff', branchId: plan.sourceBranchId,
+  })
+  assert.equal(newPlan.allowed, false)
+  await assert.rejects(
+    () => restarted.conversations.branches.execute({
+      ...planInput, operationId: newPlan.operationId, branchId: plan.sourceBranchId,
+      planDigest: newPlan.digest,
+    }),
+    /does not report retry-safe/,
+  )
+  assert.equal(contextState.transfers.length, 1)
+})
+
+for (const scenario of [
+  { status: 'transport_failure', retryable: true, differentRequest: false },
+  { status: 'unknown', retryable: false, differentRequest: false },
+  { status: 'unknown', retryable: true, differentRequest: true },
+] as const) {
+  test(`handoff preserves ${scenario.status} lookup with retryable=${scenario.retryable} and differentRequest=${scenario.differentRequest}`, async () => {
+    const contextState: ContextProviderState = { transfers: [] }
+    const baseExecution = executionFor({ capabilities: branchCapabilities(), contextState })
+    const transfer = baseExecution.context?.transfer
+    assert(transfer)
+    const execution: ExecutionPort = {
+      ...baseExecution,
+      context: {
+        async lookup(request) {
+          return {
+            status: scenario.status,
+            operationId: request.operationId,
+            requestDigest: scenario.differentRequest ? `sha256:${'f'.repeat(64)}` : request.requestDigest,
+            message: 'Preserve the original lookup outcome',
+            retryable: scenario.retryable,
+          }
+        },
+        transfer,
+      },
+    }
+    const app = createBraidApplication({ fixture: 'deterministic', execution, clock: new FixedClock(AT) })
+    await prepareSource(app)
+    await app.send({ operationId: 'op-source-preserved-lookup', text: 'source history' }).completion
+    const plan = await app.conversations.branches.plan({
+      operationId: 'op-preserved-lookup',
+      kind: 'cross-runner',
+      runner: 'codex',
+      destinationProvider: TARGET_PROVIDER,
+    })
+    const portableContextPlan = plan.portableContextPlan
+    assert(portableContextPlan)
+    await assert.rejects(() => app.conversations.branches.execute({
+      operationId: 'op-preserved-lookup',
+      kind: 'cross-runner',
+      runner: 'codex',
+      destinationProvider: TARGET_PROVIDER,
+      planDigest: plan.digest,
+      ...(portableContextPlan.requiresAcceptance
+        ? { acceptedDigest: portableContextPlan.digest }
+        : {}),
+    }))
+    assert.equal(contextState.transfers.length, 0)
+  })
+}
 
 test('workspace fork uses exact provider operations, isolates destination, and cleans both resources', async () => {
   let app: ReturnType<typeof createBraidApplication> | undefined

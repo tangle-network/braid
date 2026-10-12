@@ -572,7 +572,13 @@ async function lookupOrTransfer(
       ? undefined
       : { connectionId, ...(connectionDigest === undefined ? {} : { connectionDigest }) }
   const found = port.lookup === undefined ? undefined : await port.lookup(request, target)
-  if (found !== undefined) return found
+  if (
+    found !== undefined &&
+    (!contextTransferResultMatchesRequest(request, found) ||
+      found.status !== 'unknown' ||
+      found.retryable !== true)
+  )
+    return found
   return (
     (await port.transfer?.(request, target)) ?? {
       status: 'unknown',

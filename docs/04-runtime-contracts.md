@@ -288,7 +288,13 @@ An `unknown` effect means the request awaits acknowledgement and never becomes l
 
 Runtime stores each worker's exact interactive binding outside its presentation snapshot.
 
-Braid passes the supervisor state directory, exact worker identifier, and selected provider source to Runtime `attachWorker`.
+Braid passes the supervisor state directory, exact worker identifier, and a provider resolver to Runtime `attachWorker`.
+
+Runtime validates the live worker binding and its finalized execution receipt before calling that resolver. The launch owner records a credential-free connection identifier and public execution-configuration digest before creating the worker. Runtime joins that declaration to the actual process reference and execution attempt in its existing receipt.
+
+Braid selects only that recorded connection, compares its canonical configuration digest and configured provider name, then resolves credentials. New worker declarations bind the saved record, resolved endpoint (including defaults), and effective public attestation policy through the same helper at launch and reconnect. Existing conversation digests remain unchanged. The startup connection, current picker, provider name alone, parent run, and unbound startup Sandbox client never select a worker's account. Missing, changed, or conflicting ownership returns unavailable before credential access.
+
+The resolver and launch-provenance extension remain release candidates until the compatible Runtime package is published and Braid passes its installed-package and terminal-flow checks.
 
 Runtime reconstructs the retained process and returns an opaque handle or a named unavailable reason.
 
@@ -801,3 +807,7 @@ The route uses the saved connection ID, never the provider name alone.
 Run recovery carries the admitted connection and its public configuration digest, plus the canonical selected-context request and receipt when present.
 A transferred first run uses Runtime's retained start with `contextTransferReceipt` and the exact request on `turn.contextTransfer`.
 Runtime attaches the provider-owned receipt environment through its authoritative lookup; Braid does not implement `create` as `get` or allocate a replacement environment.
+
+A pending handoff reconstructs its original plan and verifies the retained operation digest before receipt lookup.
+Changes to fresh-transfer capabilities do not prevent recovery of that operation.
+New handoffs still pass current capability preflight, and a pending retry cannot change its accepted plan, acceptance, destination connection, or request identity.

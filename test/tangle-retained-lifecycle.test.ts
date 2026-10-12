@@ -2,7 +2,12 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { type AgentExactRunControlRef, defineAgentProfile } from '@tangle-network/agent-interface'
 import type { SandboxClientLike, SandboxInstanceLike } from '@tangle-network/agent-provider-tangle'
-import { capabilitiesForConnection } from '../src/adapters/connections/production-connection-providers.js'
+import { bindCredentialToOrigin } from '../src/adapters/connections/production-connection-credentials.js'
+import {
+  capabilitiesForConnection,
+  createTangleEnvironmentProvider,
+} from '../src/adapters/connections/production-connection-providers.js'
+import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
 import { createTangleRetainedControlLookup } from '../src/adapters/connections/tangle-retained-control-lookup.js'
 import { safeExecutionId } from '../src/adapters/runtime/production-backend-common.js'
 import {
@@ -21,9 +26,10 @@ import {
 } from '../src/adapters/runtime/tangle-sandbox-retention.js'
 import { ConnectionRegistry } from '../src/app/connections.js'
 import type { ConnectionRecord, ConnectionTransportOptions } from '../src/domain/entities.js'
-import { createConnectionId } from '../src/domain/ids.js'
+import { createConnectionId, createCredentialRefId } from '../src/domain/ids.js'
 import { assertConnectionRecord } from '../src/domain/invariants-profile.js'
 import { createAdmissionReceipt } from '../src/domain/receipts.js'
+import { credentialRef } from '../src/ports/credentials.js'
 import type { RetainedRunAdmissionRecord } from '../src/ports/execution.js'
 import {
   FakeTangleRetainedSandbox,
@@ -95,6 +101,121 @@ test('retained lifecycle configuration is explicit and bounded', () => {
     () => assertConnectionRecord(record({ lifecycle: 'ephemeral', idleTtlSeconds: 1_800 })),
     /requires lifecycle=retained/u,
   )
+})
+
+test('constructed Tangle provider applies the saved retained policy to create and preserves lookup', async () => {
+  const sandbox = new FakeTangleRetainedSandbox()
+  const source = sandbox.client()
+  const signal = new AbortController().signal
+  let createSignal: AbortSignal | undefined
+  const client: SandboxClientLike = {
+    ...source,
+    create: (options, requestOptions) => {
+      createSignal = requestOptions?.signal
+      return source.create(options, requestOptions)
+    },
+  }
+  const provider = await createTangleEnvironmentProvider(
+    record({ lifecycle: 'retained', idleTtlSeconds: 420 }),
+    { sandboxClient: client },
+    signal,
+  )
+  assert.equal(sandbox.createCalls.length, 0)
+  const environment = await provider.create({
+    profile,
+    idempotencyKey: 'retained-constructed-provider',
+    signal,
+  })
+  assert.equal(sandbox.createCalls.length, 1)
+  assert.equal(sandbox.createCalls[0]?.ephemeral, false)
+  assert.equal(sandbox.createCalls[0]?.idleTimeoutSeconds, 420)
+  assert.equal(sandbox.createCalls[0]?.idempotencyKey, 'retained-constructed-provider')
+  assert.equal(createSignal, signal)
+  assert.ok(provider.get)
+  assert.equal((await provider.get(environment.id, { signal }))?.id, environment.id)
+  assert.equal(sandbox.createCalls.length, 1)
+})
+
+test('constructed ordinary Tangle provider preserves the existing platform lifetime', async () => {
+  const sandbox = new FakeTangleRetainedSandbox()
+  const provider = await createTangleEnvironmentProvider(record({ transport: 'https' }), {
+    sandboxClient: sandbox.client(),
+  })
+  await provider.create({ profile, idempotencyKey: 'ordinary-constructed-provider' })
+  assert.equal(sandbox.createCalls.length, 1)
+  assert.equal(sandbox.createCalls[0]?.ephemeral, undefined)
+  assert.equal(sandbox.createCalls[0]?.idleTimeoutSeconds, undefined)
+})
+
+test('constructed Tangle provider rejects invalid retained policy before credential or client access', async () => {
+  let credentialReads = 0
+  let clientConstructions = 0
+  const credentials = new MemoryCredentialStore()
+  for (const [policy, message] of [
+    [{ lifecycle: 'retained' }, /requires idleTtlSeconds/u],
+    [{ lifecycle: 'retained', idleTtlSeconds: 59 }, /60 to 604800/u],
+  ] as const) {
+    await assert.rejects(
+      createTangleEnvironmentProvider(
+        { ...record(policy), credentialRef: createCredentialRefId('credential-invalid-retention') },
+        {
+          credentials,
+          credentialRefResolver: () => {
+            credentialReads += 1
+            return credentialRef('cred:v1:invalid-retention')
+          },
+          sandboxClientFactory: () => {
+            clientConstructions += 1
+            throw new Error('Invalid retention must not construct a client')
+          },
+        },
+      ),
+      message,
+    )
+  }
+  assert.equal(credentialReads, 0)
+  assert.equal(clientConstructions, 0)
+})
+
+test('constructed Tangle provider freezes accepted lifetime across credential lookup', { timeout: 5_000 }, async () => {
+  const sandbox = new FakeTangleRetainedSandbox()
+  const policy: { lifecycle: 'retained' | 'ephemeral'; idleTtlSeconds: number } = {
+    lifecycle: 'retained',
+    idleTtlSeconds: 420,
+  }
+  const connection = {
+    ...record(policy),
+    credentialRef: createCredentialRefId('credential-retention-mutation'),
+  }
+  const credentials = new MemoryCredentialStore()
+  const ref = credentialRef('cred:v1:retention-mutation')
+  await credentials.store({
+    ref,
+    value: bindCredentialToOrigin(Buffer.from('test-only-retention-key'), 'https://sandbox.test'),
+  })
+  const entered = Promise.withResolvers<void>()
+  const release = Promise.withResolvers<void>()
+  const constructing = createTangleEnvironmentProvider(connection, {
+    credentials,
+    credentialRefResolver: async () => {
+      entered.resolve()
+      await release.promise
+      return ref
+    },
+    sandboxClientFactory: () => sandbox.client(),
+  })
+  try {
+    await entered.promise
+    policy.lifecycle = 'ephemeral'
+    policy.idleTtlSeconds = 59
+  } finally {
+    release.resolve()
+  }
+  const provider = await constructing
+  await provider.create({ profile, idempotencyKey: 'retention-mutation-provider' })
+  assert.equal(sandbox.createCalls.length, 1)
+  assert.equal(sandbox.createCalls[0]?.ephemeral, false)
+  assert.equal(sandbox.createCalls[0]?.idleTimeoutSeconds, 420)
 })
 
 test('connection resources are a bounded provider-neutral Tangle Sandbox request', () => {

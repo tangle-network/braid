@@ -529,7 +529,14 @@ export class ConversationBranches {
         )
       return branchForOperation(this.#host.state(), existing)
     }
-    const plan = await this.plan(input)
+    // Pending handoffs already passed admission preflight. Reconstruct their
+    // exact accepted intent before read-only lookup; current fresh admission
+    // capabilities cannot decide whether the original operation was accepted.
+    const pendingPlan =
+      existing?.kind === 'conversation-fork' && existing.status === 'pending'
+        ? this.#plan(input)
+        : undefined
+    const plan = pendingPlan?.kind === 'cross-runner' ? pendingPlan : await this.plan(input)
     if (plan.digest !== input.planDigest) {
       throw new AppError(
         'FORK_PLAN_CONFLICT',

@@ -183,6 +183,31 @@ test('portable context routes any capable provider by exact destination connecti
   assert.deepEqual(await port.transfer?.(request, { connectionId: 'connection-daytona' }), result)
   assert.equal(target, 'connection-daytona')
   assert.equal(calls, 1)
+  const snapshotDestination = {
+    ...request.plan.destination,
+    workspaceSnapshotDigest: `sha256:${'b'.repeat(64)}` as const,
+  }
+  for (const [transferSnapshots, createSnapshots, expected] of [
+    [undefined, true, false],
+    [false, true, false],
+    [true, false, true],
+  ] as const) {
+    const snapshotCapabilities = {
+      ...capability,
+      create: { workspaceSnapshot: createSnapshots },
+      contextTransfer: {
+        ...capability.contextTransfer,
+        ...(transferSnapshots === undefined ? {} : { workspaceSnapshot: transferSnapshots }),
+      },
+    }
+    const snapshotPort = createProviderContextTransferPort({
+      async resolve() {
+        return { provider, capabilities: snapshotCapabilities }
+      },
+    })
+    assert.equal(await snapshotPort.supports?.(snapshotDestination), expected)
+  }
+  assert.equal(calls, 1)
   const wrongProvider = createProviderContextTransferPort({
     async resolve() {
       return { provider: { ...provider, name: 'another-provider' }, capabilities: capability }
@@ -226,6 +251,61 @@ test('portable context validates the request before selecting a credential route
     port.transfer!({ ...request, requestDigest: `sha256:${'f'.repeat(64)}` }),
   )
   assert.equal(resolutions, 0)
+})
+
+test('portable lookup recovers an exact receipt when fresh admission is unavailable', async () => {
+  const request = contextTransfer(defineAgentProfile({ name: 'retained destination' }), 'daytona')
+  const capabilities = {
+    ...execOnlyEnvironmentCapabilities({
+      read: false, write: false, exec: false, git: false, upload: false, download: false,
+    }),
+    contextTransfer: { freshSession: false, requestIdempotency: false, lookup: true },
+  }
+  const receipt: ContextTransferResult = {
+    status: 'replayed',
+    operationId: request.operationId,
+    requestDigest: request.requestDigest,
+    planDigest: request.plan.digest,
+    contextDigest: request.plan.context.digest,
+    source: request.plan.source.source,
+    destination: request.plan.destination,
+    provider: request.plan.destination.provider,
+    environmentId: request.plan.destination.environmentId!,
+    sessionId: request.plan.destination.sessionId,
+    runId: request.plan.destination.runId,
+    executionId: request.plan.destination.executionId,
+    sessionCreatedForOperationId: request.operationId,
+    sessionCreatedAt: at,
+    admittedAt: at,
+    transferredMessageIds: ['message-context-source'],
+    omittedMessageIds: ['message-omitted'],
+  }
+  let lookups = 0
+  let transfers = 0
+  const provider: AgentEnvironmentProvider = {
+    name: 'daytona',
+    capabilities: () => capabilities,
+    async create() { throw new Error('Lookup must not allocate') },
+    contextTransfer: {
+      async lookup(input) { lookups += 1; assert.deepEqual(input, request); return receipt },
+      async transfer() { transfers += 1; throw new Error('Fresh admission is unavailable') },
+    },
+  }
+  const port = createProviderContextTransferPort({
+    async resolve() { return { provider, capabilities } },
+  })
+  assert.equal(await port.supports?.(request.plan.destination), false)
+  assert.deepEqual(await port.lookup?.(request), receipt)
+  assert.equal((await port.transfer?.(request))?.status, 'unknown')
+  assert.equal(lookups, 1)
+  assert.equal(transfers, 0)
+  const denied = createProviderContextTransferPort({
+    async resolve() {
+      return { provider, capabilities: { ...capabilities, contextTransfer: { ...capabilities.contextTransfer, lookup: false } } }
+    },
+  })
+  assert.equal(await denied.lookup?.(request), undefined)
+  assert.equal(lookups, 1)
 })
 
 function contextTransfer(

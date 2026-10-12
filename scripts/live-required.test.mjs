@@ -7,6 +7,10 @@ import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { pathToFileURL } from 'node:url'
 import {
+  ConnectionRegistry as BuiltConnectionRegistry,
+  DEFAULT_RETAINED_IDLE_TTL_SECONDS,
+} from '../dist/index.js'
+import {
   countProtectedWork,
   observeOwnedSandbox,
   ProtectedWork,
@@ -321,6 +325,7 @@ function protectedEnvironment() {
     'BRAID_SUPERVISOR_CONNECTION_ID',
     'BRAID_SUPERVISOR_CONNECTION_KIND',
     'BRAID_SUPERVISOR_CREDENTIAL_CONFIGURED',
+    'BRAID_SUPERVISOR_CREDENTIAL_REF',
     'BRAID_SUPERVISOR_API_KEY',
     'BRAID_SUPERVISOR_AUTH',
     'BRAID_SUPERVISOR_BEARER',
@@ -714,8 +719,11 @@ test('LIVE-11 resolves caller-owned task, connection, and generic worker input',
   assert.equal(supervisorTask(environment), 'Inspect the retained worker workspace')
   assert.deepEqual(supervisorConnection(environment), {
     endpoint: 'https://sandbox.example/v1',
-    apiKey: 'supervisor-api-key-fixture',
     kind: 'tangle-sandbox',
+    model: 'zai/glm-5.3',
+    modelProvider: 'tangle-router',
+    runner: 'opencode',
+    credentialValue: 'supervisor-api-key-fixture',
   })
   assert.deepEqual(supervisorWorkerEnvironment(environment, 'invocation-fixture'), {
     workspace: { cwd: '/tmp/supervisor-fixture-workspace' },
@@ -734,21 +742,85 @@ test('LIVE-11 requires a caller-owned provider credential for a new run', () => 
     (error) => {
       assert.equal(error.unavailable, true)
       assert.equal(error.code, 'PROTECTED_CREDENTIAL_REQUIRED')
-      assert.match(error.message, /BRAID_SUPERVISOR_API_KEY/u)
+      assert.match(error.message, /BRAID_SUPERVISOR requires a protected credential/u)
       return true
     },
   )
 })
 
-function supervisorProvisionInputs(invocationId) {
+// Public API substitutes below test script composition only. They do not prove provider ownership
+// or reimplement Braid's saved-connection digest and credential validation.
+function supervisorConnectionApiFixture({ kind = 'tangle-sandbox' } = {}) {
+  const record = {
+    id: 'connection-supervisor-fixture',
+    name: 'Supervisor fixture',
+    kind,
+    endpoint: 'https://sandbox.example/v1',
+    credentialRef: 'credential-supervisor-fixture',
+    providerOptions: kind === 'agent-provider'
+      ? { provider: 'fixture-provider' }
+      : { transport: 'https', lifecycle: 'retained', idleTtlSeconds: DEFAULT_RETAINED_IDLE_TTL_SECONDS },
+    createdAt: '2026-10-12T00:00:00.000Z',
+    updatedAt: '2026-10-12T00:00:00.000Z',
+    lastHealth: { status: 'unknown' },
+  }
+  const executionConnection = Object.freeze({
+    connectionId: record.id,
+    executionConfigDigest: `sha256:${'1'.repeat(64)}`,
+  })
+  const provider = { name: kind === 'agent-provider' ? 'fixture-provider' : kind }
+  const credentials = { fixture: 'protected-credential-port' }
+  const calls = []
+  const api = {
+    DEFAULT_RETAINED_IDLE_TTL_SECONDS,
+    ConnectionRegistry: class extends BuiltConnectionRegistry {
+      constructor(records) {
+        super(records)
+        assert.deepEqual(records, [record])
+        calls.push({ name: 'registry', records })
+      }
+    },
+    createSupervisorExecutionConnection(selected, options) {
+      assert.deepEqual(selected, record)
+      assert.equal(Object.isFrozen(selected), true)
+      calls.push({ name: 'declaration', record: selected, options })
+      return executionConnection
+    },
+    async createTangleEnvironmentProvider(selected, options) {
+      assert.equal(selected, calls.find(({ name }) => name === 'declaration').record)
+      calls.push({ name: 'tangle-provider', options })
+      return provider
+    },
+    async createRegisteredEnvironmentProvider(selected, options) {
+      assert.equal(selected, calls.find(({ name }) => name === 'declaration').record)
+      calls.push({ name: 'registered-provider', options })
+      return provider
+    },
+    createSupervisorWorkerProviderResolver(registry, options) {
+      calls.push({ name: 'resolver', registry, options })
+      return async (request) => {
+        calls.push({ name: 'resolve-worker', request })
+        return provider
+      }
+    },
+    createProductionCredentialContext(options) {
+      calls.push({ name: 'credential-context', options })
+      return {
+        store: credentials,
+        dispose() { calls.push({ name: 'credential-dispose' }) },
+      }
+    },
+    credentialRef(value) { return value },
+  }
+  return { record, executionConnection, provider, credentials, calls, api }
+}
+
+function supervisorProvisionInputs(invocationId, connectionFixture = supervisorConnectionApiFixture()) {
   return {
     task: `fixture supervisor task ${invocationId}`,
     profile: supervisorProfile({}),
-    connection: {
-      endpoint: 'https://sandbox.example/v1',
-      apiKey: 'fixture-supervisor-api-key',
-      kind: 'tangle-sandbox',
-    },
+    braid: connectionFixture.api,
+    connection: { record: connectionFixture.record, options: {} },
     workerEnvironment: {
       name: `fixture-supervisor-${invocationId}`,
       metadata: { owner: 'braid-live-supervisor-test', invocationId },
@@ -1375,6 +1447,8 @@ test('supervisor proof proves public observation, effects, replay, and reconnect
     environment,
     invocationId: 'live-required-supervisor-test',
     runtime: fixture.api,
+    braid: {},
+    prepareWorkspace: async () => { throw new Error('external bindings must not open credentials') },
     providers: {},
   })
   assert.equal(result.status, 'passed')
@@ -1389,6 +1463,8 @@ test('supervisor proof proves public observation, effects, replay, and reconnect
   assert.equal(result.proof.facts.statusObserved, true)
   assert.equal(result.proof.facts.reconnectable, true)
   assert.equal(result.proof.facts.cancellationAvailable, true)
+  assert.equal(result.proof.facts.connectionOwnershipVerified, false)
+  assert.equal(result.provisioning.connectionOwnership, 'not-proven-external-binding')
   assert.equal(assertProofReceipt(result.proof), result.proof)
   assert.throws(
     () =>
@@ -1417,6 +1493,51 @@ test('supervisor proof proves public observation, effects, replay, and reconnect
     fixture.calls.some((call) => call.name === 'readWorkerCancellation'),
     true,
   )
+})
+
+test('supervisor script loads Runtime from the selected candidate package', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-supervisor-candidate-runtime-'))
+  try {
+    const binary = join(root, 'dist', 'bin', 'braid.js')
+    const runtimePackage = join(root, 'node_modules', '@tangle-network', 'agent-runtime')
+    await mkdir(join(root, 'dist', 'bin'), { recursive: true })
+    await mkdir(runtimePackage, { recursive: true })
+    await writeFile(binary, '// Candidate binary location fixture; never executed.\n')
+    await writeFile(join(runtimePackage, 'package.json'), JSON.stringify({
+      name: '@tangle-network/agent-runtime', type: 'module',
+      exports: { './kernel': './kernel.mjs', './tui': './tui.mjs' },
+    }))
+    const fixtureSource = new URL('./live-required/supervisor.mjs', import.meta.url).href
+    await writeFile(join(runtimePackage, 'kernel.mjs'), `
+      import { createSupervisorProofFixture } from ${JSON.stringify(fixtureSource)}
+      export const fixture = createSupervisorProofFixture({
+        rootDir: 'alternate-candidate-root', supervisorId: 'alternate-candidate-supervisor',
+        workerId: 'alternate-candidate-worker',
+      })
+      export const {
+        loadTopSnapshot, supervisorRunDir, writeWorkerSteer,
+        readWorkerSteerAcknowledgement, cancelWorker, readWorkerCancellation,
+      } = fixture.api
+    `)
+    await writeFile(join(runtimePackage, 'tui.mjs'), `
+      import { fixture } from './kernel.mjs'
+      export const { attachWorker } = fixture.api
+    `)
+    const result = await runSupervisorFlow({
+      environment: {
+        BRAID_LIVE_BINARY: binary,
+        BRAID_SUPERVISOR_ROOT: 'alternate-candidate-root',
+        BRAID_SUPERVISOR_ID: 'alternate-candidate-supervisor',
+        BRAID_SUPERVISOR_WORKER: 'alternate-candidate-worker',
+        BRAID_SUPERVISOR_TIMEOUT_MS: '1000', BRAID_SUPERVISOR_POLL_MS: '1',
+      },
+    })
+    assert.equal(result.supervisor, 'alternate-candidate-supervisor')
+    assert.equal(result.worker, 'alternate-candidate-worker')
+    assert.equal(result.proof.facts.connectionOwnershipVerified, false)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
 })
 
 test('supervisor proof fails closed when a required runtime effect is absent or unclean', async () => {
@@ -1540,20 +1661,51 @@ test('supervisor proof provisions an owned Runtime run and validates cleanup', a
     BRAID_SUPERVISOR_POLL_MS: '1',
     BRAID_SUPERVISOR_MESSAGE: 'inspect the provisioned worker',
   }
+  const connectionFixture = supervisorConnectionApiFixture()
+  const prepared = {
+    connection: connectionFixture.record,
+    workspace: '/fixture/supervisor/workspace',
+    configPath: '/fixture/supervisor/config.json',
+    databaseKeyFile: '/fixture/supervisor/database.key',
+    dataDirectory: '/fixture/supervisor/data',
+    cleanup: async () => {
+      connectionFixture.calls.push({ name: 'workspace-cleanup' })
+      return { credentialRemoved: true, temporaryRootRemoved: true }
+    },
+  }
+  let workspaceRequest
   let provisionRequest
   let cleanupCalls = 0
   const result = await runSupervisorFlow({
     environment,
     invocationId: 'live-required-supervisor-provisioned',
+    braid: connectionFixture.api,
+    prepareWorkspace: async (request) => {
+      workspaceRequest = request
+      prepared.connection = {
+        ...prepared.connection,
+        providerOptions: { ...request.providerOptions, transport: 'https' },
+      }
+      return prepared
+    },
+    providers: () => { throw new Error('unbound caller provider must not be used') },
     runtime: {
       ...fixture.api,
+      attachWorker: async (eventDir, workerId, options) => {
+        const provider = await options.providers({
+          executionConnection: connectionFixture.executionConnection,
+          binding: { fixture: 'Runtime owns the receipt join' },
+        })
+        assert.equal(provider, connectionFixture.provider)
+        return fixture.api.attachWorker(eventDir, workerId, options)
+      },
       provisionSupervisor: async (request) => {
         provisionRequest = request
         return {
           rootDir: fixture.rootDir,
           supervisorId: fixture.supervisorId,
           workerId: fixture.workerId,
-          providers: {},
+          providers: () => { throw new Error('Runtime direct provider must not be used') },
           terminalTakeover: 'required',
           cleanup: async () => {
             cleanupCalls += 1
@@ -1584,9 +1736,29 @@ test('supervisor proof provisions an owned Runtime run and validates cleanup', a
   assert.equal(provisionRequest.workspaceDir, '/tmp/supervisor-proof-workspace')
   assert.deepEqual(provisionRequest.profile, supervisorProfile(environment))
   assert.deepEqual(provisionRequest.connection, {
-    endpoint: 'https://router.example/v1',
-    apiKey: 'must-not-cross-the-provision-boundary',
-    kind: 'tangle-sandbox',
+    provider: connectionFixture.provider,
+    executionConnection: connectionFixture.executionConnection,
+  })
+  assert.equal(workspaceRequest.endpoint, 'https://router.example/v1')
+  assert.equal(workspaceRequest.credentialValue, 'must-not-cross-the-provision-boundary')
+  assert.equal(workspaceRequest.credentialContextFactory, connectionFixture.api.createProductionCredentialContext)
+  assert.deepEqual(workspaceRequest.providerOptions, {
+    lifecycle: 'retained', idleTtlSeconds: DEFAULT_RETAINED_IDLE_TTL_SECONDS,
+  })
+  assert.equal('apiKey' in provisionRequest.connection, false)
+  assert.equal(JSON.stringify(provisionRequest).includes('must-not-cross-the-provision-boundary'), false)
+  assert.deepEqual(connectionFixture.calls.map(({ name }) => name), [
+    'credential-context', 'registry', 'declaration', 'tangle-provider', 'resolver',
+    'resolve-worker', 'credential-dispose', 'workspace-cleanup',
+  ])
+  const declarationOptions = connectionFixture.calls.find(({ name }) => name === 'declaration').options
+  assert.equal(declarationOptions.credentials, connectionFixture.credentials)
+  assert.equal(declarationOptions.credentialRefResolver('fixture-id'), 'cred:v1:fixture-id')
+  assert.equal(connectionFixture.calls.find(({ name }) => name === 'tangle-provider').options, declarationOptions)
+  assert.equal(connectionFixture.calls.find(({ name }) => name === 'resolver').options, declarationOptions)
+  assert.deepEqual(result.cleanup.connectionCleanup, {
+    status: 'completed', credentialContextDisposed: true,
+    credentialRemoved: true, temporaryRootRemoved: true,
   })
   assert.deepEqual(provisionRequest.workerEnvironment, {
     workspace: { cwd: '/tmp/supervisor-proof-workspace' },
@@ -1602,8 +1774,215 @@ test('supervisor proof provisions an owned Runtime run and validates cleanup', a
   assert.deepEqual(result.proof.run.ids, [fixture.supervisorId, fixture.workerId])
   assert.equal(result.proof.facts.provisioned, true)
   assert.equal(result.proof.facts.cleanupVerified, true)
+  assert.equal(result.proof.facts.connectionOwnershipVerified, true)
+  assert.equal(result.provisioning.connectionOwnership, 'attested-connection-resolver')
+  assert.deepEqual(result.provisioning.executionConnection, connectionFixture.executionConnection)
   assert.equal(result.proof.facts.terminalTakeoverRequired, true)
   assert.equal(assertProofReceipt(result.proof), result.proof)
+})
+
+test('supervisor script launches registered providers from the same saved declaration', async () => {
+  const fixture = createSupervisorProofFixture({ terminalTakeover: 'attached' })
+  const connectionFixture = supervisorConnectionApiFixture({ kind: 'agent-provider' })
+  const inputs = supervisorProvisionInputs('registered-supervisor-fixture', connectionFixture)
+  const factory = () => { throw new Error('the script must pass the factory to the owner') }
+  inputs.connection.options = { sandboxClient: { unbound: true }, sandboxClientFactory: factory }
+  const result = await runSupervisorFlow({
+    ...inputs,
+    environment: { BRAID_SUPERVISOR_TIMEOUT_MS: '1000', BRAID_SUPERVISOR_POLL_MS: '1' },
+    runtime: {
+      ...fixture.api,
+      attachWorker: async (eventDir, workerId, options) => {
+        assert.equal(await options.providers({
+          executionConnection: connectionFixture.executionConnection,
+        }), connectionFixture.provider)
+        return fixture.api.attachWorker(eventDir, workerId, options)
+      },
+    },
+    provision: async (request) => {
+      assert.equal(request.connection.provider, connectionFixture.provider)
+      assert.equal(request.connection.executionConnection, connectionFixture.executionConnection)
+      assert.deepEqual(connectionFixture.calls.map(({ name }) => name), [
+        'registry', 'declaration', 'registered-provider', 'resolver',
+      ])
+      return {
+        ...fixture,
+        terminalTakeover: 'required',
+        cleanup: async () => ({
+          status: 'completed', rootDir: fixture.rootDir, supervisorId: fixture.supervisorId,
+          workerId: fixture.workerId, supervisorStatus: 'cancelled', workerStatus: 'cancelled',
+          resourcesReleased: true, remainingResources: [],
+        }),
+      }
+    },
+  })
+  for (const { options } of connectionFixture.calls.filter(({ name }) =>
+    ['declaration', 'registered-provider', 'resolver'].includes(name))) {
+    assert.equal('sandboxClient' in options, false)
+    assert.equal(options.sandboxClientFactory, factory)
+  }
+  assert.equal(result.proof.facts.connectionOwnershipVerified, true)
+  assert.deepEqual(result.cleanup.connectionCleanup, { status: 'not-owned' })
+})
+
+test('supervisor script refuses unattested attachment before worker controls', async () => {
+  for (const attempt of ['bypass-resolver', 'missing-connection', 'changed-connection']) {
+    const fixture = createSupervisorProofFixture({ terminalTakeover: 'attached' })
+    const connectionFixture = supervisorConnectionApiFixture()
+    let cleanupCalls = 0
+    await assert.rejects(() => runSupervisorFlow({
+      ...supervisorProvisionInputs(`unattested-${attempt}`, connectionFixture),
+      environment: { BRAID_SUPERVISOR_TIMEOUT_MS: '1000', BRAID_SUPERVISOR_POLL_MS: '1' },
+      runtime: {
+        ...fixture.api,
+        attachWorker: async (eventDir, workerId, options) => {
+          if (attempt !== 'bypass-resolver')
+            await options.providers({
+              ...(attempt === 'missing-connection' ? {} : {
+                executionConnection: { ...connectionFixture.executionConnection, connectionId: 'other-connection' },
+              }),
+            })
+          return fixture.api.attachWorker(eventDir, workerId, options)
+        },
+      },
+      provision: async () => ({
+        ...fixture,
+        terminalTakeover: 'required',
+        cleanup: async () => {
+          cleanupCalls += 1
+          return {
+            status: 'completed', rootDir: fixture.rootDir, supervisorId: fixture.supervisorId,
+            workerId: fixture.workerId, supervisorStatus: 'cancelled', workerStatus: 'cancelled',
+            resourcesReleased: true, remainingResources: [],
+          }
+        },
+      }),
+    }), /attested saved connection|another execution connection/u, attempt)
+    assert.equal(cleanupCalls, 1, attempt)
+    assert.equal(fixture.calls.some(({ name }) => name === 'writeWorkerSteer'), false, attempt)
+    assert.equal(fixture.calls.some(({ name }) => name === 'cancelWorker'), false, attempt)
+  }
+})
+
+test('supervisor script rejects raw credentials and missing public Braid APIs before provisioning', async () => {
+  const fixture = createSupervisorProofFixture()
+  for (const attempt of ['raw-connection', 'missing-public-api', 'unbound-registered-provider']) {
+    const connectionFixture = supervisorConnectionApiFixture()
+    let provisionCalls = 0
+    let preparationCalls = 0
+    if (attempt === 'missing-public-api') delete connectionFixture.api.createSupervisorExecutionConnection
+    await assert.rejects(() => runSupervisorFlow({
+      runtime: fixture.api,
+      braid: connectionFixture.api,
+      environment: attempt === 'unbound-registered-provider' ? {
+        BRAID_SUPERVISOR_CONNECTION_KIND: 'agent-provider',
+        BRAID_SUPERVISOR_AUTH: 'fixture-registered-auth',
+        BRAID_SUPERVISOR_MODEL_PROVIDER: 'must-not-be-inferred-as-provider',
+      } : {},
+      connection: attempt === 'raw-connection'
+        ? { endpoint: 'https://sandbox.example/v1', apiKey: 'raw-fixture-auth', kind: 'tangle-sandbox' }
+        : undefined,
+      prepareWorkspace: async () => { preparationCalls += 1 },
+      provision: async () => { provisionCalls += 1 },
+    }), attempt === 'missing-public-api' ? /saved-connection launch and resolver APIs/u : /exact saved connection record/u)
+    assert.equal(preparationCalls, 0, attempt)
+    assert.equal(provisionCalls, 0, attempt)
+    assert.equal(connectionFixture.calls.length, 0, attempt)
+  }
+})
+
+test('supervisor script cleans protected connection state when provider construction fails', async () => {
+  const fixture = createSupervisorProofFixture()
+  const connectionFixture = supervisorConnectionApiFixture()
+  let provisionCalls = 0
+  let cleanupCalls = 0
+  connectionFixture.api.createTangleEnvironmentProvider = async () => {
+    throw new Error('provider construction failed')
+  }
+  await assert.rejects(() => runSupervisorFlow({
+    runtime: fixture.api,
+    braid: connectionFixture.api,
+    environment: { BRAID_SUPERVISOR_CREDENTIAL_REF: 'fixture-existing-credential' },
+    prepareWorkspace: async () => ({
+      connection: connectionFixture.record,
+      workspace: '/fixture/workspace', configPath: '/fixture/config.json',
+      databaseKeyFile: '/fixture/database.key', dataDirectory: '/fixture/data',
+      cleanup: async () => {
+        cleanupCalls += 1
+        return { credentialRemoved: true, temporaryRootRemoved: true }
+      },
+    }),
+    provision: async () => { provisionCalls += 1 },
+  }), /provider construction failed/u)
+  assert.equal(provisionCalls, 0)
+  assert.equal(cleanupCalls, 1)
+  assert.equal(connectionFixture.calls.filter(({ name }) => name === 'credential-dispose').length, 1)
+})
+
+test('supervisor script closes protected state even when Runtime cleanup fails', async () => {
+  const fixture = createSupervisorProofFixture()
+  const connectionFixture = supervisorConnectionApiFixture()
+  let cleanupCalls = 0
+  await assert.rejects(() => runSupervisorFlow({
+    runtime: fixture.api,
+    braid: connectionFixture.api,
+    environment: {
+      BRAID_SUPERVISOR_CREDENTIAL_REF: 'fixture-existing-credential',
+      BRAID_SUPERVISOR_TIMEOUT_MS: '1000', BRAID_SUPERVISOR_POLL_MS: '1',
+    },
+    prepareWorkspace: async () => ({
+      connection: connectionFixture.record,
+      workspace: '/fixture/workspace', configPath: '/fixture/config.json',
+      databaseKeyFile: '/fixture/database.key', dataDirectory: '/fixture/data',
+      cleanup: async () => {
+        cleanupCalls += 1
+        return { credentialRemoved: true, temporaryRootRemoved: true }
+      },
+    }),
+    provision: async () => ({
+      ...fixture,
+      terminalTakeover: 'unsupported',
+      cleanup: async () => { throw new Error('runtime cleanup failed') },
+    }),
+  }), /runtime cleanup failed/u)
+  assert.equal(cleanupCalls, 1)
+  assert.equal(connectionFixture.calls.filter(({ name }) => name === 'credential-dispose').length, 1)
+})
+
+test('supervisor script cleans the actual owner after a malformed provision acknowledgement', async () => {
+  const fixture = createSupervisorProofFixture()
+  const connectionFixture = supervisorConnectionApiFixture()
+  const cleanupOrder = []
+  await assert.rejects(() => runSupervisorFlow({
+    runtime: fixture.api,
+    braid: connectionFixture.api,
+    environment: { BRAID_SUPERVISOR_CREDENTIAL_REF: 'fixture-existing-credential' },
+    prepareWorkspace: async () => ({
+      connection: connectionFixture.record,
+      workspace: '/fixture/workspace', configPath: '/fixture/config.json',
+      databaseKeyFile: '/fixture/database.key', dataDirectory: '/fixture/data',
+      cleanup: async () => {
+        cleanupOrder.push('connection-owner')
+        return { credentialRemoved: true, temporaryRootRemoved: true }
+      },
+    }),
+    provision: async () => ({
+      rootDir: fixture.rootDir, supervisorId: fixture.supervisorId, workerId: fixture.workerId,
+      terminalTakeover: 'invalid-acknowledgement',
+      cleanup: async () => {
+        cleanupOrder.push('runtime-owner')
+        return {
+          status: 'completed', rootDir: fixture.rootDir, supervisorId: fixture.supervisorId,
+          workerId: fixture.workerId, supervisorStatus: 'cancelled', workerStatus: 'cancelled',
+          resourcesReleased: true, remainingResources: [],
+        }
+      },
+    }),
+  }), /invalid terminal takeover requirement/u)
+  assert.deepEqual(cleanupOrder, ['runtime-owner', 'connection-owner'])
+  assert.equal(connectionFixture.calls.filter(({ name }) => name === 'credential-dispose').length, 1)
+  assert.equal(fixture.calls.some(({ name }) => name === 'writeWorkerSteer'), false)
+  assert.equal(fixture.calls.some(({ name }) => name === 'cancelWorker'), false)
 })
 
 test('supervisor proof cleans an owned Runtime run after an observation failure', async () => {

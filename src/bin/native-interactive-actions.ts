@@ -304,8 +304,9 @@ function workerUnavailableReason(reason: string): string {
     'interactive-session-not-started': 'The worker did not start an interactive terminal',
     'interactive-binding-not-found': 'The worker has no retained terminal binding',
     'interactive-binding-stale': 'The retained worker terminal is no longer available',
-    'interactive-provider-not-registered': 'The worker provider is not selected in Braid',
-    'interactive-provider-not-configured': "Select the worker's Tangle Sandbox connection first",
+    'interactive-provider-not-registered':
+      "Braid cannot verify the worker's recorded connection and configuration",
+    'interactive-provider-not-configured': 'Worker terminal connections are unavailable in this session',
   }
   return descriptions[reason] ?? `Worker terminal unavailable: ${reason}`
 }

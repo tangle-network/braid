@@ -5,6 +5,7 @@ import type { ProductionConnectionOptions } from '../adapters/connections/produc
 import {
   connectionEndpoint,
   createConnectionProviderResolver,
+  createSupervisorWorkerProviderResolver,
   createTangleEnvironmentProvider,
   createTangleWorkspaceBranchingProvider,
 } from '../adapters/connections/production-connections.js'
@@ -223,13 +224,9 @@ export function createProductionComposition(
   snapshotWorkspaceRequest(config.workspaceRequest)
   const resolverOptions = resolverOptionsBase
   const backendResolver = createProductionBackendResolver(resolverOptions)
-  const supervisorController =
-    connection.kind === 'tangle-sandbox'
-      ? new RuntimeSupervisorController({
-          providers: (signal) =>
-            createTangleEnvironmentProvider(connection, resolverOptions, signal),
-        })
-      : undefined
+  const supervisorController = new RuntimeSupervisorController({
+    providers: createSupervisorWorkerProviderResolver(connections, resolverOptions),
+  })
   const recoveryInput = (
     runId: string,
     providerSessionId: string | undefined,

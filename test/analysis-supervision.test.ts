@@ -851,7 +851,7 @@ test('runtime supervisor adapter persists projections and routes exact cancel op
         readonly providers: WorkerInteractiveProviderSource
       }
     | undefined
-  const interactiveProvider = {} as WorkerInteractiveProviderSource
+  const interactiveProvider = async () => undefined
   const interactiveHandle = {} as RetainedInteractiveRunHandle
   const controller = new RuntimeSupervisorController({
     watcher,
@@ -894,7 +894,7 @@ test('runtime supervisor adapter persists projections and routes exact cancel op
         detail: 'runtime accepted supervisor cancellation',
       }
     },
-    providers: async () => interactiveProvider,
+    providers: interactiveProvider,
     attachWorker: async (eventDir, worker, options) => {
       workerAttachInput = { eventDir, worker, providers: options.providers }
       return { status: 'available', handle: interactiveHandle }
