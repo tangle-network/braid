@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
-import { readFreshStateFrame, stateFrameVersion } from '../interface-state-frame.mjs'
 import xterm from '@xterm/headless'
 import * as pty from 'node-pty'
+import { readFreshStateFrame, stateFrameVersion } from '../interface-state-frame.mjs'
 
 const XtermTerminal = xterm.Terminal
 const PTY_TERM_GRACE_MS = 1_000
@@ -126,7 +126,6 @@ function killTerminalTree(session, signal) {
     session.kill(signal)
   }
 }
-
 
 export async function createCapturedTerminal(options) {
   const emulator = new XtermTerminal({

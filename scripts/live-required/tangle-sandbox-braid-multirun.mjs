@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash, randomUUID } from 'node:crypto'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -8,7 +8,7 @@ import { AgentExactRunControlRefSchema } from '@tangle-network/agent-interface'
 import { Sandbox } from '@tangle-network/sandbox'
 import xterm from '@xterm/headless'
 import * as pty from 'node-pty'
-
+import { readFreshStateFrame, stateFrameVersion } from '../interface-state-frame.mjs'
 import {
   processTreeEnvironment,
   terminateTrackedProcessTree,
@@ -16,7 +16,6 @@ import {
   waitForTreeGone,
 } from '../live-bridge/process-tree.mjs'
 import { pause } from '../live-demo/terminal.mjs'
-import { readFreshStateFrame, stateFrameVersion } from '../interface-state-frame.mjs'
 import { countProtectedWork, observeOwnedSandbox, protectedSpan } from '../proof-tools.mjs'
 import { liveEvidenceBindingFromEnvironment } from '../release/live-evidence-binding.mjs'
 import { connectionConfiguration } from './configuration.mjs'

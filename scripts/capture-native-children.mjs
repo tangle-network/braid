@@ -12,9 +12,9 @@ import {
   writeCastGif,
   writeRaster,
 } from './capture-visual-support.mjs'
-import { installPackedBraid } from './packed-binary.mjs'
 import { readFreshStateFrame, stateFrameVersion } from './interface-state-frame.mjs'
 import { gitValue, sourceDigest } from './package-proof-runtime.mjs'
+import { installPackedBraid } from './packed-binary.mjs'
 
 const repository = new URL('../', import.meta.url).pathname
 const outputRoot = resolve(
@@ -152,13 +152,10 @@ async function openTerminal(binary, columns, rows, root) {
       const previousVersion = await stateFrameVersion(path)
       process.kill(session.pid, 'SIGUSR2')
       let frame
-      await waitFor(
-        async () => {
-          frame = await readFreshStateFrame(path, previousVersion)
-          return frame?.capturePhase === 'atomic-signal-frame'
-        },
-        'semantic snapshot',
-      )
+      await waitFor(async () => {
+        frame = await readFreshStateFrame(path, previousVersion)
+        return frame?.capturePhase === 'atomic-signal-frame'
+      }, 'semantic snapshot')
       return frame
     },
     close: async () => {

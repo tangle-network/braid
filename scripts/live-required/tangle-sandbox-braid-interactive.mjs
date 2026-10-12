@@ -8,8 +8,8 @@ import { AgentExactRunControlRefSchema } from '@tangle-network/agent-interface'
 import { Sandbox } from '@tangle-network/sandbox'
 import xterm from '@xterm/headless'
 import * as pty from 'node-pty'
+import { readFreshStateFrame, stateFrameVersion } from '../interface-state-frame.mjs'
 import { sleep } from '../live-bridge/process.mjs'
-import { countProtectedWork, observeOwnedSandbox } from '../proof-tools.mjs'
 import {
   processTreeEnvironment,
   terminateTrackedProcessTree,
@@ -18,7 +18,7 @@ import {
 } from '../live-bridge/process-tree.mjs'
 import { runFromState, stateForRun } from '../live-bridge/protocol.mjs'
 import { installPackedBraid } from '../packed-binary.mjs'
-import { readFreshStateFrame, stateFrameVersion } from '../interface-state-frame.mjs'
+import { countProtectedWork, observeOwnedSandbox } from '../proof-tools.mjs'
 import { connectionConfiguration } from './configuration.mjs'
 import {
   EXIT_CODES,
@@ -746,7 +746,6 @@ async function captureStateFrame(runtime, recordPath, timeoutMs) {
     timeoutMs,
   )
 }
-
 
 async function proveTuiReturned(runtime, timeoutMs, label) {
   const before = runtime.output.length

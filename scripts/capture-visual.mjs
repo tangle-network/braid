@@ -15,8 +15,8 @@ import {
   writeFlowGif,
   writeRaster,
 } from './capture-visual-support.mjs'
-import { installPackedBraid } from './packed-binary.mjs'
 import { readFreshStateFrame, stateFrameVersion } from './interface-state-frame.mjs'
+import { installPackedBraid } from './packed-binary.mjs'
 
 const run = promisify(execFile)
 const repository = new URL('../', import.meta.url).pathname
