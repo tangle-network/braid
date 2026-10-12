@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
 import { readFreshStateFrame, stateFrameVersion } from '../interface-state-frame.mjs'
 import xterm from '@xterm/headless'
 import * as pty from 'node-pty'
@@ -128,9 +127,6 @@ function killTerminalTree(session, signal) {
   }
 }
 
-async function readJson(path) {
-  return JSON.parse(await readFile(path, 'utf8'))
-}
 
 export async function createCapturedTerminal(options) {
   const emulator = new XtermTerminal({
