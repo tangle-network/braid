@@ -631,6 +631,26 @@ try {
           stateArtifacts.map((artifact) => [artifact.kind, artifact.path]),
         ),
       })
+    } catch (error) {
+      const failureRoot = join(rawRoot, `${definition.name}-failure`)
+      await writeFile(
+        `${failureRoot}.cast`,
+        castFor(terminal, terminal.events, `Braid failed capture ${definition.name}`),
+      )
+      const captured = await terminal.captureState().catch(() => undefined)
+      await writeFile(
+        `${failureRoot}.json`,
+        `${JSON.stringify(
+          {
+            error: error instanceof Error ? error.message : String(error),
+            screen: terminal.screen(),
+            ...(captured ? { record: captured.record } : {}),
+          },
+          null,
+          2,
+        )}\n`,
+      )
+      throw error
     } finally {
       await terminal.dispose()
     }

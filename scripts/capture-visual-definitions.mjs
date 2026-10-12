@@ -335,15 +335,18 @@ function connectionForkPreviewDefinition(columns, normalized) {
     rows: columns === 40 ? 12 : columns === 80 ? 24 : columns === 120 ? 40 : 60,
     uiFixture: 'product-demo',
     run: async (terminal) => {
-      terminal.input('/connection select connection-local-cli-bridge\r')
-      await terminal.waitFor(
-        () => normalized(terminal.screen()).includes('Local CLI Bridge'),
-        'select fixture connection',
-      )
+      terminal.input('/connection select connection-local-cli-bridge')
+      await terminal.waitForStable('connection selection draft')
+      terminal.input('\r')
+      await terminal.waitForStable('connection selection submitted')
       const selected = await terminal.captureState()
       if (selected.record.state?.selectedConnectionId !== 'connection-local-cli-bridge')
-        throw new Error('keyboard connection selection did not update the durable catalog')
-      terminal.input('/fork --connection connection-local-cli-bridge\r')
+        throw new Error(
+          `keyboard connection selection did not update the durable catalog: ${selected.point.screen}`,
+        )
+      terminal.input('/fork --connection connection-local-cli-bridge')
+      await terminal.waitForStable('connection fork command draft')
+      terminal.input('\r')
       await terminal.waitFor(
         () => normalized(terminal.screen()).includes('fork preview'),
         'connection fork preview',
