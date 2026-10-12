@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { defineAgentProfile } from '@tangle-network/agent-interface'
+import { defineAgentProfile, type AgentExactRunControlRef, type ConfidentialAttestation, type ConfidentialExecutionEnvironment } from '@tangle-network/agent-interface'
 import {
   execOnlyEnvironmentCapabilities,
   type AgentEnvironmentProvider,
@@ -126,6 +126,7 @@ test('first dispatch, cancel, replay and restart controls use the admitted conne
     },
     async *streamTurn() {
       observed.push(`dispatch:${record.id}`)
+      yield* []
     },
     async cancelRun(input) {
       observed.push(`cancel:${record.id}`)
@@ -137,6 +138,7 @@ test('first dispatch, cancel, replay and restart controls use the admitted conne
     },
     async *reconnect() {
       observed.push(`replay:${record.id}`)
+      yield* []
     },
   })
   const routing = new ConnectionRoutingExecutionPort({
@@ -156,7 +158,11 @@ test('first dispatch, cancel, replay and restart controls use the admitted conne
   }
   await routing.cancelRun({ runId: input.runId, operationId: 'operation-cancel' })
   const receipt = createAdmissionReceipt({
-    operationId: input.operationId, runId: input.runId, text: input.text, profile: input.profile, connectionId: input.connectionId!,
+    operationId: input.operationId,
+    runId: input.runId,
+    text: input.text,
+    profile: input.profile,
+    connectionId: input.connectionId!,
     turnId: input.turnId!,
     conversationId: 'conversation-test',
     branchId: 'branch-test',
@@ -269,7 +275,11 @@ test('legacy receipts retain their saved connection and unknown recovery fails c
     }),
   })
   const receipt = createAdmissionReceipt({
-    operationId: 'operation-legacy', runId: 'run-legacy', text: 'Continue', profile, connectionId: second.id,
+    operationId: 'operation-legacy',
+    runId: 'run-legacy',
+    text: 'Continue',
+    profile,
+    connectionId: second.id,
     turnId: 'turn-legacy',
     conversationId: 'conversation-test',
     branchId: 'branch-test',
@@ -286,9 +296,12 @@ test('workspace lookup follows the source run connection and refuses a changed r
   const second = connection('second')
   const catalog = new ConnectionRegistry([first, second])
   const lookups: string[] = []
+  const verificationAccounts: string[] = []
   const create = (record: ConnectionRecord): ExecutionPort => ({
     async *streamTurn() {},
-    async admit() { return { capabilities: UNKNOWN_RUN_CAPABILITIES } },
+    async admit() {
+      return { capabilities: UNKNOWN_RUN_CAPABILITIES }
+    },
     workspaceBranchingProvider: {
       async forEnvironment(environmentId, operation) {
         assert.equal(Object.hasOwn(operation ?? {}, 'receipt'), false)
@@ -296,42 +309,182 @@ test('workspace lookup follows the source run connection and refuses a changed r
         return null
       },
     },
+    confidentialAttestationVerifier(attestation) {
+      verificationAccounts.push(record.id)
+      return attestation.policy === record.id
+    },
   })
-  const routing = new ConnectionRoutingExecutionPort({ connections: catalog, defaultConnectionId: first.id, create })
+  const routing = new ConnectionRoutingExecutionPort({
+    connections: catalog,
+    defaultConnectionId: first.id,
+    create,
+  })
   const input = turn(second, 'run-workspace-source')
   const admission = await routing.admit(input)
-  const receipt = createAdmissionReceipt({ operationId: input.operationId, runId: input.runId, turnId: input.turnId!, text: input.text, profile: input.profile, connectionId: second.id, environmentId: 'environment-source-second', conversationId: 'conversation-test', branchId: 'branch-test', admittedAt: at, capabilities: UNKNOWN_RUN_CAPABILITIES, materializationReceipt: admission.materializationReceipt })
-  await routing.workspaceBranchingProvider!.forEnvironment('environment-source-second', { runId: input.runId, receipt })
-  const restarted = new ConnectionRoutingExecutionPort({ connections: catalog, defaultConnectionId: first.id, create })
-  await restarted.workspaceBranchingProvider!.forEnvironment('environment-source-second', { runId: input.runId, receipt: JSON.parse(JSON.stringify(receipt)) as typeof receipt })
-  assert.deepEqual(lookups, [`${second.id}:environment-source-second`, `${second.id}:environment-source-second`])
-  await assert.rejects(restarted.workspaceBranchingProvider!.forEnvironment('another-environment', { runId: input.runId, receipt }), /another admitted environment/u)
-  await assert.rejects(restarted.workspaceBranchingProvider!.forEnvironment('environment-source-second'), /source run identity/u)
-  catalog.upsert({ ...second, endpoint: 'https://changed.example.test', updatedAt: '2026-10-11T12:01:00.000Z' })
-  const changed = new ConnectionRoutingExecutionPort({ connections: catalog, defaultConnectionId: first.id, create })
-  await assert.rejects(changed.workspaceBranchingProvider!.forEnvironment('environment-source-second', { runId: input.runId, receipt }), /connection changed/u)
+  const receipt = createAdmissionReceipt({
+    operationId: input.operationId,
+    runId: input.runId,
+    turnId: input.turnId!,
+    text: input.text,
+    profile: input.profile,
+    connectionId: second.id,
+    environmentId: 'environment-source-second',
+    conversationId: 'conversation-test',
+    branchId: 'branch-test',
+    admittedAt: at,
+    capabilities: UNKNOWN_RUN_CAPABILITIES,
+    materializationReceipt: admission.materializationReceipt,
+  })
+  const controlRef: AgentExactRunControlRef = { provider: 'same-provider', environmentId: 'environment-source-second', sessionId: 'session-source', executionId: 'execution-source', runId: 'provider-run-source', requestDigest: `sha256:${'a'.repeat(64)}` }
+  const expected: ConfidentialExecutionEnvironment = { provider: controlRef.provider, environmentId: 'environment-destination', source: controlRef, requestDigest: `sha256:${'b'.repeat(64)}`, confidentialRequested: true }
+  const attestation: ConfidentialAttestation = { ...expected, requested: true, nonce: 'nonce-source', measurement: `sha256:${'c'.repeat(64)}`, profileDigest: `sha256:${'d'.repeat(64)}`, policy: second.id, quote: 'fixture-quote', providerKeyId: 'fixture-key', providerSignature: 'fixture-signature', verifiedAt: at }
+  assert.equal(routing.confidentialAttestationVerifier?.(attestation, expected), false)
+  await routing.workspaceBranchingProvider!.forEnvironment('environment-source-second', {
+    runId: input.runId,
+    receipt,
+    controlRef,
+  })
+  assert.equal(routing.confidentialAttestationVerifier?.(attestation, expected), true)
+  const restarted = new ConnectionRoutingExecutionPort({
+    connections: catalog,
+    defaultConnectionId: first.id,
+    create,
+  })
+  await restarted.workspaceBranchingProvider!.forEnvironment('environment-source-second', {
+    runId: input.runId,
+    receipt: JSON.parse(JSON.stringify(receipt)) as typeof receipt,
+    controlRef,
+  })
+  assert.equal(restarted.confidentialAttestationVerifier?.(attestation, expected), true)
+  assert.equal(restarted.confidentialAttestationVerifier?.(attestation, { ...expected, source: { ...controlRef, runId: 'provider-run-unbound' } }), false)
+  assert.deepEqual(verificationAccounts, [second.id, second.id])
+  assert.deepEqual(lookups, [
+    `${second.id}:environment-source-second`,
+    `${second.id}:environment-source-second`,
+  ])
+  await assert.rejects(
+    restarted.workspaceBranchingProvider!.forEnvironment('another-environment', {
+      runId: input.runId,
+      receipt,
+    }),
+    /another admitted environment/u,
+  )
+  await assert.rejects(
+    restarted.workspaceBranchingProvider!.forEnvironment('environment-source-second'),
+    /source run identity/u,
+  )
+  catalog.upsert({
+    ...second,
+    endpoint: 'https://changed.example.test',
+    updatedAt: '2026-10-11T12:01:00.000Z',
+  })
+  const changed = new ConnectionRoutingExecutionPort({
+    connections: catalog,
+    defaultConnectionId: first.id,
+    create,
+  })
+  await assert.rejects(
+    changed.workspaceBranchingProvider!.forEnvironment('environment-source-second', {
+      runId: input.runId,
+      receipt,
+    }),
+    /connection changed/u,
+  )
   assert.equal(lookups.length, 2)
 })
 
 test('registered workspace capabilities refuse unsupported requests before create', async () => {
   const record = connection('first')
-  const base = execOnlyEnvironmentCapabilities({ read: false, write: false, exec: false, git: false, upload: false, download: false })
-  const capabilities = { ...base, streaming: { ...base.streaming, live: true }, create: { durableIdempotency: true } }
+  const base = execOnlyEnvironmentCapabilities({
+    read: false,
+    write: false,
+    exec: false,
+    git: false,
+    upload: false,
+    download: false,
+  })
+  const capabilities = {
+    ...base,
+    streaming: { ...base.streaming, live: true },
+    create: { durableIdempotency: true },
+  }
   let creates = 0
-  const provider: AgentEnvironmentProvider = { name: 'same-provider', capabilities: () => capabilities, async create() { creates += 1; throw new Error('must not allocate') } }
-  const production = createProductionComposition({ profile, connections: [record], connectionId: record.id, connectionOptions: { ...(await credentialsFor([record])), providerRegistryFactory: () => createAgentEnvironmentProviderRegistry([provider]) } })
-  for (const [index, workspaceRequest] of [{ repoUrl: 'https://github.com/acme/repository' }, { cwd: { base: 'repository' as const, path: 'src' } }, { snapshot: workspaceSnapshotRef() }].entries()) {
-    await assert.rejects(async () => production.execution.admit?.({ ...turn(record, `run-unsupported-workspace-${index}`), workspaceRequest }), /cannot restore|cannot honor/u)
+  const provider: AgentEnvironmentProvider = {
+    name: 'same-provider',
+    capabilities: () => capabilities,
+    async create() {
+      creates += 1
+      throw new Error('must not allocate')
+    },
+  }
+  const production = createProductionComposition({
+    profile,
+    connections: [record],
+    connectionId: record.id,
+    connectionOptions: {
+      ...(await credentialsFor([record])),
+      providerRegistryFactory: () => createAgentEnvironmentProviderRegistry([provider]),
+    },
+  })
+  for (const [index, workspaceRequest] of [
+    { repoUrl: 'https://github.com/acme/repository' },
+    { cwd: { base: 'repository' as const, path: 'src' } },
+    { snapshot: workspaceSnapshotRef() },
+  ].entries()) {
+    await assert.rejects(
+      async () =>
+        production.execution.admit?.({
+          ...turn(record, `run-unsupported-workspace-${index}`),
+          workspaceRequest,
+        }),
+      /cannot restore|cannot honor/u,
+    )
   }
   assert.equal(creates, 0)
 })
 
 test('registered retained capability reports preserve only qualified lifecycle controls', async () => {
   const ordinary = connection('first')
-  const retained = { ...ordinary, providerOptions: { ...ordinary.providerOptions, lifecycle: 'retained' as const, idleTtlSeconds: 1800 } }
-  const base = execOnlyEnvironmentCapabilities({ read: false, write: false, exec: false, git: false, upload: false, download: false })
-  const provider: AgentEnvironmentProvider = { name: 'same-provider', capabilities: () => ({ ...base, create: { durableIdempotency: true }, streaming: { live: true, replay: true, detach: true, turnIdempotency: true }, retainedControl: { exactRunIdentity: true, resultIdentity: true, eventIdentity: true, cancellationIdempotency: true } }), async create() { throw new Error('must not allocate') }, async get() { return null } }
-  const options = { ...(await credentialsFor([ordinary])), providerRegistryFactory: () => createAgentEnvironmentProviderRegistry([provider]) }
+  const retained = {
+    ...ordinary,
+    providerOptions: {
+      ...ordinary.providerOptions,
+      lifecycle: 'retained' as const,
+      idleTtlSeconds: 1800,
+    },
+  }
+  const base = execOnlyEnvironmentCapabilities({
+    read: false,
+    write: false,
+    exec: false,
+    git: false,
+    upload: false,
+    download: false,
+  })
+  const provider: AgentEnvironmentProvider = {
+    name: 'same-provider',
+    capabilities: () => ({
+      ...base,
+      create: { durableIdempotency: true },
+      streaming: { live: true, replay: true, detach: true, turnIdempotency: true },
+      retainedControl: {
+        exactRunIdentity: true,
+        resultIdentity: true,
+        eventIdentity: true,
+        cancellationIdempotency: true,
+      },
+    }),
+    async create() {
+      throw new Error('must not allocate')
+    },
+    async get() {
+      return null
+    },
+  }
+  const options = {
+    ...(await credentialsFor([ordinary])),
+    providerRegistryFactory: () => createAgentEnvironmentProviderRegistry([provider]),
+  }
   const ephemeral = await capabilitiesForConnection(ordinary, options)
   const durable = await capabilitiesForConnection(retained, options)
   assert.equal(ephemeral.actions.replay, false)
@@ -342,10 +495,41 @@ test('registered retained capability reports preserve only qualified lifecycle c
 
 test('bundled providers never resolve ambient endpoint, region or credential settings', async () => {
   const record = connection('first')
-  await assert.rejects(async () => createBundledConnectionProviderRegistry({ record: { ...record, providerOptions: { ...record.providerOptions, provider: 'e2b' } }, endpoint: record.endpoint!, credential: 'fixture-credential' }), /explicit connection endpoint/u)
-  await assert.rejects(async () => createBundledConnectionProviderRegistry({ record: { ...record, providerOptions: { ...record.providerOptions, provider: 'daytona' } }, endpoint: record.endpoint!, credential: undefined }), /selected connection credential/u)
-  await assert.rejects(async () => createBundledConnectionProviderRegistry({ record: { ...record, providerOptions: { ...record.providerOptions, provider: 'daytona' } }, endpoint: record.endpoint!, credential: 'fixture-credential' }), /explicit target region/u)
-  const registry = await createBundledConnectionProviderRegistry({ record: { ...record, providerOptions: { ...record.providerOptions, provider: 'daytona', region: 'us' } }, endpoint: record.endpoint!, credential: 'fixture-credential' })
+  await assert.rejects(
+    async () =>
+      createBundledConnectionProviderRegistry({
+        record: { ...record, providerOptions: { ...record.providerOptions, provider: 'e2b' } },
+        endpoint: record.endpoint!,
+        credential: 'fixture-credential',
+      }),
+    /explicit connection endpoint/u,
+  )
+  await assert.rejects(
+    async () =>
+      createBundledConnectionProviderRegistry({
+        record: { ...record, providerOptions: { ...record.providerOptions, provider: 'daytona' } },
+        endpoint: record.endpoint!,
+        credential: undefined,
+      }),
+    /selected connection credential/u,
+  )
+  await assert.rejects(
+    async () =>
+      createBundledConnectionProviderRegistry({
+        record: { ...record, providerOptions: { ...record.providerOptions, provider: 'daytona' } },
+        endpoint: record.endpoint!,
+        credential: 'fixture-credential',
+      }),
+    /explicit target region/u,
+  )
+  const registry = await createBundledConnectionProviderRegistry({
+    record: {
+      ...record,
+      providerOptions: { ...record.providerOptions, provider: 'daytona', region: 'us' },
+    },
+    endpoint: record.endpoint!,
+    credential: 'fixture-credential',
+  })
   const provider = registry.require('daytona')
   assert.equal((await provider.capabilities()).streaming.live, false)
   assert.equal(provider.contextTransfer, undefined)

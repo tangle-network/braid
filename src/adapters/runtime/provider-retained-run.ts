@@ -45,6 +45,8 @@ export interface PreparedRetainedProviderConnection {
   readonly capabilities: import('@tangle-network/agent-interface').AgentEnvironmentCapabilities
   readonly observation?: ExecutionObservationSource
   readonly executionId?: string
+  readonly environmentId?: string
+  readonly providerRunId?: string
   readonly providerSessionId: string
   readonly workspaceRequest?: Readonly<WorkspaceRequest>
   readonly resourceRequest?: ConnectionResourceRequest
@@ -94,7 +96,7 @@ export function createProviderRetainedPlan(
   const exactControlRef = controlRef ?? persistedControlRef
   const environmentId =
     exactControlRef?.environmentId ??
-    (admission?.phase === 'environment' ? admission.environmentId : undefined)
+    (admission?.phase === 'environment' ? admission.environmentId : undefined) ?? prepared.environmentId
   const executionId =
     exactControlRef?.executionId ??
     (admission?.phase === 'intent' || admission?.phase === 'environment'
@@ -120,7 +122,7 @@ export function createProviderRetainedPlan(
     }),
     materializationReceipt: publicMaterializationReceipt({
       ...prepared.materializationReceipt,
-      providerRunId: exactControlRef?.runId ?? executionId,
+      providerRunId: exactControlRef?.runId ?? prepared.providerRunId ?? executionId,
       retainedControl: 'exact-after-dispatch',
     }),
     start: (input) => startProviderRetainedRun(plan, input),

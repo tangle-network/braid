@@ -13,10 +13,7 @@ export async function createRegisteredEnvironmentProvider(
   signal?: AbortSignal,
 ): Promise<AgentEnvironmentProvider> {
   const name = record.providerOptions.provider
-  if (
-    record.kind !== 'agent-provider' ||
-    name === undefined
-  ) {
+  if (record.kind !== 'agent-provider' || name === undefined) {
     throw new ConnectionError(
       'CONNECTION_UNSUPPORTED',
       'This connection requires a registered provider name',
@@ -27,7 +24,9 @@ export async function createRegisteredEnvironmentProvider(
   const endpoint = connectionEndpoint(record, options)
   const credential = await readConnectionCredential(record, options, endpoint)
   signal?.throwIfAborted()
-  const factory = options.providerRegistryFactory ?? (await import('./bundled-provider-registry.js')).createBundledConnectionProviderRegistry
+  const factory =
+    options.providerRegistryFactory ??
+    (await import('./bundled-provider-registry.js')).createBundledConnectionProviderRegistry
   const registry = await factory({
     record,
     endpoint,

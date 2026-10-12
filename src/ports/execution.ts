@@ -117,7 +117,10 @@ export interface WorkspaceBranchingExecutionProvider extends AgentWorkspaceBranc
   forEnvironment(
     sourceEnvironmentId: string,
     operation?: NonNullable<Parameters<AgentWorkspaceBranchingProvider['forEnvironment']>[1]> &
-      RetainedExecutionRecoveryContext & { readonly runId?: string },
+      RetainedExecutionRecoveryContext & {
+        readonly runId?: string
+        readonly controlRef?: AgentExactRunControlRef
+      },
   ): Promise<AgentWorkspaceBranching | null>
 }
 

@@ -37,6 +37,7 @@ import {
   type Digest,
   parseBranchId,
   parseCheckpointId,
+  parseConnectionId,
   parseEnvironmentId,
   parseMessageId,
   parseOperationId,
@@ -325,6 +326,9 @@ async function executeCrossRunner(
     ...input,
     operationId: derivedOperationId(input.operationId, 'branch'),
     destinationBranchId: plan.destinationBranchId,
+    ...(plan.destinationConnectionId === undefined
+      ? {}
+      : { connectionId: plan.destinationConnectionId }),
     ...(destinationEnvironment === undefined ? {} : { environmentId: destinationEnvironment.id }),
   })
   await recordHandedOffEdge(host, plan, branch, receipt.contextDigest, operationId)
@@ -871,7 +875,9 @@ async function recordDestinationEnvironment(
   const environment: EnvironmentRecord = {
     id,
     workspaceId: source.workspaceId,
-    connectionId: source.connectionId,
+    connectionId: plan.destinationConnectionId === undefined
+      ? source.connectionId
+      : parseConnectionId(plan.destinationConnectionId),
     lifecycle: 'ready',
     placement: {
       provider: receipt.provider,
@@ -1158,6 +1164,7 @@ async function workspaceBranchingForEnvironment(
     if (providerEnvironmentId === undefined) return undefined
     return (await provider.forEnvironment(providerEnvironmentId, {
       runId: sourceRun.id,
+      ...(sourceRun.controlRef === undefined ? {} : { controlRef: sourceRun.controlRef }),
       ...retainedExecutionRecoveryContext(sourceRun, workspaceRoot),
     })) ?? undefined
   }

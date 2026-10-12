@@ -58,10 +58,11 @@ export async function resolveRegisteredProviderRetainedConnection(
     throw new ConnectionError('CONNECTION_UNSUPPORTED', 'The selected provider cannot attach the accepted context transfer receipt', { connectionId })
   }
   if (receipt !== undefined && input.contextTransfer === undefined) throw new Error('A context transfer receipt requires its accepted request')
+  if (receipt !== undefined && input.sessionId !== undefined && input.sessionId !== receipt.sessionId) throw new Error('The selected session conflicts with the accepted context transfer receipt')
   return {
-    profile, model, runner: profile.harness!, provider, capabilities: reported,
+    profile, model, runner: requiredProfileRunner(profile, connectionId), provider, capabilities: reported,
     providerSessionId: receipt?.sessionId ?? input.sessionId ?? stableProviderId('session-braid-', input.runId),
-    ...(receipt === undefined ? {} : { executionId: receipt.executionId }),
+    ...(receipt === undefined ? {} : { executionId: receipt.executionId, environmentId: receipt.environmentId, providerRunId: receipt.runId }),
     ...(workspace === undefined ? {} : { workspaceRequest: workspace }),
     ...(resources === undefined ? {} : { resourceRequest: resources }),
     environmentIdempotencyKey: stableProviderId('env-braid-', input.runId),

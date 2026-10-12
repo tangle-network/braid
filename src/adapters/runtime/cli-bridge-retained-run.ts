@@ -67,13 +67,13 @@ export async function createCliBridgeRetainedPlan(
   const environmentId =
     exactControlRef?.environmentId ??
     (admission?.phase === 'environment' ? admission.environmentId : undefined) ??
-    contextDestination?.environmentId
+    prepared.contextTransferReceipt?.environmentId ?? contextDestination?.environmentId
   const executionId =
     exactControlRef?.executionId ??
     (admission?.phase === 'intent' || admission?.phase === 'environment'
       ? admission.executionId
       : undefined) ??
-    contextDestination?.executionId ??
+    prepared.contextTransferReceipt?.executionId ?? contextDestination?.executionId ??
     safeExecutionId(runId)
   const providerSessionId =
     exactControlRef?.sessionId ??
@@ -88,7 +88,7 @@ export async function createCliBridgeRetainedPlan(
     ...prepared.materializationReceipt,
     backend: 'environment-provider',
     ...(environmentId === undefined ? {} : { environmentId }),
-    providerRunId: exactControlRef?.runId ?? executionId,
+    providerRunId: exactControlRef?.runId ?? prepared.contextTransferReceipt?.runId ?? executionId,
     retainedControl: 'exact-after-dispatch',
   })
   const plan: CliBridgeRetainedPlan = {

@@ -31,6 +31,8 @@ export function retainedExecutionKey(
     sessionId: input.sessionId ?? null,
     contextBoundary: input.contextBoundary ?? null,
     nativeContextBoundaryProof: input.nativeContextBoundaryProof ?? null,
+    ...(input.contextTransfer === undefined ? {} : { contextTransfer: input.contextTransfer }),
+    ...(input.contextTransferReceipt === undefined ? {} : { contextTransferReceipt: input.contextTransferReceipt }),
   })
 }
 

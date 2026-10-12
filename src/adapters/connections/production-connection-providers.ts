@@ -16,7 +16,10 @@ import {
 import { Sandbox } from '@tangle-network/sandbox'
 import { ConnectionError } from '../../app/connection-errors.js'
 import type { ConnectionRecord } from '../../domain/entities.js'
-import { environmentSupportsInteractionResponse, supportsNativeContinuation } from '../../ports/execution.js'
+import {
+  environmentSupportsInteractionResponse,
+  supportsNativeContinuation,
+} from '../../ports/execution.js'
 import { nitroVerifiersForConnection } from './nitro-confidential-attestation.js'
 import { readConnectionCredential } from './production-connection-credentials.js'
 import { connectionEndpoint } from './production-connection-endpoints.js'
@@ -124,7 +127,11 @@ export async function capabilitiesForConnection(
     case 'agent-provider': {
       const provider = await createRegisteredEnvironmentProvider(record, options)
       const reported = await provider.capabilities()
-      const environment = retainedConnectionCapabilities(record, reported, provider.get !== undefined)
+      const environment = retainedConnectionCapabilities(
+        record,
+        reported,
+        provider.get !== undefined,
+      )
       const executable = reported.streaming.live && reported.create?.durableIdempotency === true
       return capabilityReport(record, 'executor', environment, {
         create: executable && typeof provider.create === 'function',
@@ -211,7 +218,13 @@ function retainedConnectionCapabilities(
       detach: exactRetained && reported.streaming.detach,
       turnIdempotency: exactRetained && reported.streaming.turnIdempotency,
     },
-    sessions: { ...reported.sessions, continue: record.kind === 'agent-provider' && exactRetained && supportsNativeContinuation(reported), list: false, messages: false },
+    sessions: {
+      ...reported.sessions,
+      continue:
+        record.kind === 'agent-provider' && exactRetained && supportsNativeContinuation(reported),
+      list: false,
+      messages: false,
+    },
   }
 }
 

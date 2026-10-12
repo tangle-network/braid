@@ -59,6 +59,16 @@ test('registered same-provider connections attach and recover the accepted HTTP 
     const input: ExecuteTurnInput = { operationId: 'operation-first-registered-turn', runId: 'run-braid-registered-destination', turnId: 'turn-braid-registered-destination', text: 'Continue here', profile, connectionId: second.id, contextTransfer: request, contextTransferReceipt: accepted, sessionId: accepted.sessionId, signal: new AbortController().signal, onRetainedAdmission: async (admission) => { admissions.push(structuredClone(admission)) } }
     const admission = await production.execution.admit?.(input)
     assert.ok(admission)
+    for (const changed of [
+      { ...input, contextTransfer: { ...request, requestDigest: `sha256:${'b'.repeat(64)}` as const } },
+      { ...input, contextTransferReceipt: { ...accepted, runId: 'run-substituted-destination' } },
+    ]) {
+      await assert.rejects(async () => {
+        for await (const _ of production.execution.streamTurn(changed)) { /* drain */ }
+      }, /not admitted with this exact request/u)
+    }
+    assert.equal(secondServer.requests.length, 0)
+    assert.equal(creates, 0)
     const events = []
     for await (const event of production.execution.streamTurn(input)) events.push(event)
     assert.match(JSON.stringify(events), /REGISTERED_TRANSFER_OK/u)

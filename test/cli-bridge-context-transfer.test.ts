@@ -69,6 +69,14 @@ test('production CLI Bridge transfers context into one exact fresh retained sess
         admissions.push(structuredClone(admission))
       },
     }
+    for (const changed of [
+      { ...input, workspaceRoot: '/changed-workspace' },
+      { ...input, workspaceRequest: { cwd: { base: 'repository' as const, path: '.' } } },
+    ]) {
+      await assert.rejects(() => Promise.resolve(production.execution.admit!(changed)), /exact host workspace/u)
+    }
+    assert.equal(bridge.requests.length, 0)
+    assert.deepEqual(admissions, [])
     const admission = await production.execution.admit?.(input)
     assert.equal(admission?.environmentId, transfer.plan.destination.environmentId)
     assert.equal(admission?.providerSessionId, transfer.plan.destination.sessionId)
@@ -265,6 +273,7 @@ function contextTransfer(
   const plan = { ...planMaterial, digest: portableContextPlanDigest(planMaterial) }
   const requestMaterial = {
     profile,
+    ...(provider === 'cli-bridge' ? { workspace: { cwd: { base: 'host' as const, path: '/workspace' } } } : {}),
     operationId: 'transfer-context-destination',
     plan,
     acceptance: {

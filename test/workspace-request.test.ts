@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { agentWorkspaceSnapshotRefDigest, canonicalAgentProfileDigest, createContextTransferRequest, defineAgentProfile, portableContextPlanDigest, portableConversationContextDigest, WorkspaceRequestSchema } from '@tangle-network/agent-interface'
+import {
+  agentWorkspaceSnapshotRefDigest,
+  canonicalAgentProfileDigest,
+  createContextTransferRequest,
+  defineAgentProfile,
+  portableContextPlanDigest,
+  portableConversationContextDigest,
+  WorkspaceRequestSchema,
+} from '@tangle-network/agent-interface'
 import { exactAdmissionRequestDigest } from '../src/app/run-admission-request.js'
 import { snapshotRunExecution } from '../src/app/run-execution-snapshot.js'
 import { retainedExecutionRecoveryContext } from '../src/app/run-recovery-context.js'
@@ -275,30 +283,110 @@ test('admission binds workspace selection and local root without receipt shadow 
   )
 })
 
-
-
 test('workspace snapshot references survive immutable request and receipt round-trips', () => {
   const request = { snapshot: workspaceSnapshotRef() }
   const snapshot = snapshotWorkspaceRequest(request)
   assert.deepEqual(snapshot, request)
   assert.ok(Object.isFrozen(snapshot?.snapshot?.archive.locator))
   assert.doesNotMatch(JSON.stringify(snapshot), /"(?:material|content|artifacts)":/u)
-  const receipt = createAdmissionReceipt({ runId: 'run-snapshot', turnId: 'turn-snapshot', operationId: 'operation-snapshot', conversationId: 'conversation-snapshot', branchId: 'branch-snapshot', admittedAt: '2026-10-11T12:00:00.000Z', profile: defineAgentProfile({ name: 'Snapshot profile' }), connectionId: 'connection-snapshot', text: 'Continue', capabilities: DEFAULT_RUN_CAPABILITIES, workspaceRequest: request })
+  const receipt = createAdmissionReceipt({
+    runId: 'run-snapshot',
+    turnId: 'turn-snapshot',
+    operationId: 'operation-snapshot',
+    conversationId: 'conversation-snapshot',
+    branchId: 'branch-snapshot',
+    admittedAt: '2026-10-11T12:00:00.000Z',
+    profile: defineAgentProfile({ name: 'Snapshot profile' }),
+    connectionId: 'connection-snapshot',
+    text: 'Continue',
+    capabilities: DEFAULT_RUN_CAPABILITIES,
+    workspaceRequest: request,
+  })
   const recovered = JSON.parse(JSON.stringify(receipt)) as typeof receipt
   assert.deepEqual(recovered.requested.workspaceRequest, request)
-  assert.equal(workspaceRequestDigest(recovered.requested.workspaceRequest), workspaceRequestDigest(request))
-  assert.notEqual(workspaceRequestDigest(request), workspaceRequestDigest({ snapshot: { ...request.snapshot, archive: { ...request.snapshot.archive, byteLength: 129 } } }))
+  assert.equal(
+    workspaceRequestDigest(recovered.requested.workspaceRequest),
+    workspaceRequestDigest(request),
+  )
+  assert.notEqual(
+    workspaceRequestDigest(request),
+    workspaceRequestDigest({
+      snapshot: { ...request.snapshot, archive: { ...request.snapshot.archive, byteLength: 129 } },
+    }),
+  )
 })
 
 test('accepted context preview binds the exact workspace archive reference', () => {
-  const profile = defineAgentProfile({ name: 'Snapshot destination', harness: 'pi', model: { provider: 'openai', default: 'openai/gpt-5' } })
+  const profile = defineAgentProfile({
+    name: 'Snapshot destination',
+    harness: 'pi',
+    model: { provider: 'openai', default: 'openai/gpt-5' },
+  })
   const snapshot = workspaceSnapshotRef()
-  const contextMaterial = { source: { runId: 'run-source', messageId: 'message-source', provider: 'local', environmentId: 'environment-source', sessionId: 'session-source', executionId: 'execution-source', requestDigest: `sha256:${'a'.repeat(64)}` as const }, completeness: 'complete' as const, messages: [{ id: 'message-source', role: 'user' as const, parts: [{ type: 'text' as const, text: 'Continue from this exact workspace' }], timestamp: '2026-10-11T11:59:00.000Z' }], attachments: [] }
+  const contextMaterial = {
+    source: {
+      runId: 'run-source',
+      messageId: 'message-source',
+      provider: 'local',
+      environmentId: 'environment-source',
+      sessionId: 'session-source',
+      executionId: 'execution-source',
+      requestDigest: `sha256:${'a'.repeat(64)}` as const,
+    },
+    completeness: 'complete' as const,
+    messages: [
+      {
+        id: 'message-source',
+        role: 'user' as const,
+        parts: [{ type: 'text' as const, text: 'Continue from this exact workspace' }],
+        timestamp: '2026-10-11T11:59:00.000Z',
+      },
+    ],
+    attachments: [],
+  }
   const context = { ...contextMaterial, digest: portableConversationContextDigest(contextMaterial) }
-  const material = { planId: 'plan-snapshot', source: context, destination: { provider: 'tangle-sandbox', runner: 'pi', sessionId: 'session-destination', runId: 'run-destination', executionId: 'execution-destination', profileDigest: canonicalAgentProfileDigest(profile), workspaceSnapshotDigest: agentWorkspaceSnapshotRefDigest(snapshot) }, context, messages: [{ messageId: 'message-source', action: 'include' as const, parts: [{ partIndex: 0, action: 'include' as const }] }], requiresAcceptance: false }
+  const material = {
+    planId: 'plan-snapshot',
+    source: context,
+    destination: {
+      provider: 'tangle-sandbox',
+      runner: 'pi',
+      sessionId: 'session-destination',
+      runId: 'run-destination',
+      executionId: 'execution-destination',
+      profileDigest: canonicalAgentProfileDigest(profile),
+      workspaceSnapshotDigest: agentWorkspaceSnapshotRefDigest(snapshot),
+    },
+    context,
+    messages: [
+      {
+        messageId: 'message-source',
+        action: 'include' as const,
+        parts: [{ partIndex: 0, action: 'include' as const }],
+      },
+    ],
+    requiresAcceptance: false,
+  }
   const plan = { ...material, digest: portableContextPlanDigest(material) }
-  const transfer = { operationId: 'operation-snapshot', profile, plan, workspace: { snapshot }, acceptance: { planDigest: plan.digest, acceptedAt: '2026-10-11T12:00:00.000Z', acceptedBy: 'user' as const } }
+  const transfer = {
+    operationId: 'operation-snapshot',
+    profile,
+    plan,
+    workspace: { snapshot },
+    acceptance: {
+      planDigest: plan.digest,
+      acceptedAt: '2026-10-11T12:00:00.000Z',
+      acceptedBy: 'user' as const,
+    },
+  }
   assert.doesNotThrow(() => createContextTransferRequest(transfer))
   const archive = { ...snapshot.archive, byteLength: 129 }
-  assert.throws(() => createContextTransferRequest({ ...transfer, workspace: { snapshot: { ...snapshot, archive } } }), /snapshot/u)
+  assert.throws(
+    () =>
+      createContextTransferRequest({
+        ...transfer,
+        workspace: { snapshot: { ...snapshot, archive } },
+      }),
+    /snapshot/u,
+  )
 })

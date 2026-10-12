@@ -221,16 +221,7 @@ export function createProductionComposition(
     }),
   }
   snapshotWorkspaceRequest(config.workspaceRequest)
-  const confidential = nitroVerifiersForConnection(connection, resolverOptionsBase)
-  const resolverOptions: ProductionBackendResolverOptions = {
-    ...resolverOptionsBase,
-    ...(confidential?.tangle === undefined
-      ? {}
-      : { tangleConfidentialAttestationVerifier: confidential.tangle }),
-    ...(confidential?.canonical === undefined
-      ? {}
-      : { confidentialAttestationVerifier: confidential.canonical }),
-  }
+  const resolverOptions = resolverOptionsBase
   const backendResolver = createProductionBackendResolver(resolverOptions)
   const supervisorController =
     connection.kind === 'tangle-sandbox'
@@ -324,8 +315,15 @@ export function createProductionComposition(
   })
   const broker = new NativeInteractiveRunBroker()
   const createExecution = (connection: ConnectionRecord): ExecutionPort => {
+    const confidential = nitroVerifiersForConnection(connection, resolverOptions)
     const scopedOptions: ProductionBackendResolverOptions = {
       ...resolverOptions,
+      ...(confidential?.tangle === undefined
+        ? {}
+        : { tangleConfidentialAttestationVerifier: confidential.tangle }),
+      ...(confidential?.canonical === undefined
+        ? {}
+        : { confidentialAttestationVerifier: confidential.canonical }),
       connections: new ConnectionRegistry([connection]),
       select: () => ({
         connection: {
@@ -340,9 +338,15 @@ export function createProductionComposition(
         ? createTangleWorkspaceBranchingProvider(connection, scopedOptions)
         : connection.kind === 'agent-provider'
           ? {
-              forEnvironment: async (environmentId: string, operation?: { readonly signal?: AbortSignal }) => {
+              forEnvironment: async (
+                environmentId: string,
+                operation?: { readonly signal?: AbortSignal },
+              ) => {
                 const provider = await resolveConnectionProvider(connection, operation?.signal)
-                return (await provider.workspaceBranching?.forEnvironment(environmentId, operation)) ?? null
+                return (
+                  (await provider.workspaceBranching?.forEnvironment(environmentId, operation)) ??
+                  null
+                )
               },
             }
           : undefined
@@ -352,6 +356,9 @@ export function createProductionComposition(
     ) {
       return new ProviderRetainedExecutionPort({
         ...(workspaceBranchingProvider === undefined ? {} : { workspaceBranchingProvider }),
+        ...(scopedOptions.confidentialAttestationVerifier === undefined
+          ? {}
+          : { confidentialAttestationVerifier: scopedOptions.confidentialAttestationVerifier }),
         resolve: (input) => resolveProductionRegisteredRetainedConnection(scopedOptions, input),
         recover: ({ runId, providerSessionId, signal, ...recovery }) =>
           resolveProductionRegisteredRetainedConnection(
@@ -384,18 +391,18 @@ export function createProductionComposition(
             recoveryInput(runId, providerSessionId, recovery, signal),
           ),
         ...(workspaceBranchingProvider === undefined ? {} : { workspaceBranchingProvider }),
-        ...(resolverOptions.confidentialAttestationVerifier === undefined
+        ...(scopedOptions.confidentialAttestationVerifier === undefined
           ? {}
-          : { confidentialAttestationVerifier: resolverOptions.confidentialAttestationVerifier }),
+          : { confidentialAttestationVerifier: scopedOptions.confidentialAttestationVerifier }),
       })
       const interactive = new TangleRetainedInteractiveExecutionPort({
         resolve: (input) => resolveProductionTangleRetainedConnection(scopedOptions, input),
         recover: (input) => resolveProductionTangleRetainedConnection(scopedOptions, input),
         broker,
         ...(workspaceBranchingProvider === undefined ? {} : { workspaceBranchingProvider }),
-        ...(resolverOptions.confidentialAttestationVerifier === undefined
+        ...(scopedOptions.confidentialAttestationVerifier === undefined
           ? {}
-          : { confidentialAttestationVerifier: resolverOptions.confidentialAttestationVerifier }),
+          : { confidentialAttestationVerifier: scopedOptions.confidentialAttestationVerifier }),
       })
       return new ModeRoutingExecutionPort({ headless, interactive })
     }
@@ -405,9 +412,9 @@ export function createProductionComposition(
       {
         context,
         ...(workspaceBranchingProvider === undefined ? {} : { workspaceBranchingProvider }),
-        ...(resolverOptions.confidentialAttestationVerifier === undefined
+        ...(scopedOptions.confidentialAttestationVerifier === undefined
           ? {}
-          : { confidentialAttestationVerifier: resolverOptions.confidentialAttestationVerifier }),
+          : { confidentialAttestationVerifier: scopedOptions.confidentialAttestationVerifier }),
       },
     )
   }
@@ -416,9 +423,6 @@ export function createProductionComposition(
     defaultConnectionId: connection.id,
     create: createExecution,
     context,
-    ...(resolverOptions.confidentialAttestationVerifier === undefined
-      ? {}
-      : { confidentialAttestationVerifier: resolverOptions.confidentialAttestationVerifier }),
   })
 
   return Object.freeze({

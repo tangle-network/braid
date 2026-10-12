@@ -1,4 +1,8 @@
-import type { ExecuteTurnInput, ExecutionPort, RetainedExecutionRecoveryContext } from '../../ports/execution.js'
+import type {
+  ExecuteTurnInput,
+  ExecutionPort,
+  RetainedExecutionRecoveryContext,
+} from '../../ports/execution.js'
 import type { AgentExactRunControlRef } from '@tangle-network/agent-interface'
 import { RetainedExecutionPort } from './retained-execution.js'
 import {
@@ -8,8 +12,10 @@ import {
 
 export class ProviderRetainedExecutionPort extends RetainedExecutionPort {
   readonly workspaceBranchingProvider?: ExecutionPort['workspaceBranchingProvider']
+  readonly confidentialAttestationVerifier?: ExecutionPort['confidentialAttestationVerifier']
   constructor(options: {
     readonly workspaceBranchingProvider?: ExecutionPort['workspaceBranchingProvider']
+    readonly confidentialAttestationVerifier?: ExecutionPort['confidentialAttestationVerifier']
     readonly resolve: (input: ExecuteTurnInput) => Promise<PreparedRetainedProviderConnection>
     readonly recover: (
       input: {
@@ -33,6 +39,9 @@ export class ProviderRetainedExecutionPort extends RetainedExecutionPort {
           input,
         ),
     })
-    if (options.workspaceBranchingProvider !== undefined) this.workspaceBranchingProvider = options.workspaceBranchingProvider
+    if (options.workspaceBranchingProvider !== undefined)
+      this.workspaceBranchingProvider = options.workspaceBranchingProvider
+    if (options.confidentialAttestationVerifier !== undefined)
+      this.confidentialAttestationVerifier = options.confidentialAttestationVerifier
   }
 }

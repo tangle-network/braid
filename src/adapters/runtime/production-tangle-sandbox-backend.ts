@@ -170,6 +170,8 @@ export interface PreparedTangleRetainedConnection {
   readonly environmentMetadata: Readonly<Record<string, unknown>>
   readonly idleTtlSeconds: number
   readonly executionId?: string
+  readonly environmentId?: string
+  readonly providerRunId?: string
   readonly discoverControlRef: (
     braidRunId: string,
     signal?: AbortSignal,
@@ -197,9 +199,10 @@ export async function resolveTangleSandboxRetainedConnection(
   const { profile, model, runner } = await tangleExecutionIdentity(input, selection, connectionId)
   const workspaceRequest = snapshotWorkspaceRequest(input.workspaceRequest)
   const resourceRequest = connectionResourceRequest(record)
-  const providerSessionId = input.sessionId ?? stableProviderId('session-braid-', input.runId)
+  const providerSessionId = input.contextTransferReceipt?.sessionId ?? input.sessionId ?? stableProviderId('session-braid-', input.runId)
   const transferred = input.contextTransfer !== undefined && input.contextTransferReceipt !== undefined && contextTransferResultMatchesRequest(input.contextTransfer, input.contextTransferReceipt)
   if (input.contextTransfer !== undefined && !transferred) throw new ConnectionError('CONNECTION_UNSUPPORTED', 'A transferred Tangle session requires its exact accepted receipt', { connectionId })
+  if (input.contextTransferReceipt !== undefined && (!transferred || (input.sessionId !== undefined && input.sessionId !== input.contextTransferReceipt.sessionId))) throw new ConnectionError('CONNECTION_UNSUPPORTED', 'The selected session conflicts with the accepted Tangle context transfer receipt', { connectionId })
   if (!transferred && !providerSessionId.startsWith('session-braid-')) {
     throw new ConnectionError(
       'CONNECTION_UNSUPPORTED',
@@ -282,7 +285,7 @@ export async function resolveTangleSandboxRetainedConnection(
     capabilities,
     observation: observedClient.observation,
     providerSessionId,
-    ...(input.contextTransferReceipt === undefined ? {} : { executionId: input.contextTransferReceipt.executionId }),
+    ...(input.contextTransferReceipt === undefined ? {} : { executionId: input.contextTransferReceipt.executionId, environmentId: input.contextTransferReceipt.environmentId, providerRunId: input.contextTransferReceipt.runId }),
     ...(workspaceRequest === undefined ? {} : { workspaceRequest }),
     ...(resourceRequest === undefined ? {} : { resourceRequest }),
     environmentIdempotencyKey: identity.environmentIdempotencyKey,

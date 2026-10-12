@@ -323,12 +323,14 @@ export class ConversationBranches {
     const state = this.#host.state()
     const source = resolveSource(state, input)
     const destinationConnectionId =
-      input.connectionId === undefined ? undefined : parseConnectionId(input.connectionId)
+      input.connectionId === undefined
+        ? source.branch.connectionId ?? state.selectedConnectionId ?? undefined
+        : parseConnectionId(input.connectionId)
     const destinationConnection =
       destinationConnectionId === undefined
         ? undefined
         : state.connections.find((connection) => connection.id === destinationConnectionId)
-    if (input.connectionId !== undefined && destinationConnection === undefined)
+    if (destinationConnectionId !== undefined && destinationConnection === undefined)
       throw new AppError(
         'CONNECTION_NOT_FOUND',
         'The selected destination connection does not exist',
@@ -377,6 +379,12 @@ export class ConversationBranches {
       (input.connectionId !== undefined && input.connectionId !== source.branch.connectionId)
         ? ('cross-runner' as const)
         : ('conversation' as const))
+    const sourceConnectionId = sourceRun?.receipt.requested.connectionId ?? source.branch.connectionId
+    if (kind === 'workspace' && sourceConnectionId !== undefined && destinationConnectionId !== sourceConnectionId)
+      throw new AppError(
+        'FORK_PLAN_CONFLICT',
+        'A workspace fork must keep the source run connection; use a context handoff to change connections',
+      )
     if (confidential?.requested === true && kind !== 'workspace')
       throw new AppError('INVALID_FORK_PLAN', 'Confidential placement requires a workspace fork')
     const context = portablePlanForState(state, {
@@ -392,7 +400,12 @@ export class ConversationBranches {
       confidential?.requested === true,
     )
     const destinationWorkspaceRequest = snapshotWorkspaceRequest(
-      input.workspaceRequest ?? this.#host.workspaceRequest?.(),
+      input.workspaceRequest ??
+        (destinationConnection?.kind === 'cli-bridge'
+          ? state.workspace === null
+            ? undefined
+            : { cwd: { base: 'host', path: state.workspace } }
+          : this.#host.workspaceRequest?.()),
     )
     const portableContextPlan =
       kind === 'cross-runner'
