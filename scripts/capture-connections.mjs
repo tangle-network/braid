@@ -280,7 +280,8 @@ async function reachConnectionReview(terminal, kind = 'tangle-inference') {
   if (kind === 'agent-provider') {
     terminal.input('daytona')
     terminal.input('\r')
-    terminal.input('\u0001\u000b')
+    terminal.input('\u001b[F')
+    terminal.input('\u0015')
     terminal.input(registeredConnectionName)
     terminal.input('\r')
     terminal.input(registeredEndpoint)
