@@ -1126,7 +1126,12 @@ for (const withRunOverrides of [false, true]) {
       ...base,
       forkPreview: {
         ...base.forkPreview,
-        plan: { ...plan, kind: 'cross-runner', allowed: true, context: { ...plan.context, destinationRunner: 'codex' } },
+        plan: {
+          ...plan,
+          kind: 'cross-runner',
+          allowed: true,
+          context: { ...plan.context, destinationRunner: 'codex' },
+        },
         allowed: true,
         kind: 'cross-runner',
         execution: { operationId: plan.operationId, planDigest: plan.digest, params },
