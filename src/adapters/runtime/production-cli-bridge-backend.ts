@@ -3,7 +3,10 @@ import type {
   AgentProfile,
   HarnessType,
 } from '@tangle-network/agent-interface'
-import { canonicalAgentProfileDigest, contextTransferResultMatchesRequest } from '@tangle-network/agent-interface'
+import {
+  canonicalAgentProfileDigest,
+  contextTransferResultMatchesRequest,
+} from '@tangle-network/agent-interface'
 import type { CliBridgeProvider } from '@tangle-network/agent-provider-cli-bridge'
 import { ConnectionError } from '../../app/connection-errors.js'
 import type { ConnectionId } from '../../domain/ids.js'
@@ -88,14 +91,19 @@ export async function prepareCliBridgeConnection(
     )
   }
 
-  const providerSessionId = input.contextTransferReceipt?.sessionId ?? input.sessionId ?? stableProviderId('session-braid-', input.runId)
+  const providerSessionId =
+    input.contextTransferReceipt?.sessionId ??
+    input.sessionId ??
+    stableProviderId('session-braid-', input.runId)
   const route = materializeBridgeModelRoute(runner, model, profile.model?.provider)
   const workspace = requiredWorkspaceCwd(input.workspaceRoot, options.workspaceCwd)
   const workspaceRequest = snapshotWorkspaceRequest(input.workspaceRequest)
   const hostWorkspace = { cwd: { base: 'host', path: workspace } }
   if (
-    (workspaceRequest !== undefined && canonicalDigest(workspaceRequest) !== canonicalDigest(hostWorkspace)) ||
-    (input.contextTransfer !== undefined && canonicalDigest(input.contextTransfer.workspace ?? null) !== canonicalDigest(hostWorkspace))
+    (workspaceRequest !== undefined &&
+      canonicalDigest(workspaceRequest) !== canonicalDigest(hostWorkspace)) ||
+    (input.contextTransfer !== undefined &&
+      canonicalDigest(input.contextTransfer.workspace ?? null) !== canonicalDigest(hostWorkspace))
   ) {
     throw new ConnectionError(
       'CONNECTION_UNSUPPORTED',
@@ -114,7 +122,8 @@ export async function prepareCliBridgeConnection(
   const createdAt = new Date().toISOString()
   const { provider, capabilities } = preparedProvider
   assertContextTransferDestination(input, provider.name, profile, runner, model)
-  if (input.contextTransfer !== undefined && capabilities.contextTransfer?.attach !== true) throw new Error('The selected CLI Bridge deployment cannot attach an accepted context transfer')
+  if (input.contextTransfer !== undefined && capabilities.contextTransfer?.attach !== true)
+    throw new Error('The selected CLI Bridge deployment cannot attach an accepted context transfer')
   return freezeExecution({
     profile,
     model,
@@ -229,10 +238,12 @@ function assertContextTransferDestination(
   const transfer = input.contextTransfer
   const receipt = input.contextTransferReceipt
   if (transfer === undefined) {
-    if (receipt !== undefined) throw new Error('A context transfer receipt requires its accepted request')
+    if (receipt !== undefined)
+      throw new Error('A context transfer receipt requires its accepted request')
     return
   }
-  if (receipt === undefined || !contextTransferResultMatchesRequest(transfer, receipt)) throw new Error('The transferred CLI Bridge session requires its exact accepted receipt')
+  if (receipt === undefined || !contextTransferResultMatchesRequest(transfer, receipt))
+    throw new Error('The transferred CLI Bridge session requires its exact accepted receipt')
   const destination = transfer.plan.destination
   if (
     destination.provider !== providerName ||

@@ -32,7 +32,9 @@ export function retainedExecutionKey(
     contextBoundary: input.contextBoundary ?? null,
     nativeContextBoundaryProof: input.nativeContextBoundaryProof ?? null,
     ...(input.contextTransfer === undefined ? {} : { contextTransfer: input.contextTransfer }),
-    ...(input.contextTransferReceipt === undefined ? {} : { contextTransferReceipt: input.contextTransferReceipt }),
+    ...(input.contextTransferReceipt === undefined
+      ? {}
+      : { contextTransferReceipt: input.contextTransferReceipt }),
   })
 }
 

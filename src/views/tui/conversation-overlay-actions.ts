@@ -230,19 +230,21 @@ export class ConversationOverlayActions {
       command: 'execute_fork',
       operationId: plan.operationId,
       params: {
+        ...(preview.execution?.params ?? {
+          conversationId: plan.sourceConversationId,
+          branchId: plan.sourceBranchId,
+          ...(plan.throughMessageId === undefined ? {} : { messageId: plan.throughMessageId }),
+          workspace: plan.kind === 'workspace',
+          ...(plan.context.destinationRunner === undefined
+            ? {}
+            : { runner: plan.context.destinationRunner }),
+          ...(plan.destinationProvider === undefined
+            ? {}
+            : { destinationProvider: plan.destinationProvider }),
+          ...(plan.confidential === undefined ? {} : { confidential: plan.confidential }),
+          ...(plan.text === undefined ? {} : { text: plan.text }),
+        }),
         planDigest: plan.digest,
-        conversationId: plan.sourceConversationId,
-        branchId: plan.sourceBranchId,
-        ...(plan.throughMessageId === undefined ? {} : { messageId: plan.throughMessageId }),
-        workspace: plan.kind === 'workspace',
-        ...(plan.context.destinationRunner === undefined
-          ? {}
-          : { runner: plan.context.destinationRunner }),
-        ...(plan.destinationProvider === undefined
-          ? {}
-          : { destinationProvider: plan.destinationProvider }),
-        ...(plan.confidential === undefined ? {} : { confidential: plan.confidential }),
-        ...(plan.text === undefined ? {} : { text: plan.text }),
         ...(plan.portableContextPlan?.requiresAcceptance !== true
           ? {}
           : { acceptedDigest: plan.portableContextPlan.digest }),

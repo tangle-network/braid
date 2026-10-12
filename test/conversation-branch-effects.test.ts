@@ -372,7 +372,9 @@ function executionFor(options: {
     admit(input) {
       const destination = input.contextTransfer !== undefined
       const provider = destination
-        ? input.contextTransferReceipt?.provider ?? input.contextTransfer?.plan.destination.provider ?? TARGET_PROVIDER
+        ? (input.contextTransferReceipt?.provider ??
+          input.contextTransfer?.plan.destination.provider ??
+          TARGET_PROVIDER)
         : SOURCE_PROVIDER
       return {
         capabilities: options.capabilities,
@@ -597,7 +599,11 @@ test('same-runner handoff binds the selected destination connection through rest
   assert.equal(plan.portableContextPlan?.destination.provider, destination.kind)
   const branch = await app.conversations.branches.execute({ ...input, planDigest: plan.digest })
   assert.equal(branch.connectionId, destination.id)
-  assert.equal(app.state().environments.find((environment) => environment.id === branch.environmentId)?.connectionId, destination.id)
+  assert.equal(
+    app.state().environments.find((environment) => environment.id === branch.environmentId)
+      ?.connectionId,
+    destination.id,
+  )
   assert.deepEqual(routeTargets, [destination.id])
   const restarted = createBraidApplication({
     fixture: 'deterministic',
@@ -685,28 +691,47 @@ test('handoff inherits the branch connection and accepts the exact CLI host work
     },
   }
   const app = createBraidApplication({
-    fixture: 'deterministic', execution: routedExecution, clock: new FixedClock(AT), journal,
+    fixture: 'deterministic',
+    execution: routedExecution,
+    clock: new FixedClock(AT),
+    journal,
     effectStorage: journal,
   })
   await prepareSource(app)
   await app.send({ operationId: 'op-inherit-account-source', text: 'source history' }).completion
   const destination: ConnectionRecord = {
-    ...sourceConnection(), id: createConnectionId('connection-inherited-cli'), kind: 'cli-bridge',
+    ...sourceConnection(),
+    id: createConnectionId('connection-inherited-cli'),
+    kind: 'cli-bridge',
     name: 'inherited CLI account',
   }
   await app.configuration.upsertConnection({
     connection: destination,
     operation: {
-      id: createOperationId('operation-register-inherited-cli'), kind: 'connection-change',
-      requestDigest: canonicalDigest(destination), status: 'acknowledged', createdAt: AT,
-      updatedAt: AT, acknowledgedAt: AT,
+      id: createOperationId('operation-register-inherited-cli'),
+      kind: 'connection-change',
+      requestDigest: canonicalDigest(destination),
+      status: 'acknowledged',
+      createdAt: AT,
+      updatedAt: AT,
+      acknowledgedAt: AT,
     },
   })
   const child = await app.conversations.branches.create({
-    operationId: 'op-inherit-account-child', connectionId: destination.id,
+    operationId: 'op-inherit-account-child',
+    connectionId: destination.id,
   })
-  await app.send({ operationId: 'op-inherit-account-child-turn', branchId: child.id, text: 'child history' }).completion
-  const input = { operationId: 'op-inherit-account-handoff', branchId: child.id, runner: 'codex', text: 'Continue here' }
+  await app.send({
+    operationId: 'op-inherit-account-child-turn',
+    branchId: child.id,
+    text: 'child history',
+  }).completion
+  const input = {
+    operationId: 'op-inherit-account-handoff',
+    branchId: child.id,
+    runner: 'codex',
+    text: 'Continue here',
+  }
   const plan = await app.conversations.branches.plan(input)
   assert.equal(app.state().selectedConnectionId, sourceConnection().id)
   assert.equal(plan.destinationConnectionId, destination.id)
@@ -722,10 +747,16 @@ test('handoff inherits the branch connection and accepts the exact CLI host work
   assert.deepEqual(first.workspaceRequest, plan.destinationWorkspaceRequest)
   assert.equal(first.workspaceRoot, '/workspace')
   const restarted = createBraidApplication({
-    fixture: 'deterministic', execution: routedExecution, clock: new FixedClock(AT), journal,
+    fixture: 'deterministic',
+    execution: routedExecution,
+    clock: new FixedClock(AT),
+    journal,
     effectStorage: journal,
   })
-  const replay = await restarted.conversations.branches.execute({ ...input, planDigest: plan.digest })
+  const replay = await restarted.conversations.branches.execute({
+    ...input,
+    planDigest: plan.digest,
+  })
   assert.equal(replay.id, branch.id)
   assert.equal(replay.connectionId, destination.id)
   assert.deepEqual(targets, [destination.id])
@@ -1145,12 +1176,31 @@ test('workspace fork uses exact provider operations, isolates destination, and c
   await prepareSource(app)
   await app.send({ operationId: 'op-source-workspace-effects', text: 'checkpoint source' })
     .completion
-  const otherConnection = { ...sourceConnection(), id: createConnectionId('connection-other-workspace-account') }
+  const otherConnection = {
+    ...sourceConnection(),
+    id: createConnectionId('connection-other-workspace-account'),
+  }
   await app.configuration.upsertConnection({
     connection: otherConnection,
-    operation: { id: createOperationId('operation-register-other-workspace-account'), kind: 'connection-change', requestDigest: canonicalDigest(otherConnection), status: 'acknowledged', createdAt: AT, updatedAt: AT, acknowledgedAt: AT },
+    operation: {
+      id: createOperationId('operation-register-other-workspace-account'),
+      kind: 'connection-change',
+      requestDigest: canonicalDigest(otherConnection),
+      status: 'acknowledged',
+      createdAt: AT,
+      updatedAt: AT,
+      acknowledgedAt: AT,
+    },
   })
-  await assert.rejects(() => app!.conversations.branches.plan({ operationId: 'op-wrong-workspace-account', kind: 'workspace', connectionId: otherConnection.id }), /must keep the source run connection/u)
+  await assert.rejects(
+    () =>
+      app!.conversations.branches.plan({
+        operationId: 'op-wrong-workspace-account',
+        kind: 'workspace',
+        connectionId: otherConnection.id,
+      }),
+    /must keep the source run connection/u,
+  )
   assert.deepEqual(provider.state.checkpointRequests, [])
   assert.deepEqual(provider.state.forkRequests, [])
   const plan = await app.conversations.branches.plan({
@@ -1489,6 +1539,8 @@ test('TUI and headless fork surfaces preserve the canonical confidential request
   assert.deepEqual(preview?.plan?.confidential, confidential)
   assert.equal(preview?.plan?.text, 'follow-up message')
   assert.equal(Object.isFrozen(preview?.execution), true)
+  assert.deepEqual(preview?.execution?.params?.confidential, confidential)
+  assert.equal(Object.isFrozen(preview?.execution?.params), true)
   const serializedPreview = JSON.stringify(preview)
   assert.doesNotMatch(serializedPreview, /surface-confidential-nonce|surface-confidential-policy/u)
   assert.doesNotMatch(serializedPreview, /sha256:c{64}/u)

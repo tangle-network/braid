@@ -875,9 +875,10 @@ async function recordDestinationEnvironment(
   const environment: EnvironmentRecord = {
     id,
     workspaceId: source.workspaceId,
-    connectionId: plan.destinationConnectionId === undefined
-      ? source.connectionId
-      : parseConnectionId(plan.destinationConnectionId),
+    connectionId:
+      plan.destinationConnectionId === undefined
+        ? source.connectionId
+        : parseConnectionId(plan.destinationConnectionId),
     lifecycle: 'ready',
     placement: {
       provider: receipt.provider,
@@ -1162,11 +1163,13 @@ async function workspaceBranchingForEnvironment(
   const provider = execution?.workspaceBranchingProvider
   if (provider !== undefined) {
     if (providerEnvironmentId === undefined) return undefined
-    return (await provider.forEnvironment(providerEnvironmentId, {
-      runId: sourceRun.id,
-      ...(sourceRun.controlRef === undefined ? {} : { controlRef: sourceRun.controlRef }),
-      ...retainedExecutionRecoveryContext(sourceRun, workspaceRoot),
-    })) ?? undefined
+    return (
+      (await provider.forEnvironment(providerEnvironmentId, {
+        runId: sourceRun.id,
+        ...(sourceRun.controlRef === undefined ? {} : { controlRef: sourceRun.controlRef }),
+        ...retainedExecutionRecoveryContext(sourceRun, workspaceRoot),
+      })) ?? undefined
+    )
   }
   return execution?.workspaceBranching
 }

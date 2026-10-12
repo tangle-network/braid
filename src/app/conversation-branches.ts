@@ -324,7 +324,7 @@ export class ConversationBranches {
     const source = resolveSource(state, input)
     const destinationConnectionId =
       input.connectionId === undefined
-        ? source.branch.connectionId ?? state.selectedConnectionId ?? undefined
+        ? (source.branch.connectionId ?? state.selectedConnectionId ?? undefined)
         : parseConnectionId(input.connectionId)
     const destinationConnection =
       destinationConnectionId === undefined
@@ -379,8 +379,13 @@ export class ConversationBranches {
       (input.connectionId !== undefined && input.connectionId !== source.branch.connectionId)
         ? ('cross-runner' as const)
         : ('conversation' as const))
-    const sourceConnectionId = sourceRun?.receipt.requested.connectionId ?? source.branch.connectionId
-    if (kind === 'workspace' && sourceConnectionId !== undefined && destinationConnectionId !== sourceConnectionId)
+    const sourceConnectionId =
+      sourceRun?.receipt.requested.connectionId ?? source.branch.connectionId
+    if (
+      kind === 'workspace' &&
+      sourceConnectionId !== undefined &&
+      destinationConnectionId !== sourceConnectionId
+    )
       throw new AppError(
         'FORK_PLAN_CONFLICT',
         'A workspace fork must keep the source run connection; use a context handoff to change connections',

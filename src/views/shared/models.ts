@@ -561,6 +561,7 @@ export interface ForkPreviewView {
   readonly execution?: {
     readonly operationId: string
     readonly planDigest: string
+    readonly params?: Readonly<Record<string, unknown>>
   }
   readonly fields: readonly {
     readonly label: string

@@ -73,7 +73,10 @@ test('production CLI Bridge transfers context into one exact fresh retained sess
       { ...input, workspaceRoot: '/changed-workspace' },
       { ...input, workspaceRequest: { cwd: { base: 'repository' as const, path: '.' } } },
     ]) {
-      await assert.rejects(() => Promise.resolve(production.execution.admit!(changed)), /exact host workspace/u)
+      await assert.rejects(
+        () => Promise.resolve(production.execution.admit!(changed)),
+        /exact host workspace/u,
+      )
     }
     assert.equal(bridge.requests.length, 0)
     assert.deepEqual(admissions, [])
@@ -100,7 +103,10 @@ test('production CLI Bridge transfers context into one exact fresh retained sess
     assert.notEqual(input.runId, transfer.plan.destination.runId)
     assert.equal(bridge.requests[0]?.runId, transfer.plan.destination.runId)
     assert.deepEqual(bridge.requests[0]?.body.context_transfer, transfer)
-    assert.doesNotMatch(JSON.stringify(bridge.requests[0]?.body.context_transfer), /source-only-omitted-canary|private omission reason/u)
+    assert.doesNotMatch(
+      JSON.stringify(bridge.requests[0]?.body.context_transfer),
+      /source-only-omitted-canary|private omission reason/u,
+    )
     assert.equal(bridge.requests[0]?.body.environment_id, transfer.plan.destination.environmentId)
     assert.equal(bridge.requests[0]?.body.execution_id, transfer.plan.destination.executionId)
   } finally {
@@ -121,7 +127,12 @@ test('portable context routes any capable provider by exact destination connecti
       download: false,
     }),
     streaming: { live: true, replay: true, detach: true, turnIdempotency: true },
-    retainedControl: { exactRunIdentity: true, resultIdentity: true, eventIdentity: true, cancellationIdempotency: true },
+    retainedControl: {
+      exactRunIdentity: true,
+      resultIdentity: true,
+      eventIdentity: true,
+      cancellationIdempotency: true,
+    },
     contextTransfer: {
       freshSession: true as const,
       requestIdempotency: true as const,
@@ -140,7 +151,9 @@ test('portable context routes any capable provider by exact destination connecti
   }
   const provider: AgentEnvironmentProvider = {
     name: 'daytona',
-    async get() { return null },
+    async get() {
+      return null
+    },
     capabilities: () => capability,
     async create() {
       throw new Error('Transfer routing must not create an environment')
@@ -237,7 +250,12 @@ function contextTransfer(
         parts: [{ type: 'text' as const, text: 'portable context marker 96e1' }],
         timestamp: '2026-08-20T11:59:58.000Z',
       },
-      { id: 'message-omitted', role: 'user' as const, parts: [{ type: 'text' as const, text: 'source-only-omitted-canary' }], timestamp: '2026-08-20T11:59:59.000Z' },
+      {
+        id: 'message-omitted',
+        role: 'user' as const,
+        parts: [{ type: 'text' as const, text: 'source-only-omitted-canary' }],
+        timestamp: '2026-08-20T11:59:59.000Z',
+      },
     ],
     attachments: [],
   }
@@ -265,15 +283,29 @@ function contextTransfer(
         action: 'include' as const,
         parts: [{ partIndex: 0, action: 'include' as const }],
       },
-      { messageId: 'message-omitted', action: 'omit' as const, reason: 'private omission reason', parts: [{ partIndex: 0, action: 'omit' as const, reason: 'private omission reason' }] },
+      {
+        messageId: 'message-omitted',
+        action: 'omit' as const,
+        reason: 'private omission reason',
+        parts: [{ partIndex: 0, action: 'omit' as const, reason: 'private omission reason' }],
+      },
     ],
-    context: (() => { const selected = { ...sourceMaterial, completeness: 'partial' as const, messages: sourceMaterial.messages.slice(0, 1) }; return { ...selected, digest: portableConversationContextDigest(selected) } })(),
+    context: (() => {
+      const selected = {
+        ...sourceMaterial,
+        completeness: 'partial' as const,
+        messages: sourceMaterial.messages.slice(0, 1),
+      }
+      return { ...selected, digest: portableConversationContextDigest(selected) }
+    })(),
     requiresAcceptance: true,
   }
   const plan = { ...planMaterial, digest: portableContextPlanDigest(planMaterial) }
   const requestMaterial = {
     profile,
-    ...(provider === 'cli-bridge' ? { workspace: { cwd: { base: 'host' as const, path: '/workspace' } } } : {}),
+    ...(provider === 'cli-bridge'
+      ? { workspace: { cwd: { base: 'host' as const, path: '/workspace' } } }
+      : {}),
     operationId: 'transfer-context-destination',
     plan,
     acceptance: {

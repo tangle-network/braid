@@ -96,7 +96,8 @@ export function createProviderRetainedPlan(
   const exactControlRef = controlRef ?? persistedControlRef
   const environmentId =
     exactControlRef?.environmentId ??
-    (admission?.phase === 'environment' ? admission.environmentId : undefined) ?? prepared.environmentId
+    (admission?.phase === 'environment' ? admission.environmentId : undefined) ??
+    prepared.environmentId
   const executionId =
     exactControlRef?.executionId ??
     (admission?.phase === 'intent' || admission?.phase === 'environment'

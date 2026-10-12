@@ -4,7 +4,7 @@ import {
   parseConfidentialWorkspaceForkArgument,
   parseConfidentialWorkspaceForkRequest,
 } from '../../app/confidential-workspace-fork.js'
-import type { ForkPlan } from '../../app/conversation-types.js'
+import type { ForkPlan, ForkPlanInput } from '../../app/conversation-types.js'
 import { AppError } from '../../app/errors.js'
 import type { BraidIntent, UiDispatchResult } from '../../views/shared/intents.js'
 import { freezeView, type BraidViewModel, type ForkPreviewView } from '../../views/shared/models.js'
@@ -79,7 +79,7 @@ export async function dispatchConversationRunCommand(
       const throughMessageId = intent.args.find((argument) => argument.startsWith('message-'))
       const confidential = confidentialRequestForForkArgs(intent.args)
       const text = forkText(intent.args, throughMessageId)
-      const plan = await context.app.conversations.branches.plan({
+      const input = {
         operationId,
         kind: workspace
           ? 'workspace'
@@ -92,8 +92,9 @@ export async function dispatchConversationRunCommand(
         ...(connectionId === undefined ? {} : { connectionId }),
         ...(confidential === undefined ? {} : { confidential }),
         ...(text === undefined ? {} : { text }),
-      })
-      context.setForkPreview(forkPreview(plan))
+      } satisfies ForkPlanInput
+      const plan = await context.app.conversations.branches.plan(input)
+      context.setForkPreview(forkPreview(plan, input))
       return accepted(
         context,
         operationId,
@@ -265,8 +266,9 @@ export async function dispatchConversationHeadlessCommand(
     }
     case 'plan_fork': {
       const operationId = requiredOperationId(intent.operationId, intent.command)
-      const plan = await context.app.conversations.branches.plan(forkInput(params, operationId))
-      context.setForkPreview(forkPreview(plan))
+      const input = forkInput(params, operationId)
+      const plan = await context.app.conversations.branches.plan(input)
+      context.setForkPreview(forkPreview(plan, input))
       return accepted(context, operationId, plan, plan.reason)
     }
     case 'execute_fork': {
@@ -385,12 +387,22 @@ function forkText(args: readonly string[], boundary: string | undefined): string
   return text === '' ? undefined : text
 }
 
-function forkPreview(plan: ForkPlan): ForkPreviewView {
+function forkPreview(plan: ForkPlan, input: ForkPlanInput): ForkPreviewView {
+  const { operationId: _operationId, kind: _kind, throughMessageId, ...params } = input
+  const executionParams = freezeView({
+    ...params,
+    conversationId: plan.sourceConversationId,
+    branchId: plan.sourceBranchId,
+    workspace: plan.kind === 'workspace',
+    ...(throughMessageId === undefined ? {} : { messageId: throughMessageId }),
+  })
   const execution = Object.freeze(
-    Object.defineProperty(
+    Object.defineProperties(
       { operationId: plan.operationId, planDigest: plan.digest },
-      'planDigest',
-      { enumerable: false, writable: false, configurable: false },
+      {
+        planDigest: { enumerable: false, writable: false, configurable: false },
+        params: { value: executionParams, enumerable: false, writable: false, configurable: false },
+      },
     ),
   )
   const preview: ForkPreviewView = {

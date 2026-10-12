@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { defineAgentProfile, type AgentExactRunControlRef, type ConfidentialAttestation, type ConfidentialExecutionEnvironment } from '@tangle-network/agent-interface'
+import {
+  defineAgentProfile,
+  type AgentExactRunControlRef,
+  type ConfidentialAttestation,
+  type ConfidentialExecutionEnvironment,
+} from '@tangle-network/agent-interface'
 import {
   execOnlyEnvironmentCapabilities,
   type AgentEnvironmentProvider,
@@ -335,9 +340,33 @@ test('workspace lookup follows the source run connection and refuses a changed r
     capabilities: UNKNOWN_RUN_CAPABILITIES,
     materializationReceipt: admission.materializationReceipt,
   })
-  const controlRef: AgentExactRunControlRef = { provider: 'same-provider', environmentId: 'environment-source-second', sessionId: 'session-source', executionId: 'execution-source', runId: 'provider-run-source', requestDigest: `sha256:${'a'.repeat(64)}` }
-  const expected: ConfidentialExecutionEnvironment = { provider: controlRef.provider, environmentId: 'environment-destination', source: controlRef, requestDigest: `sha256:${'b'.repeat(64)}`, confidentialRequested: true }
-  const attestation: ConfidentialAttestation = { ...expected, requested: true, nonce: 'nonce-source', measurement: `sha256:${'c'.repeat(64)}`, profileDigest: `sha256:${'d'.repeat(64)}`, policy: second.id, quote: 'fixture-quote', providerKeyId: 'fixture-key', providerSignature: 'fixture-signature', verifiedAt: at }
+  const controlRef: AgentExactRunControlRef = {
+    provider: 'same-provider',
+    environmentId: 'environment-source-second',
+    sessionId: 'session-source',
+    executionId: 'execution-source',
+    runId: 'provider-run-source',
+    requestDigest: `sha256:${'a'.repeat(64)}`,
+  }
+  const expected: ConfidentialExecutionEnvironment = {
+    provider: controlRef.provider,
+    environmentId: 'environment-destination',
+    source: controlRef,
+    requestDigest: `sha256:${'b'.repeat(64)}`,
+    confidentialRequested: true,
+  }
+  const attestation: ConfidentialAttestation = {
+    ...expected,
+    requested: true,
+    nonce: 'nonce-source',
+    measurement: `sha256:${'c'.repeat(64)}`,
+    profileDigest: `sha256:${'d'.repeat(64)}`,
+    policy: second.id,
+    quote: 'fixture-quote',
+    providerKeyId: 'fixture-key',
+    providerSignature: 'fixture-signature',
+    verifiedAt: at,
+  }
   assert.equal(routing.confidentialAttestationVerifier?.(attestation, expected), false)
   await routing.workspaceBranchingProvider!.forEnvironment('environment-source-second', {
     runId: input.runId,
@@ -356,7 +385,13 @@ test('workspace lookup follows the source run connection and refuses a changed r
     controlRef,
   })
   assert.equal(restarted.confidentialAttestationVerifier?.(attestation, expected), true)
-  assert.equal(restarted.confidentialAttestationVerifier?.(attestation, { ...expected, source: { ...controlRef, runId: 'provider-run-unbound' } }), false)
+  assert.equal(
+    restarted.confidentialAttestationVerifier?.(attestation, {
+      ...expected,
+      source: { ...controlRef, runId: 'provider-run-unbound' },
+    }),
+    false,
+  )
   assert.deepEqual(verificationAccounts, [second.id, second.id])
   assert.deepEqual(lookups, [
     `${second.id}:environment-source-second`,

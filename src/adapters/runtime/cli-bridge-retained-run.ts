@@ -67,13 +67,15 @@ export async function createCliBridgeRetainedPlan(
   const environmentId =
     exactControlRef?.environmentId ??
     (admission?.phase === 'environment' ? admission.environmentId : undefined) ??
-    prepared.contextTransferReceipt?.environmentId ?? contextDestination?.environmentId
+    prepared.contextTransferReceipt?.environmentId ??
+    contextDestination?.environmentId
   const executionId =
     exactControlRef?.executionId ??
     (admission?.phase === 'intent' || admission?.phase === 'environment'
       ? admission.executionId
       : undefined) ??
-    prepared.contextTransferReceipt?.executionId ?? contextDestination?.executionId ??
+    prepared.contextTransferReceipt?.executionId ??
+    contextDestination?.executionId ??
     safeExecutionId(runId)
   const providerSessionId =
     exactControlRef?.sessionId ??

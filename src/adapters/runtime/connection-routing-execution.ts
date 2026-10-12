@@ -53,21 +53,30 @@ export class ConnectionRoutingExecutionPort implements ExecutionPort {
         const route = this.#forRecovery({ ...operation, runId: operation.runId })
         const port = route.port
         const admission = operation.retainedAdmission
-        const controlRef = operation.controlRef ?? (admission?.phase === 'dispatched' ? admission.controlRef : undefined)
-        if (operation.controlRef !== undefined && admission?.phase === 'dispatched' && canonicalDigest(operation.controlRef) !== canonicalDigest(admission.controlRef)) throw new Error('Workspace lookup conflicts with the admitted source control reference')
+        const controlRef =
+          operation.controlRef ??
+          (admission?.phase === 'dispatched' ? admission.controlRef : undefined)
+        if (
+          operation.controlRef !== undefined &&
+          admission?.phase === 'dispatched' &&
+          canonicalDigest(operation.controlRef) !== canonicalDigest(admission.controlRef)
+        )
+          throw new Error('Workspace lookup conflicts with the admitted source control reference')
         const admittedEnvironment =
           operation.receipt?.environmentId ??
           operation.receipt?.requested.portableContextTransferReceipt?.environmentId ??
-          (admission?.phase === 'environment'
-            ? admission.environmentId
-            : controlRef?.environmentId)
+          (admission?.phase === 'environment' ? admission.environmentId : controlRef?.environmentId)
         if (admittedEnvironment !== undefined && admittedEnvironment !== environmentId)
           throw new Error('Workspace lookup belongs to another admitted environment')
         if (controlRef !== undefined) {
-          if (controlRef.environmentId !== environmentId) throw new Error('Workspace lookup belongs to another source control reference')
+          if (controlRef.environmentId !== environmentId)
+            throw new Error('Workspace lookup belongs to another source control reference')
           const key = canonicalDigest(controlRef)
           const previous = this.#workspaceSources.get(key)
-          this.#workspaceSources.set(key, previous === undefined || previous === route ? route : null)
+          this.#workspaceSources.set(
+            key,
+            previous === undefined || previous === route ? route : null,
+          )
         }
         if (port.workspaceBranchingProvider !== undefined) {
           return port.workspaceBranchingProvider.forEnvironment(
@@ -102,10 +111,20 @@ export class ConnectionRoutingExecutionPort implements ExecutionPort {
       throw new Error('The selected connection does not support admission')
     const admission = await route.port.admit(input)
     const environment = admission.capabilities.environment
-    const capabilities = route.port.confidentialAttestationVerifier === undefined &&
+    const capabilities =
+      route.port.confidentialAttestationVerifier === undefined &&
       (environment?.confidential === true || environment?.branching?.confidential === true)
-      ? { ...admission.capabilities, environment: { ...environment, confidential: false, ...(environment?.branching === undefined ? {} : { branching: { ...environment.branching, confidential: false } }) } }
-      : admission.capabilities
+        ? {
+            ...admission.capabilities,
+            environment: {
+              ...environment,
+              confidential: false,
+              ...(environment?.branching === undefined
+                ? {}
+                : { branching: { ...environment.branching, confidential: false } }),
+            },
+          }
+        : admission.capabilities
     const materializationReceipt = publicMaterializationReceipt({
       ...admission.materializationReceipt,
       connectionId: route.record.id,

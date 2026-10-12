@@ -199,10 +199,30 @@ export async function resolveTangleSandboxRetainedConnection(
   const { profile, model, runner } = await tangleExecutionIdentity(input, selection, connectionId)
   const workspaceRequest = snapshotWorkspaceRequest(input.workspaceRequest)
   const resourceRequest = connectionResourceRequest(record)
-  const providerSessionId = input.contextTransferReceipt?.sessionId ?? input.sessionId ?? stableProviderId('session-braid-', input.runId)
-  const transferred = input.contextTransfer !== undefined && input.contextTransferReceipt !== undefined && contextTransferResultMatchesRequest(input.contextTransfer, input.contextTransferReceipt)
-  if (input.contextTransfer !== undefined && !transferred) throw new ConnectionError('CONNECTION_UNSUPPORTED', 'A transferred Tangle session requires its exact accepted receipt', { connectionId })
-  if (input.contextTransferReceipt !== undefined && (!transferred || (input.sessionId !== undefined && input.sessionId !== input.contextTransferReceipt.sessionId))) throw new ConnectionError('CONNECTION_UNSUPPORTED', 'The selected session conflicts with the accepted Tangle context transfer receipt', { connectionId })
+  const providerSessionId =
+    input.contextTransferReceipt?.sessionId ??
+    input.sessionId ??
+    stableProviderId('session-braid-', input.runId)
+  const transferred =
+    input.contextTransfer !== undefined &&
+    input.contextTransferReceipt !== undefined &&
+    contextTransferResultMatchesRequest(input.contextTransfer, input.contextTransferReceipt)
+  if (input.contextTransfer !== undefined && !transferred)
+    throw new ConnectionError(
+      'CONNECTION_UNSUPPORTED',
+      'A transferred Tangle session requires its exact accepted receipt',
+      { connectionId },
+    )
+  if (
+    input.contextTransferReceipt !== undefined &&
+    (!transferred ||
+      (input.sessionId !== undefined && input.sessionId !== input.contextTransferReceipt.sessionId))
+  )
+    throw new ConnectionError(
+      'CONNECTION_UNSUPPORTED',
+      'The selected session conflicts with the accepted Tangle context transfer receipt',
+      { connectionId },
+    )
   if (!transferred && !providerSessionId.startsWith('session-braid-')) {
     throw new ConnectionError(
       'CONNECTION_UNSUPPORTED',
@@ -210,7 +230,9 @@ export async function resolveTangleSandboxRetainedConnection(
       { connectionId },
     )
   }
-  const identity = retainedSandboxIdentity(transferred ? stableProviderId('session-braid-', input.runId) : providerSessionId)
+  const identity = retainedSandboxIdentity(
+    transferred ? stableProviderId('session-braid-', input.runId) : providerSessionId,
+  )
   const lifecycle = retainedSandboxLifecycle(idleTtlSeconds)
   const [{ createTangleSandboxClient }, { createTangleProvider }] = await Promise.all([
     import('../connections/production-connection-providers.js'),
@@ -265,7 +287,12 @@ export async function resolveTangleSandboxRetainedConnection(
       { connectionId },
     )
   }
-  if (transferred && reportedCapabilities.contextTransfer?.attach !== true) throw new ConnectionError('CONNECTION_UNSUPPORTED', 'The selected Tangle deployment cannot attach an accepted context transfer', { connectionId })
+  if (transferred && reportedCapabilities.contextTransfer?.attach !== true)
+    throw new ConnectionError(
+      'CONNECTION_UNSUPPORTED',
+      'The selected Tangle deployment cannot attach an accepted context transfer',
+      { connectionId },
+    )
   const capabilities = reportedCapabilities
   const environmentRequestDigest = canonicalDigest({
     kind: 'tangle-retained-environment-request',
@@ -285,7 +312,13 @@ export async function resolveTangleSandboxRetainedConnection(
     capabilities,
     observation: observedClient.observation,
     providerSessionId,
-    ...(input.contextTransferReceipt === undefined ? {} : { executionId: input.contextTransferReceipt.executionId, environmentId: input.contextTransferReceipt.environmentId, providerRunId: input.contextTransferReceipt.runId }),
+    ...(input.contextTransferReceipt === undefined
+      ? {}
+      : {
+          executionId: input.contextTransferReceipt.executionId,
+          environmentId: input.contextTransferReceipt.environmentId,
+          providerRunId: input.contextTransferReceipt.runId,
+        }),
     ...(workspaceRequest === undefined ? {} : { workspaceRequest }),
     ...(resourceRequest === undefined ? {} : { resourceRequest }),
     environmentIdempotencyKey: identity.environmentIdempotencyKey,
