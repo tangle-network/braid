@@ -333,7 +333,10 @@ export class ConversationBranches {
         'CONNECTION_NOT_FOUND',
         'The selected destination connection does not exist',
       )
-    const connectionProvider = destinationConnection?.kind === 'agent-provider' ? destinationConnection.providerOptions.provider : destinationConnection?.kind
+    const connectionProvider =
+      destinationConnection?.kind === 'agent-provider'
+        ? destinationConnection.providerOptions.provider
+        : destinationConnection?.kind
     const destinationProvider = input.destinationProvider ?? connectionProvider
     if (
       destinationConnection !== undefined &&
@@ -388,7 +391,9 @@ export class ConversationBranches {
       sourceEnvironmentId,
       confidential?.requested === true,
     )
-    const destinationWorkspaceRequest = snapshotWorkspaceRequest(input.workspaceRequest ?? this.#host.workspaceRequest?.())
+    const destinationWorkspaceRequest = snapshotWorkspaceRequest(
+      input.workspaceRequest ?? this.#host.workspaceRequest?.(),
+    )
     const portableContextPlan =
       kind === 'cross-runner'
         ? canonicalPortableContextPlanForState(state, {
@@ -401,7 +406,13 @@ export class ConversationBranches {
               ? {}
               : { destinationModel: targetProfile.model.default }),
             profileDigest: canonicalAgentProfileDigestHex(targetProfile),
-            ...(destinationWorkspaceRequest?.snapshot === undefined ? {} : { workspaceSnapshotDigest: agentWorkspaceSnapshotRefDigest(destinationWorkspaceRequest.snapshot) }),
+            ...(destinationWorkspaceRequest?.snapshot === undefined
+              ? {}
+              : {
+                  workspaceSnapshotDigest: agentWorkspaceSnapshotRefDigest(
+                    destinationWorkspaceRequest.snapshot,
+                  ),
+                }),
           })
         : undefined
     const contextPort = contextTransferPort(this.#host.execution)
@@ -426,7 +437,13 @@ export class ConversationBranches {
       ...(source.through === undefined ? {} : { throughMessageId: source.through.id }),
       destinationBranchId,
       context,
-      ...(portableContextPlan === undefined ? {} : { portableContextPlan, destinationProfile: targetProfile, ...(destinationWorkspaceRequest === undefined ? {} : { destinationWorkspaceRequest }) }),
+      ...(portableContextPlan === undefined
+        ? {}
+        : {
+            portableContextPlan,
+            destinationProfile: targetProfile,
+            ...(destinationWorkspaceRequest === undefined ? {} : { destinationWorkspaceRequest }),
+          }),
       ...(sourceRun === undefined ? {} : { sourceRunId: sourceRun.id }),
       ...(sourceEnvironmentId === undefined ? {} : { sourceEnvironmentId }),
       ...(portableContextPlan === undefined

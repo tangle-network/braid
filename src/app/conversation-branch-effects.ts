@@ -28,6 +28,7 @@ import type {
   CheckpointRecord,
   EnvironmentRecord,
   OperationRecord,
+  RunRecord,
 } from '../domain/entities.js'
 import { graphEdge, graphNode } from '../domain/graph-records.js'
 import {
@@ -53,6 +54,7 @@ import type {
 } from './conversation-types.js'
 import { parseConfidentialWorkspaceForkRequest } from './confidential-workspace-fork.js'
 import { AppError } from './errors.js'
+import { retainedExecutionRecoveryContext } from './run-recovery-context.js'
 
 type ForkExecutionInput = ForkPlanInput & { readonly planDigest: string }
 type CreateBranch = (input: ForkPlanInput) => Promise<BranchRecord>
@@ -142,7 +144,7 @@ export async function cleanupWorkspaceFork(
     throw new AppError('UNKNOWN_CHECKPOINT', 'The checkpoint has no provider reference')
   if (environment !== undefined && environment.providerEnvironmentId === undefined)
     throw new AppError('UNKNOWN_ENVIRONMENT', 'The environment has no provider reference')
-  assertCleanupCapabilities(state, checkpoint, environment)
+  const sourceRun = assertCleanupCapabilities(state, checkpoint, environment)
   const sourceEnvironment = sourceEnvironmentForCleanup(state, checkpoint, environment)
   const digest = canonicalDigest({
     command: 'cleanup_workspace_fork',
@@ -164,6 +166,8 @@ export async function cleanupWorkspaceFork(
   const branching = await workspaceBranchingForEnvironment(
     execution,
     sourceEnvironment?.providerEnvironmentId,
+    sourceRun,
+    state.workspace,
   )
   if (!hasWorkspaceBranching(branching))
     throw new AppError('CAPABILITY_UNAVAILABLE', 'Workspace cleanup is unavailable')
@@ -279,12 +283,22 @@ async function executeCrossRunner(
       throw new AppError('CONTEXT_PLAN_CONFLICT', 'The provider changed the accepted context plan')
   }
 
-  if (plan.destinationProfile === undefined) throw new AppError('FORK_PLAN_CONFLICT', 'The accepted handoff requires its complete destination profile')
-  const destinationConnection = state.connections.find((record) => record.id === plan.destinationConnectionId)
+  if (plan.destinationProfile === undefined)
+    throw new AppError(
+      'FORK_PLAN_CONFLICT',
+      'The accepted handoff requires its complete destination profile',
+    )
+  const destinationConnection = state.connections.find(
+    (record) => record.id === plan.destinationConnectionId,
+  )
   const transferMaterial = {
     profile: plan.destinationProfile,
-    ...(plan.destinationWorkspaceRequest === undefined ? {} : { workspace: plan.destinationWorkspaceRequest }),
-    ...(destinationConnection?.providerOptions.resources === undefined ? {} : { resources: destinationConnection.providerOptions.resources }),
+    ...(plan.destinationWorkspaceRequest === undefined
+      ? {}
+      : { workspace: plan.destinationWorkspaceRequest }),
+    ...(destinationConnection?.providerOptions.resources === undefined
+      ? {}
+      : { resources: destinationConnection.providerOptions.resources }),
     operationId: `${input.operationId}:context`,
     plan: portablePlan,
     acceptance: {
@@ -322,7 +336,9 @@ async function executeCrossRunner(
       branchId: branch.id,
       text: input.text,
       sessionId: receipt.sessionId,
-      ...(plan.destinationWorkspaceRequest === undefined ? {} : { workspaceRequest: plan.destinationWorkspaceRequest }),
+      ...(plan.destinationWorkspaceRequest === undefined
+        ? {}
+        : { workspaceRequest: plan.destinationWorkspaceRequest }),
       portableContextPlan: portablePlan,
       portableContextTransferRequest: transferRequest,
       portableContextTransferReceipt: receipt,
@@ -419,6 +435,8 @@ async function executeWorkspace(
   const branching = await workspaceBranchingForEnvironment(
     host.execution,
     sourceEnvironmentRecord.providerEnvironmentId,
+    sourceRun,
+    state.workspace,
   )
   if (!hasWorkspaceBranching(branching))
     throw new AppError('CAPABILITY_UNAVAILABLE', plan.reason ?? 'Workspace fork is unavailable')
@@ -667,7 +685,7 @@ function assertCleanupCapabilities(
   state: BraidState,
   checkpoint: CheckpointRecord | undefined,
   environment: EnvironmentRecord | undefined,
-): void {
+): RunRecord {
   const sourceCheckpoint =
     checkpoint ??
     (environment === undefined
@@ -705,6 +723,7 @@ function assertCleanupCapabilities(
       'CAPABILITY_UNAVAILABLE',
       'The selected run does not report retry-safe workspace cleanup support',
     )
+  return sourceRun
 }
 
 function sourceEnvironmentForCleanup(
@@ -1131,11 +1150,16 @@ function hasWorkspaceBranching(
 async function workspaceBranchingForEnvironment(
   execution: ExecutionPort | undefined,
   providerEnvironmentId: string | undefined,
+  sourceRun: RunRecord,
+  workspaceRoot: string | null,
 ): Promise<ExecutionPort['workspaceBranching']> {
   const provider = execution?.workspaceBranchingProvider
   if (provider !== undefined) {
     if (providerEnvironmentId === undefined) return undefined
-    return (await provider.forEnvironment(providerEnvironmentId)) ?? undefined
+    return (await provider.forEnvironment(providerEnvironmentId, {
+      runId: sourceRun.id,
+      ...retainedExecutionRecoveryContext(sourceRun, workspaceRoot),
+    })) ?? undefined
   }
   return execution?.workspaceBranching
 }

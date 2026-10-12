@@ -1,6 +1,6 @@
 import { AgentEnvironmentCapabilitiesSchema, canonicalAgentProfileDigest, contextTransferResultMatchesRequest, workspaceCwdPathForBase } from '@tangle-network/agent-interface'
 import type { AgentEnvironmentProvider } from '@tangle-network/agent-interface/environment-provider'
-import { createExecutor, type ExecutorFactory } from '@tangle-network/agent-runtime/kernel'
+import { assertProfileMaterializes, createExecutor, type ExecutorFactory } from '@tangle-network/agent-runtime/kernel'
 import { validateProfile } from '../../app/profile-validation.js'
 import { ConnectionError } from '../../app/connection-errors.js'
 import { snapshotWorkspaceRequest, workspaceRequestDigest } from '../../app/workspace-request.js'
@@ -9,7 +9,7 @@ import type { ExecuteTurnInput } from '../../ports/execution.js'
 import { createRegisteredEnvironmentProvider } from '../connections/registered-provider.js'
 import type { PreparedRetainedProviderConnection } from './provider-retained-run.js'
 import type { PreparedExecution } from './prepared-execution.js'
-import { connectionRecord, exactExecutionProfile, freezeExecution, type ProductionBackendResolverOptions, type ProductionExecutionSelection, stableProviderId } from './production-backend-common.js'
+import { connectionRecord, exactExecutionProfile, freezeExecution, type ProductionBackendResolverOptions, type ProductionExecutionSelection, requiredProfileModel, requiredProfileRunner, stableProviderId } from './production-backend-common.js'
 
 /** Prepare the complete canonical profile without allocating an environment. */
 export async function resolveRegisteredProviderBackend(
@@ -28,7 +28,7 @@ export async function resolveRegisteredProviderBackend(
     kind: 'executor' as const,
     factory: ((spec, context) => createExecutor({
       backend: 'provider', provider,
-      defaults: { profile, backend: profile.harness, name: record.name, idempotencyKey: stableProviderId('env-braid-', input.runId), ...(workspace === undefined ? {} : { workspace }), ...(resources === undefined ? {} : { resources }), signal: context.signal },
+      defaults: { profile, backend: requiredProfileRunner(profile, connectionId), name: record.name, idempotencyKey: stableProviderId('env-braid-', input.runId), ...(workspace === undefined ? {} : { workspace }), ...(resources === undefined ? {} : { resources }), signal: context.signal },
       destroyOnSettle: true, requireTerminalEvent: true,
     })(spec, context)) satisfies ExecutorFactory<unknown>,
     profile,
@@ -73,21 +73,27 @@ export async function resolveRegisteredProviderRetainedConnection(
 
 async function prepareRegisteredProvider(options: ProductionBackendResolverOptions, input: ExecuteTurnInput, selection: ProductionExecutionSelection, connectionId: ConnectionId) {
   const record = connectionRecord(connectionId, options)
+  if (input.mode === 'interactive') throw new ConnectionError('CONNECTION_UNSUPPORTED', 'This provider connection does not expose Braid native terminal attachment', { connectionId })
   const profile = await exactExecutionProfile(input.profile, selection, connectionId)
   const provider: AgentEnvironmentProvider = await (options.resolveConnectionProvider?.(record, input.signal) ?? createRegisteredEnvironmentProvider(record, options, input.signal))
-  const reported = AgentEnvironmentCapabilitiesSchema.parse(await provider.capabilities())
-  if (!reported.streaming.live || reported.create?.durableIdempotency !== true) {
-    throw new ConnectionError('CONNECTION_UNSUPPORTED', 'The selected provider cannot validate and execute the complete AgentProfile', { connectionId })
+  const reported = await provider.capabilities()
+  AgentEnvironmentCapabilitiesSchema.parse(reported)
+  if (!reported.streaming.live) {
+    throw new ConnectionError('CONNECTION_UNSUPPORTED', 'The selected provider does not expose agent turn streaming', { connectionId })
   }
-  const validation = await validateProfile(profile, { provider, signal: input.signal })
+  if (input.contextTransfer === undefined && reported.create?.durableIdempotency !== true) {
+    throw new ConnectionError('CONNECTION_UNSUPPORTED', 'The selected provider cannot create an agent environment with durable retry identity', { connectionId })
+  }
+  const validation = await validateProfile(profile, { ...(provider.validateProfile === undefined ? {} : { provider }), signal: input.signal })
   if (!validation.ok || validation.issues.some((issue) => issue.level === 'error')) {
     throw new ConnectionError('CONNECTION_UNSUPPORTED', 'The selected provider cannot materialize this AgentProfile; review its profile validation', { connectionId })
   }
   if (validation.profile !== undefined && canonicalAgentProfileDigest(validation.profile) !== canonicalAgentProfileDigest(profile)) {
     throw new ConnectionError('CONNECTION_UNSUPPORTED', 'The selected provider would change the accepted AgentProfile', { connectionId })
   }
+  if (provider.validateProfile === undefined) assertProfileMaterializes(profile, requiredProfileRunner(profile, connectionId), 'Selected provider AgentProfile')
   const workspace = snapshotWorkspaceRequest(input.workspaceRequest)
-  if (workspace?.cwd !== undefined && (workspaceCwdPathForBase(workspace.cwd, 'repository') === undefined || reported.workspace.cwdBases?.repository !== true)) {
+  if (workspace?.cwd !== undefined && (workspaceCwdPathForBase(workspace.cwd, 'repository', 'Selected provider') === undefined || reported.workspace.cwdBases?.repository !== true)) {
     throw new ConnectionError('CONNECTION_UNSUPPORTED', 'The selected provider cannot honor this repository workspace start path', { connectionId })
   }
   if ((workspace?.repoUrl !== undefined || workspace?.gitRef !== undefined) && !reported.workspace.git) {
@@ -97,6 +103,6 @@ async function prepareRegisteredProvider(options: ProductionBackendResolverOptio
     throw new ConnectionError('CONNECTION_UNSUPPORTED', 'The selected provider cannot restore the accepted workspace snapshot', { connectionId })
   }
   const resources = record.providerOptions.resources
-  const model = profile.model!.default!
+  const model = requiredProfileModel(profile, connectionId)
   return { profile, provider, reported, workspace, resources, model }
 }

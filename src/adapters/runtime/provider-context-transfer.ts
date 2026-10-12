@@ -90,7 +90,8 @@ function supportsContextTransfer(
     resolved.capabilities.streaming.replay &&
     resolved.capabilities.streaming.detach &&
     resolved.capabilities.streaming.turnIdempotency &&
-    (destination.workspaceSnapshotDigest === undefined || resolved.capabilities.create?.workspaceSnapshot === true) &&
+    (destination.workspaceSnapshotDigest === undefined ||
+      resolved.capabilities.create?.workspaceSnapshot === true) &&
     resolved.provider.contextTransfer?.transfer !== undefined &&
     resolved.provider.contextTransfer.lookup !== undefined
   )

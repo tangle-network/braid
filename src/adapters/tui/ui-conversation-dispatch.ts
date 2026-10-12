@@ -304,6 +304,7 @@ function forkInput(params: Readonly<Record<string, unknown>>, operationId: strin
   const workspace = params.workspace === true || params.workspace === 'true'
   const runner = optionalStringValue(params.runner)
   const confidential = parseConfidentialWorkspaceForkRequest(params.confidential)
+  const workspaceRequest = snapshotWorkspaceRequest(params.workspaceRequest as WorkspaceRequest | undefined)
   return {
     operationId,
     kind: workspace
@@ -322,7 +323,7 @@ function forkInput(params: Readonly<Record<string, unknown>>, operationId: strin
     ...optionalString(params, 'acceptedDigest'),
     ...optionalString(params, 'destinationProvider'),
     ...(confidential === undefined ? {} : { confidential }),
-    ...(params.workspaceRequest === undefined ? {} : { workspaceRequest: snapshotWorkspaceRequest(params.workspaceRequest as WorkspaceRequest) }),
+    ...(workspaceRequest === undefined ? {} : { workspaceRequest }),
   }
 }
 

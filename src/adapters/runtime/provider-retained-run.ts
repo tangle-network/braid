@@ -1,4 +1,9 @@
-import type { AgentExactRunControlRef, AgentProfile, HarnessType, WorkspaceRequest } from '@tangle-network/agent-interface'
+import type {
+  AgentExactRunControlRef,
+  AgentProfile,
+  HarnessType,
+  WorkspaceRequest,
+} from '@tangle-network/agent-interface'
 import type { AgentEnvironmentProvider } from '@tangle-network/agent-interface/environment-provider'
 import {
   type RetainedRunHandle,
@@ -46,7 +51,11 @@ export interface PreparedRetainedProviderConnection {
   readonly environmentIdempotencyKey: string
   readonly environmentName: string
   readonly environmentMetadata: Readonly<Record<string, unknown>>
-  readonly discoverControlRef?: (braidRunId: string, signal?: AbortSignal, executionId?: string) => Promise<AgentExactRunControlRef | null>
+  readonly discoverControlRef?: (
+    braidRunId: string,
+    signal?: AbortSignal,
+    executionId?: string,
+  ) => Promise<AgentExactRunControlRef | null>
   readonly materializationReceipt: Readonly<Record<string, unknown>>
 }
 
@@ -90,7 +99,7 @@ export function createProviderRetainedPlan(
     exactControlRef?.executionId ??
     (admission?.phase === 'intent' || admission?.phase === 'environment'
       ? admission.executionId
-      : prepared.executionId ?? safeExecutionId(runId))
+      : (prepared.executionId ?? safeExecutionId(runId)))
   const environmentIdempotencyKey = admission?.idempotencyKey ?? prepared.environmentIdempotencyKey
   const plan: ProviderRetainedPlan = {
     runId,
@@ -118,7 +127,7 @@ export function createProviderRetainedPlan(
     reconnect: (exact) => reconnectRetainedRun({ provider: plan.provider, controlRef: exact }),
     recover: (input) => recoverProviderRetainedRun(plan, input),
     discover: async (braidRunId, signal) => {
-      const exact = await prepared.discoverControlRef?.(braidRunId, signal, executionId) ?? null
+      const exact = (await prepared.discoverControlRef?.(braidRunId, signal, executionId)) ?? null
       if (exact === null) return null
       if (exact.executionId !== executionId) {
         throw new Error('Provider retained lookup returned another execution')
@@ -163,7 +172,9 @@ export async function startProviderRetainedRun(
   }
   return startRetainedRun({
     provider: plan.provider,
-    ...(input.contextTransferReceipt === undefined ? {} : { contextTransferReceipt: input.contextTransferReceipt }),
+    ...(input.contextTransferReceipt === undefined
+      ? {}
+      : { contextTransferReceipt: input.contextTransferReceipt }),
     environment: {
       profile: plan.prepared.profile,
       backend: plan.prepared.runner,
@@ -205,7 +216,9 @@ async function recoverProviderRetainedRun(
       provider: plan.provider,
       admission,
       replay: {
-        ...(input.receipt.requested.portableContextTransferReceipt === undefined ? {} : { contextTransferReceipt: input.receipt.requested.portableContextTransferReceipt }),
+        ...(input.receipt.requested.portableContextTransferReceipt === undefined
+          ? {}
+          : { contextTransferReceipt: input.receipt.requested.portableContextTransferReceipt }),
         environment: {
           profile: plan.prepared.profile,
           backend: plan.prepared.runner,
@@ -220,7 +233,9 @@ async function recoverProviderRetainedRun(
           idempotencyKey: admission.idempotencyKey,
         },
         turn: {
-          ...(input.receipt.requested.portableContextTransferRequest === undefined ? {} : { contextTransfer: input.receipt.requested.portableContextTransferRequest }),
+          ...(input.receipt.requested.portableContextTransferRequest === undefined
+            ? {}
+            : { contextTransfer: input.receipt.requested.portableContextTransferRequest }),
           prompt: input.receipt.requested.text,
           turnId: admission.turnId,
           interactions: input.receipt.requested.interactions ?? {},
@@ -237,7 +252,12 @@ async function recoverProviderRetainedRun(
   }
   if (admission.phase !== 'environment') return null
   if (plan.prepared.discoverControlRef === undefined) {
-    const recovered = await recoverRetainedRun({ provider: plan.provider, environmentId: admission.environmentId, sessionId: admission.sessionId, executionId: admission.executionId })
+    const recovered = await recoverRetainedRun({
+      provider: plan.provider,
+      environmentId: admission.environmentId,
+      sessionId: admission.sessionId,
+      executionId: admission.executionId,
+    })
     return recovered.outcome === 'recovered' ? recovered.handle : null
   }
   const controlRef = await plan.prepared.discoverControlRef(

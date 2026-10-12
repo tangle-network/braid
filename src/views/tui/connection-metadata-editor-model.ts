@@ -56,7 +56,12 @@ const INPUT_KEYS = new Set(['provider', 'kind', 'name', 'endpoint', 'region', 'a
 const SECRET_MARKER = /\[redacted (?:secret|credential|bearer|link)\]/u
 
 export function isConnectionMetadataKind(value: unknown): value is ConnectionMetadataKind {
-  return value === 'cli-bridge' || value === 'tangle-inference' || value === 'tangle-sandbox' || value === 'agent-provider'
+  return (
+    value === 'cli-bridge' ||
+    value === 'tangle-inference' ||
+    value === 'tangle-sandbox' ||
+    value === 'agent-provider'
+  )
 }
 
 export function connectionMetadataDraftFromForm(
@@ -107,9 +112,15 @@ export function validateConnectionMetadataDraft(
     issues.push({ field: 'kind', message: 'Choose a supported connection kind' })
   }
 
-  const provider = kind === 'agent-provider' ? readText(input.provider, 'provider', issues, 128) : undefined
-  if (provider !== undefined && !/^[A-Za-z][A-Za-z0-9._:-]{0,127}$/u.test(provider)) issues.push({ field: 'provider', message: 'Enter an installed provider name' })
-  if (kind !== 'agent-provider' && input.provider !== undefined) issues.push({ field: 'provider', message: 'A provider name requires a registered provider connection' })
+  const provider =
+    kind === 'agent-provider' ? readText(input.provider, 'provider', issues, 128) : undefined
+  if (provider !== undefined && !/^[A-Za-z][A-Za-z0-9._:-]{0,127}$/u.test(provider))
+    issues.push({ field: 'provider', message: 'Enter an installed provider name' })
+  if (kind !== 'agent-provider' && input.provider !== undefined)
+    issues.push({
+      field: 'provider',
+      message: 'A provider name requires a registered provider connection',
+    })
   const name = readText(input.name, 'name', issues, 120)
   const endpointInput = readText(input.endpoint, 'endpoint', issues, 2_048)
   const region = readOptionalText(input.region, 'region', issues, 128)

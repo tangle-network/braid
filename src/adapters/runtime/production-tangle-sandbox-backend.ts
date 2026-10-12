@@ -3,6 +3,7 @@ import {
   type AgentProfile,
   type WorkspaceRequest,
   workspaceCwdPathForBase,
+  contextTransferResultMatchesRequest,
 } from '@tangle-network/agent-interface'
 import type {
   AgentEnvironmentCapabilities,
@@ -168,6 +169,7 @@ export interface PreparedTangleRetainedConnection {
   readonly environmentName: string
   readonly environmentMetadata: Readonly<Record<string, unknown>>
   readonly idleTtlSeconds: number
+  readonly executionId?: string
   readonly discoverControlRef: (
     braidRunId: string,
     signal?: AbortSignal,
@@ -196,14 +198,16 @@ export async function resolveTangleSandboxRetainedConnection(
   const workspaceRequest = snapshotWorkspaceRequest(input.workspaceRequest)
   const resourceRequest = connectionResourceRequest(record)
   const providerSessionId = input.sessionId ?? stableProviderId('session-braid-', input.runId)
-  if (!providerSessionId.startsWith('session-braid-')) {
+  const transferred = input.contextTransfer !== undefined && input.contextTransferReceipt !== undefined && contextTransferResultMatchesRequest(input.contextTransfer, input.contextTransferReceipt)
+  if (input.contextTransfer !== undefined && !transferred) throw new ConnectionError('CONNECTION_UNSUPPORTED', 'A transferred Tangle session requires its exact accepted receipt', { connectionId })
+  if (!transferred && !providerSessionId.startsWith('session-braid-')) {
     throw new ConnectionError(
       'CONNECTION_UNSUPPORTED',
       'Retained Tangle continuation requires a Braid-owned provider session',
       { connectionId },
     )
   }
-  const identity = retainedSandboxIdentity(providerSessionId)
+  const identity = retainedSandboxIdentity(transferred ? stableProviderId('session-braid-', input.runId) : providerSessionId)
   const lifecycle = retainedSandboxLifecycle(idleTtlSeconds)
   const [{ createTangleSandboxClient }, { createTangleProvider }] = await Promise.all([
     import('../connections/production-connection-providers.js'),
@@ -258,6 +262,7 @@ export async function resolveTangleSandboxRetainedConnection(
       { connectionId },
     )
   }
+  if (transferred && reportedCapabilities.contextTransfer?.attach !== true) throw new ConnectionError('CONNECTION_UNSUPPORTED', 'The selected Tangle deployment cannot attach an accepted context transfer', { connectionId })
   const capabilities = reportedCapabilities
   const environmentRequestDigest = canonicalDigest({
     kind: 'tangle-retained-environment-request',
@@ -277,6 +282,7 @@ export async function resolveTangleSandboxRetainedConnection(
     capabilities,
     observation: observedClient.observation,
     providerSessionId,
+    ...(input.contextTransferReceipt === undefined ? {} : { executionId: input.contextTransferReceipt.executionId }),
     ...(workspaceRequest === undefined ? {} : { workspaceRequest }),
     ...(resourceRequest === undefined ? {} : { resourceRequest }),
     environmentIdempotencyKey: identity.environmentIdempotencyKey,

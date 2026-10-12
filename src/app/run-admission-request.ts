@@ -61,7 +61,9 @@ export function exactAdmissionRequestDigest(
         ? {}
         : { nativeContextBoundaryProof: input.nativeContextBoundaryProof }),
       ...(input.contextTransfer === undefined ? {} : { contextTransfer: input.contextTransfer }),
-      ...(input.contextTransferReceipt === undefined ? {} : { contextTransferReceipt: input.contextTransferReceipt }),
+      ...(input.contextTransferReceipt === undefined
+        ? {}
+        : { contextTransferReceipt: input.contextTransferReceipt }),
     },
   })
 }

@@ -332,7 +332,9 @@ export function canonicalPortableContextPlanForState(
     provider: input.destinationProvider ?? source.provider,
     ...(input.destinationModel === undefined ? {} : { model: input.destinationModel }),
     profileDigest: canonicalSha256(input.profileDigest),
-    ...(input.workspaceSnapshotDigest === undefined ? {} : { workspaceSnapshotDigest: input.workspaceSnapshotDigest }),
+    ...(input.workspaceSnapshotDigest === undefined
+      ? {}
+      : { workspaceSnapshotDigest: input.workspaceSnapshotDigest }),
   })
 
   const messages: PortableContextMessagePlan[] = []
@@ -608,7 +610,9 @@ function canonicalDestination(input: {
   return {
     runner: input.runner,
     provider: input.provider,
-    ...(input.workspaceSnapshotDigest === undefined ? {} : { workspaceSnapshotDigest: input.workspaceSnapshotDigest }),
+    ...(input.workspaceSnapshotDigest === undefined
+      ? {}
+      : { workspaceSnapshotDigest: input.workspaceSnapshotDigest }),
     sessionId: `session-handoff-${suffix}`,
     runId: `run-handoff-${suffix}`,
     executionId: `execution-handoff-${suffix}`,

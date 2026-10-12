@@ -112,6 +112,15 @@ export interface RetainedExecutionRecoveryContext {
   readonly workspaceRoot?: string
 }
 
+/** Select the source run's connection before asking its provider for a workspace handle. */
+export interface WorkspaceBranchingExecutionProvider extends AgentWorkspaceBranchingProvider {
+  forEnvironment(
+    sourceEnvironmentId: string,
+    operation?: NonNullable<Parameters<AgentWorkspaceBranchingProvider['forEnvironment']>[1]> &
+      RetainedExecutionRecoveryContext & { readonly runId?: string },
+  ): Promise<AgentWorkspaceBranching | null>
+}
+
 export interface ControlAcknowledgement {
   readonly operationId: string
   readonly outcome: 'accepted' | 'already-applied' | 'rejected' | 'unknown'
@@ -207,7 +216,7 @@ export interface ExecutionPort {
   /** Retry-safe checkpoint, fork, lookup, and cleanup operations, when supported. */
   readonly workspaceBranching?: AgentWorkspaceBranching | undefined
   /** Provider-owned source lookup used to reconstruct branching after restart. */
-  readonly workspaceBranchingProvider?: AgentWorkspaceBranchingProvider | undefined
+  readonly workspaceBranchingProvider?: WorkspaceBranchingExecutionProvider | undefined
   /** External verifier required before Braid marks a confidential fork verified. */
   readonly confidentialAttestationVerifier?: ConfidentialAttestationVerifier | undefined
   /** Provider identity used when Braid builds a destination context plan. */

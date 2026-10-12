@@ -9,7 +9,10 @@ import {
   type PreparedCliBridgeConnection,
   prepareCliBridgeConnection,
 } from './production-cli-bridge-backend.js'
-import { resolveRegisteredProviderBackend, resolveRegisteredProviderRetainedConnection } from './production-registered-provider-backend.js'
+import {
+  resolveRegisteredProviderBackend,
+  resolveRegisteredProviderRetainedConnection,
+} from './production-registered-provider-backend.js'
 import { resolveTangleInferenceBackend } from './production-tangle-inference-backend.js'
 import {
   type PreparedTangleRetainedConnection,
@@ -103,10 +106,17 @@ export async function resolveProductionTangleRetainedConnection(
   return resolveTangleSandboxRetainedConnection(options, input, selection, record.id)
 }
 
-export async function resolveProductionRegisteredRetainedConnection(options: ProductionBackendResolverOptions, input: ExecuteTurnInput) {
+export async function resolveProductionRegisteredRetainedConnection(
+  options: ProductionBackendResolverOptions,
+  input: ExecuteTurnInput,
+) {
   const selected = await options.select(input)
-  const selection = input.connectionId === undefined ? selected : { ...selected, connection: { connectionId: input.connectionId } }
+  const selection =
+    input.connectionId === undefined
+      ? selected
+      : { ...selected, connection: { connectionId: input.connectionId } }
   const record = options.connections.select(selection.connection).record
-  if (record.kind !== 'agent-provider') throw new Error('The registered provider port received another connection kind')
+  if (record.kind !== 'agent-provider')
+    throw new Error('The registered provider port received another connection kind')
   return resolveRegisteredProviderRetainedConnection(options, input, selection, record.id)
 }

@@ -282,7 +282,11 @@ export class ConfigurationSession {
     this.#state = clearError(
       clearSelection({
         ...this.#state,
-        step: (connection.connection.kind === 'tangle-sandbox' || connection.connection.kind === 'agent-provider') ? 'workspace' : 'confirm',
+        step:
+          connection.connection.kind === 'tangle-sandbox' ||
+          connection.connection.kind === 'agent-provider'
+            ? 'workspace'
+            : 'confirm',
         selectedConnectionId: connection.id,
       }),
     )
@@ -309,7 +313,10 @@ export class ConfigurationSession {
       if (selectedConnection === undefined) {
         return this.#fail('CONNECTION_REQUIRED', 'Choose a connection before continuing')
       }
-      if (selectedConnection.connection.kind !== 'tangle-sandbox' && selectedConnection.connection.kind !== 'agent-provider') {
+      if (
+        selectedConnection.connection.kind !== 'tangle-sandbox' &&
+        selectedConnection.connection.kind !== 'agent-provider'
+      ) {
         return this.#fail('CONNECTION_REQUIRED', 'The selected connection has no cloud workspace')
       }
     }
@@ -393,7 +400,9 @@ export class ConfigurationSession {
       connection: selectedConnection.record,
       profileDigest: profile.digest,
       connectionDigest: selectedConnection.digest,
-      ...(this.#workspaceRequest === undefined || connection.connection.kind !== 'tangle-sandbox' && connection.connection.kind !== 'agent-provider'
+      ...(this.#workspaceRequest === undefined ||
+      (connection.connection.kind !== 'tangle-sandbox' &&
+        connection.connection.kind !== 'agent-provider')
         ? {}
         : { workspaceRequest: this.#workspaceRequest }),
     })
@@ -423,7 +432,9 @@ export class ConfigurationSession {
   }
 
   #workspaceTarget(): ConfigurationBackTarget {
-    return ['tangle-sandbox', 'agent-provider'].includes(this.#selectedConnection()?.connection.kind ?? '')
+    return ['tangle-sandbox', 'agent-provider'].includes(
+      this.#selectedConnection()?.connection.kind ?? '',
+    )
       ? 'workspace'
       : 'connection'
   }

@@ -92,6 +92,7 @@ test('production CLI Bridge transfers context into one exact fresh retained sess
     assert.notEqual(input.runId, transfer.plan.destination.runId)
     assert.equal(bridge.requests[0]?.runId, transfer.plan.destination.runId)
     assert.deepEqual(bridge.requests[0]?.body.context_transfer, transfer)
+    assert.doesNotMatch(JSON.stringify(bridge.requests[0]?.body.context_transfer), /source-only-omitted-canary|private omission reason/u)
     assert.equal(bridge.requests[0]?.body.environment_id, transfer.plan.destination.environmentId)
     assert.equal(bridge.requests[0]?.body.execution_id, transfer.plan.destination.executionId)
   } finally {
@@ -228,6 +229,7 @@ function contextTransfer(
         parts: [{ type: 'text' as const, text: 'portable context marker 96e1' }],
         timestamp: '2026-08-20T11:59:58.000Z',
       },
+      { id: 'message-omitted', role: 'user' as const, parts: [{ type: 'text' as const, text: 'source-only-omitted-canary' }], timestamp: '2026-08-20T11:59:59.000Z' },
     ],
     attachments: [],
   }
@@ -255,9 +257,10 @@ function contextTransfer(
         action: 'include' as const,
         parts: [{ partIndex: 0, action: 'include' as const }],
       },
+      { messageId: 'message-omitted', action: 'omit' as const, reason: 'private omission reason', parts: [{ partIndex: 0, action: 'omit' as const, reason: 'private omission reason' }] },
     ],
-    context,
-    requiresAcceptance: false,
+    context: (() => { const selected = { ...sourceMaterial, completeness: 'partial' as const, messages: sourceMaterial.messages.slice(0, 1) }; return { ...selected, digest: portableConversationContextDigest(selected) } })(),
+    requiresAcceptance: true,
   }
   const plan = { ...planMaterial, digest: portableContextPlanDigest(planMaterial) }
   const requestMaterial = {

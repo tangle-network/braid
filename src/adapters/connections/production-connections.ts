@@ -62,4 +62,7 @@ export function createProductionConnectionAdapter(
   })
 }
 
-export { createRegisteredEnvironmentProvider, createConnectionProviderResolver } from './registered-provider.js'
+export {
+  createRegisteredEnvironmentProvider,
+  createConnectionProviderResolver,
+} from './registered-provider.js'

@@ -194,7 +194,10 @@ export function describeProductionSelection(
     unsupported.push(`model override (unsupported by ${profile.harness})`)
   if (profile.harness !== undefined && !harnessHonorsEffort(profile.harness))
     unsupported.push(`effort override (unsupported by ${profile.harness})`)
-  if (selection.connection.kind === 'tangle-sandbox' || selection.connection.kind === 'agent-provider') {
+  if (
+    selection.connection.kind === 'tangle-sandbox' ||
+    selection.connection.kind === 'agent-provider'
+  ) {
     return {
       runner,
       model,

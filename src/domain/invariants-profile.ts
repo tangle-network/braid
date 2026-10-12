@@ -150,13 +150,20 @@ export function assertConnectionRecord(record: ConnectionRecord): void {
     (record.providerOptions.lifecycle !== undefined ||
       record.providerOptions.idleTtlSeconds !== undefined)
   ) {
-    fail('connection.providerOptions lifecycle is available only for tangle-sandbox')
+    fail('connection.providerOptions lifecycle requires an environment provider connection')
   }
-  if (record.kind !== 'tangle-sandbox' && record.kind !== 'agent-provider' && record.providerOptions.resources !== undefined) {
-    fail('connection.providerOptions.resources is available only for tangle-sandbox')
+  if (
+    record.kind !== 'tangle-sandbox' &&
+    record.kind !== 'agent-provider' &&
+    record.providerOptions.resources !== undefined
+  ) {
+    fail('connection.providerOptions.resources requires an environment provider connection')
   }
   if (record.kind === 'agent-provider') {
-    if (!record.providerOptions.provider || !/^[A-Za-z][A-Za-z0-9._:-]{0,127}$/u.test(record.providerOptions.provider)) {
+    if (
+      !record.providerOptions.provider ||
+      !/^[A-Za-z][A-Za-z0-9._:-]{0,127}$/u.test(record.providerOptions.provider)
+    ) {
       fail('connection.providerOptions.provider must name a registered provider')
     }
   } else if (record.providerOptions.provider !== undefined) {

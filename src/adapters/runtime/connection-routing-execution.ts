@@ -1,7 +1,7 @@
 import type { ConnectionRecord } from '../../domain/entities.js'
 import { publicMaterializationReceipt } from '../../domain/materialization-receipt.js'
 import { canonicalDigest } from '../../domain/canonical.js'
-import { ConnectionRegistry } from '../../app/connections.js'
+import { ConnectionRegistry, connectionExecutionDigest } from '../../app/connections.js'
 import type { ExecuteTurnInput, ExecutionPort, NormalizedExecutionEvent, RetainedExecutionRecoveryContext } from '../../ports/execution.js'
 import { UNKNOWN_RUN_CAPABILITIES } from '../../ports/execution.js'
 
@@ -31,18 +31,32 @@ export class ConnectionRoutingExecutionPort implements ExecutionPort {
     readonly defaultConnectionId: string
     readonly create: (record: ConnectionRecord) => ExecutionPort
     readonly context?: ExecutionPort['context']
-    readonly workspaceBranchingProvider?: ExecutionPort['workspaceBranchingProvider']
     readonly confidentialAttestationVerifier?: ExecutionPort['confidentialAttestationVerifier']
   }) {
     this.#connections = options.connections
     this.#defaultConnectionId = options.defaultConnectionId
     this.#create = options.create
     if (options.context !== undefined) this.context = options.context
-    if (options.workspaceBranchingProvider !== undefined) this.workspaceBranchingProvider = options.workspaceBranchingProvider
+    const workspaceBranchingProvider: NonNullable<ExecutionPort['workspaceBranchingProvider']> = {
+      forEnvironment: async (environmentId, operation) => {
+        if (operation?.runId === undefined) throw new Error('Workspace lookup requires the source run identity')
+        const port = this.#forRecovery({ ...operation, runId: operation.runId }).port
+        const admission = operation.retainedAdmission
+        const admittedEnvironment = operation.receipt?.environmentId ??
+          operation.receipt?.requested.portableContextTransferReceipt?.environmentId ??
+          (admission?.phase === 'environment' ? admission.environmentId : admission?.phase === 'dispatched' ? admission.controlRef.environmentId : undefined)
+        if (admittedEnvironment !== undefined && admittedEnvironment !== environmentId) throw new Error('Workspace lookup belongs to another admitted environment')
+        if (port.workspaceBranchingProvider !== undefined) {
+          return port.workspaceBranchingProvider.forEnvironment(environmentId, operation.signal === undefined ? undefined : { signal: operation.signal })
+        }
+        return port.workspaceBranching ?? null
+      },
+    }
+    this.workspaceBranchingProvider = Object.freeze(workspaceBranchingProvider)
     if (options.confidentialAttestationVerifier !== undefined) this.confidentialAttestationVerifier = options.confidentialAttestationVerifier
   }
 
-  capabilities: NonNullable<ExecutionPort['capabilities']> = (input) => {
+  capabilities: NonNullable<ExecutionPort['capabilities']> = (input: ExecuteTurnInput) => {
     const capabilities = this.#forTurn(input).port.capabilities
     if (typeof capabilities === 'function') return capabilities(input)
     return capabilities === undefined ? UNKNOWN_RUN_CAPABILITIES : { ...UNKNOWN_RUN_CAPABILITIES, controls: { ...UNKNOWN_RUN_CAPABILITIES.controls, cancel: capabilities.cancel } }
@@ -113,6 +127,7 @@ export class ConnectionRoutingExecutionPort implements ExecutionPort {
   }
 
   #forRecovery(input: { readonly runId: string } & RetainedExecutionRecoveryContext): Route {
+    if (input.receipt !== undefined && input.receipt.runId !== input.runId) throw new Error('The recovery receipt belongs to another run')
     const connectionId = input.receipt?.requested.connectionId
     const known = this.#runs.get(input.runId)
     if (known !== undefined) {
@@ -139,9 +154,4 @@ export class ConnectionRoutingExecutionPort implements ExecutionPort {
     }
     return route
   }
-}
-
-/** Exclude health observations, which do not change credentials or transport. */
-export function connectionExecutionDigest(record: ConnectionRecord): string {
-  return canonicalDigest({ id: record.id, kind: record.kind, endpoint: record.endpoint ?? null, credentialRef: record.credentialRef ?? null, providerOptions: record.providerOptions, confidentialAttestationPolicy: record.confidentialAttestationPolicy ?? null })
 }

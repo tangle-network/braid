@@ -449,7 +449,9 @@ Linked pre-admission and post-admission records retain the exact requested value
 
 A saved `agent-provider` connection names its installed Runtime adapter in `providerOptions.provider`.
 Its existing endpoint, account, region, credential reference, workspace request and resource fields keep their current meanings.
-The embedding application constructs a Runtime provider registry through `connectionOptions.providerRegistryFactory` for that exact saved connection.
+The bundled Daytona adapter constructs a Runtime registry with the selected credential, endpoint and explicit target region. Its current exec-only contract refuses agent execution and context transfer before creating a sandbox.
+The bundled E2B route refuses construction until its shared adapter can bind an explicit endpoint; it never falls back to ambient credentials or transport settings.
+An embedding application can construct a Runtime provider registry through `connectionOptions.providerRegistryFactory` for any other adapter and that exact saved connection.
 The callback receives only that connection's validated endpoint and origin-bound credential; it must construct adapters for the selected account and region.
 Braid never loads executable provider configuration from a workspace file.
 
@@ -457,6 +459,7 @@ Two connections with the same provider name retain separate adapter instances.
 Admission binds the connection ID and a digest of its transport configuration, and first dispatch and later controls keep the admitted adapter even after the picker changes.
 After restart, a changed transport or credential reference blocks control until the admitted configuration is restored.
 Legacy receipts without the digest still route by their saved connection ID.
+Workspace fork and cleanup lookups use the source run's admitted connection too.
 
 Providers own profile validation, environment creation, retained sessions and context attachment.
 Braid refuses unsupported keyed execution, workspace restore and context attachment before allocation.

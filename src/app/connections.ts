@@ -23,6 +23,11 @@ export interface ConnectionCatalog {
   select(input: ConnectionSelectionInput): ConnectionSelection
 }
 
+/** Bind execution inputs while excluding observations that can refresh during a run. */
+export function connectionExecutionDigest(record: ConnectionRecord): string {
+  return canonicalDigest({ id: record.id, kind: record.kind, name: record.name, workspaceId: record.workspaceId ?? null, endpoint: record.endpoint ?? null, credentialRef: record.credentialRef ?? null, providerOptions: record.providerOptions, confidentialAttestationPolicy: record.confidentialAttestationPolicy ?? null })
+}
+
 /**
  * In-memory connection catalog for the application boundary.
  *

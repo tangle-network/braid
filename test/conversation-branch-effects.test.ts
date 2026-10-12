@@ -375,7 +375,8 @@ function executionFor(options: {
         capabilities: options.capabilities,
         provider: destination ? TARGET_PROVIDER : SOURCE_PROVIDER,
         environmentId: destination
-          ? input.contextTransferReceipt?.environmentId ?? input.contextTransfer?.plan.destination.environmentId
+          ? (input.contextTransferReceipt?.environmentId ??
+            input.contextTransfer?.plan.destination.environmentId)
           : 'provider-source-environment',
         providerSessionId: destination
           ? input.contextTransfer?.plan.destination.sessionId

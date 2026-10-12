@@ -21,7 +21,11 @@ const DEFAULT_NAMES: Readonly<Record<ConnectionMetadataKind, string>> = Object.f
 })
 
 const KIND_ITEMS: readonly SelectItem[] = Object.freeze([
-  { value: 'agent-provider', label: 'Registered provider', description: 'installed agent environment adapter' },
+  {
+    value: 'agent-provider',
+    label: 'Registered provider',
+    description: 'installed agent environment adapter',
+  },
   { value: 'cli-bridge', label: 'CLI Bridge', description: 'local runner endpoint' },
   {
     value: 'tangle-inference',
@@ -35,7 +39,12 @@ const KIND_ITEMS: readonly SelectItem[] = Object.freeze([
   },
 ])
 
-export type EditableConnectionMetadataField = 'provider' | 'name' | 'endpoint' | 'account' | 'region'
+export type EditableConnectionMetadataField =
+  | 'provider'
+  | 'name'
+  | 'endpoint'
+  | 'account'
+  | 'region'
 
 export function connectionMetadataKindItems(): readonly SelectItem[] {
   return KIND_ITEMS
@@ -76,7 +85,11 @@ export function connectionMetadataFormFromDraft(
 export function connectionMetadataFieldKeys(
   kind: ConnectionMetadataKind,
 ): readonly EditableConnectionMetadataField[] {
-  return kind === 'agent-provider' ? ['provider', 'name', 'endpoint', 'account', 'region'] : kind === 'cli-bridge' ? ['name', 'endpoint'] : ['name', 'endpoint', 'account', 'region']
+  return kind === 'agent-provider'
+    ? ['provider', 'name', 'endpoint', 'account', 'region']
+    : kind === 'cli-bridge'
+      ? ['name', 'endpoint']
+      : ['name', 'endpoint', 'account', 'region']
 }
 
 export function connectionMetadataFieldLabel(field: EditableConnectionMetadataField): string {
@@ -107,7 +120,12 @@ export function connectionMetadataSummary(draft: ConnectionMetadataDraft): reado
 }
 
 function isKind(value: unknown): value is ConnectionMetadataKind {
-  return value === 'cli-bridge' || value === 'tangle-inference' || value === 'tangle-sandbox' || value === 'agent-provider'
+  return (
+    value === 'cli-bridge' ||
+    value === 'tangle-inference' ||
+    value === 'tangle-sandbox' ||
+    value === 'agent-provider'
+  )
 }
 
 function draftText(value: unknown, fallback: string): string {

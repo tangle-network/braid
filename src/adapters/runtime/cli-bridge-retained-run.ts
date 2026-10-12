@@ -135,7 +135,9 @@ export async function startCliBridgeRetainedRun(
   }
   return startRetainedRun({
     provider: plan.provider,
-    ...(input.contextTransferReceipt === undefined ? {} : { contextTransferReceipt: input.contextTransferReceipt }),
+    ...(input.contextTransferReceipt === undefined
+      ? {}
+      : { contextTransferReceipt: input.contextTransferReceipt }),
     environment: {
       profile: plan.prepared.profile,
       backend: plan.prepared.runner,
@@ -180,7 +182,9 @@ async function recoverCliBridgeRetainedRun(
       provider: plan.provider,
       admission,
       replay: {
-        ...(input.receipt.requested.portableContextTransferReceipt === undefined ? {} : { contextTransferReceipt: input.receipt.requested.portableContextTransferReceipt }),
+        ...(input.receipt.requested.portableContextTransferReceipt === undefined
+          ? {}
+          : { contextTransferReceipt: input.receipt.requested.portableContextTransferReceipt }),
         environment: {
           profile: plan.prepared.profile,
           backend: plan.prepared.runner,

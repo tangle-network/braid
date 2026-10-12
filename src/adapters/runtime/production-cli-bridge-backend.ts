@@ -115,7 +115,9 @@ export async function prepareCliBridgeConnection(
     provider,
     capabilities,
     ...(input.contextTransfer === undefined ? {} : { contextTransfer: input.contextTransfer }),
-    ...(input.contextTransferReceipt === undefined ? {} : { contextTransferReceipt: input.contextTransferReceipt }),
+    ...(input.contextTransferReceipt === undefined
+      ? {}
+      : { contextTransferReceipt: input.contextTransferReceipt }),
     providerSessionId,
     observation: staticExecutionObservation({
       kind: bridgeLocation.location === 'local' ? 'local-process' : 'remote-service',

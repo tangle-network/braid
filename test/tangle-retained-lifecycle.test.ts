@@ -122,7 +122,7 @@ test('connection resources are a bounded provider-neutral Tangle Sandbox request
         ...record({ resources: { cpu: 1 } }),
         kind: 'tangle-inference',
       }),
-    /resources is available only for tangle-sandbox/u,
+    /resources requires an environment provider connection/u,
   )
 })
 
@@ -598,7 +598,10 @@ test('a failed retry never deletes a pre-existing retained workspace', async () 
     runId: input.runId,
     providerSessionId,
   })
-  const first = await startProviderRetainedRun(createProviderRetainedPlan(prepared, input.runId), input)
+  const first = await startProviderRetainedRun(
+    createProviderRetainedPlan(prepared, input.runId),
+    input,
+  )
   sandbox.complete(first.controlRef.executionId, 'EXISTING_WORKSPACE')
   sandbox.failDispatch = true
   const retryInput = {

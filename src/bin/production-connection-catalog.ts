@@ -110,7 +110,11 @@ function withSavedWorkspace(
   configPath: string,
   selection: ConfigurationSelection,
 ): ConfigurationSelection {
-  if ((selection.connection.kind !== 'tangle-sandbox' && selection.connection.kind !== 'agent-provider') || selection.workspaceRequest !== undefined)
+  if (
+    (selection.connection.kind !== 'tangle-sandbox' &&
+      selection.connection.kind !== 'agent-provider') ||
+    selection.workspaceRequest !== undefined
+  )
     return selection
   const bytes = readNoFollow(configPath, 2 * 1024 * 1024)
   if (bytes === undefined) return selection

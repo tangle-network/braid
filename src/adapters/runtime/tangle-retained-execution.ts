@@ -35,7 +35,8 @@ export class TangleRetainedExecutionPort extends RetainedExecutionPort {
 
   constructor(options: TangleRetainedExecutionOptions) {
     super({
-      resolve: async (input) => createProviderRetainedPlan(await options.resolve(input), input.runId),
+      resolve: async (input) =>
+        createProviderRetainedPlan(await options.resolve(input), input.runId),
       continue: async (input, controlRef) =>
         createProviderRetainedPlan(await options.resolve(input), input.runId, controlRef),
       recover: async ({ runId, providerSessionId, controlRef, signal, ...recovery }) =>

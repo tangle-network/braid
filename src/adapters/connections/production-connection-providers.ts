@@ -16,7 +16,7 @@ import {
 import { Sandbox } from '@tangle-network/sandbox'
 import { ConnectionError } from '../../app/connection-errors.js'
 import type { ConnectionRecord } from '../../domain/entities.js'
-import { environmentSupportsInteractionResponse } from '../../ports/execution.js'
+import { environmentSupportsInteractionResponse, supportsNativeContinuation } from '../../ports/execution.js'
 import { nitroVerifiersForConnection } from './nitro-confidential-attestation.js'
 import { readConnectionCredential } from './production-connection-credentials.js'
 import { connectionEndpoint } from './production-connection-endpoints.js'
@@ -124,12 +124,10 @@ export async function capabilitiesForConnection(
     case 'agent-provider': {
       const provider = await createRegisteredEnvironmentProvider(record, options)
       const reported = await provider.capabilities()
-      const environment = { ...reported,
-        streaming: { ...reported.streaming, replay: false, detach: false },
-        sessions: { continue: false, list: false, messages: false },
-      }
+      const environment = retainedConnectionCapabilities(record, reported, provider.get !== undefined)
+      const executable = reported.streaming.live && reported.create?.durableIdempotency === true
       return capabilityReport(record, 'executor', environment, {
-        create: typeof provider.create === 'function',
+        create: executable && typeof provider.create === 'function',
         get: typeof provider.get === 'function',
         list: typeof provider.list === 'function',
       })
@@ -165,7 +163,7 @@ export async function capabilitiesForConnection(
                     confidentialAttestationVerifier: confidential.tangle,
                   }),
             }).capabilities()
-      const environment = tangleConnectionCapabilities(
+      const environment = retainedConnectionCapabilities(
         record,
         reported,
         options.tangleRetainedControlLookup !== undefined ||
@@ -182,7 +180,7 @@ export async function capabilitiesForConnection(
   }
 }
 
-function tangleConnectionCapabilities(
+function retainedConnectionCapabilities(
   record: ConnectionRecord,
   reported: AgentEnvironmentCapabilities,
   hasRetainedControlLookup = false,
@@ -213,7 +211,7 @@ function tangleConnectionCapabilities(
       detach: exactRetained && reported.streaming.detach,
       turnIdempotency: exactRetained && reported.streaming.turnIdempotency,
     },
-    sessions: { ...reported.sessions, continue: false, list: false, messages: false },
+    sessions: { ...reported.sessions, continue: record.kind === 'agent-provider' && exactRetained && supportsNativeContinuation(reported), list: false, messages: false },
   }
 }
 

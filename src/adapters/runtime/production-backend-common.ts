@@ -30,7 +30,10 @@ export type ProductionExecutionSelector = (
 export interface ProductionBackendResolverOptions extends ProductionConnectionOptions {
   readonly connections: ConnectionCatalog
   readonly select: ProductionExecutionSelector
-  readonly resolveConnectionProvider?: (record: ConnectionRecord, signal?: AbortSignal) => Promise<AgentEnvironmentProvider>
+  readonly resolveConnectionProvider?: (
+    record: ConnectionRecord,
+    signal?: AbortSignal,
+  ) => Promise<AgentEnvironmentProvider>
   readonly workspaceCwd?: string
 }
 

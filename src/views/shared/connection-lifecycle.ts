@@ -1,5 +1,6 @@
 export interface UiConnectionMetadataDraft {
-  readonly kind: 'cli-bridge' | 'tangle-inference' | 'tangle-sandbox'
+  readonly kind: 'cli-bridge' | 'tangle-inference' | 'tangle-sandbox' | 'agent-provider'
+  readonly provider?: string
   readonly name: string
   readonly endpoint: string
   readonly region?: string

@@ -63,8 +63,12 @@ export function admitRun(
     ...(resolved.materializationReceipt === undefined
       ? {}
       : { materializationReceipt: resolved.materializationReceipt }),
-    ...(input.contextTransfer === undefined ? {} : { portableContextTransferRequest: input.contextTransfer }),
-    ...(input.contextTransferReceipt === undefined ? {} : { portableContextTransferReceipt: input.contextTransferReceipt }),
+    ...(input.contextTransfer === undefined
+      ? {}
+      : { portableContextTransferRequest: input.contextTransfer }),
+    ...(input.contextTransferReceipt === undefined
+      ? {}
+      : { portableContextTransferReceipt: input.contextTransferReceipt }),
     ...(contextPlan === undefined ? {} : { contextPlan }),
     ...(contextPlanDigest === undefined ? {} : { contextPlanDigest }),
     ...(contextTransfer === undefined ? {} : { contextTransfer }),
@@ -119,8 +123,12 @@ export async function admitRunAsync(
     ...(resolved?.materializationReceipt === undefined
       ? {}
       : { materializationReceipt: resolved.materializationReceipt }),
-    ...(input.contextTransfer === undefined ? {} : { portableContextTransferRequest: input.contextTransfer }),
-    ...(input.contextTransferReceipt === undefined ? {} : { portableContextTransferReceipt: input.contextTransferReceipt }),
+    ...(input.contextTransfer === undefined
+      ? {}
+      : { portableContextTransferRequest: input.contextTransfer }),
+    ...(input.contextTransferReceipt === undefined
+      ? {}
+      : { portableContextTransferReceipt: input.contextTransferReceipt }),
     ...(contextPlan === undefined ? {} : { contextPlan }),
     ...(contextPlanDigest === undefined ? {} : { contextPlanDigest }),
     ...(contextTransfer === undefined ? {} : { contextTransfer }),
