@@ -340,10 +340,11 @@ function connectionForkPreviewDefinition(columns, normalized) {
       terminal.input('\r')
       await terminal.waitForStable('connection selection submitted')
       const selected = await terminal.captureState()
-      if (selected.record.state?.selectedConnectionId !== 'connection-local-cli-bridge')
+      if (selected.record.state?.runConfiguration?.connectionId !== 'connection-local-cli-bridge')
         throw new Error(
           `keyboard connection selection did not update the durable catalog: ${selected.point.screen}`,
         )
+      await terminal.waitForStable('selected connection rendered')
       terminal.input('/fork --connection connection-local-cli-bridge')
       await terminal.waitForStable('connection fork command draft')
       terminal.input('\r')
