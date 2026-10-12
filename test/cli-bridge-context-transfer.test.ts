@@ -5,7 +5,7 @@ import {
   type ContextTransferResult,
   type AgentEnvironmentProvider,
   canonicalAgentProfileDigest,
-  contextTransferRequestDigest,
+  createContextTransferRequest,
   defineAgentProfile,
   type PortableConversationContext,
   portableContextPlanDigest,
@@ -64,6 +64,7 @@ test('production CLI Bridge transfers context into one exact fresh retained sess
       sessionId: receipt.sessionId,
       signal: new AbortController().signal,
       contextTransfer: transfer,
+      contextTransferReceipt: receipt,
       onRetainedAdmission: async (admission) => {
         admissions.push(structuredClone(admission))
       },
@@ -110,10 +111,13 @@ test('portable context routes any capable provider by exact destination connecti
       upload: false,
       download: false,
     }),
+    streaming: { live: true, replay: true, detach: true, turnIdempotency: true },
+    retainedControl: { exactRunIdentity: true, resultIdentity: true, eventIdentity: true, cancellationIdempotency: true },
     contextTransfer: {
       freshSession: true as const,
       requestIdempotency: true as const,
       lookup: true as const,
+      attach: true as const,
     },
   }
   let target: string | undefined
@@ -127,6 +131,7 @@ test('portable context routes any capable provider by exact destination connecti
   }
   const provider: AgentEnvironmentProvider = {
     name: 'daytona',
+    async get() { return null },
     capabilities: () => capability,
     async create() {
       throw new Error('Transfer routing must not create an environment')
@@ -256,6 +261,7 @@ function contextTransfer(
   }
   const plan = { ...planMaterial, digest: portableContextPlanDigest(planMaterial) }
   const requestMaterial = {
+    profile,
     operationId: 'transfer-context-destination',
     plan,
     acceptance: {
@@ -264,8 +270,5 @@ function contextTransfer(
       acceptedBy: 'policy' as const,
     },
   }
-  return {
-    ...requestMaterial,
-    requestDigest: contextTransferRequestDigest(requestMaterial),
-  }
+  return createContextTransferRequest(requestMaterial)
 }

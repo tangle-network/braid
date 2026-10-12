@@ -81,6 +81,16 @@ function supportsContextTransfer(
     capability?.freshSession === true &&
     capability.requestIdempotency === true &&
     capability.lookup === true &&
+    capability.attach === true &&
+    resolved.provider.get !== undefined &&
+    resolved.capabilities.retainedControl?.exactRunIdentity === true &&
+    resolved.capabilities.retainedControl.resultIdentity === true &&
+    resolved.capabilities.retainedControl.eventIdentity === true &&
+    resolved.capabilities.retainedControl.cancellationIdempotency === true &&
+    resolved.capabilities.streaming.replay &&
+    resolved.capabilities.streaming.detach &&
+    resolved.capabilities.streaming.turnIdempotency &&
+    (destination.workspaceSnapshotDigest === undefined || resolved.capabilities.create?.workspaceSnapshot === true) &&
     resolved.provider.contextTransfer?.transfer !== undefined &&
     resolved.provider.contextTransfer.lookup !== undefined
   )

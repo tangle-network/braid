@@ -214,6 +214,7 @@ function assertSecretFree(record: ConnectionRecord): void {
   const strings = [
     record.name,
     record.endpoint,
+    record.providerOptions.provider,
     record.providerOptions.transport,
     record.providerOptions.endpoint,
     record.providerOptions.region,

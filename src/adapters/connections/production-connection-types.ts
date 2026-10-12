@@ -12,6 +12,7 @@ import type {
 export type { TangleConfidentialAttestationVerifier } from '@tangle-network/agent-provider-tangle'
 
 import type {
+  AgentEnvironmentProviderRegistry,
   BridgeModelCredential,
   RouterTransportConfig,
 } from '@tangle-network/agent-runtime/kernel'
@@ -105,7 +106,20 @@ export interface OriginBoundBridgeModelCredential extends BridgeModelCredential 
   readonly bridgeOrigin: string
 }
 
+/** Construct credential/client-bound adapters for exactly one saved connection. */
+export interface ConnectionProviderRegistryInput {
+  readonly record: ConnectionRecord
+  readonly endpoint: string
+  readonly credential: string | undefined
+  readonly signal?: AbortSignal
+}
+
+export type ConnectionProviderRegistryFactory = (
+  input: ConnectionProviderRegistryInput,
+) => AgentEnvironmentProviderRegistry | Promise<AgentEnvironmentProviderRegistry>
+
 export interface ProductionConnectionOptions {
+  readonly providerRegistryFactory?: ConnectionProviderRegistryFactory
   readonly credentials?: CredentialPort
   /** Map Braid's durable credential id to the credential-port's opaque ref. */
   readonly credentialRefResolver?: (ref: CredentialRefId) => CredentialRef | Promise<CredentialRef>

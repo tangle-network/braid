@@ -27,6 +27,7 @@ import type {
   ConnectionRuntimeCapabilities,
   ProductionConnectionOptions,
 } from './production-connection-types.js'
+import { createRegisteredEnvironmentProvider } from './registered-provider.js'
 import { supportsTangleRetainedControlLookup } from './tangle-retained-control-lookup.js'
 
 export async function createTangleSandboxClient(
@@ -115,6 +116,19 @@ export async function capabilitiesForConnection(
       const provider = createCliBridgeProvider({ baseUrl: endpoint })
       const environment = await provider.capabilities()
       return capabilityReport(record, 'chat', environment, {
+        create: typeof provider.create === 'function',
+        get: typeof provider.get === 'function',
+        list: typeof provider.list === 'function',
+      })
+    }
+    case 'agent-provider': {
+      const provider = await createRegisteredEnvironmentProvider(record, options)
+      const reported = await provider.capabilities()
+      const environment = { ...reported,
+        streaming: { ...reported.streaming, replay: false, detach: false },
+        sessions: { continue: false, list: false, messages: false },
+      }
+      return capabilityReport(record, 'executor', environment, {
         create: typeof provider.create === 'function',
         get: typeof provider.get === 'function',
         list: typeof provider.list === 'function',

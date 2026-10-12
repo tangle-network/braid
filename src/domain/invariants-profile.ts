@@ -91,6 +91,7 @@ export function assertConnectionRecord(record: ConnectionRecord): void {
   nonEmpty(record.name, 'connection.name')
   if (record.endpoint !== undefined) assertPublicReference(record.endpoint, 'connection.endpoint')
   const allowedOptions = new Set([
+    'provider',
     'transport',
     'endpoint',
     'region',
@@ -124,7 +125,7 @@ export function assertConnectionRecord(record: ConnectionRecord): void {
         )
       }
     } else if (key === 'resources') {
-      assertConnectionResources(value)
+      assertConnectionResources(value, record.kind === 'tangle-sandbox')
     } else if (typeof value !== 'string' || value.length === 0) {
       fail(`connection.providerOptions.${key} must be a non-empty string`)
     }
@@ -145,13 +146,21 @@ export function assertConnectionRecord(record: ConnectionRecord): void {
   }
   if (
     record.kind !== 'tangle-sandbox' &&
+    record.kind !== 'agent-provider' &&
     (record.providerOptions.lifecycle !== undefined ||
       record.providerOptions.idleTtlSeconds !== undefined)
   ) {
     fail('connection.providerOptions lifecycle is available only for tangle-sandbox')
   }
-  if (record.kind !== 'tangle-sandbox' && record.providerOptions.resources !== undefined) {
+  if (record.kind !== 'tangle-sandbox' && record.kind !== 'agent-provider' && record.providerOptions.resources !== undefined) {
     fail('connection.providerOptions.resources is available only for tangle-sandbox')
+  }
+  if (record.kind === 'agent-provider') {
+    if (!record.providerOptions.provider || !/^[A-Za-z][A-Za-z0-9._:-]{0,127}$/u.test(record.providerOptions.provider)) {
+      fail('connection.providerOptions.provider must name a registered provider')
+    }
+  } else if (record.providerOptions.provider !== undefined) {
+    fail('connection.providerOptions.provider requires kind=agent-provider')
   }
   assertDate(record.createdAt, 'connection.createdAt')
   assertDate(record.updatedAt, 'connection.updatedAt')
@@ -214,11 +223,10 @@ export function assertConnectionRecord(record: ConnectionRecord): void {
 const MB_PER_GIB = 1_024
 
 /**
- * Only tangle-sandbox connections accept resources, and Tangle Sandbox provisions disk in
- * whole gibibytes. Rejecting other sizes here keeps an unfulfillable request out of the
+ * Tangle Sandbox provisions disk in whole gibibytes. Other providers own their sizing rules. Rejecting other sizes here keeps an unfulfillable request out of the
  * saved connection instead of failing each later environment create.
  */
-function assertConnectionResources(value: unknown): void {
+function assertConnectionResources(value: unknown, wholeGiBDisk: boolean): void {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     fail('connection.providerOptions.resources must be an object')
   }
@@ -233,7 +241,7 @@ function assertConnectionResources(value: unknown): void {
       if (!Number.isSafeInteger(amount) || (amount as number) < 1) {
         fail(`connection.providerOptions.resources.${key} must be a positive integer`)
       }
-      if (key === 'diskMb' && (amount as number) % MB_PER_GIB !== 0) {
+      if (wholeGiBDisk && key === 'diskMb' && (amount as number) % MB_PER_GIB !== 0) {
         fail('connection.providerOptions.resources.diskMb must be a whole number of GiB')
       }
     } else {

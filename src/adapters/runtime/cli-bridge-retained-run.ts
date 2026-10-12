@@ -135,14 +135,12 @@ export async function startCliBridgeRetainedRun(
   }
   return startRetainedRun({
     provider: plan.provider,
+    ...(input.contextTransferReceipt === undefined ? {} : { contextTransferReceipt: input.contextTransferReceipt }),
     environment: {
       profile: plan.prepared.profile,
       backend: plan.prepared.runner,
       workspace: cliBridgeWorkspace(plan),
       idempotencyKey: plan.environmentIdempotencyKey,
-      ...(input.contextTransfer === undefined
-        ? {}
-        : { requestedId: input.contextTransfer.plan.destination.environmentId }),
     },
     turn: {
       prompt: input.text,
@@ -182,16 +180,12 @@ async function recoverCliBridgeRetainedRun(
       provider: plan.provider,
       admission,
       replay: {
+        ...(input.receipt.requested.portableContextTransferReceipt === undefined ? {} : { contextTransferReceipt: input.receipt.requested.portableContextTransferReceipt }),
         environment: {
           profile: plan.prepared.profile,
           backend: plan.prepared.runner,
           workspace: cliBridgeWorkspace(plan),
           idempotencyKey: admission.idempotencyKey,
-          ...(plan.prepared.contextTransfer === undefined
-            ? {}
-            : {
-                requestedId: plan.prepared.contextTransfer.plan.destination.environmentId,
-              }),
         },
         turn: {
           prompt: input.receipt.requested.text,

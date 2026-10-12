@@ -77,7 +77,7 @@ export function connectionWithFileLifetime(
   connection: ConnectionRecord,
   lifetime: ConfigurationFileLifetime,
 ): ConnectionRecord {
-  if (connection.kind !== 'tangle-sandbox') {
+  if (connection.kind !== 'tangle-sandbox' && connection.kind !== 'agent-provider') {
     throw new ConfigurationSessionError(
       'CONNECTION_REQUIRED',
       'The selected connection has no cloud workspace',
@@ -134,6 +134,8 @@ function kindLabel(kind: ConnectionKind): string {
       return 'CLI'
     case 'tangle-inference':
       return 'Inference'
+    case 'agent-provider':
+      return 'Registered provider'
     case 'tangle-sandbox':
       return 'Sandbox'
   }
@@ -184,6 +186,7 @@ function sortedConnections(records: readonly ConnectionRecord[]): readonly Conne
     'cli-bridge': 0,
     'tangle-inference': 1,
     'tangle-sandbox': 2,
+    'agent-provider': 3,
   }
   return [...records].sort((left, right) =>
     compareCodeUnits(
@@ -279,7 +282,7 @@ export class ConfigurationSession {
     this.#state = clearError(
       clearSelection({
         ...this.#state,
-        step: connection.connection.kind === 'tangle-sandbox' ? 'workspace' : 'confirm',
+        step: (connection.connection.kind === 'tangle-sandbox' || connection.connection.kind === 'agent-provider') ? 'workspace' : 'confirm',
         selectedConnectionId: connection.id,
       }),
     )
@@ -306,7 +309,7 @@ export class ConfigurationSession {
       if (selectedConnection === undefined) {
         return this.#fail('CONNECTION_REQUIRED', 'Choose a connection before continuing')
       }
-      if (selectedConnection.connection.kind !== 'tangle-sandbox') {
+      if (selectedConnection.connection.kind !== 'tangle-sandbox' && selectedConnection.connection.kind !== 'agent-provider') {
         return this.#fail('CONNECTION_REQUIRED', 'The selected connection has no cloud workspace')
       }
     }
@@ -390,7 +393,7 @@ export class ConfigurationSession {
       connection: selectedConnection.record,
       profileDigest: profile.digest,
       connectionDigest: selectedConnection.digest,
-      ...(this.#workspaceRequest === undefined || connection.connection.kind !== 'tangle-sandbox'
+      ...(this.#workspaceRequest === undefined || connection.connection.kind !== 'tangle-sandbox' && connection.connection.kind !== 'agent-provider'
         ? {}
         : { workspaceRequest: this.#workspaceRequest }),
     })
@@ -420,7 +423,7 @@ export class ConfigurationSession {
   }
 
   #workspaceTarget(): ConfigurationBackTarget {
-    return this.#selectedConnection()?.connection.kind === 'tangle-sandbox'
+    return ['tangle-sandbox', 'agent-provider'].includes(this.#selectedConnection()?.connection.kind ?? '')
       ? 'workspace'
       : 'connection'
   }

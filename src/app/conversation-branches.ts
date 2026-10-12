@@ -1,3 +1,5 @@
+import { agentWorkspaceSnapshotRefDigest } from '@tangle-network/agent-interface'
+import { snapshotWorkspaceRequest } from './workspace-request.js'
 import { canonicalAgentProfileDigestHex } from '../adapters/agent-interface/profile-runtime.js'
 import { canonicalDigest } from '../domain/canonical.js'
 import type { BranchRecord, ConversationRecord, MessageRecord } from '../domain/entities.js'
@@ -331,11 +333,12 @@ export class ConversationBranches {
         'CONNECTION_NOT_FOUND',
         'The selected destination connection does not exist',
       )
-    const destinationProvider = input.destinationProvider ?? destinationConnection?.kind
+    const connectionProvider = destinationConnection?.kind === 'agent-provider' ? destinationConnection.providerOptions.provider : destinationConnection?.kind
+    const destinationProvider = input.destinationProvider ?? connectionProvider
     if (
       destinationConnection !== undefined &&
       input.destinationProvider !== undefined &&
-      input.destinationProvider !== destinationConnection.kind
+      input.destinationProvider !== connectionProvider
     )
       throw new AppError(
         'FORK_PLAN_CONFLICT',
@@ -385,6 +388,7 @@ export class ConversationBranches {
       sourceEnvironmentId,
       confidential?.requested === true,
     )
+    const destinationWorkspaceRequest = snapshotWorkspaceRequest(input.workspaceRequest ?? this.#host.workspaceRequest?.())
     const portableContextPlan =
       kind === 'cross-runner'
         ? canonicalPortableContextPlanForState(state, {
@@ -397,6 +401,7 @@ export class ConversationBranches {
               ? {}
               : { destinationModel: targetProfile.model.default }),
             profileDigest: canonicalAgentProfileDigestHex(targetProfile),
+            ...(destinationWorkspaceRequest?.snapshot === undefined ? {} : { workspaceSnapshotDigest: agentWorkspaceSnapshotRefDigest(destinationWorkspaceRequest.snapshot) }),
           })
         : undefined
     const contextPort = contextTransferPort(this.#host.execution)
@@ -421,7 +426,7 @@ export class ConversationBranches {
       ...(source.through === undefined ? {} : { throughMessageId: source.through.id }),
       destinationBranchId,
       context,
-      ...(portableContextPlan === undefined ? {} : { portableContextPlan }),
+      ...(portableContextPlan === undefined ? {} : { portableContextPlan, destinationProfile: targetProfile, ...(destinationWorkspaceRequest === undefined ? {} : { destinationWorkspaceRequest }) }),
       ...(sourceRun === undefined ? {} : { sourceRunId: sourceRun.id }),
       ...(sourceEnvironmentId === undefined ? {} : { sourceEnvironmentId }),
       ...(portableContextPlan === undefined

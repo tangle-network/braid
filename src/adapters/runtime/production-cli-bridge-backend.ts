@@ -49,6 +49,7 @@ export interface PreparedCliBridgeConnection {
   readonly provider: CliBridgeProvider
   readonly capabilities: AgentEnvironmentCapabilities
   readonly contextTransfer?: ExecuteTurnInput['contextTransfer']
+  readonly contextTransferReceipt?: ExecuteTurnInput['contextTransferReceipt']
   readonly observation: NonNullable<PreparedExecution['observation']>
   readonly materializationReceipt: Readonly<Record<string, unknown>>
 }
@@ -114,6 +115,7 @@ export async function prepareCliBridgeConnection(
     provider,
     capabilities,
     ...(input.contextTransfer === undefined ? {} : { contextTransfer: input.contextTransfer }),
+    ...(input.contextTransferReceipt === undefined ? {} : { contextTransferReceipt: input.contextTransferReceipt }),
     providerSessionId,
     observation: staticExecutionObservation({
       kind: bridgeLocation.location === 'local' ? 'local-process' : 'remote-service',

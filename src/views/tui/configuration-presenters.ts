@@ -131,6 +131,8 @@ export function connectionKind(kind: ConnectionSummary['kind'] | string): string
       return 'CLI Bridge'
     case 'tangle-inference':
       return 'Tangle inference'
+    case 'agent-provider':
+      return 'Registered provider'
     case 'tangle-sandbox':
       return 'Tangle sandbox'
     default:

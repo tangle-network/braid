@@ -52,7 +52,7 @@ export function buildConnectionMetadataInputs(
   inputs.clear()
   for (const field of connectionMetadataFieldKeys(form.kind)) {
     const input = new Input()
-    input.setValue(form[field])
+    input.setValue(form[field] ?? '')
     inputs.set(field, input)
   }
 }

@@ -5,6 +5,7 @@ import { ConnectionRegistry } from './connections.js'
 
 export interface ConnectionMetadataInput {
   readonly kind: ConnectionRecord['kind']
+  readonly provider?: string
   readonly name: string
   readonly endpoint: string
   readonly region?: string
@@ -25,6 +26,7 @@ export function connectionRecordFromMetadata(input: {
     endpoint: input.draft.endpoint,
     ...(input.credentialRef === undefined ? {} : { credentialRef: input.credentialRef }),
     providerOptions: {
+      ...(input.draft.provider === undefined ? {} : { provider: input.draft.provider }),
       transport: input.draft.endpoint.startsWith('https:') ? 'https' : 'local',
       ...(input.draft.region === undefined ? {} : { region: input.draft.region }),
       ...(input.draft.account === undefined ? {} : { account: input.draft.account }),

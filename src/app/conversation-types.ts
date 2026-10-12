@@ -1,3 +1,4 @@
+import type { WorkspaceRequest } from '@tangle-network/agent-interface'
 import type {
   AgentProfile,
   ConfidentialExecutionRequest,
@@ -28,6 +29,7 @@ export interface ConversationHost {
   commit(event: BraidEvent): Promise<void>
   /** Exact profile selected for the next Runtime admission. */
   profile?: () => Readonly<AgentProfile>
+  workspaceRequest?: () => Readonly<WorkspaceRequest> | undefined
   destroy?(input: { readonly conversationId: string; readonly operationId: string }): Promise<void>
   coordinate?<T>(
     input: { readonly operationId: string; readonly digest: string },
@@ -97,6 +99,7 @@ export interface PlanContextInput {
 }
 
 export interface ForkPlanInput extends CreateBranchInput {
+  readonly workspaceRequest?: Readonly<WorkspaceRequest>
   readonly kind?: 'conversation' | 'workspace' | 'cross-runner'
   readonly acceptedDigest?: string
   readonly destinationProvider?: string
@@ -127,6 +130,8 @@ export interface ForkPlan {
   readonly environment: 'shared' | 'new' | 'unavailable'
   readonly providerSession: 'new'
   readonly checkpoint: 'none' | 'required' | 'unavailable'
+  readonly destinationProfile?: Readonly<AgentProfile>
+  readonly destinationWorkspaceRequest?: Readonly<WorkspaceRequest>
   readonly portableContextPlan?: CanonicalPortableContextPlan
   readonly sourceRunId?: string
   readonly sourceEnvironmentId?: string

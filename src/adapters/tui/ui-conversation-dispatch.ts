@@ -1,3 +1,4 @@
+import { snapshotWorkspaceRequest, type WorkspaceRequest } from '../../app/workspace-request.js'
 import type { BraidApplication } from '../../app/application.js'
 import {
   parseConfidentialWorkspaceForkArgument,
@@ -321,6 +322,7 @@ function forkInput(params: Readonly<Record<string, unknown>>, operationId: strin
     ...optionalString(params, 'acceptedDigest'),
     ...optionalString(params, 'destinationProvider'),
     ...(confidential === undefined ? {} : { confidential }),
+    ...(params.workspaceRequest === undefined ? {} : { workspaceRequest: snapshotWorkspaceRequest(params.workspaceRequest as WorkspaceRequest) }),
   }
 }
 

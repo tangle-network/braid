@@ -27,6 +27,7 @@ export async function healthForConnection(
   options: ProductionConnectionOptions,
   healthOptions: ConnectionHealthOptions,
 ): Promise<ConnectionHealth> {
+  if (record.kind === 'agent-provider') return { status: 'unknown' }
   const checkedAt = (healthOptions.now ?? options.now ?? nowIso)()
   try {
     const endpoint = connectionEndpoint(record, options)
@@ -73,12 +74,12 @@ export async function verifyModelForConnection(
       message: 'No model.default is selected for this connection',
     }
   }
-  if (record.kind === 'tangle-sandbox') {
+  if (record.kind === 'tangle-sandbox' || record.kind === 'agent-provider') {
     return {
       model: normalizedModel,
       status: 'unverified',
       checkedAt,
-      message: 'Sandbox model verification requires an admitted environment',
+      message: 'Provider model verification requires an admitted environment',
     }
   }
   if (record.kind === 'cli-bridge' && verificationOptions.profile === undefined) {

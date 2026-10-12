@@ -1,6 +1,8 @@
 import type {
   AgentEnvironmentCapabilities,
   AgentProfile,
+  ContextTransferRequest as CanonicalContextTransferRequest,
+  ContextTransferReceipt as CanonicalContextTransferReceipt,
   NativeContextBoundaryProof,
   RequestedInteractions,
   WorkspaceRequest,
@@ -144,6 +146,8 @@ export interface RunAdmissionReceipt {
     readonly model?: string
     readonly runner?: string
     readonly contextPlanDigest?: string
+    readonly portableContextTransferRequest?: CanonicalContextTransferRequest
+    readonly portableContextTransferReceipt?: CanonicalContextTransferReceipt
   }
   readonly capabilities: RunCapabilities
   readonly provider?: string

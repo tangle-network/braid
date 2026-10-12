@@ -4,6 +4,7 @@ import { nitroVerifiersForConnection } from '../adapters/connections/nitro-confi
 import type { ProductionConnectionOptions } from '../adapters/connections/production-connections.js'
 import {
   connectionEndpoint,
+  createConnectionProviderResolver,
   createTangleEnvironmentProvider,
   createTangleWorkspaceBranchingProvider,
 } from '../adapters/connections/production-connections.js'
@@ -11,6 +12,7 @@ import {
   AgentRuntimeExecutionPort,
   type AgentTurnBackendResolver,
 } from '../adapters/runtime/agent-runtime-execution.js'
+import { ConnectionRoutingExecutionPort } from '../adapters/runtime/connection-routing-execution.js'
 import { createProviderContextTransferPort } from '../adapters/runtime/provider-context-transfer.js'
 import { CliBridgeRetainedExecutionPort } from '../adapters/runtime/cli-bridge-retained-execution.js'
 import { ModeRoutingExecutionPort } from '../adapters/runtime/mode-routing-execution.js'
@@ -19,8 +21,10 @@ import {
   createProductionBackendResolver,
   type ProductionBackendResolverOptions,
   resolveProductionCliBridgeConnection,
+  resolveProductionRegisteredRetainedConnection,
   resolveProductionTangleRetainedConnection,
 } from '../adapters/runtime/production-backend-resolver.js'
+import { ProviderRetainedExecutionPort } from '../adapters/runtime/provider-retained-execution.js'
 import { prepareCliBridgeProviderRoute } from '../adapters/runtime/production-cli-bridge-backend.js'
 import { RuntimeSupervisorController } from '../adapters/runtime/supervisor-control.js'
 import { TangleRetainedExecutionPort } from '../adapters/runtime/tangle-retained-execution.js'
@@ -89,6 +93,7 @@ const SUPPORTED_CONNECTION_KINDS = new Set<ConnectionRecord['kind']>([
   'cli-bridge',
   'tangle-inference',
   'tangle-sandbox',
+  'agent-provider',
 ])
 
 export function createProductionComposition(
@@ -190,16 +195,18 @@ export function createProductionComposition(
     )
   }
 
-  if (config.workspaceRequest !== undefined && connection.kind !== 'tangle-sandbox') {
+  if (config.workspaceRequest !== undefined && connection.kind !== 'tangle-sandbox' && connection.kind !== 'agent-provider') {
     throw new ProductionCompositionError(
       'PRODUCTION_CONNECTION_UNSUPPORTED',
-      'A provider-neutral workspace request requires a tangle-sandbox connection',
+      'A remote workspace request requires an environment provider connection',
     )
   }
 
+  const resolveConnectionProvider = createConnectionProviderResolver(config.connectionOptions ?? {})
   const resolverOptionsBase: ProductionBackendResolverOptions = {
     ...(config.connectionOptions ?? {}),
     connections,
+    resolveConnectionProvider,
     ...(config.workspaceRoot === undefined ? {} : { workspaceCwd: config.workspaceRoot }),
     select: () => ({
       connection: {
@@ -257,6 +264,8 @@ export function createProductionComposition(
       turnId,
       text: requested?.text ?? '',
       profile: requested?.profile ?? profile,
+      ...(requested?.portableContextTransferRequest === undefined ? {} : { contextTransfer: requested.portableContextTransferRequest }),
+      ...(requested?.portableContextTransferReceipt === undefined ? {} : { contextTransferReceipt: requested.portableContextTransferReceipt }),
       ...(requested?.mode === undefined ? {} : { mode: requested.mode }),
       ...(requested?.interactions === undefined ? {} : { interactions: requested.interactions }),
       connectionId: requested?.connectionId ?? connection.id,
@@ -289,6 +298,11 @@ export function createProductionComposition(
         )
         return { provider, capabilities: await provider.capabilities() }
       }
+      if (destinationConnection.kind === 'agent-provider') {
+        if (destinationConnection.providerOptions.lifecycle !== 'retained') return undefined
+        const provider = await resolveConnectionProvider(destinationConnection)
+        return { provider, capabilities: await provider.capabilities() }
+      }
       if (destinationConnection.kind !== 'cli-bridge') return undefined
       const runner = harnessTypeSchema.safeParse(destination.runner)
       if (!runner.success || destination.model === undefined) {
@@ -305,14 +319,23 @@ export function createProductionComposition(
       )
     },
   })
-  const execution = (() => {
+  const broker = new NativeInteractiveRunBroker()
+  const createExecution = (connection: ConnectionRecord): ExecutionPort => {
+    const scopedOptions: ProductionBackendResolverOptions = { ...resolverOptions, connections: new ConnectionRegistry([connection]), select: () => ({ connection: { connectionId: connection.id, expectedKind: connection.kind, expectedUpdatedAt: connection.updatedAt } }) }
+    const workspaceBranchingProvider = connection.kind === 'tangle-sandbox' ? createTangleWorkspaceBranchingProvider(connection, scopedOptions) : undefined
+    if (connection.kind === 'agent-provider' && connection.providerOptions.lifecycle === 'retained') {
+      return new ProviderRetainedExecutionPort({
+        resolve: (input) => resolveProductionRegisteredRetainedConnection(scopedOptions, input),
+        recover: ({ runId, providerSessionId, signal, ...recovery }) => resolveProductionRegisteredRetainedConnection(scopedOptions, recoveryInput(runId, providerSessionId, recovery, signal)),
+      })
+    }
     if (connection.kind === 'cli-bridge') {
       return new CliBridgeRetainedExecutionPort({
         context,
-        resolve: (input) => resolveProductionCliBridgeConnection(resolverOptions, input),
+        resolve: (input) => resolveProductionCliBridgeConnection(scopedOptions, input),
         recover: ({ runId, providerSessionId, signal, ...recovery }) =>
           resolveProductionCliBridgeConnection(
-            resolverOptions,
+            scopedOptions,
             recoveryInput(runId, providerSessionId, recovery, signal),
           ),
       })
@@ -323,10 +346,10 @@ export function createProductionComposition(
     ) {
       const headless = new TangleRetainedExecutionPort({
         context,
-        resolve: (input) => resolveProductionTangleRetainedConnection(resolverOptions, input),
+        resolve: (input) => resolveProductionTangleRetainedConnection(scopedOptions, input),
         recover: ({ runId, providerSessionId, signal, ...recovery }) =>
           resolveProductionTangleRetainedConnection(
-            resolverOptions,
+            scopedOptions,
             recoveryInput(runId, providerSessionId, recovery, signal),
           ),
         ...(workspaceBranchingProvider === undefined ? {} : { workspaceBranchingProvider }),
@@ -334,10 +357,9 @@ export function createProductionComposition(
           ? {}
           : { confidentialAttestationVerifier: resolverOptions.confidentialAttestationVerifier }),
       })
-      const broker = new NativeInteractiveRunBroker()
       const interactive = new TangleRetainedInteractiveExecutionPort({
-        resolve: (input) => resolveProductionTangleRetainedConnection(resolverOptions, input),
-        recover: (input) => resolveProductionTangleRetainedConnection(resolverOptions, input),
+        resolve: (input) => resolveProductionTangleRetainedConnection(scopedOptions, input),
+        recover: (input) => resolveProductionTangleRetainedConnection(scopedOptions, input),
         broker,
         ...(workspaceBranchingProvider === undefined ? {} : { workspaceBranchingProvider }),
         ...(resolverOptions.confidentialAttestationVerifier === undefined
@@ -347,14 +369,16 @@ export function createProductionComposition(
       nativeInteractive = broker
       return new ModeRoutingExecutionPort({ headless, interactive })
     }
-    return new AgentRuntimeExecutionPort(backendResolver, undefined, {
+    return new AgentRuntimeExecutionPort(createProductionBackendResolver(scopedOptions), undefined, {
       context,
       ...(workspaceBranchingProvider === undefined ? {} : { workspaceBranchingProvider }),
       ...(resolverOptions.confidentialAttestationVerifier === undefined
         ? {}
         : { confidentialAttestationVerifier: resolverOptions.confidentialAttestationVerifier }),
     })
-  })()
+  }
+  const execution = new ConnectionRoutingExecutionPort({ connections, defaultConnectionId: connection.id, create: createExecution, context, ...(workspaceBranchingProvider === undefined ? {} : { workspaceBranchingProvider }), ...(resolverOptions.confidentialAttestationVerifier === undefined ? {} : { confidentialAttestationVerifier: resolverOptions.confidentialAttestationVerifier }) })
+  if (connections.list().some((record) => record.kind === 'tangle-sandbox' && record.providerOptions.lifecycle === 'retained')) nativeInteractive = broker
 
   return Object.freeze({
     profile,

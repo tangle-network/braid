@@ -10,7 +10,7 @@ import type {
 } from '../../ports/execution.js'
 import type { PreparedTangleRetainedConnection } from './production-tangle-sandbox-backend.js'
 import { RetainedExecutionPort } from './retained-execution.js'
-import { createTangleRetainedPlan } from './tangle-retained-run.js'
+import { createProviderRetainedPlan } from './provider-retained-run.js'
 
 export interface TangleRetainedExecutionOptions {
   readonly context?: ContextTransferExecutionPort
@@ -35,11 +35,11 @@ export class TangleRetainedExecutionPort extends RetainedExecutionPort {
 
   constructor(options: TangleRetainedExecutionOptions) {
     super({
-      resolve: async (input) => createTangleRetainedPlan(await options.resolve(input), input.runId),
+      resolve: async (input) => createProviderRetainedPlan(await options.resolve(input), input.runId),
       continue: async (input, controlRef) =>
-        createTangleRetainedPlan(await options.resolve(input), input.runId, controlRef),
+        createProviderRetainedPlan(await options.resolve(input), input.runId, controlRef),
       recover: async ({ runId, providerSessionId, controlRef, signal, ...recovery }) =>
-        createTangleRetainedPlan(
+        createProviderRetainedPlan(
           await options.recover({
             runId,
             ...(providerSessionId === undefined ? {} : { providerSessionId }),

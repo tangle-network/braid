@@ -1,4 +1,5 @@
-import type { AgentProfile } from '@tangle-network/agent-interface'
+import { ContextTransferRequestSchema, ContextTransferReceiptSchema } from '@tangle-network/agent-interface'
+import type { AgentProfile, ContextTransferRequest as CanonicalContextTransferRequest, ContextTransferReceipt as CanonicalContextTransferReceipt } from '@tangle-network/agent-interface'
 import { canonicalAgentProfileDigestHex } from '../adapters/agent-interface/profile-runtime.js'
 import { snapshotAgentProfile } from '@tangle-network/agent-interface/profile-snapshot'
 import { canonicalDigest } from './canonical.js'
@@ -132,6 +133,8 @@ export function createAdmissionReceipt(input: {
   readonly environmentId?: string
   readonly providerSessionId?: string
   readonly materializationReceipt?: Readonly<Record<string, unknown>>
+  readonly portableContextTransferRequest?: CanonicalContextTransferRequest
+  readonly portableContextTransferReceipt?: CanonicalContextTransferReceipt
   readonly contextPlan?: PortableContextPlan
   readonly contextPlanDigest?: string
   readonly contextTransfer?: ContextTransferReceipt
@@ -166,6 +169,8 @@ export function createAdmissionReceipt(input: {
     ...(profile.model?.default === undefined ? {} : { model: profile.model.default }),
     ...(profile.harness === undefined ? {} : { runner: profile.harness }),
     ...(contextPlanDigest === undefined ? {} : { contextPlanDigest }),
+    ...(input.portableContextTransferRequest === undefined ? {} : { portableContextTransferRequest: ContextTransferRequestSchema.parse(structuredClone(input.portableContextTransferRequest)) }),
+    ...(input.portableContextTransferReceipt === undefined ? {} : { portableContextTransferReceipt: ContextTransferReceiptSchema.parse(structuredClone(input.portableContextTransferReceipt)) }),
   }
   const requestDigest = canonicalDigest({
     runId: input.runId,
@@ -181,6 +186,8 @@ export function createAdmissionReceipt(input: {
     workspaceRoot: input.workspaceRoot ?? null,
     interactions: input.interactions ?? {},
     contextPlanDigest: contextPlanDigest ?? null,
+    ...(input.portableContextTransferRequest === undefined ? {} : { portableContextTransferRequestDigest: input.portableContextTransferRequest.requestDigest }),
+    ...(input.portableContextTransferReceipt === undefined ? {} : { portableContextTransferReceiptDigest: canonicalDigest(input.portableContextTransferReceipt) }),
   })
   const capabilitiesDigest = canonicalDigest(capabilities)
   const materializationDigest =

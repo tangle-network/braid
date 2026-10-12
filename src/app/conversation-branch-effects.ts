@@ -1,7 +1,7 @@
 import {
   type ContextTransferRequest,
   type ContextTransferResult,
-  contextTransferRequestDigest,
+  createContextTransferRequest,
   contextTransferResultMatchesRequest,
   forkedEnvironmentConfidentialityVerified,
   type PlacementInfo,
@@ -279,7 +279,12 @@ async function executeCrossRunner(
       throw new AppError('CONTEXT_PLAN_CONFLICT', 'The provider changed the accepted context plan')
   }
 
+  if (plan.destinationProfile === undefined) throw new AppError('FORK_PLAN_CONFLICT', 'The accepted handoff requires its complete destination profile')
+  const destinationConnection = state.connections.find((record) => record.id === plan.destinationConnectionId)
   const transferMaterial = {
+    profile: plan.destinationProfile,
+    ...(plan.destinationWorkspaceRequest === undefined ? {} : { workspace: plan.destinationWorkspaceRequest }),
+    ...(destinationConnection?.providerOptions.resources === undefined ? {} : { resources: destinationConnection.providerOptions.resources }),
     operationId: `${input.operationId}:context`,
     plan: portablePlan,
     acceptance: {
@@ -288,10 +293,7 @@ async function executeCrossRunner(
       acceptedBy: input.acceptedDigest === undefined ? ('policy' as const) : ('user' as const),
     },
   }
-  const transferRequest: ContextTransferRequest = {
-    ...transferMaterial,
-    requestDigest: contextTransferRequestDigest(transferMaterial),
-  }
+  const transferRequest = createContextTransferRequest(transferMaterial)
   const transfer = await lookupOrTransfer(
     contextPort,
     transferRequest,
@@ -320,6 +322,7 @@ async function executeCrossRunner(
       branchId: branch.id,
       text: input.text,
       sessionId: receipt.sessionId,
+      ...(plan.destinationWorkspaceRequest === undefined ? {} : { workspaceRequest: plan.destinationWorkspaceRequest }),
       portableContextPlan: portablePlan,
       portableContextTransferRequest: transferRequest,
       portableContextTransferReceipt: receipt,

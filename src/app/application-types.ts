@@ -18,6 +18,7 @@ import type { WorkspaceRequest } from './workspace-request.js'
 export type AppSubscriber = (state: BraidState, envelope: BraidEventEnvelope) => void
 
 export interface SendInput {
+  readonly workspaceRequest?: Readonly<WorkspaceRequest>
   readonly operationId: string
   readonly text: string
   /** One-run execution mode override. It does not mutate the branch selection. */

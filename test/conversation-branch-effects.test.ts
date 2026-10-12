@@ -173,7 +173,7 @@ function contextResult(request: ContextTransferRequest): ContextTransferResult {
     source: plan.source.source,
     destination: plan.destination,
     provider: plan.destination.provider,
-    environmentId: plan.destination.environmentId,
+    environmentId: plan.destination.environmentId ?? 'provider-context-destination',
     sessionId: plan.destination.sessionId,
     runId: plan.destination.runId,
     executionId: plan.destination.executionId,
@@ -375,7 +375,7 @@ function executionFor(options: {
         capabilities: options.capabilities,
         provider: destination ? TARGET_PROVIDER : SOURCE_PROVIDER,
         environmentId: destination
-          ? input.contextTransfer?.plan.destination.environmentId
+          ? input.contextTransferReceipt?.environmentId ?? input.contextTransfer?.plan.destination.environmentId
           : 'provider-source-environment',
         providerSessionId: destination
           ? input.contextTransfer?.plan.destination.sessionId

@@ -1,3 +1,4 @@
+import type { AgentEnvironmentProvider } from '@tangle-network/agent-interface/environment-provider'
 import type { AgentProfile, HarnessType } from '@tangle-network/agent-interface'
 import { ConnectionError } from '../../app/connection-errors.js'
 import type { ConnectionCatalog, ConnectionSelectionInput } from '../../app/connections.js'
@@ -29,6 +30,7 @@ export type ProductionExecutionSelector = (
 export interface ProductionBackendResolverOptions extends ProductionConnectionOptions {
   readonly connections: ConnectionCatalog
   readonly select: ProductionExecutionSelector
+  readonly resolveConnectionProvider?: (record: ConnectionRecord, signal?: AbortSignal) => Promise<AgentEnvironmentProvider>
   readonly workspaceCwd?: string
 }
 

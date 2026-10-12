@@ -12,9 +12,9 @@ import {
 } from '../src/adapters/runtime/production-tangle-sandbox-backend.js'
 import type { ObservableSandboxClient } from '../src/adapters/runtime/sandbox-observation-types.js'
 import {
-  createTangleRetainedPlan,
-  startTangleRetainedRun,
-} from '../src/adapters/runtime/tangle-retained-run.js'
+  createProviderRetainedPlan,
+  startProviderRetainedRun,
+} from '../src/adapters/runtime/provider-retained-run.js'
 import {
   retainedSandboxIdentity,
   withRetainedSandboxPolicy,
@@ -294,8 +294,8 @@ test('published Sandbox methods recover the exact retained dispatch without an i
     connection.id,
   )
   assert.equal(await prepared.discoverControlRef(input.runId), null)
-  const handle = await startTangleRetainedRun(
-    createTangleRetainedPlan(prepared, input.runId),
+  const handle = await startProviderRetainedRun(
+    createProviderRetainedPlan(prepared, input.runId),
     input,
   )
   assert.deepEqual(await prepared.discoverControlRef(input.runId), handle.controlRef)
@@ -379,10 +379,10 @@ test('one retained plan uses exact tags, bounded idle expiry, replay, and result
     profile,
     runId: input.runId,
   })
-  const plan = createTangleRetainedPlan(prepared, input.runId)
+  const plan = createProviderRetainedPlan(prepared, input.runId)
   assert.equal(plan.capabilities.sessions.continue, true)
   assert.equal(plan.capabilities.controls.status, true)
-  const handle = await startTangleRetainedRun(plan, input)
+  const handle = await startProviderRetainedRun(plan, input)
 
   assert.equal(sandbox.createCalls.length, 1)
   assert.equal(sandbox.createCalls[0]?.idempotencyKey, prepared.environmentIdempotencyKey)
@@ -446,7 +446,7 @@ test('retained Tangle dispatch receives the exact requested interaction map', as
   })
   const interactions = { permission: true, question: false, plan: true } as const
 
-  await startTangleRetainedRun(createTangleRetainedPlan(prepared, input.runId), {
+  await startProviderRetainedRun(createProviderRetainedPlan(prepared, input.runId), {
     ...input,
     interactions,
   })
@@ -483,8 +483,8 @@ test('retained Tangle environments carry the connection resource request', async
   )
   assert.equal(sandbox.createCalls.length, 0)
 
-  await startTangleRetainedRun(
-    createTangleRetainedPlan(prepared, configured.input.runId),
+  await startProviderRetainedRun(
+    createProviderRetainedPlan(prepared, configured.input.runId),
     configured.input,
   )
 
@@ -511,10 +511,10 @@ test('retained intent recovery rejects a changed resource request before create'
   })
   const resources = { cpu: 2, memoryMb: 4_096 }
   const prepared = { ...base, resourceRequest: resources }
-  const originalPlan = createTangleRetainedPlan(prepared, configured.input.runId)
+  const originalPlan = createProviderRetainedPlan(prepared, configured.input.runId)
   const admissions: RetainedRunAdmissionRecord[] = []
   await assert.rejects(() =>
-    startTangleRetainedRun(originalPlan, {
+    startProviderRetainedRun(originalPlan, {
       ...configured.input,
       onRetainedAdmission: async (admission) => {
         admissions.push(admission)
@@ -539,7 +539,7 @@ test('retained intent recovery rejects a changed resource request before create'
     materializationReceipt: originalPlan.materializationReceipt,
     text: configured.input.text,
   })
-  const changedPlan = createTangleRetainedPlan(
+  const changedPlan = createProviderRetainedPlan(
     { ...prepared, resourceRequest: { cpu: 4, memoryMb: 4_096 } },
     configured.input.runId,
     undefined,
@@ -556,7 +556,7 @@ test('retained intent recovery rejects a changed resource request before create'
   )
   assert.equal(sandbox.createCalls.length, 0)
 
-  const matchingPlan = createTangleRetainedPlan(prepared, configured.input.runId, undefined, {
+  const matchingPlan = createProviderRetainedPlan(prepared, configured.input.runId, undefined, {
     retainedAdmission: intent,
     receipt,
   })
@@ -579,9 +579,9 @@ test('ambiguous dispatch failure never deletes the retained environment', async 
     profile,
     runId: input.runId,
   })
-  const plan = createTangleRetainedPlan(prepared, input.runId)
+  const plan = createProviderRetainedPlan(prepared, input.runId)
 
-  await assert.rejects(startTangleRetainedRun(plan, input), /dispatch failure/u)
+  await assert.rejects(startProviderRetainedRun(plan, input), /dispatch failure/u)
   assert.equal(sandbox.createCalls.length, 1)
   assert.equal(sandbox.boxes.length, 1)
   assert.equal(sandbox.createCalls[0]?.idleTimeoutSeconds, 1_800)
@@ -598,7 +598,7 @@ test('a failed retry never deletes a pre-existing retained workspace', async () 
     runId: input.runId,
     providerSessionId,
   })
-  const first = await startTangleRetainedRun(createTangleRetainedPlan(prepared, input.runId), input)
+  const first = await startProviderRetainedRun(createProviderRetainedPlan(prepared, input.runId), input)
   sandbox.complete(first.controlRef.executionId, 'EXISTING_WORKSPACE')
   sandbox.failDispatch = true
   const retryInput = {
@@ -608,7 +608,7 @@ test('a failed retry never deletes a pre-existing retained workspace', async () 
   }
 
   await assert.rejects(
-    startTangleRetainedRun(createTangleRetainedPlan(prepared, retryInput.runId), retryInput),
+    startProviderRetainedRun(createProviderRetainedPlan(prepared, retryInput.runId), retryInput),
     /dispatch failure/u,
   )
   assert.equal(sandbox.boxes.length, 1)
@@ -622,8 +622,8 @@ test('exact cancellation is retry-safe through the Runtime handle', async () => 
     profile,
     runId: input.runId,
   })
-  const plan = createTangleRetainedPlan(prepared, input.runId)
-  const handle = await startTangleRetainedRun(plan, input)
+  const plan = createProviderRetainedPlan(prepared, input.runId)
+  const handle = await startProviderRetainedRun(plan, input)
   const first = await handle.cancel({ operationId: 'operation-cancel', reason: 'test' })
   const replay = await handle.cancel({ operationId: 'operation-cancel', reason: 'test' })
 

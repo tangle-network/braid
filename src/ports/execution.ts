@@ -6,6 +6,7 @@ import type {
   AgentWorkspaceBranchingProvider,
   ConfidentialAttestationVerifier,
   ContextTransferRequest,
+  ContextTransferReceipt,
   ContextTransferResult,
   InteractionResponseCommand,
   NativeContextBoundaryProof,
@@ -49,6 +50,7 @@ export interface ExecuteTurnInput {
   /** Exact provider proof required for one retry-safe same-session turn. */
   readonly nativeContextBoundaryProof?: NativeContextBoundaryProof
   /** Canonical context transfer request for a fresh destination session. */
+  readonly contextTransferReceipt?: ContextTransferReceipt
   readonly contextTransfer?: ContextTransferRequest
   readonly onRetainedAdmission?: RetainedRunAdmissionRecorder
 }

@@ -19,6 +19,7 @@ export function snapshotWorkspaceRequest(
     throw new Error('Workspace checkpoint restore is not supported by Braid yet')
   }
   if (
+    parsed.snapshot === undefined &&
     parsed.environment === undefined &&
     parsed.image === undefined &&
     parsed.repoUrl === undefined &&
@@ -33,6 +34,7 @@ export function snapshotWorkspaceRequest(
     })
   }
   const snapshot: WorkspaceRequest = {
+    ...(parsed.snapshot === undefined ? {} : { snapshot: parsed.snapshot }),
     ...(parsed.environment === undefined ? {} : { environment: parsed.environment }),
     ...(parsed.image === undefined ? {} : { image: parsed.image }),
     ...(parsed.repoUrl === undefined ? {} : { repoUrl: parsed.repoUrl }),

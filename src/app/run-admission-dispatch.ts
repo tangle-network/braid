@@ -61,6 +61,7 @@ export function sendRun(context: AdmissionPort, input: RunExecutionSnapshot): Se
       ...(input.portableContextTransferRequest === undefined
         ? {}
         : { contextTransfer: input.portableContextTransferRequest }),
+      ...(input.portableContextTransferReceipt === undefined ? {} : { contextTransferReceipt: input.portableContextTransferReceipt }),
     },
     conversationId,
     branchId,
@@ -159,6 +160,7 @@ export async function sendRunAsync(
       ...(input.portableContextTransferRequest === undefined
         ? {}
         : { contextTransfer: input.portableContextTransferRequest }),
+      ...(input.portableContextTransferReceipt === undefined ? {} : { contextTransferReceipt: input.portableContextTransferReceipt }),
     },
     conversationId,
     branchId,

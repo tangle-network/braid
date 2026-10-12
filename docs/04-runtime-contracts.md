@@ -795,3 +795,9 @@ The release manifest records package names, versions, integrity hashes, source c
 | UP-14 | Checkpoint and environment-fork retries are idempotent by key and request digest, survive process death before local commit through lookup, reject key conflicts, and expose confirmed cleanup against a real Tangle sandbox. |
 
 No Braid work item that depends on an upstream check is complete until that check passes against the published artifact or the exact release candidate tarball that will be published.
+
+Connection routing retains an immutable execution port for each admitted run.
+The route uses the saved connection ID, never the provider name alone.
+Run recovery carries the admitted connection and its public configuration digest, plus the canonical selected-context request and receipt when present.
+A transferred first run uses Runtime's retained start with `contextTransferReceipt` and the exact request on `turn.contextTransfer`.
+Runtime attaches the provider-owned receipt environment through its authoritative lookup; Braid does not implement `create` as `get` or allocate a replacement environment.

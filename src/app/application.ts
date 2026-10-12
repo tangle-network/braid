@@ -342,6 +342,7 @@ export class BraidApplication {
       coordinate: (input, action) =>
         this.#conversationOperations.run(input.operationId, input.digest, action),
       profile: () => this.runtimeSelection.profile(),
+      workspaceRequest: () => this.#workspaceRequest,
       execution: this.#execution,
       send: (input) => this.send(input),
       ...(options.conversationStorage === undefined

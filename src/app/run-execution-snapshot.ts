@@ -22,7 +22,7 @@ export function snapshotRunExecution(
     branchId: input.branchId ?? original?.branchId ?? state.branchId,
   }
   const workspaceSnapshot = snapshotWorkspaceRequest(
-    original?.requested.workspaceRequest ?? workspaceRequest,
+    original?.requested.workspaceRequest ?? input.workspaceRequest ?? workspaceRequest,
   )
   const workspaceRoot = original === undefined ? state.workspace : original.requested.workspaceRoot
   const selectedConnection = original === undefined ? connectionId : original.requested.connectionId

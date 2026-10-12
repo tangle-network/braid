@@ -48,6 +48,7 @@ export async function executeRun(
       ...(input.portableContextTransferRequest === undefined
         ? {}
         : { contextTransfer: input.portableContextTransferRequest }),
+      ...(input.portableContextTransferReceipt === undefined ? {} : { contextTransferReceipt: input.portableContextTransferReceipt }),
       onRetainedAdmission: async (retainedAdmission) => {
         const committed = context.commitAndWait({
           kind: 'run.retained.admitted',
