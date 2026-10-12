@@ -23,6 +23,10 @@ const sizes = [
 ]
 const captureSecret = `connection-capture-${randomUUID()}`
 const captureProfileName = 'Connection workflow proof'
+const registeredConnectionName = 'Daytona capture'
+const registeredEndpoint = 'https://daytona.invalid'
+const registeredAccount = 'capture-team'
+const registeredRegion = 'us'
 const XtermTerminal = xterm.Terminal
 
 function sleep(milliseconds) {
@@ -255,7 +259,7 @@ function waitForScreen(terminal, predicate, label) {
   )
 }
 
-async function reachCredentialPrompt(terminal) {
+async function reachConnectionReview(terminal, kind = 'tangle-inference') {
   await waitForScreen(terminal, conversationShellReady, 'Braid conversation shell')
   terminal.input('/connection create\r')
   await waitForScreen(
@@ -263,19 +267,49 @@ async function reachCredentialPrompt(terminal) {
     (screen) => screen.includes('connection metadata'),
     'connection kind editor',
   )
-  terminal.input('\u001b[B')
+  terminal.input(kind === 'agent-provider' ? '\u001b[A' : '\u001b[B')
   terminal.input('\r')
   await waitForScreen(
     terminal,
-    (screen) => screen.includes('Tangle inference metadata'),
+    (screen) =>
+      screen.includes(
+        kind === 'agent-provider' ? 'Registered provider metadata' : 'Tangle inference metadata',
+      ),
     'connection fields',
   )
-  for (let index = 0; index < 4; index += 1) terminal.input('\r')
+  if (kind === 'agent-provider') {
+    terminal.input('daytona')
+    terminal.input('\r')
+    terminal.input('\u0001\u000b')
+    terminal.input(registeredConnectionName)
+    terminal.input('\r')
+    terminal.input(registeredEndpoint)
+    terminal.input('\r')
+    terminal.input(registeredAccount)
+    terminal.input('\r')
+    terminal.input(registeredRegion)
+    terminal.input('\r')
+  } else {
+    for (let index = 0; index < 4; index += 1) terminal.input('\r')
+  }
   await waitForScreen(terminal, (screen) => screen.includes('review connection'), 'review')
+  if (kind === 'agent-provider') {
+    await waitForScreen(
+      terminal,
+      (screen) => screen.includes('daytona') && screen.includes(registeredConnectionName),
+      'reviewed registered provider identity',
+    )
+  }
+  await terminal.stable('reviewed metadata frame')
+}
+
+async function reachCredentialPrompt(terminal, kind = 'tangle-inference') {
+  await reachConnectionReview(terminal, kind)
   terminal.input('\r')
+  const name = kind === 'agent-provider' ? registeredConnectionName : 'Tangle Inference'
   await waitForScreen(
     terminal,
-    (screen) => screen.includes('credential · Tangle Inference'),
+    (screen) => screen.includes(`credential · ${name}`),
     'credential prompt',
   )
   terminal.sensitiveInput(captureSecret)
@@ -283,11 +317,12 @@ async function reachCredentialPrompt(terminal) {
   await terminal.stable('masked credential frame')
 }
 
-async function captureFrame(binary, columns, rows) {
+async function captureFrame(binary, columns, rows, kind = 'tangle-inference') {
   const root = await mkdtemp(join(tmpdir(), `braid-connection-${columns}x${rows}-`))
   const terminal = await spawnTerminal(binary, columns, rows, root)
   try {
-    await reachCredentialPrompt(terminal)
+    if (kind === 'agent-provider') await reachConnectionReview(terminal, kind)
+    else await reachCredentialPrompt(terminal, kind)
     const screen = `${terminal
       .screen()
       .replace(/[ \t]+$/gmu, '')
@@ -303,7 +338,7 @@ async function captureFrame(binary, columns, rows) {
     return {
       terminal,
       screen,
-      cast: castFor(terminal, events, `Braid connections ${columns}x${rows}`),
+      cast: castFor(terminal, events, `Braid ${kind} connections ${columns}x${rows}`),
     }
   } finally {
     await terminal.dispose()
@@ -311,11 +346,11 @@ async function captureFrame(binary, columns, rows) {
   }
 }
 
-async function captureKeyboardFlow(binary) {
+async function captureKeyboardFlow(binary, kind = 'tangle-inference') {
   const root = await mkdtemp(join(tmpdir(), 'braid-connection-keyboard-'))
   const terminal = await spawnTerminal(binary, 80, 24, root)
   try {
-    await reachCredentialPrompt(terminal)
+    await reachCredentialPrompt(terminal, kind)
     await sleep(350)
     terminal.input('\r')
     await waitForScreen(
@@ -323,10 +358,27 @@ async function captureKeyboardFlow(binary) {
       (screen) => screen.includes('connections') && screen.includes('^D remove'),
       'created connection picker',
     )
-    terminal.input('Tangle')
+    const createdConfig = JSON.parse(
+      await readFile(join(root, 'workspace', '.braid', 'config.json'), 'utf8'),
+    )
+    if (kind === 'agent-provider') {
+      const created = createdConfig.connections.find((connection) => connection.kind === kind)
+      if (
+        created?.name !== registeredConnectionName ||
+        created.endpoint !== registeredEndpoint ||
+        created.providerOptions?.provider !== 'daytona' ||
+        created.providerOptions?.account !== registeredAccount ||
+        created.providerOptions?.region !== registeredRegion
+      )
+        throw new Error('Registered connection metadata did not persist through keyboard creation')
+    }
+    if (JSON.stringify(createdConfig).includes(captureSecret))
+      throw new Error('Credential value entered persisted connection metadata')
+    terminal.input(kind === 'agent-provider' ? 'Daytona' : 'Tangle')
     await waitForScreen(
       terminal,
-      (screen) => screen.includes('Tangle Inference'),
+      (screen) =>
+        screen.includes(kind === 'agent-provider' ? registeredConnectionName : 'Tangle Inference'),
       'created connection filter',
     )
     terminal.input('\u0004')
@@ -360,7 +412,7 @@ async function captureKeyboardFlow(binary) {
     }
     const events = [...terminal.events]
     await terminal.close()
-    return castFor(terminal, events, 'Braid create and remove connection keyboard flow')
+    return castFor(terminal, events, `Braid ${kind} create and remove connection keyboard flow`)
   } finally {
     await terminal.dispose()
     await rm(root, { force: true, recursive: true })
@@ -373,25 +425,28 @@ try {
   await rm(outputRoot, { force: true, recursive: true })
   await mkdir(rawRoot, { recursive: true })
   const artifacts = []
-  for (const [columns, rows] of sizes) {
-    const frame = await captureFrame(packed.binary, columns, rows)
-    const name = `${columns}x${rows}`
-    const textPath = join(outputRoot, `${name}.txt`)
-    const castPath = join(rawRoot, `${name}.cast`)
-    const pngPath = join(outputRoot, `${name}.png`)
-    const temporaryGif = join(rawRoot, `${name}.gif`)
-    await writeFile(textPath, frame.screen)
-    await writeFile(castPath, frame.cast)
-    await writeRaster(castPath, pngPath, temporaryGif)
-    artifacts.push(await artifactFor(textPath, 'terminal-frame', columns, rows))
-    artifacts.push(await artifactFor(pngPath, 'png', columns, rows))
+  for (const kind of ['tangle-inference', 'agent-provider']) {
+    const prefix = kind === 'agent-provider' ? 'registered-' : ''
+    for (const [columns, rows] of sizes) {
+      const frame = await captureFrame(packed.binary, columns, rows, kind)
+      const name = `${prefix}${columns}x${rows}`
+      const textPath = join(outputRoot, `${name}.txt`)
+      const castPath = join(rawRoot, `${name}.cast`)
+      const pngPath = join(outputRoot, `${name}.png`)
+      const temporaryGif = join(rawRoot, `${name}.gif`)
+      await writeFile(textPath, frame.screen)
+      await writeFile(castPath, frame.cast)
+      await writeRaster(castPath, pngPath, temporaryGif)
+      artifacts.push(await artifactFor(textPath, 'terminal-frame', columns, rows))
+      artifacts.push(await artifactFor(pngPath, 'png', columns, rows))
+    }
+    const keyboardCast = join(rawRoot, `${prefix}connection-keyboard.cast`)
+    const keyboardGif = join(outputRoot, `80x24-${prefix}connection-keyboard.gif`)
+    await writeFile(keyboardCast, await captureKeyboardFlow(packed.binary, kind))
+    await writeCastGif(keyboardCast, keyboardGif)
+    artifacts.push(await artifactFor(keyboardCast, 'keyboard-asciicast', 80, 24))
+    artifacts.push(await artifactFor(keyboardGif, 'keyboard-flow', 80, 24))
   }
-  const keyboardCast = join(rawRoot, 'connection-keyboard.cast')
-  const keyboardGif = join(outputRoot, '80x24-connection-keyboard.gif')
-  await writeFile(keyboardCast, await captureKeyboardFlow(packed.binary))
-  await writeCastGif(keyboardCast, keyboardGif)
-  artifacts.push(await artifactFor(keyboardCast, 'keyboard-asciicast', 80, 24))
-  artifacts.push(await artifactFor(keyboardGif, 'keyboard-flow', 80, 24))
   const manifestPath = join(outputRoot, 'capture-manifest.json')
   await writeFile(
     manifestPath,
@@ -406,12 +461,14 @@ try {
         tarballSha256: packed.tarballSha256,
         terminal: 'node-pty/xterm-256color',
         provenance: await captureProvenance(),
+        scope:
+          'Connection metadata and credential UI only; no provider execution or cloud allocation',
         flow: [
           'open create',
-          'choose Tangle inference',
+          'choose Tangle inference or a registered Daytona provider',
           'review metadata',
           'enter masked credential',
-          'create',
+          'create and verify persisted provider, endpoint, account and region metadata',
           'remove with confirmation',
         ],
         artifacts,
