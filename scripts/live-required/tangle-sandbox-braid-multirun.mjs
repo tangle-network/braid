@@ -16,6 +16,7 @@ import {
   waitForTreeGone,
 } from '../live-bridge/process-tree.mjs'
 import { pause } from '../live-demo/terminal.mjs'
+import { readFreshStateFrame, stateFrameVersion } from '../interface-state-frame.mjs'
 import { countProtectedWork, observeOwnedSandbox, protectedSpan } from '../proof-tools.mjs'
 import { liveEvidenceBindingFromEnvironment } from '../release/live-evidence-binding.mjs'
 import { connectionConfiguration } from './configuration.mjs'
@@ -213,19 +214,15 @@ function createTerminal(
       throw new Error(
         `Braid exited before semantic frame capture (${exitResult?.exitCode ?? 'unknown'})`,
       )
-    let previousMtime
-    try {
-      previousMtime = (await stat(`${recordPath}.frame`)).mtimeNs
-    } catch {}
+    const previousVersion = await stateFrameVersion(`${recordPath}.frame`)
     countProtectedWork('frameRequests')
     process.kill(child.pid, 'SIGUSR2')
     const deadline = performance.now() + timeoutMs
     for (;;) {
       try {
         const framePath = `${recordPath}.frame`
-        const metadata = await stat(framePath)
-        if (previousMtime === undefined || metadata.mtimeNs !== previousMtime) {
-          const frame = JSON.parse(await readFile(framePath, 'utf8'))
+        const frame = await readFreshStateFrame(framePath, previousVersion)
+        if (frame !== undefined) {
           lastFrame = frame
           lastFrameError = undefined
           return frame

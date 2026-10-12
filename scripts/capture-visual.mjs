@@ -16,6 +16,7 @@ import {
   writeRaster,
 } from './capture-visual-support.mjs'
 import { installPackedBraid } from './packed-binary.mjs'
+import { readFreshStateFrame, stateFrameVersion } from './interface-state-frame.mjs'
 
 const run = promisify(execFile)
 const repository = new URL('../', import.meta.url).pathname
@@ -195,13 +196,18 @@ async function spawnTerminal(
     const event = await waitForExit('after SIGINT')
     if (event.exitCode !== 130) throw new Error(`${name} SIGINT exited ${event.exitCode}`)
   }
-  const readRecord = async (suffix = '') => {
+  const readRecord = async (suffix = '', previousVersion) => {
     const path = `${recordPath}${suffix}`
     const deadline = Date.now() + 5_000
     while (true) {
       try {
-        const data = await readFile(path, 'utf8')
-        if (data.length > 0) return JSON.parse(data)
+        if (suffix === '.frame') {
+          const frame = await readFreshStateFrame(path, previousVersion)
+          if (frame !== undefined) return frame
+        } else {
+          const data = await readFile(path, 'utf8')
+          if (data.length > 0) return JSON.parse(data)
+        }
       } catch {
         // The packed process may still be flushing its final state file.
       }
@@ -221,9 +227,9 @@ async function spawnTerminal(
   const captureState = async () => {
     await waitForStable()
     const point = snapshot()
-    await rm(`${recordPath}.frame`, { force: true })
+    const previousVersion = await stateFrameVersion(`${recordPath}.frame`)
     process.kill(session.pid, 'SIGUSR2')
-    return { point, record: await readRecord('.frame') }
+    return { point, record: await readRecord('.frame', previousVersion) }
   }
   const dispose = async () => {
     if (!exited) {

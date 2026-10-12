@@ -13,6 +13,7 @@ import {
   writeRaster,
 } from './capture-visual-support.mjs'
 import { installPackedBraid } from './packed-binary.mjs'
+import { readFreshStateFrame, stateFrameVersion } from './interface-state-frame.mjs'
 import { gitValue, sourceDigest } from './package-proof-runtime.mjs'
 
 const repository = new URL('../', import.meta.url).pathname
@@ -147,13 +148,18 @@ async function openTerminal(binary, columns, rows, root) {
         () => screen,
       ),
     snapshot: async () => {
-      process.kill(session.pid, 'SIGUSR2')
       const path = `${recordPath}.frame`
+      const previousVersion = await stateFrameVersion(path)
+      process.kill(session.pid, 'SIGUSR2')
+      let frame
       await waitFor(
-        async () => (await readFile(path, 'utf8').catch(() => '')).includes('atomic-signal-frame'),
+        async () => {
+          frame = await readFreshStateFrame(path, previousVersion)
+          return frame?.capturePhase === 'atomic-signal-frame'
+        },
         'semantic snapshot',
       )
-      return JSON.parse(await readFile(path, 'utf8'))
+      return frame
     },
     close: async () => {
       await input('\u001b')
