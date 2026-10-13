@@ -5,6 +5,7 @@ import {
 } from './bounded-structured.js'
 import type { AnalysisRecord } from './entities.js'
 import { isEventId, isMessageId, isMessagePartId } from './ids.js'
+import { persistedContextTransferEventRequest } from './portable-context-persistence.js'
 import { safeProviderDiagnostic } from './provider-values.js'
 
 export const MAX_PROFILE_BYTES = 16 * 1024 * 1024
@@ -96,7 +97,20 @@ export function redactProviderError(error: unknown): string {
   return safeProviderDiagnostic(message, 'PROVIDER_ERROR')
 }
 
+function recordValue(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined
+}
+
+function valueAtPath(value: unknown, path: readonly string[]): unknown {
+  return path.reduce<unknown>((current, key) => recordValue(current)?.[key], value)
+}
+
 export function redactBraidEvent<T>(event: T): T {
+  const canonicalTransfer = persistedContextTransferEventRequest(event)
+  const transferPath = canonicalTransfer?.path
+  const transfer = canonicalTransfer?.request
   const importEvent =
     event !== null &&
     typeof event === 'object' &&
@@ -119,6 +133,15 @@ export function redactBraidEvent<T>(event: T): T {
     if (Buffer.byteLength(JSON.stringify(redacted), 'utf8') > MAX_ANALYSIS_EVENT_BYTES) {
       throw new RangeError('Analysis event exceeds the bounded event payload')
     }
+  }
+  if (transferPath !== undefined && transfer !== undefined) {
+    const parent = recordValue(valueAtPath(redacted, transferPath.slice(0, -1)))
+    const key = transferPath.at(-1)
+    if (parent === undefined || key === undefined)
+      throw new RangeError('The canonical handoff event wrapper exceeds the durable payload limit')
+    parent[key] = transfer
+    if (Buffer.byteLength(JSON.stringify(redacted), 'utf8') > MAX_CONVERSATION_IMPORT_EVENT_BYTES)
+      throw new RangeError('The canonical handoff event exceeds the durable payload limit')
   }
   return redacted
 }

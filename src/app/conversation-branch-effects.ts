@@ -1,3 +1,4 @@
+import { persistedContextTransferRequest } from '../domain/portable-context-persistence.js'
 import { connectionExecutionDigest } from './connections.js'
 import {
   type ContextTransferRequest,
@@ -309,7 +310,9 @@ async function executeCrossRunner(
       acceptedBy: input.acceptedDigest === undefined ? ('policy' as const) : ('user' as const),
     },
   }
-  const transferRequest = createContextTransferRequest(transferMaterial)
+  const transferRequest = persistedContextTransferRequest(
+    createContextTransferRequest(transferMaterial),
+  )
   const transfer = await lookupOrTransfer(
     contextPort,
     transferRequest,
