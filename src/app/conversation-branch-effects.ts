@@ -1,10 +1,8 @@
-import { persistedContextTransferRequest } from '../domain/portable-context-persistence.js'
-import { connectionExecutionDigest } from './connections.js'
 import {
   type ContextTransferRequest,
   type ContextTransferResult,
-  createContextTransferRequest,
   contextTransferResultMatchesRequest,
+  createContextTransferRequest,
   forkedEnvironmentConfidentialityVerified,
   type PlacementInfo,
   type PortableContextPlanRequest,
@@ -46,8 +44,11 @@ import {
   parseRunId,
 } from '../domain/ids.js'
 import { assertJsonValue, objectValue } from '../domain/invariants-base.js'
+import { persistedContextTransferRequest } from '../domain/portable-context-persistence.js'
 import { type BraidState, isActiveRunStatus } from '../domain/state.js'
 import type { ExecutionPort } from '../ports/execution.js'
+import { parseConfidentialWorkspaceForkRequest } from './confidential-workspace-fork.js'
+import { connectionExecutionDigest } from './connections.js'
 import type {
   ConversationHost,
   ForkPlan,
@@ -55,7 +56,6 @@ import type {
   WorkspaceForkCleanupInput,
   WorkspaceForkCleanupResult,
 } from './conversation-types.js'
-import { parseConfidentialWorkspaceForkRequest } from './confidential-workspace-fork.js'
 import { AppError } from './errors.js'
 import { retainedExecutionRecoveryContext } from './run-recovery-context.js'
 
@@ -326,6 +326,21 @@ async function executeCrossRunner(
     )
   const receipt = assertAcceptedTransfer(transfer)
   assertDestinationConnection(host.state(), plan)
+  const handoffResult = operationResult({
+    kind: 'handoff',
+    branchId: String(plan.destinationBranchId),
+    planDigest: plan.digest,
+    request: transferRequest,
+    receipt,
+    ...(plan.destinationConnectionId === undefined
+      ? {}
+      : { connectionId: plan.destinationConnectionId }),
+    ...(plan.destinationConnectionDigest === undefined
+      ? {}
+      : { connectionDigest: plan.destinationConnectionDigest }),
+  })
+  // Persist the accepted binding before the branch can receive its first turn.
+  await updateOperation(host, operationId, digest, { status: 'pending', result: handoffResult })
   const destinationEnvironment = await recordDestinationEnvironment(host, plan, receipt)
   const branch = await createBranch({
     ...input,
@@ -358,12 +373,7 @@ async function executeCrossRunner(
     })
     await sent.admissionReady
   }
-  await acknowledgeOperation(host, operationId, digest, branch, {
-    kind: 'handoff',
-    branchId: String(branch.id),
-    planDigest: plan.digest,
-    receipt,
-  })
+  await acknowledgeOperation(host, operationId, digest, branch, handoffResult)
   return branch
 }
 

@@ -5,9 +5,7 @@ import { assertPublicUrl } from './invariants-base.js'
 export type { WorkspaceRequest }
 
 /** Validate and snapshot the shared workspace request. */
-export function snapshotWorkspaceRequest(
-  request: WorkspaceRequest | undefined,
-): Readonly<WorkspaceRequest> | undefined {
+export function snapshotWorkspaceRequest(request: unknown): Readonly<WorkspaceRequest> | undefined {
   if (request === undefined) return undefined
   const parsed = WorkspaceRequestSchema.parse(structuredClone(request))
   if (parsed.providerOptions !== undefined && Object.keys(parsed.providerOptions).length > 0) {
