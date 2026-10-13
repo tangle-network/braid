@@ -48,6 +48,9 @@ export function admitRun(
     admittedAt: context.clock.now(),
     profile: input.profile,
     ...(input.connectionId === undefined ? {} : { connectionId: input.connectionId }),
+    ...(input.expectedConnectionDigest === undefined
+      ? {}
+      : { expectedConnectionDigest: input.expectedConnectionDigest }),
     ...(input.mode === undefined ? {} : { mode: input.mode }),
     ...(input.workspaceRequest === undefined ? {} : { workspaceRequest: input.workspaceRequest }),
     ...(input.workspaceRoot === undefined ? {} : { workspaceRoot: input.workspaceRoot }),
@@ -108,6 +111,9 @@ export async function admitRunAsync(
     admittedAt: context.clock.now(),
     profile: input.profile,
     ...(input.connectionId === undefined ? {} : { connectionId: input.connectionId }),
+    ...(input.expectedConnectionDigest === undefined
+      ? {}
+      : { expectedConnectionDigest: input.expectedConnectionDigest }),
     ...(input.mode === undefined ? {} : { mode: input.mode }),
     ...(input.workspaceRequest === undefined ? {} : { workspaceRequest: input.workspaceRequest }),
     ...(input.workspaceRoot === undefined ? {} : { workspaceRoot: input.workspaceRoot }),
@@ -158,6 +164,9 @@ export function pendingAdmissionReceipt(
     admittedAt: new Date(0).toISOString(),
     profile: input.profile,
     ...(input.connectionId === undefined ? {} : { connectionId: input.connectionId }),
+    ...(input.expectedConnectionDigest === undefined
+      ? {}
+      : { expectedConnectionDigest: input.expectedConnectionDigest }),
     ...(input.mode === undefined ? {} : { mode: input.mode }),
     ...(input.workspaceRequest === undefined ? {} : { workspaceRequest: input.workspaceRequest }),
     ...(input.workspaceRoot === undefined ? {} : { workspaceRoot: input.workspaceRoot }),

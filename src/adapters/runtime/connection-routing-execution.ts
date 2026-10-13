@@ -195,40 +195,52 @@ export class ConnectionRoutingExecutionPort implements ExecutionPort {
     if (known !== undefined) {
       if (input.connectionId !== undefined && input.connectionId !== known.record.id)
         throw new Error('The run is already bound to another connection')
+      this.#assertExpectedConnection(input.expectedConnectionDigest, known.record)
       return known
     }
-    const route = this.#forConnection(input.connectionId ?? this.#defaultConnectionId)
+    const route = this.#forConnection(
+      input.connectionId ?? this.#defaultConnectionId,
+      input.expectedConnectionDigest,
+    )
     this.#runs.set(input.runId, route)
     return route
+  }
+
+  #assertExpectedConnection(expectedDigest: string | undefined, record: ConnectionRecord): void {
+    if (expectedDigest !== undefined && expectedDigest !== connectionExecutionDigest(record))
+      throw new Error('The destination connection changed after the accepted context plan')
   }
 
   #forRecovery(input: { readonly runId: string } & RetainedExecutionRecoveryContext): Route {
     if (input.receipt !== undefined && input.receipt.runId !== input.runId)
       throw new Error('The recovery receipt belongs to another run')
     const connectionId = input.receipt?.requested.connectionId
+    const acceptedDigest = input.receipt?.requested.expectedConnectionDigest
+    const admittedDigest = input.receipt?.materializationReceipt?.connectionDigest
+    if (
+      admittedDigest !== undefined &&
+      (typeof admittedDigest !== 'string' ||
+        (acceptedDigest !== undefined && acceptedDigest !== admittedDigest))
+    )
+      throw new Error('The recovery receipt has conflicting connection revisions')
+    const expectedDigest = acceptedDigest ?? admittedDigest
     const known = this.#runs.get(input.runId)
     if (known !== undefined) {
       if (connectionId !== undefined && connectionId !== known.record.id)
         throw new Error('The recovery receipt belongs to another connection')
-      const digest = input.receipt?.materializationReceipt?.connectionDigest
-      if (digest !== undefined && digest !== known.digest)
-        throw new Error('The recovery receipt belongs to another connection revision')
+      this.#assertExpectedConnection(expectedDigest, known.record)
       return known
     }
     if (connectionId === undefined)
       throw new Error('Recovery requires the admitted connection identity')
-    const route = this.#forConnection(connectionId)
-    const digest = input.receipt?.materializationReceipt?.connectionDigest
-    if (digest !== undefined && digest !== route.digest)
-      throw new Error(
-        'The admitted connection changed; restore its saved configuration before recovery',
-      )
+    const route = this.#forConnection(connectionId, expectedDigest)
     this.#runs.set(input.runId, route)
     return route
   }
 
-  #forConnection(connectionId: string): Route {
+  #forConnection(connectionId: string, expectedDigest?: string): Route {
     const record = this.#connections.select({ connectionId }).record
+    this.#assertExpectedConnection(expectedDigest, record)
     const digest = connectionExecutionDigest(record)
     let route = this.#routes.get(digest)
     if (route === undefined) {

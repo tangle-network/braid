@@ -15,6 +15,9 @@ export function runEffectRequest(input: RunExecutionSnapshot): Readonly<Record<s
     text: input.text,
     profile: input.profile,
     connectionId: input.connectionId ?? null,
+    ...(input.expectedConnectionDigest === undefined
+      ? {}
+      : { expectedConnectionDigest: input.expectedConnectionDigest }),
     ...(input.mode === undefined ? {} : { mode: input.mode }),
     ...(workspaceRequest === undefined ? {} : { workspaceRequest }),
     ...(input.workspaceRoot === undefined ? {} : { workspaceRoot: input.workspaceRoot }),
@@ -51,6 +54,9 @@ export function exactAdmissionRequestDigest(
       text: input.text,
       profile: snapshotAgentProfile(input.profile),
       connectionId: input.connectionId ?? null,
+      ...(input.expectedConnectionDigest === undefined
+        ? {}
+        : { expectedConnectionDigest: input.expectedConnectionDigest }),
       ...(input.mode === undefined ? {} : { mode: input.mode }),
       ...(workspaceRequest === undefined ? {} : { workspaceRequest }),
       ...(input.workspaceRoot === undefined ? {} : { workspaceRoot: input.workspaceRoot }),

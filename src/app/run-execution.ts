@@ -30,6 +30,9 @@ export async function executeRun(
       ...(input.mode === undefined ? {} : { mode: input.mode }),
       interactions: admission.requested.interactions ?? {},
       ...(input.connectionId === undefined ? {} : { connectionId: input.connectionId }),
+      ...(input.expectedConnectionDigest === undefined
+        ? {}
+        : { expectedConnectionDigest: input.expectedConnectionDigest }),
       ...(admission.requested.workspaceRequest === undefined
         ? {}
         : { workspaceRequest: admission.requested.workspaceRequest }),

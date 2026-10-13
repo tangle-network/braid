@@ -39,6 +39,7 @@ export interface ExecuteTurnInput {
   /** Exact per-turn interaction posture derived from admitted capabilities. */
   readonly interactions?: RequestedInteractions
   readonly connectionId?: string
+  readonly expectedConnectionDigest?: string
   /** Provider-neutral remote workspace request. Separate from local workspaceRoot. */
   readonly workspaceRequest?: Readonly<WorkspaceRequest>
   readonly workspaceRoot?: string

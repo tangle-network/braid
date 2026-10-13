@@ -1,3 +1,4 @@
+import { connectionExecutionDigest } from './connections.js'
 import { agentWorkspaceSnapshotRefDigest } from '@tangle-network/agent-interface'
 import { snapshotWorkspaceRequest } from './workspace-request.js'
 import { canonicalAgentProfileDigestHex } from '../adapters/agent-interface/profile-runtime.js'
@@ -474,7 +475,7 @@ export class ConversationBranches {
         ? {}
         : {
             destinationConnectionId: destinationConnection.id,
-            destinationConnectionDigest: canonicalDigest(destinationConnection),
+            destinationConnectionDigest: connectionExecutionDigest(destinationConnection),
           }),
       ...(confidential === undefined ? {} : { confidential }),
       environment:

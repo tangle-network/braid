@@ -22,6 +22,9 @@ export function retainedExecutionKey(
     text: input.text,
     profile: canonicalAgentProfileDigestHex(input.profile),
     connectionId: input.connectionId ?? null,
+    ...(input.expectedConnectionDigest === undefined
+      ? {}
+      : { expectedConnectionDigest: input.expectedConnectionDigest }),
     mode: input.mode ?? null,
     interactions:
       input.interactions ??

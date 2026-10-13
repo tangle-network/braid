@@ -138,6 +138,7 @@ export interface RunAdmissionReceipt {
     readonly text: string
     readonly profile: Readonly<AgentProfile>
     readonly connectionId?: string
+    readonly expectedConnectionDigest?: string
     readonly mode?: string
     readonly workspaceRequest?: Readonly<WorkspaceRequest>
     /** Local Braid checkout root captured with the admission request. */

@@ -26,6 +26,8 @@ export interface SendInput {
   readonly conversationId?: string
   readonly branchId?: string
   readonly sessionId?: string
+  /** Accepted non-secret destination revision, checked before choosing an adapter. */
+  readonly expectedConnectionDigest?: string
   readonly contextPlan?: PortableContextPlan
   readonly contextTransfer?: ContextTransferReceipt
   /** Canonical context plan used by a provider-owned fresh session. */
@@ -54,6 +56,8 @@ export interface RunExecutionSnapshot {
   readonly workspaceRequest?: Readonly<WorkspaceRequest>
   readonly workspaceRoot?: string
   readonly sessionId?: string
+  /** Accepted non-secret destination revision, checked before choosing an adapter. */
+  readonly expectedConnectionDigest?: string
   /** Distinguishes the private linear continuation from caller-supplied reuse. */
   readonly sessionSource?: 'caller' | 'continuation'
   readonly contextPlan?: PortableContextPlan

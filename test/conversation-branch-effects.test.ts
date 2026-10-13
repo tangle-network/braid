@@ -1,3 +1,5 @@
+import { snapshotRunExecution } from '../src/app/run-execution-snapshot.js'
+import { connectionExecutionDigest } from '../src/app/connections.js'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type {
@@ -595,7 +597,7 @@ test('same-runner handoff binds the selected destination connection through rest
   const plan = await app.conversations.branches.plan(input)
   assert.equal(plan.kind, 'cross-runner')
   assert.equal(plan.destinationConnectionId, destination.id)
-  assert.equal(plan.destinationConnectionDigest, canonicalDigest(destination))
+  assert.equal(plan.destinationConnectionDigest, connectionExecutionDigest(destination))
   assert.equal(plan.portableContextPlan?.destination.provider, destination.kind)
   const branch = await app.conversations.branches.execute({ ...input, planDigest: plan.digest })
   assert.equal(branch.connectionId, destination.id)
@@ -2072,4 +2074,179 @@ test('cross-runner planning stays unavailable without a provider transfer method
   })
   assert.equal(plan.allowed, false)
   assert.match(plan.reason ?? '', /context transfer/iu)
+})
+
+test('handoff refuses a destination changed while transfer is in flight before dispatch', async () => {
+  const contextState: ContextProviderState = { transfers: [] }
+  const started = deferred()
+  const release = deferred()
+  const baseExecution = executionFor({ capabilities: branchCapabilities(), contextState })
+  const transfer = baseExecution.context?.transfer
+  assert(transfer)
+  const admit = baseExecution.admit
+  assert(admit)
+  let destinationAdmissions = 0
+  const execution: ExecutionPort = {
+    ...baseExecution,
+    admit(input) {
+      if (input.contextTransfer !== undefined) destinationAdmissions += 1
+      return admit(input)
+    },
+    context: {
+      async transfer(request, target) {
+        started.resolve()
+        await release.promise
+        return transfer(request, target)
+      },
+    },
+  }
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    execution,
+    clock: new FixedClock(AT),
+  })
+  await prepareSource(app)
+  await app.send({ operationId: 'op-in-flight-source', text: 'source history' }).completion
+  const input = {
+    operationId: 'op-in-flight-handoff',
+    connectionId: sourceConnection().id,
+    runner: 'codex',
+    text: 'Continue only on the accepted destination',
+  }
+  const plan = await app.conversations.branches.plan(input)
+  const executing = app.conversations.branches.execute({
+    ...input,
+    planDigest: plan.digest,
+    ...(plan.portableContextPlan?.requiresAcceptance === true
+      ? { acceptedDigest: plan.portableContextPlan.digest }
+      : {}),
+  })
+  await started.promise
+  const connection = { ...sourceConnection(), endpoint: 'http://127.0.0.1:9999' }
+  await app.configuration.upsertConnection({
+    connection,
+    operation: {
+      id: createOperationId('operation-change-in-flight-destination'),
+      kind: 'connection-change',
+      requestDigest: canonicalDigest(connection),
+      status: 'acknowledged',
+      createdAt: AT,
+      updatedAt: AT,
+      acknowledgedAt: AT,
+    },
+  })
+  release.resolve()
+  await assert.rejects(executing, /destination connection changed/i)
+  assert.equal(destinationAdmissions, 0)
+  assert.equal(contextState.transfers.length, 1)
+})
+
+test('pending legacy full-record handoff plans refuse after journal restart before transfer', async () => {
+  const contextState: ContextProviderState = { transfers: [] }
+  const journal = new MemoryJournal(new FixedClock(AT))
+  const execution = executionFor({ capabilities: branchCapabilities(), contextState })
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    execution,
+    clock: new FixedClock(AT),
+    journal,
+    effectStorage: journal,
+  })
+  await prepareSource(app)
+  await app.send({ operationId: 'op-legacy-source', text: 'source history' }).completion
+  const input = {
+    operationId: 'op-legacy-handoff',
+    connectionId: sourceConnection().id,
+    runner: 'codex',
+  }
+  const { digest: _digest, ...material } = await app.conversations.branches.plan(input)
+  const legacyDigest = canonicalDigest({
+    ...material,
+    destinationConnectionDigest: canonicalDigest(sourceConnection()),
+  })
+  appendSeededEvent(journal, app.state(), {
+    kind: 'operation.requested',
+    operation: {
+      id: createOperationId(input.operationId),
+      kind: 'conversation-fork',
+      requestDigest: canonicalDigest({
+        command: 'execute_cross_runner_fork',
+        operationId: input.operationId,
+        planDigest: legacyDigest,
+        acceptedDigest: null,
+      }),
+      status: 'pending',
+      createdAt: AT,
+      updatedAt: AT,
+    },
+  })
+  const restarted = createBraidApplication({
+    fixture: 'deterministic',
+    execution,
+    clock: new FixedClock(AT),
+    journal,
+    effectStorage: journal,
+  })
+  await assert.rejects(
+    () => restarted.conversations.branches.execute({ ...input, planDigest: legacyDigest }),
+    /accepted fork plan no longer matches/,
+  )
+  assert.equal(contextState.transfers.length, 0)
+})
+
+test('handoff first-turn admission retains its accepted connection digest through journal restart', async () => {
+  const contextState: ContextProviderState = { transfers: [] }
+  const journal = new MemoryJournal(new FixedClock(AT))
+  const execution = executionFor({ capabilities: branchCapabilities(), contextState })
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    execution,
+    clock: new FixedClock(AT),
+    journal,
+    effectStorage: journal,
+  })
+  await prepareSource(app)
+  await app.send({ operationId: 'op-bound-source', text: 'source history' }).completion
+  const input = {
+    operationId: 'op-bound-handoff',
+    connectionId: sourceConnection().id,
+    runner: 'codex',
+    text: 'Continue on the accepted connection',
+  }
+  const plan = await app.conversations.branches.plan(input)
+  const branch = await app.conversations.branches.execute({ ...input, planDigest: plan.digest })
+  const restarted = createBraidApplication({
+    fixture: 'deterministic',
+    execution,
+    clock: new FixedClock(AT),
+    journal,
+    effectStorage: journal,
+  })
+  const run = restarted.state().runs.find((candidate) => candidate.branchId === branch.id)
+  assert(run)
+  assert.equal(run.receipt.requested.expectedConnectionDigest, plan.destinationConnectionDigest)
+  const snapshot = snapshotRunExecution(
+    { operationId: run.operationId, text: run.receipt.requested.text },
+    restarted.state(),
+    run.receipt.requested.profile,
+    run.receipt.requested.connectionId,
+  )
+  assert.equal(snapshot.expectedConnectionDigest, plan.destinationConnectionDigest)
+  const originalRequest = contextState.transfers[0]
+  assert(originalRequest)
+  assert.throws(
+    () =>
+      restarted.send({
+        operationId: run.operationId,
+        text: run.receipt.requested.text,
+        expectedConnectionDigest: canonicalDigest({ changed: true }),
+        portableContextPlan: originalRequest.plan,
+        portableContextTransferRequest: originalRequest,
+        portableContextTransferReceipt: contextResult(originalRequest) as Extract<
+          ContextTransferResult,
+          { status: 'accepted' }
+        >,
+      }),
+    /conflict|different|already used/i,
+  )
 })

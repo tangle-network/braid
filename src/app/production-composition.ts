@@ -31,7 +31,6 @@ import { RuntimeSupervisorController } from '../adapters/runtime/supervisor-cont
 import { TangleRetainedExecutionPort } from '../adapters/runtime/tangle-retained-execution.js'
 import { TangleRetainedInteractiveExecutionPort } from '../adapters/runtime/tangle-retained-interactive-execution.js'
 import type { ConnectionRecord } from '../domain/entities.js'
-import { canonicalDigest } from '../domain/canonical.js'
 import type {
   ExecuteTurnInput,
   ExecutionPort,
@@ -40,7 +39,7 @@ import type {
 } from '../ports/execution.js'
 import type { NativeInteractiveExecutionControl } from '../ports/native-interactive-execution.js'
 import { ConnectionError } from './connection-errors.js'
-import { ConnectionRegistry } from './connections.js'
+import { ConnectionRegistry, connectionExecutionDigest } from './connections.js'
 import { assertValidProfile } from './profile-validation.js'
 import { snapshotWorkspaceRequest, type WorkspaceRequest } from './workspace-request.js'
 
@@ -261,6 +260,9 @@ export function createProductionComposition(
       ...(requested?.mode === undefined ? {} : { mode: requested.mode }),
       ...(requested?.interactions === undefined ? {} : { interactions: requested.interactions }),
       connectionId: requested?.connectionId ?? connection.id,
+      ...(requested?.expectedConnectionDigest === undefined
+        ? {}
+        : { expectedConnectionDigest: requested.expectedConnectionDigest }),
       ...(sessionId === undefined ? {} : { sessionId }),
       ...(workspaceRoot === undefined ? {} : { workspaceRoot }),
       ...(workspaceRequest === undefined ? {} : { workspaceRequest }),
@@ -274,7 +276,7 @@ export function createProductionComposition(
       }).record
       if (
         target?.connectionDigest !== undefined &&
-        canonicalDigest(destinationConnection) !== target.connectionDigest
+        connectionExecutionDigest(destinationConnection) !== target.connectionDigest
       ) {
         throw new ConnectionError(
           'CONNECTION_REVISION_MISMATCH',

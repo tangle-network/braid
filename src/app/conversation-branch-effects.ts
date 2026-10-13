@@ -1,3 +1,4 @@
+import { connectionExecutionDigest } from './connections.js'
 import {
   type ContextTransferRequest,
   type ContextTransferResult,
@@ -321,6 +322,7 @@ async function executeCrossRunner(
       'The context transfer result does not match its request',
     )
   const receipt = assertAcceptedTransfer(transfer)
+  assertDestinationConnection(host.state(), plan)
   const destinationEnvironment = await recordDestinationEnvironment(host, plan, receipt)
   const branch = await createBranch({
     ...input,
@@ -334,12 +336,16 @@ async function executeCrossRunner(
   await recordHandedOffEdge(host, plan, branch, receipt.contextDigest, operationId)
 
   if (input.text !== undefined && input.text.trim() !== '' && host.send !== undefined) {
+    assertDestinationConnection(host.state(), plan)
     const sent = host.send({
       operationId: derivedOperationId(input.operationId, 'send'),
       conversationId: branch.conversationId,
       branchId: branch.id,
       text: input.text,
       sessionId: receipt.sessionId,
+      ...(plan.destinationConnectionDigest === undefined
+        ? {}
+        : { expectedConnectionDigest: plan.destinationConnectionDigest }),
       ...(plan.destinationWorkspaceRequest === undefined
         ? {}
         : { workspaceRequest: plan.destinationWorkspaceRequest }),
@@ -356,6 +362,19 @@ async function executeCrossRunner(
     receipt,
   })
   return branch
+}
+
+function assertDestinationConnection(state: BraidState, plan: ForkPlan): void {
+  if (plan.destinationConnectionId === undefined) return
+  const connection = state.connections.find((record) => record.id === plan.destinationConnectionId)
+  if (
+    connection === undefined ||
+    connectionExecutionDigest(connection) !== plan.destinationConnectionDigest
+  )
+    throw new AppError(
+      'FORK_PLAN_CONFLICT',
+      'The destination connection changed after the accepted context plan',
+    )
 }
 
 async function executeWorkspace(

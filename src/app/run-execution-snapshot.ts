@@ -26,6 +26,8 @@ export function snapshotRunExecution(
   )
   const workspaceRoot = original === undefined ? state.workspace : original.requested.workspaceRoot
   const selectedConnection = original === undefined ? connectionId : original.requested.connectionId
+  const expectedConnectionDigest =
+    input.expectedConnectionDigest ?? original?.requested.expectedConnectionDigest
   const selectedMode = input.mode ?? (original === undefined ? mode : original.requested.mode)
   const nativeProof = input.nativeContextBoundaryProof ?? original?.nativeContextBoundaryProof
   const snapshot = {
@@ -35,6 +37,7 @@ export function snapshotRunExecution(
     profile: snapshotAgentProfile(profile),
     ...(selectedMode === undefined ? {} : { mode: selectedMode }),
     ...(selectedConnection === undefined ? {} : { connectionId: selectedConnection }),
+    ...(expectedConnectionDigest === undefined ? {} : { expectedConnectionDigest }),
     ...(workspaceSnapshot === undefined ? {} : { workspaceRequest: workspaceSnapshot }),
     ...(workspaceRoot == null ? {} : { workspaceRoot }),
     ...(input.sessionId === undefined
