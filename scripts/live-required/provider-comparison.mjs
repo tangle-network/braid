@@ -653,7 +653,7 @@ export function providerComparisonReport(plan, attempts, infrastructureEvidence 
       comparison.descriptiveStatus = comparison.status === 'passed' ? 'ahead-candidate' : 'unproved'
       comparison.uncertainty = {
         status: 'unproved',
-        owner: 'tangle-network/agent-dev-container',
+        owner: 'tangle-network/agent-container',
         reason: 'registered-all-four-provider-assessment-required',
       }
       comparison.status = 'unproved'

@@ -487,15 +487,15 @@ The following historical upstream issues motivated these shared contracts; curre
 - [Runtime issue 799](https://github.com/tangle-network/agent-runtime/issues/799) requires a creation receipt and exact cleanup when retained dispatch fails.
 - [Runtime issue 800](https://github.com/tangle-network/agent-runtime/issues/800) requires crash-safe exact run admission or deterministic discovery.
 - [Agent SDK issue 146](https://github.com/tangle-network/agent-sdk/issues/146) requires retained Tangle control, recovery, interactions, and workspace branching.
-- [Sandbox issue 5249](https://github.com/tangle-network/agent-dev-container/issues/5249) requires a missing completed turn to return a cache miss instead of throwing.
-- [Sandbox issue 5251](https://github.com/tangle-network/agent-dev-container/issues/5251) requires the exact retained-run revision to reach staging and production.
-- [Sandbox issue 5277](https://github.com/tangle-network/agent-dev-container/issues/5277) requires valid Sandbox keys to authorize internal model-key provisioning.
-- [Sandbox issue 5278](https://github.com/tangle-network/agent-dev-container/issues/5278) requires the npm `latest` tag to satisfy current Runtime peers.
+- [Sandbox issue 5249](https://github.com/tangle-network/agent-container/issues/5249) requires a missing completed turn to return a cache miss instead of throwing.
+- [Sandbox issue 5251](https://github.com/tangle-network/agent-container/issues/5251) requires the exact retained-run revision to reach staging and production.
+- [Sandbox issue 5277](https://github.com/tangle-network/agent-container/issues/5277) requires valid Sandbox keys to authorize internal model-key provisioning.
+- [Sandbox issue 5278](https://github.com/tangle-network/agent-container/issues/5278) requires the npm `latest` tag to satisfy current Runtime peers.
 - [Runtime issue 808](https://github.com/tangle-network/agent-runtime/issues/808) requires permanent provisioning rejections to fail without the ten-minute retry.
 
 - [Runtime issue 763](https://github.com/tangle-network/agent-runtime/issues/763) requests one stable execution tree with complete usage provenance.
 - [Agent SDK issue 136](https://github.com/tangle-network/agent-sdk/issues/136) requests normalized provider observations and account usage.
-- [Sandbox issue 5076](https://github.com/tangle-network/agent-dev-container/issues/5076) requests resolved placement, effective resources, and per-sandbox billing.
+- [Sandbox issue 5076](https://github.com/tangle-network/agent-container/issues/5076) requests resolved placement, effective resources, and per-sandbox billing.
 
 The current published cohort carries the interaction response contract through the shared types and provider adapters, while Braid still gates each action on effective deployment capabilities.
 

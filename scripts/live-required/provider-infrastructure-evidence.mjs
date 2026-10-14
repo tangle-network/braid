@@ -3,7 +3,9 @@ import { readFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { safeJson } from './contracts.mjs'
 
-const OWNER = 'tangle-network/agent-dev-container'
+const OWNER = 'tangle-network/agent-container'
+/** Exports written before the 2026-10-14 repository rename name the previous slug. */
+const PREVIOUS_OWNER = 'tangle-network/agent-dev-container'
 const REFERENCE_SCHEMA = 'braid.provider-comparison.infrastructure-reference.v1'
 
 /** Registrations retain the question; its infrastructure owner executes the analysis. */
@@ -184,7 +186,7 @@ export async function readInfrastructureEvidence(referencePath) {
     Object.keys(reference).length !== keys.length ||
     keys.some((key) => !Object.hasOwn(reference, key)) ||
     reference.schema !== REFERENCE_SCHEMA ||
-    reference.owner !== OWNER ||
+    (reference.owner !== OWNER && reference.owner !== PREVIOUS_OWNER) ||
     !/^[a-f0-9]{40}$/u.test(reference.sourceRevision) ||
     !/^sha256:[a-f0-9]{64}$/u.test(reference.artifactSha256) ||
     typeof reference.artifactPath !== 'string'
