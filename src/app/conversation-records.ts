@@ -99,6 +99,8 @@ export function conversationBundle(input: {
   readonly at: string
   readonly operationId: OperationId
   readonly profileId?: ProfileId
+  /** A profile bound by a profile-changing fork stays bound in a clone. */
+  readonly profileSnapshotId?: BranchRecord['profileSnapshotId']
   readonly connectionId?: ConnectionId
   readonly source?: BranchBoundary
   readonly sourceNode?: GraphNodeRecord['reference']
@@ -122,6 +124,9 @@ export function conversationBundle(input: {
     conversationId: input.conversationId,
     ...(input.source === undefined ? {} : { source: input.source }),
     ...(input.profileId === undefined ? {} : { profileId: input.profileId }),
+    ...(input.profileSnapshotId === undefined
+      ? {}
+      : { profileSnapshotId: input.profileSnapshotId }),
     ...(input.connectionId === undefined ? {} : { connectionId: input.connectionId }),
     overrides: input.overrides ?? {},
     ...(input.environmentId === undefined ? {} : { environmentId: input.environmentId }),

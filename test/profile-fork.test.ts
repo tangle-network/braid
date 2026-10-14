@@ -409,8 +409,18 @@ test('a branch made from a profile-bound branch keeps the bound profile', async 
     branchId: bound.id,
   })
   assert.equal(child.profileSnapshotId, bound.profileSnapshotId)
+  const clone = await app.conversations.branches.clone({
+    operationId: 'op-child-clone',
+    branchId: bound.id,
+  })
+  assert.equal(
+    app.state().branches.find((candidate) => candidate.id === clone.activeBranchId)
+      ?.profileSnapshotId,
+    bound.profileSnapshotId,
+  )
   const runnerFork = await app.conversations.branches.plan({
     operationId: 'op-child-runner-fork',
+    conversationId: bound.conversationId,
     branchId: bound.id,
     runner: 'codex',
   })

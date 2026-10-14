@@ -284,6 +284,9 @@ export class ConversationBranches {
       at,
       operationId,
       ...(source.branch.profileId === undefined ? {} : { profileId: source.branch.profileId }),
+      ...(source.branch.profileSnapshotId === undefined
+        ? {}
+        : { profileSnapshotId: source.branch.profileSnapshotId }),
       ...(source.branch.connectionId === undefined
         ? {}
         : { connectionId: source.branch.connectionId }),

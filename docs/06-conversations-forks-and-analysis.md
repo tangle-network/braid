@@ -181,7 +181,7 @@ An unknown, untrusted, or invalid reference is refused with a plain explanation 
 A profile change is always a context handoff: the destination provider reports whether it accepts portable context, the preview names the source and destination profiles and the copied context, and the new branch starts a new provider session with copied context.
 The accepted plan binds the destination profile's canonical digest, and execution resolves the reference again, so a profile file changed after review refuses and requires a new preview.
 After the provider accepts the transfer, Braid records a profile snapshot and binds the new branch to it.
-Every later turn on that branch, and every branch created from it, runs under the bound profile through restart and replay; `/profile` changes the selection for unbound branches only.
+Every later turn on that branch, and every branch or clone created from it, runs under the bound profile through restart and replay; `/profile` changes the selection for unbound branches only.
 A workspace or conversation-only fork keeps the source profile.
 A profile that event redaction would change cannot be bound, so its plan is unavailable.
 
