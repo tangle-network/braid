@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-14T10:23:17.776Z",
+  "command": "pnpm capture:profile-fork",
+  "binary": "clean npm install from generated tarball",
+  "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
+  "tarball": "tangle-network-braid-0.3.4.tgz",
+  "tarballSha256": "64b6bf5faf29b2af19851041eeb9845291c4757d72cb39e538702dd60e7fa286",
+  "terminal": "node-pty/xterm-256color",
+  "provenance": {
+    "renderer": {
+      "package": "@earendil-works/pi-tui@1.1.0",
+      "pty": "node-pty@1.1.0",
+      "emulator": "@xterm/headless@6.0.0",
+      "node": "v24.21.0",
+      "terminal": "xterm-256color"
+    },
+    "raster": {
+      "agg": "agg 1.9.0",
+      "imagemagick": "Version: ImageMagick 6.9.12-98 Q16 x86_64 18038 https://legacy.imagemagick.org",
+      "fontFamily": "DejaVu Sans Mono",
+      "font": "DejaVu Sans Mono | Book | /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+      "colorMode": "sRGB 8-bit"
+    }
+  },
+  "scope": "Profile-changing fork UI over the offline profile-handoff fixture; the fixture transfer is not provider evidence",
+  "flow": [
+    "select the fixture connection and record one source turn",
+    "/fork --profile \"Review engineer\" opens the preview with both profile names and the copied context",
+    "Escape declines and Left cancels without creating a run",
+    "Enter accepts the handoff",
+    "the first destination turn reports the copied messages under Review engineer",
+    "a later turn on the new branch still runs under Review engineer"
+  ],
+  "artifacts": [
+    {
+      "path": "40x12.txt",
+      "sha256": "53d45ad84a80b98cc63abdc7cbe8bcd0aacfbd57754503396dff2d130f7d3184",
+      "kind": "terminal-frame",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "40x12.png",
+      "sha256": "ca6251fae3c88404715efbfe4cefba91891d4c76bff9a9a53695a8cc8e45fb14",
+      "kind": "png",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "80x24.txt",
+      "sha256": "277e48d70b83b18a9a5223fd0df1dd6c6e1e1e555e63a1bc6579230552f92b5a",
+      "kind": "terminal-frame",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "80x24.png",
+      "sha256": "48a2daf4d9b452ad3f287dca1f3fcfe908afbf192a8fc388b6898df8e35a2129",
+      "kind": "png",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "120x40.txt",
+      "sha256": "def9cc523702924bf401c73c1ed517a0b4701440eff51d1c0b6fddbaf5cf972e",
+      "kind": "terminal-frame",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "120x40.png",
+      "sha256": "3390e495a3486a07065efddd444c3a2eee037118a6bb5173d1aec5190ce594fc",
+      "kind": "png",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "200x60.txt",
+      "sha256": "8f3c5858a2579ac043c3a84df4e114dfbfcaa11cdf3580db1fe46b4b898dd28d",
+      "kind": "terminal-frame",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "200x60.png",
+      "sha256": "990d9e2061a1d42bc39c351cf6ec365c4cc530bf655691bdfaf03bcf72beeafb",
+      "kind": "png",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "profile-fork-keyboard.cast",
+      "sha256": "b5ce14a7da2d44e2ba623bc25cfb10648587fd3ee2ba66c44fefef94ba7005e1",
+      "kind": "keyboard-asciicast",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "80x24-profile-fork-keyboard.gif",
+      "sha256": "375ab17f4401ad2e73fd089d5cd4591a9e01f4d55eb75c54d137f72b1b14b707",
+      "kind": "keyboard-flow",
+      "columns": 80,
+      "rows": 24
+    }
+  ]
+}

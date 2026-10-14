@@ -47,10 +47,13 @@ import { assertJsonValue, objectValue } from '../domain/invariants-base.js'
 import { persistedContextTransferRequest } from '../domain/portable-context-persistence.js'
 import { type BraidState, isActiveRunStatus } from '../domain/state.js'
 import type { ExecutionPort } from '../ports/execution.js'
+import { canonicalAgentProfileDigestHex } from '../adapters/agent-interface/profile-runtime.js'
+import { forkProfileSnapshot, profileSnapshotRetained } from './branch-profile.js'
 import { parseConfidentialWorkspaceForkRequest } from './confidential-workspace-fork.js'
 import { connectionExecutionDigest } from './connections.js'
 import type {
   ConversationHost,
+  ForkDestinationProfile,
   ForkPlan,
   ForkPlanInput,
   WorkspaceForkCleanupInput,
@@ -78,6 +81,11 @@ export async function executeBranchEffect(
     )
   if (plannedConfidential?.requested === true && plan.kind !== 'workspace')
     throw new AppError('FORK_PLAN_CONFLICT', 'Confidential placement requires a workspace fork')
+  if (
+    (input.destinationProfile !== undefined || plan.profileSelection !== undefined) &&
+    plan.kind !== 'cross-runner'
+  )
+    throw new AppError('FORK_PLAN_CONFLICT', 'Changing profile requires a context handoff')
   if (plan.kind === 'cross-runner') return executeCrossRunner(host, input, plan, createBranch)
   if (plan.kind === 'workspace') return executeWorkspace(host, input, plan, createBranch)
   throw new AppError('FORK_PLAN_CONFLICT', 'The provider effect does not match this fork plan')
@@ -260,10 +268,19 @@ async function executeCrossRunner(
     planDigest: plan.digest,
     acceptedDigest: input.acceptedDigest ?? null,
   })
+  const acceptedProfile = acceptedDestinationProfile(input, plan, host.now())
   const reserved = await reserveOperation(host, operationId, digest)
   const existing = reserved.operations.find((operation) => operation.id === operationId)
   if (existing?.status === 'acknowledged') return branchForOperation(state, existing)
   const acceptedAt = existing?.createdAt ?? host.now()
+  const profileSnapshot =
+    acceptedProfile === undefined
+      ? undefined
+      : forkProfileSnapshot({
+          operationId: input.operationId,
+          destination: acceptedProfile,
+          createdAt: acceptedAt,
+        })
 
   const planRequestMaterial = {
     requestId: `${input.operationId}:plan`,
@@ -338,9 +355,17 @@ async function executeCrossRunner(
     ...(plan.destinationConnectionDigest === undefined
       ? {}
       : { connectionDigest: plan.destinationConnectionDigest }),
+    ...(profileSnapshot === undefined
+      ? {}
+      : { profileSnapshotId: profileSnapshot.id, profileDigest: profileSnapshot.digest }),
   })
   // Persist the accepted binding before the branch can receive its first turn.
   await updateOperation(host, operationId, digest, { status: 'pending', result: handoffResult })
+  if (
+    profileSnapshot !== undefined &&
+    !host.state().profileSnapshots.some((snapshot) => snapshot.id === profileSnapshot.id)
+  )
+    await host.commit({ kind: 'profile.snapshot.created', snapshot: profileSnapshot })
   const destinationEnvironment = await recordDestinationEnvironment(host, plan, receipt)
   const branch = await createBranch({
     ...input,
@@ -350,6 +375,7 @@ async function executeCrossRunner(
       ? {}
       : { connectionId: plan.destinationConnectionId }),
     ...(destinationEnvironment === undefined ? {} : { environmentId: destinationEnvironment.id }),
+    ...(profileSnapshot === undefined ? {} : { profileSnapshotId: profileSnapshot.id }),
   })
   await recordHandedOffEdge(host, plan, branch, receipt.contextDigest, operationId)
 
@@ -375,6 +401,40 @@ async function executeCrossRunner(
   }
   await acknowledgeOperation(host, operationId, digest, branch, handoffResult)
   return branch
+}
+
+/**
+ * Check the selected profile before any provider transfer.
+ * A plan that names a destination profile refuses a changed or missing one.
+ */
+function acceptedDestinationProfile(
+  input: ForkExecutionInput,
+  plan: ForkPlan,
+  now: string,
+): ForkDestinationProfile | undefined {
+  const selection = plan.profileSelection
+  const destination = input.destinationProfile
+  if (selection === undefined && destination === undefined) return undefined
+  if (
+    selection === undefined ||
+    destination === undefined ||
+    destination.profileId !== selection.profileId ||
+    canonicalAgentProfileDigestHex(destination.profile) !== selection.digest
+  )
+    throw new AppError(
+      'FORK_PLAN_CONFLICT',
+      'The destination profile changed after the accepted plan; replan the fork',
+    )
+  if (
+    !profileSnapshotRetained(
+      forkProfileSnapshot({ operationId: input.operationId, destination, createdAt: now }),
+    )
+  )
+    throw new AppError(
+      'CAPABILITY_UNAVAILABLE',
+      'The destination profile contains values Braid cannot keep for a branch without redaction',
+    )
+  return destination
 }
 
 function assertDestinationConnection(state: BraidState, plan: ForkPlan): void {

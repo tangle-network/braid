@@ -17,6 +17,12 @@ The preview names that connection and execution refuses a plan whose destination
 RPC `plan_fork` and `execute_fork` accept the same `connectionId` field.
 Selecting a destination does not establish that its provider supports portable context transfer; the provider must return a matching receipt before the destination branch is created.
 
+`/fork --profile <ref>` selects a destination `AgentProfile` from the catalog `/profile list` shows; RPC `plan_fork` and `execute_fork` accept the same `profileRef` field.
+The terminal and headless dispatchers resolve the reference with `ProfileActionService.resolveForFork` and pass the resolved profile to the planner; the reviewed execution parameters carry only the reference.
+A profile change is always a cross-runner handoff, so the preview leads with `<destination profile>: new session with copied context`, which keeps the name visible at 40 columns, then shows the source and destination profile names and a `copied context` count of included, omitted, and transformed items from the canonical plan.
+The plan's `profileSelection` binds the reference, profile identifier, source, and canonical digest; a changed or missing profile at execution refuses before any provider transfer.
+Successful execution commits a `profile.snapshot.created` event and binds the new branch's `profileSnapshotId` before the branch can receive a turn.
+
 Use the shared runtime and provider fork ports for external work.
 
 Do not copy provider sessions, checkpoints, or workspaces inside the terminal client.
@@ -147,6 +153,8 @@ Workspace data moves through the provider or Sandbox implementation, not through
 `test/conversation-branch-effects.test.ts` covers branch, clone, workspace fork, cross-runner fork, changed-plan conflict, restart lookup, independent mutation, source preservation, cancellation, cleanup, confidential capability gates, canonical attestation verification, and request propagation.
 
 `test/rpc.test.ts` covers the headless confidential schema and rejects unknown request fields.
+
+`test/profile-fork.test.ts` covers profile-changing forks: catalog resolution and refusal of unknown, untrusted, and unavailable references; digest binding and refusal of a changed profile file before transfer; the bound profile on the first and later turns; idempotent execution; restart, full journal replay, and encrypted SQLite reopen; legacy handoffs without a destination profile; headless `profileRef`; and keyboard accept, decline, and cancel at four terminal sizes.
 
 `test/tui-autocomplete.test.ts` and `test/tui-core-workflows.test.ts` cover the TUI command path and safe preview rendering.
 

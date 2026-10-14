@@ -239,18 +239,25 @@ function forkAdditionalScope(
         return 'workspace: fork unavailable'
       }
       return 'workspace: checkpoint status unreported'
-    case 'cross-runner':
+    case 'cross-runner': {
+      // A profile change is a new agent session that receives copied context.
+      // The destination name leads so a narrow terminal still shows it.
+      const destinationProfile = preview.plan?.profileSelection?.name
+      const subject = destinationProfile === undefined ? 'runner' : 'profile'
       if (
         preview.allowed &&
         preview.plan?.environment === 'new' &&
         preview.plan.providerSession === 'new'
       ) {
-        return 'runner: new session'
+        return destinationProfile === undefined
+          ? 'runner: new session'
+          : `${sanitizeTerminalText(destinationProfile)}: new session with copied context`
       }
       if (!preview.allowed || preview.plan?.environment === 'unavailable') {
-        return 'runner: transfer unavailable'
+        return `${subject}: transfer unavailable`
       }
-      return 'runner: transfer status unreported'
+      return `${subject}: transfer status unreported`
+    }
   }
 }
 

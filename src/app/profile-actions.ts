@@ -3,6 +3,7 @@ import { parseProfileId } from '../domain/ids.js'
 import { redactSensitiveText } from '../domain/redaction.js'
 import type { ActionHost } from './action-host.js'
 import { operationReplay, parseOperation, requestDigest } from './conversation-support.js'
+import type { ForkDestinationProfile } from './conversation-types.js'
 import { AppError } from './errors.js'
 import {
   acknowledgedProfileOperation,
@@ -145,6 +146,31 @@ export class ProfileActionService {
         ...(effective.model === undefined ? {} : { model: effective.model }),
         compatibility: effective.compatibility,
       },
+    }
+  }
+
+  /**
+   * Resolve a fork destination through the same catalog and validation as `/profile`.
+   * Only configured sources, trusted-workspace discovery, and already registered
+   * profiles can match; nothing outside that catalog is read.
+   */
+  async resolveForFork(ref: string): Promise<ForkDestinationProfile> {
+    const catalog = await this.#catalog()
+    const record = findProfileRecord(catalog.records, ref)
+    if (record === undefined)
+      throw new AppError(
+        'PROFILE_NOT_FOUND',
+        `Profile ${redactSensitiveText(ref, 2048)} is not a listed or trusted profile; /profile list shows the profiles a fork can use`,
+      )
+    const validation = await validateProfile(record.profile, this.#validationOptions())
+    if (!validation.ok) throw invalidProfile(validation)
+    const domain = toDomainProfile(record, this.#now())
+    return {
+      ref,
+      profileId: domain.id,
+      name: redactSensitiveText(record.displayName, 512),
+      source: domain.source,
+      profile: record.profile,
     }
   }
 

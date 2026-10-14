@@ -72,6 +72,11 @@ The selected base profile follows this precedence.
 4. User default.
 5. First-run selection.
 
+A branch created by `/fork --profile` is bound to that profile, because its provider session was created from it.
+The binding takes precedence over the list above for that branch: every later turn on it, and every branch or clone created from it, uses the bound profile, while a command-line or newly selected profile applies to unbound branches.
+The fork resolves its reference through the same catalog and validation as `/profile` and never reads a source outside it.
+The [fork contract](06-conversations-forks-and-analysis.md#fork-operation) defines the handoff.
+
 Runner, model, effort, mode, and connection are separate run overrides.
 
 The effective runner follows explicit next-run override, branch override, profile harness preference, then canonical preferred-runner helper.

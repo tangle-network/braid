@@ -1,6 +1,7 @@
 import type { AgentProfile } from '@tangle-network/agent-interface'
 import type { BraidState } from '../domain/state.js'
 import type { SendInput } from './application-types.js'
+import { boundBranchProfile } from './branch-profile.js'
 import { AppError } from './errors.js'
 import { resolveEffectiveProfile } from './profile-selection.js'
 import { resolveConversationTarget } from './run-targets.js'
@@ -33,7 +34,10 @@ export function selectedRunConfiguration(
   })
 }
 
-/** Resolve one branch's durable choices into the immutable profile sent to agent-runtime. */
+/**
+ * Resolve one branch's durable choices into the immutable profile sent to agent-runtime.
+ * A profile bound by a profile-changing fork replaces the selected profile for its branch.
+ */
 export function effectiveRunConfiguration(
   state: BraidState,
   authoredProfile: Readonly<AgentProfile>,
@@ -57,7 +61,7 @@ export function effectiveRunConfiguration(
   if (branch === undefined)
     throw new AppError('UNKNOWN_BRANCH', 'The requested branch is unavailable')
   const resolved = resolveEffectiveProfile({
-    profile: { profile: authoredProfile },
+    profile: { profile: boundBranchProfile(state, branch) ?? authoredProfile },
     ...(input.mode === undefined ? {} : { nextRunOverrides: { mode: input.mode } }),
     branchOverrides: {
       ...(branch.overrides.runner === undefined ? {} : { harness: branch.overrides.runner }),

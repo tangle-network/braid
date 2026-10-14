@@ -1,0 +1,24 @@
+ fork preview                                                      cross-runner
+────────────────────────────────────────────────────────────────────────────────
+ same conversation · new branch
+ Review engineer: new session with copied context
+ source: conv-1
+ source branch: branch-1
+ destination branch: branch-15b108cf0e220d3698905ad7473816a1
+ boundary: message-000004 → 2 messages
+ profile: Release engineer → Review engineer
+ copied context: history → 2 messages
+ provider session: current → new
+ connection: source connection → connection-local-cli-bridge
+ workspace: current → new
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+ enter/y create fork · ←/esc cancel

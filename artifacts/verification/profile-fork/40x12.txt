@@ -1,0 +1,12 @@
+ fork preview              cross-runner
+────────────────────────────────────────
+ same conversation · new branch
+ Review engineer: new session with c...
+ source: conv-1
+ source branch: branch-1
+ destination branch: branch-15b108cf...
+ boundary: message-000004 → 2 messages
+ profile: Release engineer → Review ...
+ copied context: history → 2 messages
+────────────────────────────────────────
+ ↑/↓ inspect · enter/y create · ←/esc

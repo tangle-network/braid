@@ -175,6 +175,16 @@ The default is a conversation-only fork in the shared environment with a new pro
 
 `/fork --workspace` additionally requests a real checkpoint and environment fork.
 
+`/fork --profile <ref>` hands the new branch to a different `AgentProfile`, and headless `plan_fork` and `execute_fork` take the same reference as `profileRef`.
+The reference resolves through the profile catalog that `/profile` uses: configured profile sources, trusted-workspace discovery, and profiles already registered in this workspace.
+An unknown, untrusted, or invalid reference is refused with a plain explanation before planning, so no provider is called.
+A profile change is always a context handoff: the destination provider reports whether it accepts portable context, the preview names the source and destination profiles and the copied context, and the new branch starts a new provider session with copied context.
+The accepted plan binds the destination profile's canonical digest, and execution resolves the reference again, so a profile file changed after review refuses and requires a new preview.
+After the provider accepts the transfer, Braid records a profile snapshot and binds the new branch to it.
+Every later turn on that branch, and every branch or clone created from it, runs under the bound profile through restart and replay; `/profile` changes the selection for unbound branches only.
+A workspace or conversation-only fork keeps the source profile.
+A profile that event redaction would change cannot be bound, so its plan is unavailable.
+
 The preview must distinguish source, inherited, transformed, shared, new, unavailable, and omitted values.
 
 The fork operation commits its requested plan before external checkpoint or session creation.
@@ -223,7 +233,7 @@ Any omission or transformation requires acceptance of that digest before dispatc
 
 The destination execution is bound to the accepted digest and returns a transfer receipt after admission that must match it exactly.
 
-The destination profile remains the selected `AgentProfile`; runner-specific materialization occurs in the destination provider.
+The destination profile is the selected `AgentProfile`, or the profile named by `/fork --profile`; runner-specific materialization occurs in the destination provider.
 
 The graph links source and destination runs with `handed_off` and displays both runner and profile digests.
 
