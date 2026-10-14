@@ -11,6 +11,10 @@ import { bindCredentialToOrigin } from '../src/adapters/connections/production-c
 import { createTangleEnvironmentProvider } from '../src/adapters/connections/production-connection-providers.js'
 import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
 import { resolveTangleSandboxRetainedConnection } from '../src/adapters/runtime/production-tangle-sandbox-backend.js'
+import {
+  createProviderRetainedPlan,
+  startProviderRetainedRun,
+} from '../src/adapters/runtime/provider-retained-run.js'
 import { interactiveEnvironment } from '../src/adapters/runtime/tangle-retained-interactive-contract.js'
 import {
   createBraidApplication,
@@ -531,5 +535,68 @@ test('a cloud run with a resolver seat stores no secret value in the journal, st
     await reopened?.storage.close()
     await rm(resolver.directory, { recursive: true, force: true })
     await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('a retained subscription turn carries its exact profile so the provider selects the turn seat', async () => {
+  const sandbox = new FakeTangleRetainedSandbox({ backends: ['claude-code'] })
+  const resolver = await resolverScript('cliAuth')
+  const previous = process.env.BRAID_SEAT_FORWARDED
+  process.env.BRAID_SEAT_FORWARDED = FORWARDED_CANARY
+  try {
+    const keyed = await storedConnectionKey(
+      record({
+        lifecycle: 'retained',
+        idleTtlSeconds: 1_800,
+        secrets: [...GRANTED],
+        modelCredentials: {
+          command: [process.execPath, resolver.path],
+          env: ['BRAID_SEAT_FORWARDED'],
+          connectionKeyEnv: 'BRAID_SEAT_CONNECTION_KEY',
+        },
+      }),
+    )
+    const selection = { connection: { connectionId: keyed.connection.id } }
+    const input = {
+      operationId: 'operation-subscription-turn',
+      runId: 'run/subscription-turn',
+      turnId: 'turn/subscription-turn',
+      text: 'Use the seat.',
+      profile: subscriptionProfile('claude-code'),
+      connectionId: keyed.connection.id,
+      signal: new AbortController().signal,
+      onRetainedAdmission: async () => {},
+    }
+    const prepared = await resolveTangleSandboxRetainedConnection(
+      {
+        connections: new ConnectionRegistry([keyed.connection]),
+        select: () => selection,
+        credentials: keyed.credentials,
+        credentialRefResolver: keyed.credentialRefResolver,
+        sandboxClient: sandbox.client(),
+      },
+      input,
+      selection,
+      keyed.connection.id,
+    )
+    await startProviderRetainedRun(createProviderRetainedPlan(prepared, input.runId), input)
+
+    const seatName = `SEAT_${digest(KEY_CANARY)}`
+    const seat = {
+      account: `seat-${digest(FORWARDED_CANARY).toLowerCase()}`,
+      secretEnv: seatName,
+      format: 'token',
+    }
+    assert.equal(sandbox.createCalls.length, 1)
+    assert.deepEqual(sandbox.createCalls[0]?.secrets, [...GRANTED, seatName])
+    assert.deepEqual(sandbox.createCalls[0]?.backend?.model, { cliAuth: seat, authMode: 'oauth' })
+    assert.equal(sandbox.dispatches.length, 1)
+    assert.deepEqual(sandbox.nativeGrants, [{ harness: 'claude-code', cliAuth: seat }])
+    const sent = JSON.stringify({ creates: sandbox.createCalls, grants: sandbox.nativeGrants })
+    for (const canary of [KEY_CANARY, FORWARDED_CANARY]) assert.equal(sent.includes(canary), false)
+  } finally {
+    if (previous === undefined) delete process.env.BRAID_SEAT_FORWARDED
+    else process.env.BRAID_SEAT_FORWARDED = previous
+    await rm(resolver.directory, { recursive: true, force: true })
   }
 })
