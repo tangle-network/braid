@@ -420,8 +420,8 @@ export class ConversationBranches {
       },
     })
     const targetProfile = target.effectiveProfile
-    // The destination runs on the run override, else the destination profile's harness, so a
-    // profile handoff reaches that profile's runner instead of keeping the source runner.
+    // Runner override, then the destination profile's harness, then the model's preferred runner,
+    // so a profile handoff reaches that profile's runner instead of keeping the source runner.
     const requestedRunner = target.runner
     const sourceRun = sourceRunForBranch(state, source.branch.id, source.through?.runId)
     const sourceEnvironmentId = source.branch.environmentId ?? sourceRun?.environmentId
