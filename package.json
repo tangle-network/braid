@@ -82,6 +82,7 @@
     "test:live:tangle:sandbox:multirun": "pnpm run build && node scripts/live-required/tangle-sandbox-braid-multirun.mjs",
     "test:live:tangle:sandbox:interactive": "pnpm run build && node scripts/live-required/tangle-sandbox-braid-interactive.mjs",
     "test:live:tangle:sandbox:execution": "pnpm run build && node scripts/live-required/tangle-sandbox-braid-execution-soak.mjs",
+    "test:live:tangle:sandbox:seats": "pnpm run build && node scripts/live-required/tangle-sandbox-braid-seats.mjs",
     "test:live:supervisor": "node scripts/live-required.mjs live-supervisor",
     "test:live:analysis": "node scripts/live-required.mjs live-analysis",
     "verify:live-core": "node scripts/live-core/verify-pair.mjs",

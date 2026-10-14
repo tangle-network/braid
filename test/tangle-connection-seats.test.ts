@@ -22,6 +22,7 @@ import { ConnectionActionService } from '../src/app/connection-actions.js'
 import { ConnectionError } from '../src/app/connection-errors.js'
 import { ConnectionRegistry } from '../src/app/connections.js'
 import { MemoryJournal } from '../src/app/journal.js'
+import { activateProductionConnection } from '../src/bin/production-application.js'
 import type { ConnectionRecord, ConnectionTransportOptions } from '../src/domain/entities.js'
 import { createConnectionId, createCredentialRefId } from '../src/domain/ids.js'
 import { assertConnectionRecord } from '../src/domain/invariants-profile.js'
@@ -472,6 +473,8 @@ test('a cloud run with a resolver seat stores no secret value in the journal, st
     })
     durable.app.initialize(root)
     await durable.app.whenDurable()
+    // The production binary journals the selected connection; encrypted storage must keep its names.
+    await activateProductionConnection(durable.app, keyed.connection.id, [keyed.connection])
     const turn = durable.app.send({ operationId: 'operation-seat-canary', text: 'Use the seat.' })
     await turn.admissionReady
     await waitFor(() => sandbox.dispatches.length === 1)
@@ -509,6 +512,10 @@ test('a cloud run with a resolver seat stores no secret value in the journal, st
       state: reopened.app.state(),
     })
     assert.equal(persisted.includes('SEAT_PROOF_DONE'), true)
+    assert.deepEqual(
+      reopened.app.state().connections[0]?.providerOptions,
+      keyed.connection.providerOptions,
+    )
     for (const canary of canaries)
       assert.equal(persisted.includes(canary), false, `canary of ${canary.length} characters`)
     await reopened.app.close()
