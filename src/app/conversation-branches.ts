@@ -465,7 +465,7 @@ export class ConversationBranches {
           }),
       ...(sourceRun === undefined ? {} : { sourceRunId: sourceRun.id }),
       ...(sourceEnvironmentId === undefined ? {} : { sourceEnvironmentId }),
-      ...(portableContextPlan === undefined
+      ...(portableContextPlan?.destination.environmentId === undefined
         ? {}
         : { destinationEnvironmentId: portableContextPlan.destination.environmentId }),
       ...(input.placement === undefined ? {} : { placement: input.placement }),

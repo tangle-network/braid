@@ -177,7 +177,9 @@ test('constructed Tangle provider rejects invalid retained policy before credent
   assert.equal(clientConstructions, 0)
 })
 
-test('constructed Tangle provider freezes accepted lifetime across credential lookup', { timeout: 5_000 }, async () => {
+test('constructed Tangle provider freezes accepted lifetime across credential lookup', {
+  timeout: 5_000,
+}, async () => {
   const sandbox = new FakeTangleRetainedSandbox()
   const policy: { lifecycle: 'retained' | 'ephemeral'; idleTtlSeconds: number } = {
     lifecycle: 'retained',

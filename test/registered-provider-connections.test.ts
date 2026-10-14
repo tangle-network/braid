@@ -153,6 +153,8 @@ test('first dispatch, cancel, replay and restart controls use the admitted conne
   })
   const input = turn(second, 'run-second')
   const admission = await routing.admit(input)
+  assert.ok(admission.capabilities)
+  assert.ok(admission.materializationReceipt)
   catalog.upsert({
     ...second,
     endpoint: 'https://changed.example.test',
@@ -326,6 +328,8 @@ test('workspace lookup follows the source run connection and refuses a changed r
   })
   const input = turn(second, 'run-workspace-source')
   const admission = await routing.admit(input)
+  assert.ok(admission.capabilities)
+  assert.ok(admission.materializationReceipt)
   const receipt = createAdmissionReceipt({
     operationId: input.operationId,
     runId: input.runId,

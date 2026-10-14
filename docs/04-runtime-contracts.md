@@ -10,20 +10,22 @@ When a current package blocks a real Braid flow, Braid records the unavailable a
 
 ## Evidence baseline
 
-The following published versions were resolved and their installed manifests and declarations inspected on 2026-10-08.
+The following published versions were resolved and their installed manifests and declarations inspected on 2026-10-14.
 
 | Package | Installed version | Braid boundary |
 | --- | ---: | --- |
-| [`@tangle-network/agent-interface`](https://github.com/tangle-network/agent-sdk/tree/main/packages/agent-interface) | `3.1.1` | Canonical profile, capabilities, environment, stream, portable context, native continuation, interaction, and explicitly based workspace contracts |
-| [`@tangle-network/agent-runtime`](https://github.com/tangle-network/agent-runtime) | `0.312.0` | Sole execution layer; exact executor, retained-run, interactive-run, environment-provider, and terminal-monitor exports |
-| [`@tangle-network/agent-eval`](https://github.com/tangle-network/agent-eval) | `0.209.1` | Run records, judges, trace analysts, comparisons, and feedback trajectories |
-| `@tangle-network/agent-provider-cli-bridge` | `1.1.2` | CLI Bridge environment adapter with retained sessions, live streaming, replay, retry-safe turns, exact native session close, durable interaction response, explicit cancel, and host cwd support |
-| `@tangle-network/agent-provider-tangle` | `3.6.6` | Tangle environment adapter with retained control, interaction response, workspace branching, interactive-agent operations, and stopped-environment recovery |
-| `@tangle-network/sandbox` | `0.60.27` | Tangle cloud client used by the provider, including keyed checkpoint/fork and interactive-agent operations |
+| [`@tangle-network/agent-interface`](https://github.com/tangle-network/agent-sdk/tree/main/packages/agent-interface) | `5.2.1` | Canonical profile, capabilities, environment, stream, portable context, selected-context transfer, native continuation, interaction, workspace snapshot, and explicitly based workspace contracts |
+| [`@tangle-network/agent-runtime`](https://github.com/tangle-network/agent-runtime) | `0.319.8` | Sole execution layer; exact executor, retained-run (including `contextTransferReceipt` attachment), interactive-run, environment-provider, profile materialization, and terminal-monitor exports |
+| [`@tangle-network/agent-eval`](https://github.com/tangle-network/agent-eval) | `0.213.0` | Run records, judges, trace analysts, comparisons, and feedback trajectories |
+| `@tangle-network/agent-provider-cli-bridge` | `2.0.0` | CLI Bridge environment adapter with retained sessions, live streaming, replay, retry-safe turns, exact native session close, durable interaction response, explicit cancel, and host cwd support |
+| `@tangle-network/agent-provider-tangle` | `4.0.0` | Tangle environment adapter with retained control, interaction response, workspace branching, interactive-agent operations, and stopped-environment recovery |
+| `@tangle-network/agent-provider-daytona` | `0.6.0` | Bundled registered-provider adapter; its exec-only contract refuses agent execution and context transfer |
+| `@tangle-network/sandbox` | `0.60.51` | Tangle cloud client used by the provider, including keyed checkpoint/fork and interactive-agent operations |
 
-Runtime declares peers `agent-eval >=0.209.1 <0.210.0`, `agent-interface ^3.1.1`, and `sandbox >=0.58.4 <0.61.0`.
-The Tangle provider requires Sandbox `>=0.60.27 <1.0.0` and depends on Interface `^3.0.0`.
-The CLI Bridge provider also depends on Interface `^3.0.0`.
+Runtime declares peers `agent-eval >=0.213.0 <0.214.0`, `agent-interface ^5.2.1`, and `sandbox >=0.58.4 <0.61.0`.
+The Tangle provider requires Sandbox `>=0.60.27 <1.0.0` and depends on Interface `^5.0.0`.
+The CLI Bridge and Daytona providers also depend on Interface `^5.0.0`; Daytona's `@daytonaio/sdk` peer is optional and not installed.
+Sandbox still depends on Interface `^4.0.0`, so the lockfile carries that copy beside `5.2.1`.
 The exact installed cohort satisfies these ranges, and `pnpm peers check` reports no peer issues.
 The lockfile pins the registry integrity for every installed package.
 
@@ -288,13 +290,11 @@ An `unknown` effect means the request awaits acknowledgement and never becomes l
 
 Runtime stores each worker's exact interactive binding outside its presentation snapshot.
 
-Braid passes the supervisor state directory, exact worker identifier, and a provider resolver to Runtime `attachWorker`.
+Braid passes the supervisor state directory, exact worker identifier, and selected provider source to Runtime `attachWorker`.
 
-Runtime validates the live worker binding and its finalized execution receipt before calling that resolver. The launch owner records a credential-free connection identifier and public execution-configuration digest before creating the worker. Runtime joins that declaration to the actual process reference and execution attempt in its existing receipt.
-
-Braid selects only that recorded connection, compares its canonical configuration digest and configured provider name, then resolves credentials. New worker declarations bind the saved record, resolved endpoint (including defaults), and effective public attestation policy through the same helper at launch and reconnect. Existing conversation digests remain unchanged. The startup connection, current picker, provider name alone, parent run, and unbound startup Sandbox client never select a worker's account. Missing, changed, or conflicting ownership returns unavailable before credential access.
-
-The resolver and launch-provenance extension remain release candidates until the compatible Runtime package is published and Braid passes its installed-package and terminal-flow checks.
+Published Runtime `0.319.8` binds a worker to its provider name, not to the saved connection that launched it.
+Braid therefore attaches workers only through the active Tangle connection.
+Selecting a worker's saved connection from a Runtime launch-provenance receipt waits for a published Runtime that records that connection in the worker binding.
 
 Runtime reconstructs the retained process and returns an opaque handle or a named unavailable reason.
 

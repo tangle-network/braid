@@ -100,8 +100,7 @@ function supportsContextTransfer(
     resolved.capabilities.streaming.replay &&
     resolved.capabilities.streaming.detach &&
     resolved.capabilities.streaming.turnIdempotency &&
-    (destination.workspaceSnapshotDigest === undefined ||
-      capability.workspaceSnapshot === true) &&
+    (destination.workspaceSnapshotDigest === undefined || capability.workspaceSnapshot === true) &&
     resolved.provider.contextTransfer?.transfer !== undefined
   )
 }

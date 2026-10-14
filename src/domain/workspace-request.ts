@@ -1,4 +1,8 @@
-import { type WorkspaceRequest, WorkspaceRequestSchema } from '@tangle-network/agent-interface'
+import {
+  type AgentWorkspaceSnapshotRef,
+  type WorkspaceRequest,
+  WorkspaceRequestSchema,
+} from '@tangle-network/agent-interface'
 import { canonicalDigest } from './canonical.js'
 import { assertPublicUrl } from './invariants-base.js'
 
@@ -32,7 +36,7 @@ export function snapshotWorkspaceRequest(request: unknown): Readonly<WorkspaceRe
     })
   }
   const snapshot: WorkspaceRequest = {
-    ...(parsed.snapshot === undefined ? {} : { snapshot: parsed.snapshot }),
+    ...(parsed.snapshot === undefined ? {} : { snapshot: exactSnapshotRef(parsed.snapshot) }),
     ...(parsed.environment === undefined ? {} : { environment: parsed.environment }),
     ...(parsed.image === undefined ? {} : { image: parsed.image }),
     ...(parsed.repoUrl === undefined ? {} : { repoUrl: parsed.repoUrl }),
@@ -40,6 +44,15 @@ export function snapshotWorkspaceRequest(request: unknown): Readonly<WorkspaceRe
     ...(parsed.cwd === undefined ? {} : { cwd: parsed.cwd }),
   }
   return freezeDeep(snapshot)
+}
+
+/**
+ * The schema types absent optional members as `T | undefined` and keeps an
+ * explicit `undefined` key. Dropping those keys makes the validated JSON value
+ * the canonical reference, so equal requests always have one digest.
+ */
+function exactSnapshotRef(snapshot: unknown): AgentWorkspaceSnapshotRef {
+  return JSON.parse(JSON.stringify(snapshot)) as AgentWorkspaceSnapshotRef
 }
 
 /** Return the exact canonical identity of a workspace request. */

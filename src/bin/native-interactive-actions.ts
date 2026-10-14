@@ -306,7 +306,8 @@ function workerUnavailableReason(reason: string): string {
     'interactive-binding-stale': 'The retained worker terminal is no longer available',
     'interactive-provider-not-registered':
       "Braid cannot verify the worker's recorded connection and configuration",
-    'interactive-provider-not-configured': 'Worker terminal connections are unavailable in this session',
+    'interactive-provider-not-configured':
+      'Worker terminal connections are unavailable in this session',
   }
   return descriptions[reason] ?? `Worker terminal unavailable: ${reason}`
 }

@@ -4,6 +4,7 @@ import { canonicalDigest } from '../../domain/canonical.js'
 import { type ConnectionRegistry, connectionExecutionDigest } from '../../app/connections.js'
 import type {
   ExecuteTurnInput,
+  ExecutionAdmission,
   ExecutionPort,
   NormalizedExecutionEvent,
   RetainedExecutionRecoveryContext,
@@ -105,11 +106,24 @@ export class ConnectionRoutingExecutionPort implements ExecutionPort {
         }
   }
 
-  async admit(input: ExecuteTurnInput) {
+  async admit(input: ExecuteTurnInput): Promise<ExecutionAdmission> {
     const route = this.#forTurn(input)
     if (route.port.admit === undefined)
       throw new Error('The selected connection does not support admission')
     const admission = await route.port.admit(input)
+    const materializationReceipt = publicMaterializationReceipt({
+      ...admission.materializationReceipt,
+      connectionId: route.record.id,
+      connectionDigest: route.digest,
+    })
+    const routed = {
+      ...admission,
+      materializationReceipt,
+      materializationDigest: canonicalDigest(materializationReceipt),
+    }
+    // An adapter that reports no admitted capabilities keeps the turn's
+    // reported capabilities; there is no confidential claim to withdraw.
+    if (admission.capabilities === undefined) return routed
     const environment = admission.capabilities.environment
     const capabilities =
       route.port.confidentialAttestationVerifier === undefined &&
@@ -125,18 +139,7 @@ export class ConnectionRoutingExecutionPort implements ExecutionPort {
             },
           }
         : admission.capabilities
-    const materializationReceipt = publicMaterializationReceipt({
-      ...admission.materializationReceipt,
-      connectionId: route.record.id,
-      connectionDigest: route.digest,
-    })
-    return {
-      ...admission,
-      capabilities,
-      capabilitiesDigest: canonicalDigest(capabilities),
-      materializationReceipt,
-      materializationDigest: canonicalDigest(materializationReceipt),
-    }
+    return { ...routed, capabilities, capabilitiesDigest: canonicalDigest(capabilities) }
   }
 
   async *streamTurn(input: ExecuteTurnInput): AsyncIterable<NormalizedExecutionEvent> {

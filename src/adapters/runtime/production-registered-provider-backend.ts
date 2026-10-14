@@ -241,7 +241,11 @@ async function prepareRegisteredProvider(
   if (provider.validateProfile === undefined)
     assertProfileMaterializes(
       profile,
-      requiredProfileRunner(profile, connectionId),
+      // Interface names runners that Runtime's materializer cannot plan
+      // (for example `acp`); the materializer refuses those at this call.
+      requiredProfileRunner(profile, connectionId) as Parameters<
+        typeof assertProfileMaterializes
+      >[1],
       'Selected provider AgentProfile',
     )
   const workspace = snapshotWorkspaceRequest(input.workspaceRequest)

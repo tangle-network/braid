@@ -183,7 +183,8 @@ test('registered same-provider connections attach and recover the accepted HTTP 
       },
     }
     const admission = await production.execution.admit?.(input)
-    assert.ok(admission)
+    assert.ok(admission?.capabilities)
+    assert.ok(admission.materializationReceipt)
     for (const changed of [
       {
         ...input,
@@ -255,7 +256,8 @@ test('registered same-provider connections attach and recover the accepted HTTP 
       ...recovery,
       operationId: 'operation-cancel-registered',
     })
-    assert.equal(cancelled?.outcome, 'accepted')
+    assert.ok(cancelled !== undefined && 'outcome' in cancelled)
+    assert.equal(cancelled.outcome, 'accepted')
     for await (const _ of restarted.execution.reconnect!({ ...recovery, signal: input.signal })) {
       /* drain */
     }

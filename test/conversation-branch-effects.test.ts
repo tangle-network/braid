@@ -386,13 +386,14 @@ function executionFor(options: {
           input.contextTransfer?.plan.destination.provider ??
           TARGET_PROVIDER)
         : SOURCE_PROVIDER
+      const environmentId = destination
+        ? (input.contextTransferReceipt?.environmentId ??
+          input.contextTransfer?.plan.destination.environmentId)
+        : 'provider-source-environment'
       return {
         capabilities: options.capabilities,
         provider,
-        environmentId: destination
-          ? (input.contextTransferReceipt?.environmentId ??
-            input.contextTransfer?.plan.destination.environmentId)
-          : 'provider-source-environment',
+        ...(environmentId === undefined ? {} : { environmentId }),
         providerSessionId: destination
           ? input.contextTransfer?.plan.destination.sessionId
           : SOURCE_SESSION,
@@ -1200,37 +1201,54 @@ test('pending handoff recovers its original receipt after fresh transfer support
   }
   const journal = new MemoryJournal(new FixedClock(AT))
   const app = createBraidApplication({
-    fixture: 'deterministic', execution, clock: new FixedClock(AT), journal, effectStorage: journal,
+    fixture: 'deterministic',
+    execution,
+    clock: new FixedClock(AT),
+    journal,
+    effectStorage: journal,
   })
   await prepareSource(app)
-  await app.send({ operationId: 'op-source-historical-recovery', text: 'source history' }).completion
+  await app.send({ operationId: 'op-source-historical-recovery', text: 'source history' })
+    .completion
   const planInput = {
-    operationId: 'op-historical-recovery', kind: 'cross-runner' as const,
-    runner: 'codex', destinationProvider: TARGET_PROVIDER,
+    operationId: 'op-historical-recovery',
+    kind: 'cross-runner' as const,
+    runner: 'codex',
+    destinationProvider: TARGET_PROVIDER,
   }
   const plan = await app.conversations.branches.plan(planInput)
   const portablePlan = plan.portableContextPlan
   assert(portablePlan)
   assert.equal(plan.allowed, true)
   const input = {
-    ...planInput, planDigest: plan.digest,
+    ...planInput,
+    planDigest: plan.digest,
     ...(portablePlan.requiresAcceptance ? { acceptedDigest: portablePlan.digest } : {}),
   }
   await assert.rejects(() => app.conversations.branches.execute(input), /acknowledgement was lost/)
-  assert.equal(app.state().operations.find((operation) => operation.id === input.operationId)?.status, 'pending')
+  assert.equal(
+    app.state().operations.find((operation) => operation.id === input.operationId)?.status,
+    'pending',
+  )
   freshSupported = false
   const readsBeforeRecovery = capabilityReads
   const restarted = createBraidApplication({
-    fixture: 'deterministic', execution, clock: new FixedClock('2026-08-29T00:00:00.000Z'),
-    journal, effectStorage: journal,
+    fixture: 'deterministic',
+    execution,
+    clock: new FixedClock('2026-08-29T00:00:00.000Z'),
+    journal,
+    effectStorage: journal,
   })
   await assert.rejects(
     () => restarted.conversations.branches.execute({ ...input, text: 'changed-request' }),
     /accepted fork plan no longer matches/,
   )
   await assert.rejects(
-    () => restarted.conversations.branches.execute({ ...input, acceptedDigest: 'changed-acceptance' }),
-    portablePlan.requiresAcceptance ? /requires explicit acceptance/ : /already used with different input/,
+    () =>
+      restarted.conversations.branches.execute({ ...input, acceptedDigest: 'changed-acceptance' }),
+    portablePlan.requiresAcceptance
+      ? /requires explicit acceptance/
+      : /already used with different input/,
   )
   assert.equal(lookups.length, 1)
   const recovered = await restarted.conversations.branches.execute(input)
@@ -1239,21 +1257,28 @@ test('pending handoff recovers its original receipt after fresh transfer support
   assert.equal(lookups.length, 2)
   assert.deepEqual(lookups[1], lookups[0])
   assert.equal(capabilityReads, readsBeforeRecovery)
-  const operation = restarted.state().operations.find((candidate) => candidate.id === input.operationId)
+  const operation = restarted
+    .state()
+    .operations.find((candidate) => candidate.id === input.operationId)
   assert.equal(operation?.status, 'acknowledged')
   assert.equal(operation?.result?.planDigest, plan.digest)
   assert.equal((await restarted.conversations.branches.execute(input)).id, recovered.id)
   assert.equal(lookups.length, 2)
   assert.equal(contextState.transfers.length, 1)
   const newPlan = await restarted.conversations.branches.plan({
-    ...planInput, operationId: 'op-new-unsupported-handoff', branchId: plan.sourceBranchId,
+    ...planInput,
+    operationId: 'op-new-unsupported-handoff',
+    branchId: plan.sourceBranchId,
   })
   assert.equal(newPlan.allowed, false)
   await assert.rejects(
-    () => restarted.conversations.branches.execute({
-      ...planInput, operationId: newPlan.operationId, branchId: plan.sourceBranchId,
-      planDigest: newPlan.digest,
-    }),
+    () =>
+      restarted.conversations.branches.execute({
+        ...planInput,
+        operationId: newPlan.operationId,
+        branchId: plan.sourceBranchId,
+        planDigest: newPlan.digest,
+      }),
     /does not report retry-safe/,
   )
   assert.equal(contextState.transfers.length, 1)
@@ -1276,7 +1301,9 @@ for (const scenario of [
           return {
             status: scenario.status,
             operationId: request.operationId,
-            requestDigest: scenario.differentRequest ? `sha256:${'f'.repeat(64)}` : request.requestDigest,
+            requestDigest: scenario.differentRequest
+              ? `sha256:${'f'.repeat(64)}`
+              : request.requestDigest,
             message: 'Preserve the original lookup outcome',
             retryable: scenario.retryable,
           }
@@ -1284,7 +1311,11 @@ for (const scenario of [
         transfer,
       },
     }
-    const app = createBraidApplication({ fixture: 'deterministic', execution, clock: new FixedClock(AT) })
+    const app = createBraidApplication({
+      fixture: 'deterministic',
+      execution,
+      clock: new FixedClock(AT),
+    })
     await prepareSource(app)
     await app.send({ operationId: 'op-source-preserved-lookup', text: 'source history' }).completion
     const plan = await app.conversations.branches.plan({
@@ -1295,16 +1326,18 @@ for (const scenario of [
     })
     const portableContextPlan = plan.portableContextPlan
     assert(portableContextPlan)
-    await assert.rejects(() => app.conversations.branches.execute({
-      operationId: 'op-preserved-lookup',
-      kind: 'cross-runner',
-      runner: 'codex',
-      destinationProvider: TARGET_PROVIDER,
-      planDigest: plan.digest,
-      ...(portableContextPlan.requiresAcceptance
-        ? { acceptedDigest: portableContextPlan.digest }
-        : {}),
-    }))
+    await assert.rejects(() =>
+      app.conversations.branches.execute({
+        operationId: 'op-preserved-lookup',
+        kind: 'cross-runner',
+        runner: 'codex',
+        destinationProvider: TARGET_PROVIDER,
+        planDigest: plan.digest,
+        ...(portableContextPlan.requiresAcceptance
+          ? { acceptedDigest: portableContextPlan.digest }
+          : {}),
+      }),
+    )
     assert.equal(contextState.transfers.length, 0)
   })
 }
@@ -1368,8 +1401,8 @@ test('workspace fork uses exact provider operations, isolates destination, and c
       }),
     /must keep the source run connection/u,
   )
-  assert.deepEqual(provider.state.checkpointRequests, [])
-  assert.deepEqual(provider.state.forkRequests, [])
+  assert.equal(provider.state.checkpointRequests.length, 0)
+  assert.equal(provider.state.forkRequests.length, 0)
   const plan = await app.conversations.branches.plan({
     operationId: 'op-workspace-branch-effects',
     kind: 'workspace',
@@ -2242,13 +2275,16 @@ test('handoff first-turn admission retains its accepted connection digest throug
   assert.equal(snapshot.expectedConnectionDigest, plan.destinationConnectionDigest)
   const originalRequest = contextState.transfers[0]
   assert(originalRequest)
+  const acceptedPlan = plan.portableContextPlan
+  assert(acceptedPlan)
+  assert.deepEqual(originalRequest.plan, acceptedPlan)
   assert.throws(
     () =>
       restarted.send({
         operationId: run.operationId,
         text: run.receipt.requested.text,
         expectedConnectionDigest: canonicalDigest({ changed: true }),
-        portableContextPlan: originalRequest.plan,
+        portableContextPlan: acceptedPlan,
         portableContextTransferRequest: originalRequest,
         portableContextTransferReceipt: contextResult(originalRequest) as Extract<
           ContextTransferResult,

@@ -79,7 +79,7 @@ test('production CLI Bridge transfers context into one exact fresh retained sess
       )
     }
     assert.equal(bridge.requests.length, 0)
-    assert.deepEqual(admissions, [])
+    assert.equal(admissions.length, 0)
     const admission = await production.execution.admit?.(input)
     assert.equal(admission?.environmentId, transfer.plan.destination.environmentId)
     assert.equal(admission?.providerSessionId, transfer.plan.destination.sessionId)
@@ -257,7 +257,12 @@ test('portable lookup recovers an exact receipt when fresh admission is unavaila
   const request = contextTransfer(defineAgentProfile({ name: 'retained destination' }), 'daytona')
   const capabilities = {
     ...execOnlyEnvironmentCapabilities({
-      read: false, write: false, exec: false, git: false, upload: false, download: false,
+      read: false,
+      write: false,
+      exec: false,
+      git: false,
+      upload: false,
+      download: false,
     }),
     contextTransfer: { freshSession: false, requestIdempotency: false, lookup: true },
   }
@@ -285,14 +290,25 @@ test('portable lookup recovers an exact receipt when fresh admission is unavaila
   const provider: AgentEnvironmentProvider = {
     name: 'daytona',
     capabilities: () => capabilities,
-    async create() { throw new Error('Lookup must not allocate') },
+    async create() {
+      throw new Error('Lookup must not allocate')
+    },
     contextTransfer: {
-      async lookup(input) { lookups += 1; assert.deepEqual(input, request); return receipt },
-      async transfer() { transfers += 1; throw new Error('Fresh admission is unavailable') },
+      async lookup(input) {
+        lookups += 1
+        assert.deepEqual(input, request)
+        return receipt
+      },
+      async transfer() {
+        transfers += 1
+        throw new Error('Fresh admission is unavailable')
+      },
     },
   }
   const port = createProviderContextTransferPort({
-    async resolve() { return { provider, capabilities } },
+    async resolve() {
+      return { provider, capabilities }
+    },
   })
   assert.equal(await port.supports?.(request.plan.destination), false)
   assert.deepEqual(await port.lookup?.(request), receipt)
@@ -301,7 +317,13 @@ test('portable lookup recovers an exact receipt when fresh admission is unavaila
   assert.equal(transfers, 0)
   const denied = createProviderContextTransferPort({
     async resolve() {
-      return { provider, capabilities: { ...capabilities, contextTransfer: { ...capabilities.contextTransfer, lookup: false } } }
+      return {
+        provider,
+        capabilities: {
+          ...capabilities,
+          contextTransfer: { ...capabilities.contextTransfer, lookup: false },
+        },
+      }
     },
   })
   assert.equal(await denied.lookup?.(request), undefined)
