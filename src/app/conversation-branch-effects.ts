@@ -1258,6 +1258,7 @@ async function workspaceBranchingForEnvironment(
   sourceRun: RunRecord,
   workspaceRoot: string | null,
 ): Promise<ExecutionPort['workspaceBranching']> {
+  await execution?.ready?.()
   const provider = execution?.workspaceBranchingProvider
   if (provider !== undefined) {
     if (providerEnvironmentId === undefined) return undefined

@@ -179,6 +179,7 @@ The default is a conversation-only fork in the shared environment with a new pro
 The reference resolves through the profile catalog that `/profile` uses: configured profile sources, trusted-workspace discovery, and profiles already registered in this workspace.
 An unknown, untrusted, or invalid reference is refused with a plain explanation before planning, so no provider is called.
 A profile change is always a context handoff: the destination provider reports whether it accepts portable context, the preview names the source and destination profiles and the copied context, and the new branch starts a new provider session with copied context.
+The handoff runs on the [effective runner](05-profiles-and-connections.md#selection-precedence) for the destination profile: a fork's runner override, then an inherited branch override, then the destination profile's harness, so `--profile` alone reaches that profile's runner.
 The accepted plan binds the destination profile's canonical digest, and execution resolves the reference again, so a profile file changed after review refuses and requires a new preview.
 After the provider accepts the transfer, Braid records a profile snapshot and binds the new branch to it.
 Every later turn on that branch, and every branch or clone created from it, runs under the bound profile through restart and replay; `/profile` changes the selection for unbound branches only.
@@ -186,6 +187,8 @@ A workspace or conversation-only fork keeps the source profile.
 A profile that event redaction would change cannot be bound, so its plan is unavailable.
 
 The preview must distinguish source, inherited, transformed, shared, new, unavailable, and omitted values.
+
+Planning a handoff or workspace fork first loads a deferred provider port, so a fresh process before its first turn reads the capabilities that provider reports instead of refusing because the port has not loaded.
 
 The fork operation commits its requested plan before external checkpoint or session creation.
 
