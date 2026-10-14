@@ -1,0 +1,60 @@
+ fork preview                                                                                                                                                                              cross-runner
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ same conversation · new branch
+ runner: transfer unavailable
+ source: conv-1
+ source branch: branch-1
+ destination branch: branch-1eb960cbff926887d305ca429e4fd2b4
+ boundary: branch-1 → 0 messages
+ provider session: current → new
+ connection: source connection → connection-local-cli-bridge
+ workspace: current → unavailable
+ The selected connection does not expose canonical fresh-session context transfer
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ←/esc cancel

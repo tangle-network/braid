@@ -1,0 +1,36 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                   review connection
+                   kind Registered provider
+                   provider daytona
+                   name Daytona capture
+                   endpoint https://daytona.invalid
+                   account capture-team
+                   region us
+                   credentials entered separately · values never accepted here
+                  → Continue                        save these details
+                    ← edit fields                   return to metadata
+                    ← change kind                   choose another connection
+                    Cancel                          discard this draft
+                   ↑↓ choose · enter continue / back · ←/esc cancel
