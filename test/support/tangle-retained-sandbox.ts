@@ -91,6 +91,13 @@ export class FakeTangleRetainedSandbox {
   readonly #executions = new Map<string, FakeExecution>()
   readonly #cancellationDigests = new Map<string, string>()
 
+  /** Backend types the fake catalog advertises; claude-code proves native seat references. */
+  readonly #backendTypes: readonly string[]
+
+  constructor(options: { readonly backends?: readonly string[] } = {}) {
+    this.#backendTypes = options.backends ?? ['opencode']
+  }
+
   get boxes(): readonly FakeRetainedBox[] {
     return [...this.#boxesById.values()].filter((box) => !box.deleted)
   }
@@ -101,11 +108,11 @@ export class FakeTangleRetainedSandbox {
         throw new Error('The lazy capability probe must not call the Sandbox transport')
       },
       listBackends: async () => ({
-        backends: [backendRegistryEntry('opencode')],
+        backends: this.#backendTypes.map(backendRegistryEntry),
         timestamp: new Date(0).toISOString(),
       }),
       getBackend: async (type: string) =>
-        type === 'opencode' ? backendRegistryEntry(type) : undefined,
+        this.#backendTypes.includes(type) ? backendRegistryEntry(type) : undefined,
       create: async (options) => {
         const create = structuredClone(options ?? {})
         this.createCalls.push(create)

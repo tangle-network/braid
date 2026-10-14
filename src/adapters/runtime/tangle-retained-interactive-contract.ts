@@ -60,6 +60,8 @@ export function interactiveMaterializationReceipt(
   const workspaceRequestDigestValue = workspaceRequestDigest(prepared.workspaceRequest)
   const resourceRequestDigest =
     prepared.resourceRequest === undefined ? undefined : canonicalDigest(prepared.resourceRequest)
+  const storedSecretNamesDigest =
+    prepared.secretNames === undefined ? undefined : canonicalDigest(prepared.secretNames)
   return publicMaterializationReceipt({
     provider: prepared.provider.name,
     backend: 'environment-provider',
@@ -75,6 +77,7 @@ export function interactiveMaterializationReceipt(
       ? {}
       : { workspaceRequestDigest: workspaceRequestDigestValue }),
     ...(resourceRequestDigest === undefined ? {} : { resourceRequestDigest }),
+    ...(storedSecretNamesDigest === undefined ? {} : { storedSecretNamesDigest }),
   })
 }
 
@@ -95,6 +98,7 @@ export function interactiveEnvironment(
     },
     ...(prepared.workspaceRequest === undefined ? {} : { workspace: prepared.workspaceRequest }),
     ...(prepared.resourceRequest === undefined ? {} : { resources: prepared.resourceRequest }),
+    ...(prepared.secretNames === undefined ? {} : { secrets: [...prepared.secretNames] }),
     idempotencyKey,
   }
 }

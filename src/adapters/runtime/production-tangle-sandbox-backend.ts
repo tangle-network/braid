@@ -22,6 +22,7 @@ import {
   snapHarnessToModel,
 } from '@tangle-network/agent-interface/harness-capabilities'
 import { nitroVerifiersForConnection } from '../connections/nitro-confidential-attestation.js'
+import { tangleModelCredentialsForConnection } from '../connections/tangle-model-credentials.js'
 import {
   createTangleRetainedControlLookup,
   supportsTangleRetainedControlLookup,
@@ -86,19 +87,23 @@ export async function resolveTangleSandboxBackend(
   const workspaceRequest = snapshotWorkspaceRequest(input.workspaceRequest)
   const workspaceRequestDigestValue = workspaceRequestDigest(workspaceRequest)
   const resourceRequest = connectionResourceRequest(record)
+  const secretNames = connectionSecretNames(record)
   const environmentRequestDigest = canonicalDigest({
     kind: 'tangle-sandbox-environment-request',
     idempotencyKey,
     workspaceRequest: workspaceRequest ?? null,
     ...(resourceRequest === undefined ? {} : { resourceRequest }),
+    ...(secretNames === undefined ? {} : { secretNames }),
   })
   const rawClient = await createTangleSandboxClient(record, options, input.signal)
   const observedClient = observeSandboxClient(rawClient, lifecycle)
   const confidential = nitroVerifiersForConnection(record, options)
+  const modelCredentials = tangleModelCredentialsForConnection(record, options)
   const sdkProvider = createTangleProvider({
     client: observedClient.client,
     defaultBackend: runner,
     name: 'tangle-sandbox',
+    ...(modelCredentials === undefined ? {} : { modelCredentials }),
     ...(confidential?.tangle === undefined
       ? {}
       : { confidentialAttestationVerifier: confidential.tangle }),
@@ -118,6 +123,7 @@ export async function resolveTangleSandboxBackend(
             backend: runner,
             ...(workspaceRequest === undefined ? {} : { workspace: workspaceRequest }),
             ...(resourceRequest === undefined ? {} : { resources: resourceRequest }),
+            ...(secretNames === undefined ? {} : { secrets: [...secretNames] }),
             name: record.name,
             idempotencyKey,
             signal: context.signal,
@@ -165,6 +171,8 @@ export interface PreparedTangleRetainedConnection {
   readonly workspaceRequest?: Readonly<WorkspaceRequest>
   /** Connection-owned compute request sent with every environment create. */
   readonly resourceRequest?: ConnectionResourceRequest
+  /** Connection-owned stored Sandbox secret names granted with every environment create. */
+  readonly secretNames?: readonly string[]
   readonly environmentIdempotencyKey: string
   readonly environmentName: string
   readonly environmentMetadata: Readonly<Record<string, unknown>>
@@ -199,6 +207,7 @@ export async function resolveTangleSandboxRetainedConnection(
   const { profile, model, runner } = await tangleExecutionIdentity(input, selection, connectionId)
   const workspaceRequest = snapshotWorkspaceRequest(input.workspaceRequest)
   const resourceRequest = connectionResourceRequest(record)
+  const secretNames = connectionSecretNames(record)
   const providerSessionId =
     input.contextTransferReceipt?.sessionId ??
     input.sessionId ??
@@ -261,10 +270,12 @@ export async function resolveTangleSandboxRetainedConnection(
   const retainedControlLookup =
     options.tangleRetainedControlLookup ?? createTangleRetainedControlLookup(observedClient.client)
   const confidential = nitroVerifiersForConnection(record, options)
+  const modelCredentials = tangleModelCredentialsForConnection(record, options)
   const provider = createTangleProvider({
     client: observedClient.client,
     defaultBackend: runner,
     name: 'tangle-sandbox',
+    ...(modelCredentials === undefined ? {} : { modelCredentials }),
     ...(confidential?.tangle === undefined
       ? {}
       : { confidentialAttestationVerifier: confidential.tangle }),
@@ -302,6 +313,7 @@ export async function resolveTangleSandboxRetainedConnection(
     idleTtlSeconds,
     workspaceRequest: workspaceRequest ?? null,
     ...(resourceRequest === undefined ? {} : { resourceRequest }),
+    ...(secretNames === undefined ? {} : { secretNames }),
   })
   const workspaceRequestDigestValue = workspaceRequestDigest(workspaceRequest)
   return freezeExecution({
@@ -321,6 +333,7 @@ export async function resolveTangleSandboxRetainedConnection(
         }),
     ...(workspaceRequest === undefined ? {} : { workspaceRequest }),
     ...(resourceRequest === undefined ? {} : { resourceRequest }),
+    ...(secretNames === undefined ? {} : { secretNames }),
     environmentIdempotencyKey: identity.environmentIdempotencyKey,
     environmentName: identity.name,
     environmentMetadata: identity.metadata,
@@ -368,6 +381,15 @@ function connectionResourceRequest(
     ...(resources.diskMb === undefined ? {} : { diskMb: resources.diskMb }),
     ...(resources.gpu === undefined ? {} : { gpu: resources.gpu }),
   })
+}
+
+/**
+ * Copy the saved stored-secret names so a later registry change cannot alter a prepared run.
+ * Digests omit the field when absent, so runs without grants keep their prior identity.
+ */
+function connectionSecretNames(record: ConnectionRecord): readonly string[] | undefined {
+  const names = record.providerOptions.secrets
+  return names === undefined ? undefined : Object.freeze([...names])
 }
 
 /** Reject a workspace path before Tangle can allocate an environment. */

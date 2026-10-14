@@ -157,6 +157,7 @@ const scopeFiles = {
     'security.test.js',
     'storage-snapshots.test.js',
     'storage.test.js',
+    'tangle-connection-seats.test.js',
     'tui-core-workflows.test.js',
     'tui-interaction-security.test.js',
     'w6-contract.test.js',

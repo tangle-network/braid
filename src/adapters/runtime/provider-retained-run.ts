@@ -50,6 +50,8 @@ export interface PreparedRetainedProviderConnection {
   readonly providerSessionId: string
   readonly workspaceRequest?: Readonly<WorkspaceRequest>
   readonly resourceRequest?: ConnectionResourceRequest
+  /** Stored Sandbox secret names granted with the environment; never values. */
+  readonly secretNames?: readonly string[]
   readonly environmentIdempotencyKey: string
   readonly environmentName: string
   readonly environmentMetadata: Readonly<Record<string, unknown>>
@@ -187,6 +189,9 @@ export async function startProviderRetainedRun(
       ...(plan.prepared.resourceRequest === undefined
         ? {}
         : { resources: plan.prepared.resourceRequest }),
+      ...(plan.prepared.secretNames === undefined
+        ? {}
+        : { secrets: [...plan.prepared.secretNames] }),
       name: plan.prepared.environmentName,
       metadata: plan.prepared.environmentMetadata,
       idempotencyKey: plan.environmentIdempotencyKey,
@@ -231,6 +236,9 @@ async function recoverProviderRetainedRun(
           ...(plan.prepared.resourceRequest === undefined
             ? {}
             : { resources: plan.prepared.resourceRequest }),
+          ...(plan.prepared.secretNames === undefined
+            ? {}
+            : { secrets: [...plan.prepared.secretNames] }),
           name: plan.prepared.environmentName,
           metadata: plan.prepared.environmentMetadata,
           idempotencyKey: admission.idempotencyKey,

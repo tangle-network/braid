@@ -3,6 +3,7 @@ import {
   redactStructuredValueWithNumericTelemetry,
   STRUCTURED_REDACTION_MARKER,
 } from './bounded-structured.js'
+import { connectionCredentialReferenceProblem } from './connection-credential-references.js'
 import type { AnalysisRecord } from './entities.js'
 import { isEventId, isMessageId, isMessagePartId } from './ids.js'
 import { persistedContextTransferEventRequest } from './portable-context-persistence.js'
@@ -143,5 +144,32 @@ export function redactBraidEvent<T>(event: T): T {
     if (Buffer.byteLength(JSON.stringify(redacted), 'utf8') > MAX_CONVERSATION_IMPORT_EVENT_BYTES)
       throw new RangeError('The canonical handoff event exceeds the durable payload limit')
   }
+  restoreConnectionCredentialReferences(event, redacted)
   return redacted
+}
+
+/**
+ * Keep a saved connection's stored-secret names and model-seat reference in its journal event.
+ *
+ * Their field names match the key-based redaction rule, so redaction alone would replace them with
+ * a marker and the replayed connection would lose its grants. The shared validator proves they hold
+ * names and commands only; a record that fails it keeps the marker.
+ */
+function restoreConnectionCredentialReferences(event: unknown, redacted: unknown): void {
+  const source = recordValue(event)
+  if (source?.kind !== 'connection.upserted') return
+  const connection = recordValue(source.connection)
+  const options = recordValue(connection?.providerOptions)
+  if (connection === undefined || options === undefined) return
+  if (options.secrets === undefined && options.modelCredentials === undefined) return
+  if (
+    typeof connection.kind !== 'string' ||
+    connectionCredentialReferenceProblem(connection.kind, options) !== undefined
+  )
+    return
+  const target = recordValue(recordValue(recordValue(redacted)?.connection)?.providerOptions)
+  if (target === undefined) return
+  for (const key of ['secrets', 'modelCredentials'] as const) {
+    if (options[key] !== undefined) target[key] = structuredClone(options[key])
+  }
 }

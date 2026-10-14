@@ -181,10 +181,46 @@ export interface ConnectionTransportOptions {
   readonly idleTtlSeconds?: number
   /** Compute requested for every cloud environment this connection creates. */
   readonly resources?: ConnectionResourceRequest
+  /** Stored Tangle Sandbox secret names granted to every environment; values never appear. */
+  readonly secrets?: readonly string[]
+  /** Where a subscription profile gets its model seat; a reference, never a credential. */
+  readonly modelCredentials?: ConnectionModelCredentials
 }
 
 /** Provider-neutral compute request; provider-native resource options are never stored. */
 export type ConnectionResourceRequest = Readonly<Omit<ResourceRequest, 'providerOptions'>>
+
+/**
+ * A model-seat reference for a Tangle Sandbox connection.
+ *
+ * The command form names a resolver that the Tangle provider runs at environment creation.
+ * The resolver registers the seat as a stored Sandbox secret and returns its public reference.
+ * The static form names a seat that is already stored.
+ */
+export type ConnectionModelCredentials =
+  | ConnectionModelCredentialCommand
+  | ConnectionModelCredentialStoredSeat
+
+export interface ConnectionModelCredentialCommand {
+  /** Executable and arguments, run directly without a shell. */
+  readonly command: readonly string[]
+  /** Variables in Braid's environment that the command reads; Braid refuses to run while one is unset. */
+  readonly env?: readonly string[]
+  /** Variable that receives this connection's own Sandbox key, so the seat lands in the same account. */
+  readonly connectionKeyEnv?: string
+  /** Variable that receives this connection's Sandbox endpoint. */
+  readonly connectionEndpointEnv?: string
+}
+
+export interface ConnectionModelCredentialStoredSeat {
+  readonly cliAuth: {
+    /** Account label the stored seat belongs to. */
+    readonly account: string
+    /** Stored Sandbox secret name that holds the seat. */
+    readonly secretEnv: string
+    readonly format: 'token' | 'bundle' | 'files'
+  }
+}
 
 export interface RetentionPolicy {
   readonly completedRunDays?: number

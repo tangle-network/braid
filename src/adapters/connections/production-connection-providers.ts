@@ -33,6 +33,7 @@ import type {
   ProductionConnectionOptions,
 } from './production-connection-types.js'
 import { createRegisteredEnvironmentProvider } from './registered-provider.js'
+import { tangleModelCredentialsForConnection } from './tangle-model-credentials.js'
 import { supportsTangleRetainedControlLookup } from './tangle-retained-control-lookup.js'
 
 export async function createTangleSandboxClient(
@@ -72,12 +73,14 @@ export async function createTangleEnvironmentProvider(
   const confidential = nitroVerifiersForConnection(record, options)
   const client = await createTangleSandboxClient(record, options, signal)
   signal?.throwIfAborted()
+  const modelCredentials = tangleModelCredentialsForConnection(record, options)
   return createTangleProvider({
     client:
       lifecycle === 'retained' && idleTtlSeconds !== undefined
         ? withRetainedSandboxPolicy(client, idleTtlSeconds)
         : client,
     name: 'tangle-sandbox',
+    ...(modelCredentials === undefined ? {} : { modelCredentials }),
     ...(confidential?.tangle === undefined
       ? {}
       : { confidentialAttestationVerifier: confidential.tangle }),
