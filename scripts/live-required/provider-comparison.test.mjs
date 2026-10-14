@@ -337,7 +337,7 @@ test('owner infrastructure evidence preserves failed rows and never calls model 
     await writeFile(artifactPath, bytes)
     const reference = {
       schema: 'braid.provider-comparison.infrastructure-reference.v1',
-      owner: 'tangle-network/agent-dev-container',
+      owner: 'tangle-network/agent-container',
       sourceRevision: '7e44a6b1d73a140dd78af1bb5d793a678db01d69',
       kind: 'benchmark-records',
       artifactPath: 'owner.jsonl',

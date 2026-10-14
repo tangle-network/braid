@@ -388,12 +388,12 @@ from failed, unavailable or interrupted workflows remain in the raw records and 
 excluded-value lists. Those exclusions keep their outcome denominators and cannot be counted
 as unstarted attempts or successful latency. Failed-attempt charges remain in the cost totals.
 
-Infrastructure measurement belongs to `agent-dev-container/products/sandbox/evals`, including
+Infrastructure measurement belongs to `agent-container/products/sandbox/evals`, including
 its existing `speed:board`, `speed:experiment`, lifecycle-cost calculation, and scorecard.
 Braid consumes these outputs and adds evidence from its handoff workflow. It does not create
 another infrastructure runner or significance implementation. A reference file contains
 `schema: braid.provider-comparison.infrastructure-reference.v1`,
-`owner: tangle-network/agent-dev-container`, the exact `sourceRevision`, `kind`, `artifactPath`,
+`owner: tangle-network/agent-container` (or `tangle-network/agent-dev-container` on exports written before the rename), the exact `sourceRevision`, `kind`, `artifactPath`,
 and `artifactSha256`. Paths resolve relative to that reference. Supported existing export kinds
 are `benchmark-records`, `speed-board`, `speed-experiment`, `scorecard`, and `lifecycle-cost`.
 The reader checks the bytes, required identity/outcome fields, and the export's scope. It keeps
