@@ -266,36 +266,95 @@ test('exec-only adapters refuse full-profile execution and transfer before provi
   assert.equal(transfers, 0)
 })
 
-test('legacy receipts retain their saved connection and unknown recovery fails closed', async () => {
+test('legacy receipts recover on their recorded connection and identity-less recovery keeps the configured connection', async () => {
   const first = connection('first')
   const second = connection('second')
+  const catalog = new ConnectionRegistry([first, second])
   let selected: string | undefined
+  const create = (record: ConnectionRecord): ExecutionPort => ({
+    async *streamTurn() {},
+    async status() {
+      selected = record.id
+      return null
+    },
+  })
   const routing = new ConnectionRoutingExecutionPort({
-    connections: new ConnectionRegistry([first, second]),
+    connections: catalog,
     defaultConnectionId: first.id,
-    create: (record) => ({
-      async *streamTurn() {},
-      async status() {
-        selected = record.id
-        return null
-      },
-    }),
+    create,
   })
-  const receipt = createAdmissionReceipt({
-    operationId: 'operation-legacy',
-    runId: 'run-legacy',
-    text: 'Continue',
-    profile,
-    connectionId: second.id,
-    turnId: 'turn-legacy',
-    conversationId: 'conversation-test',
-    branchId: 'branch-test',
-    admittedAt: at,
-    capabilities: UNKNOWN_RUN_CAPABILITIES,
-  })
-  await routing.status({ runId: 'run-legacy', receipt })
+  const legacyReceipt = (
+    runId: string,
+    connectionId: string | undefined,
+    materializationReceipt?: Readonly<Record<string, unknown>>,
+  ) =>
+    createAdmissionReceipt({
+      operationId: `operation-${runId}`,
+      runId,
+      text: 'Continue',
+      profile,
+      ...(connectionId === undefined ? {} : { connectionId }),
+      turnId: `turn-${runId}`,
+      conversationId: 'conversation-test',
+      branchId: 'branch-test',
+      admittedAt: at,
+      capabilities: UNKNOWN_RUN_CAPABILITIES,
+      ...(materializationReceipt === undefined ? {} : { materializationReceipt }),
+    })
+  await routing.status({ runId: 'run-legacy', receipt: legacyReceipt('run-legacy', second.id) })
   assert.equal(selected, second.id)
-  await assert.rejects(routing.status({ runId: 'run-unbound' }), /admitted connection identity/u)
+
+  // A receipt admitted before routing recorded no requested connection or revision digest,
+  // but its backend recorded the admitted connection in the materialization receipt.
+  const admittedOnly = legacyReceipt('run-admitted-only', undefined, {
+    provider: 'cli-bridge',
+    connectionId: second.id,
+  })
+  assert.equal(admittedOnly.requested.connectionId, undefined)
+  selected = undefined
+  await routing.status({ runId: 'run-admitted-only', receipt: admittedOnly })
+  assert.equal(selected, second.id)
+
+  // Identity-less recovery binds the configured connection once and keeps that binding.
+  selected = undefined
+  await routing.status({ runId: 'run-unbound' })
+  assert.equal(selected, first.id)
+  selected = undefined
+  await routing.status({ runId: 'run-unbound' })
+  assert.equal(selected, first.id)
+  await assert.rejects(
+    routing.status({ runId: 'run-unbound', receipt: legacyReceipt('run-unbound', second.id) }),
+    /belongs to another connection/u,
+  )
+
+  // A restarted router derives the same bindings from the same receipts.
+  const restarted = new ConnectionRoutingExecutionPort({
+    connections: catalog,
+    defaultConnectionId: first.id,
+    create,
+  })
+  selected = undefined
+  await restarted.status({ runId: 'run-admitted-only', receipt: admittedOnly })
+  assert.equal(selected, second.id)
+
+  // Recorded identities that disagree, or name a removed connection, still fail closed.
+  await assert.rejects(
+    restarted.status({
+      runId: 'run-conflicting',
+      receipt: legacyReceipt('run-conflicting', first.id, { connectionId: second.id }),
+    }),
+    /conflicting connection identities/u,
+  )
+  await assert.rejects(
+    restarted.status({
+      runId: 'run-removed',
+      receipt: legacyReceipt('run-removed', undefined, {
+        connectionId: 'connection-provider-removed',
+      }),
+    }),
+    /does not exist/u,
+  )
+  assert.equal(selected, second.id)
 })
 
 test('workspace lookup follows the source run connection and refuses a changed revision after restart', async () => {

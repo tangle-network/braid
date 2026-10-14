@@ -16,6 +16,7 @@ import { snapshotWorkspaceRequest, workspaceRequestDigest } from '../../app/work
 import type { ConnectionId } from '../../domain/ids.js'
 import type { ExecuteTurnInput } from '../../ports/execution.js'
 import { createRegisteredEnvironmentProvider } from '../connections/registered-provider.js'
+import { endpointLocation, staticExecutionObservation } from './execution-observation-source.js'
 import type { PreparedRetainedProviderConnection } from './provider-retained-run.js'
 import type { PreparedExecution } from './prepared-execution.js'
 import {
@@ -146,12 +147,33 @@ export async function resolveRegisteredProviderRetainedConnection(
     input.sessionId !== receipt.sessionId
   )
     throw new Error('The selected session conflicts with the accepted context transfer receipt')
+  const location =
+    record.endpoint === undefined
+      ? { location: 'unknown' as const }
+      : endpointLocation(record.endpoint)
   return {
     profile,
     model,
     runner: requiredProfileRunner(profile, connectionId),
     provider,
     capabilities: reported,
+    // A registered provider reports no environment telemetry, so the retained stream
+    // observes only the connection facts Braid holds and names the rest unavailable.
+    observation: staticExecutionObservation({
+      kind: location.location === 'local' ? 'local-process' : 'remote-service',
+      provider: provider.name,
+      lifecycle: 'ready',
+      lifecycleMode: 'retained',
+      cleanup: 'explicit',
+      continuity: 'session',
+      ...location,
+      createdAt: new Date().toISOString(),
+      unavailable: [
+        'effective-resources:not-exposed-by-provider',
+        'machine-specs:not-exposed-by-provider',
+        'runtime-cpu-memory-usage:not-exposed-by-provider',
+      ],
+    }),
     providerSessionId:
       receipt?.sessionId ?? input.sessionId ?? stableProviderId('session-braid-', input.runId),
     ...(receipt === undefined

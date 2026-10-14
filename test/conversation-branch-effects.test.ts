@@ -13,7 +13,7 @@ import type {
   WorkspaceForkRequest,
   WorkspaceForkResult,
 } from '@tangle-network/agent-interface'
-import { defineAgentProfile } from '@tangle-network/agent-interface'
+import { defineAgentProfile, projectPortableContextPlan } from '@tangle-network/agent-interface'
 import { canonicalAgentProfileDigestHex } from '../src/adapters/agent-interface/profile-runtime.js'
 import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
 import { openSqliteStorage } from '../src/adapters/storage/sqlite.js'
@@ -2277,7 +2277,8 @@ test('handoff first-turn admission retains its accepted connection digest throug
   assert(originalRequest)
   const acceptedPlan = plan.portableContextPlan
   assert(acceptedPlan)
-  assert.deepEqual(originalRequest.plan, acceptedPlan)
+  // The provider receives the selected-content wire projection of the accepted plan.
+  assert.deepEqual(originalRequest.plan, projectPortableContextPlan(acceptedPlan))
   assert.throws(
     () =>
       restarted.send({
