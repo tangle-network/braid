@@ -67,6 +67,7 @@ const PARAMETER_KEYS: Readonly<Record<HeadlessCommandName, readonly string[]>> =
   plan_fork: [
     'workspaceRequest',
     'connectionId',
+    'profileRef',
     'conversationId',
     'branchId',
     'messageId',
@@ -81,6 +82,7 @@ const PARAMETER_KEYS: Readonly<Record<HeadlessCommandName, readonly string[]>> =
   execute_fork: [
     'workspaceRequest',
     'connectionId',
+    'profileRef',
     'planDigest',
     'conversationId',
     'branchId',
@@ -170,6 +172,7 @@ const PARAMETER_TYPES: Readonly<
   plan_fork: {
     workspaceRequest: 'record',
     connectionId: 'string',
+    profileRef: 'string',
     conversationId: 'string',
     branchId: 'string',
     messageId: 'string',
@@ -184,6 +187,7 @@ const PARAMETER_TYPES: Readonly<
   execute_fork: {
     workspaceRequest: 'record',
     connectionId: 'string',
+    profileRef: 'string',
     planDigest: 'string',
     conversationId: 'string',
     branchId: 'string',

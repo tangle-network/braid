@@ -15,6 +15,7 @@ import type {
   GraphNodeRecord,
   OperationKind,
   OperationRecord,
+  ProfileSource,
   QueueRecord,
 } from '../domain/entities.js'
 import type { BraidEvent } from '../domain/events.js'
@@ -72,6 +73,35 @@ export interface CreateBranchInput {
   readonly mode?: string
   /** Internal destination binding supplied after an external fork succeeds. */
   readonly environmentId?: string
+  /** Internal profile binding supplied after a profile-changing handoff succeeds. */
+  readonly profileSnapshotId?: string
+}
+
+/**
+ * One destination AgentProfile resolved from the trusted profile catalog.
+ *
+ * Terminal and headless callers resolve a user's `profileRef` through
+ * `ProfileActionService.resolveForFork`; the planner binds this exact value.
+ */
+export interface ForkDestinationProfile {
+  /** The reference the user supplied. */
+  readonly ref: string
+  readonly profileId: string
+  readonly name: string
+  readonly source: ProfileSource
+  readonly profile: Readonly<AgentProfile>
+}
+
+/** Present only on a plan that selects a destination AgentProfile. */
+export interface ForkProfileSelection {
+  readonly ref: string
+  readonly profileId: string
+  readonly name: string
+  readonly source: ProfileSource
+  /** Canonical digest of the selected profile before run overrides. */
+  readonly digest: string
+  readonly sourceName: string
+  readonly sourceDigest: string
 }
 
 export interface SetRunOverridesInput {
@@ -106,6 +136,8 @@ export interface ForkPlanInput extends CreateBranchInput {
   readonly placement?: PlacementInfo
   /** Confidential placement request. The provider must prove it separately. */
   readonly confidential?: ConfidentialExecutionRequest
+  /** A different AgentProfile for the new branch; it always becomes a context handoff. */
+  readonly destinationProfile?: ForkDestinationProfile
 }
 
 export interface WorkspaceForkCleanupInput {
@@ -143,6 +175,7 @@ export interface ForkPlan {
   readonly destinationProvider?: string
   readonly destinationConnectionId?: string
   readonly destinationConnectionDigest?: string
+  readonly profileSelection?: ForkProfileSelection
   readonly allowed: boolean
   readonly reason?: string
   readonly digest: string

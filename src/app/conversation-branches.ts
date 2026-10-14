@@ -4,6 +4,7 @@ import { snapshotWorkspaceRequest } from './workspace-request.js'
 import { canonicalAgentProfileDigestHex } from '../adapters/agent-interface/profile-runtime.js'
 import { canonicalDigest } from '../domain/canonical.js'
 import type { BranchRecord, ConversationRecord, MessageRecord } from '../domain/entities.js'
+import { redactSensitiveText } from '../domain/redaction.js'
 import { graphEdge, graphNode } from '../domain/graph-records.js'
 import {
   type BranchId,
@@ -15,9 +16,15 @@ import {
   parseEnvironmentId,
   parseMessageId,
   parseOperationId,
+  parseProfileSnapshotId,
 } from '../domain/ids.js'
 import { type BraidState, isActiveRunStatus } from '../domain/state.js'
 import type { ExecutionPort } from '../ports/execution.js'
+import {
+  boundBranchProfile,
+  forkProfileSnapshot,
+  profileSnapshotRetained,
+} from './branch-profile.js'
 import { parseConfidentialWorkspaceForkRequest } from './confidential-workspace-fork.js'
 import { cleanupWorkspaceFork, executeBranchEffect } from './conversation-branch-effects.js'
 import {
@@ -47,8 +54,10 @@ import type {
   ConfidentialExecutionRequest,
   ConversationHost,
   CreateBranchInput,
+  ForkDestinationProfile,
   ForkPlan,
   ForkPlanInput,
+  ForkProfileSelection,
   SetRunOverridesInput,
 } from './conversation-types.js'
 import { AppError } from './errors.js'
@@ -129,10 +138,21 @@ export class ConversationBranches {
     return coordinateConversationOperation(this.#host, 'branch', input, () => this.#create(input))
   }
 
-  async #create(input: CreateBranchInput): Promise<BranchRecord> {
+  async #create(input: BranchCreationInput): Promise<BranchRecord> {
     const state = this.#host.state()
     const source = resolveSource(state, input)
     const operationId = parseOperation(input.operationId, 'branch')
+    const boundSnapshot =
+      input.profileSnapshotId === undefined
+        ? undefined
+        : state.profileSnapshots.find(
+            (snapshot) => snapshot.id === parseProfileSnapshotId(input.profileSnapshotId),
+          )
+    if (input.profileSnapshotId !== undefined && boundSnapshot === undefined)
+      throw new AppError(
+        'PROFILE_SNAPSHOT_UNAVAILABLE',
+        'The accepted destination profile was not recorded before branch creation',
+      )
     const normalized = branchRequest(source, input)
     const digest = requestDigest('branch', normalized)
     const replay = operationReplay(state, operationId, 'branch-create', digest)
@@ -157,10 +177,21 @@ export class ConversationBranches {
         ...(source.through === undefined ? {} : { throughMessageId: source.through.id }),
         ...(source.through?.turnId === undefined ? {} : { throughTurnId: source.through.turnId }),
       },
-      ...(source.branch.profileId === undefined ? {} : { profileId: source.branch.profileId }),
-      ...(source.branch.profileSnapshotId === undefined
-        ? {}
-        : { profileSnapshotId: source.branch.profileSnapshotId }),
+      ...(boundSnapshot === undefined
+        ? {
+            ...(source.branch.profileId === undefined
+              ? {}
+              : { profileId: source.branch.profileId }),
+            ...(source.branch.profileSnapshotId === undefined
+              ? {}
+              : { profileSnapshotId: source.branch.profileSnapshotId }),
+          }
+        : {
+            ...(boundSnapshot.profileId === undefined
+              ? {}
+              : { profileId: boundSnapshot.profileId }),
+            profileSnapshotId: boundSnapshot.id,
+          }),
       ...(input.connectionId === undefined && source.branch.connectionId === undefined
         ? {}
         : {
@@ -355,7 +386,10 @@ export class ConversationBranches {
     const normalized = branchRequest(source, input, confidential)
     const branchDigest = requestDigest('branch', normalized)
     const destinationBranchId = stableBranchIds(operationId, branchDigest).branchId
-    const sourceRunner = source.branch.overrides.runner ?? state.profile.harness
+    const destinationProfile = input.destinationProfile
+    const sourceProfile = boundBranchProfile(state, source.branch)
+    const selectedProfile = this.#host.profile?.() ?? state.profile
+    const sourceRunner = source.branch.overrides.runner ?? (sourceProfile ?? state.profile).harness
     const targetOverrides = runOverrides({
       inherited: source.branch.overrides,
       ...(input.runner === undefined ? {} : { runner: input.runner }),
@@ -365,7 +399,7 @@ export class ConversationBranches {
     })
     const requestedRunner = targetOverrides.runner ?? sourceRunner
     const targetProfile = resolveEffectiveProfile({
-      profile: { profile: this.#host.profile?.() ?? state.profile },
+      profile: { profile: destinationProfile?.profile ?? sourceProfile ?? selectedProfile },
       branchOverrides: {
         ...(targetOverrides.runner === undefined ? {} : { harness: targetOverrides.runner }),
         ...(targetOverrides.model === undefined ? {} : { model: targetOverrides.model }),
@@ -377,9 +411,30 @@ export class ConversationBranches {
     const kind =
       input.kind ??
       ((input.runner !== undefined && input.runner !== sourceRunner) ||
-      (input.connectionId !== undefined && input.connectionId !== source.branch.connectionId)
+      (input.connectionId !== undefined && input.connectionId !== source.branch.connectionId) ||
+      destinationProfile !== undefined
         ? ('cross-runner' as const)
         : ('conversation' as const))
+    if (destinationProfile !== undefined && kind !== 'cross-runner')
+      throw new AppError(
+        'INVALID_FORK_PLAN',
+        'Changing profile starts a new provider session with copied context; workspace and conversation-only forks keep the source profile',
+      )
+    const profileSelection =
+      destinationProfile === undefined
+        ? undefined
+        : forkProfileSelection(destinationProfile, sourceProfile ?? selectedProfile)
+    // The branch binding is a journal event, so refuse before acceptance when
+    // event redaction could not replay the selected profile exactly.
+    const profileRetained =
+      destinationProfile === undefined ||
+      profileSnapshotRetained(
+        forkProfileSnapshot({
+          operationId,
+          destination: destinationProfile,
+          createdAt: this.#host.now(),
+        }),
+      )
     const sourceConnectionId =
       sourceRun?.receipt.requested.connectionId ?? source.branch.connectionId
     if (
@@ -446,8 +501,9 @@ export class ConversationBranches {
           environment.placement.provider === portableContextPlan.source.source.provider,
       ) &&
       contextPort?.transfer !== undefined
+    const handoffAvailable = crossRunnerAvailable && profileRetained
     const allowed =
-      kind === 'conversation' || (kind === 'workspace' ? workspaceAvailable : crossRunnerAvailable)
+      kind === 'conversation' || (kind === 'workspace' ? workspaceAvailable : handoffAvailable)
     const plan = {
       kind,
       operationId,
@@ -477,6 +533,7 @@ export class ConversationBranches {
             destinationConnectionId: destinationConnection.id,
             destinationConnectionDigest: connectionExecutionDigest(destinationConnection),
           }),
+      ...(profileSelection === undefined ? {} : { profileSelection }),
       ...(confidential === undefined ? {} : { confidential }),
       environment:
         kind === 'conversation'
@@ -485,7 +542,7 @@ export class ConversationBranches {
             ? workspaceAvailable
               ? ('new' as const)
               : ('unavailable' as const)
-            : crossRunnerAvailable
+            : handoffAvailable
               ? ('new' as const)
               : ('unavailable' as const),
       providerSession: 'new' as const,
@@ -506,7 +563,9 @@ export class ConversationBranches {
                   : confidential?.requested === true
                     ? 'The selected run does not expose confidential placement and attestation verification'
                     : 'The selected run does not report retry-safe checkpoint and environment fork support'
-                : 'The selected connection does not expose canonical fresh-session context transfer',
+                : profileRetained
+                  ? 'The selected connection does not expose canonical fresh-session context transfer'
+                  : 'The destination profile contains values Braid cannot keep for a branch without redaction',
           }),
     }
     return { ...plan, digest: canonicalDigest(plan) }
@@ -605,9 +664,14 @@ function resolveBranch(
   return { conversation, branch }
 }
 
+type BranchCreationInput = CreateBranchInput & {
+  readonly confidential?: ConfidentialExecutionRequest
+  readonly destinationProfile?: ForkDestinationProfile
+}
+
 function branchRequest(
   source: ResolvedSource,
-  input: CreateBranchInput & { readonly confidential?: ConfidentialExecutionRequest },
+  input: BranchCreationInput,
   confidential: ConfidentialExecutionRequest | undefined = input.confidential,
 ) {
   return {
@@ -621,6 +685,24 @@ function branchRequest(
     effort: input.effort ?? source.branch.overrides.effort ?? null,
     mode: input.mode ?? source.branch.overrides.mode ?? null,
     ...(confidential === undefined ? {} : { confidential }),
+    ...(input.destinationProfile === undefined
+      ? {}
+      : { profileDigest: canonicalAgentProfileDigestHex(input.destinationProfile.profile) }),
+  }
+}
+
+function forkProfileSelection(
+  destination: ForkDestinationProfile,
+  source: Parameters<typeof canonicalAgentProfileDigestHex>[0],
+): ForkProfileSelection {
+  return {
+    ref: redactSensitiveText(destination.ref, 2048),
+    profileId: destination.profileId,
+    name: redactSensitiveText(destination.name, 512),
+    source: destination.source,
+    digest: canonicalAgentProfileDigestHex(destination.profile),
+    sourceName: redactSensitiveText(source.name ?? 'Unnamed profile', 512),
+    sourceDigest: canonicalAgentProfileDigestHex(source),
   }
 }
 

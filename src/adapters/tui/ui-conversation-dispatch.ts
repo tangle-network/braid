@@ -4,7 +4,11 @@ import {
   parseConfidentialWorkspaceForkArgument,
   parseConfidentialWorkspaceForkRequest,
 } from '../../app/confidential-workspace-fork.js'
-import type { ForkPlan, ForkPlanInput } from '../../app/conversation-types.js'
+import type {
+  ForkDestinationProfile,
+  ForkPlan,
+  ForkPlanInput,
+} from '../../app/conversation-types.js'
 import { AppError } from '../../app/errors.js'
 import type { BraidIntent, UiDispatchResult } from '../../views/shared/intents.js'
 import { freezeView, type BraidViewModel, type ForkPreviewView } from '../../views/shared/models.js'
@@ -15,6 +19,12 @@ type HeadlessCommandIntent = Extract<BraidIntent, { readonly type: 'headless-com
 export interface ConversationDispatchContext {
   readonly app: BraidApplication
   readonly view: () => BraidViewModel
+  /** The trusted profile catalog; a fork can select only a profile it resolves. */
+  readonly profileConnections?: {
+    readonly profiles: {
+      resolveForFork(ref: string): Promise<ForkDestinationProfile>
+    }
+  }
   setNotice(notice: string): void
   setForkPreview(preview: ForkPreviewView): void
 }
@@ -76,14 +86,21 @@ export async function dispatchConversationRunCommand(
       const runner = flagValue(intent.args, '--runner')
       const destinationProvider = flagValue(intent.args, '--provider')
       const connectionId = flagValue(intent.args, '--connection')
+      const profileRef = flagValue(intent.args, '--profile')
+      if (
+        intent.args.some((argument) => argument === '--profile' || argument === '--profile=') &&
+        profileRef === undefined
+      )
+        throw new AppError('INVALID_FORK_PLAN', '/fork --profile requires a profile reference')
       const throughMessageId = intent.args.find((argument) => argument.startsWith('message-'))
       const confidential = confidentialRequestForForkArgs(intent.args)
       const text = forkText(intent.args, throughMessageId)
+      const destinationProfile = await resolveForkProfile(context, profileRef)
       const input = {
         operationId,
         kind: workspace
           ? 'workspace'
-          : runner === undefined && connectionId === undefined
+          : runner === undefined && connectionId === undefined && profileRef === undefined
             ? 'conversation'
             : 'cross-runner',
         ...(throughMessageId === undefined ? {} : { throughMessageId }),
@@ -92,6 +109,7 @@ export async function dispatchConversationRunCommand(
         ...(connectionId === undefined ? {} : { connectionId }),
         ...(confidential === undefined ? {} : { confidential }),
         ...(text === undefined ? {} : { text }),
+        ...(destinationProfile === undefined ? {} : { destinationProfile }),
       } satisfies ForkPlanInput
       const plan = await context.app.conversations.branches.plan(input)
       context.setForkPreview(forkPreview(plan, input))
@@ -266,7 +284,7 @@ export async function dispatchConversationHeadlessCommand(
     }
     case 'plan_fork': {
       const operationId = requiredOperationId(intent.operationId, intent.command)
-      const input = forkInput(params, operationId)
+      const input = await forkInput(params, operationId, context)
       const plan = await context.app.conversations.branches.plan(input)
       context.setForkPreview(forkPreview(plan, input))
       return accepted(context, operationId, plan, plan.reason)
@@ -274,7 +292,7 @@ export async function dispatchConversationHeadlessCommand(
     case 'execute_fork': {
       const operationId = requiredOperationId(intent.operationId, intent.command)
       const branch = await context.app.conversations.branches.execute({
-        ...forkInput(params, operationId),
+        ...(await forkInput(params, operationId, context)),
         planDigest: requiredString(params, 'planDigest', intent.command),
       })
       return accepted(context, operationId, branch, 'Created fork')
@@ -302,18 +320,26 @@ export async function dispatchConversationHeadlessCommand(
   }
 }
 
-function forkInput(params: Readonly<Record<string, unknown>>, operationId: string) {
+async function forkInput(
+  params: Readonly<Record<string, unknown>>,
+  operationId: string,
+  context: ConversationDispatchContext,
+) {
   const workspace = params.workspace === true || params.workspace === 'true'
   const runner = optionalStringValue(params.runner)
   const confidential = parseConfidentialWorkspaceForkRequest(params.confidential)
   const workspaceRequest = snapshotWorkspaceRequest(
     params.workspaceRequest as WorkspaceRequest | undefined,
   )
+  if (params.profileRef !== undefined && optionalStringValue(params.profileRef) === undefined)
+    throw new AppError('INVALID_FORK_PLAN', 'profileRef must be a non-empty profile reference')
+  const profileRef = optionalStringValue(params.profileRef)
+  const destinationProfile = await resolveForkProfile(context, profileRef)
   return {
     operationId,
     kind: workspace
       ? ('workspace' as const)
-      : runner === undefined && params.connectionId === undefined
+      : runner === undefined && params.connectionId === undefined && profileRef === undefined
         ? ('conversation' as const)
         : ('cross-runner' as const),
     ...optionalString(params, 'conversationId'),
@@ -328,7 +354,23 @@ function forkInput(params: Readonly<Record<string, unknown>>, operationId: strin
     ...optionalString(params, 'destinationProvider'),
     ...(confidential === undefined ? {} : { confidential }),
     ...(workspaceRequest === undefined ? {} : { workspaceRequest }),
+    ...(destinationProfile === undefined ? {} : { destinationProfile }),
   }
+}
+
+/** Resolve a fork destination only through the trusted profile catalog. */
+async function resolveForkProfile(
+  context: ConversationDispatchContext,
+  profileRef: string | undefined,
+): Promise<ForkDestinationProfile | undefined> {
+  if (profileRef === undefined) return undefined
+  const profiles = context.profileConnections?.profiles
+  if (profiles === undefined)
+    throw new AppError(
+      'PROFILE_SELECTION_UNAVAILABLE',
+      'This session has no profile catalog, so a fork cannot change profile',
+    )
+  return profiles.resolveForFork(profileRef)
 }
 
 function confidentialRequestForForkArgs(
@@ -369,7 +411,8 @@ function forkText(args: readonly string[], boundary: string | undefined): string
       value === '--runner' ||
       value === '--provider' ||
       value === '--confidential' ||
-      value === '--connection'
+      value === '--connection' ||
+      value === '--profile'
     ) {
       index += 1
       continue
@@ -378,6 +421,7 @@ function forkText(args: readonly string[], boundary: string | undefined): string
       value.startsWith('--runner=') ||
       value.startsWith('--provider=') ||
       value.startsWith('--connection=') ||
+      value.startsWith('--profile=') ||
       value.startsWith('--confidential=')
     )
       continue
@@ -388,14 +432,24 @@ function forkText(args: readonly string[], boundary: string | undefined): string
 }
 
 function forkPreview(plan: ForkPlan, input: ForkPlanInput): ForkPreviewView {
-  const { operationId: _operationId, kind: _kind, throughMessageId, ...params } = input
+  const {
+    operationId: _operationId,
+    kind: _kind,
+    throughMessageId,
+    destinationProfile,
+    ...params
+  } = input
+  // Execution re-resolves the reference, so a changed profile file cannot
+  // reuse the reviewed plan digest.
   const executionParams = freezeView({
     ...params,
     conversationId: plan.sourceConversationId,
     branchId: plan.sourceBranchId,
     workspace: plan.kind === 'workspace',
     ...(throughMessageId === undefined ? {} : { messageId: throughMessageId }),
+    ...(destinationProfile === undefined ? {} : { profileRef: destinationProfile.ref }),
   })
+  const profile = plan.profileSelection
   const execution = Object.freeze(
     Object.defineProperties(
       { operationId: plan.operationId, planDigest: plan.digest },
@@ -416,6 +470,16 @@ function forkPreview(plan: ForkPlan, input: ForkPlanInput): ForkPreviewView {
         source: plan.context.sourceBoundary,
         destination: `${plan.context.messages.length} messages`,
       },
+      ...(profile === undefined
+        ? []
+        : [
+            { label: 'profile', source: profile.sourceName, destination: profile.name },
+            {
+              label: 'copied context',
+              source: 'selected history',
+              destination: copiedContextSummary(plan),
+            },
+          ]),
       { label: 'provider session', source: 'current', destination: 'new' },
       ...(plan.destinationConnectionId === undefined
         ? []
@@ -438,6 +502,22 @@ function forkPreview(plan: ForkPlan, input: ForkPlanInput): ForkPreviewView {
     configurable: false,
   })
   return Object.freeze(preview)
+}
+
+/** Summarize the exact canonical plan the destination profile receives. */
+function copiedContextSummary(plan: ForkPlan): string {
+  const messages = plan.portableContextPlan?.messages
+  if (messages === undefined) return 'unavailable'
+  const included = messages.filter((message) => message.action === 'include')
+  const parts = included.flatMap((message) => message.parts)
+  const omitted =
+    messages.length - included.length + parts.filter((part) => part.action === 'omit').length
+  const transformed = parts.filter((part) => part.action === 'transform').length
+  return [
+    `${included.length} ${included.length === 1 ? 'message' : 'messages'}`,
+    ...(omitted === 0 ? [] : [`${omitted} omitted`]),
+    ...(transformed === 0 ? [] : [`${transformed} transformed`]),
+  ].join(' · ')
 }
 
 function accepted(

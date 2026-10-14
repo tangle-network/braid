@@ -242,6 +242,7 @@ export class ConversationOverlayActions {
             ? {}
             : { destinationProvider: plan.destinationProvider }),
           ...(plan.confidential === undefined ? {} : { confidential: plan.confidential }),
+          ...(plan.profileSelection === undefined ? {} : { profileRef: plan.profileSelection.ref }),
           ...(plan.text === undefined ? {} : { text: plan.text }),
         }),
         planDigest: plan.digest,
