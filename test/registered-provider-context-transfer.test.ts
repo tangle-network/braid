@@ -16,6 +16,7 @@ import { createProductionComposition } from '../src/app/production-composition.j
 import type { ConnectionRecord } from '../src/domain/entities.js'
 import { createConnectionId, createCredentialRefId } from '../src/domain/ids.js'
 import { createAdmissionReceipt } from '../src/domain/receipts.js'
+import { isRuntimeEventEnvelope } from '../src/domain/runtime-events.js'
 import { credentialRef } from '../src/ports/credentials.js'
 import type { ExecuteTurnInput, RetainedRunAdmissionRecord } from '../src/ports/execution.js'
 import { startRuntimeBridgeServer } from './support/runtime-bridge-server.js'
@@ -203,6 +204,17 @@ test('registered same-provider connections attach and recover the accepted HTTP 
     const events = []
     for await (const event of production.execution.streamTurn(input)) events.push(event)
     assert.match(JSON.stringify(events), /REGISTERED_TRANSFER_OK/u)
+    const observed = events.find(
+      (event) => isRuntimeEventEnvelope(event) && event.event.type === 'braid.execution.observed',
+    )
+    assert.ok(
+      observed !== undefined &&
+        isRuntimeEventEnvelope(observed) &&
+        observed.event.type === 'braid.execution.observed',
+    )
+    assert.equal(observed.event.observation.provider, 'same-provider')
+    assert.equal(observed.event.observation.location, 'local')
+    assert.equal(observed.event.observation.lifecycleMode, 'retained')
     assert.doesNotMatch(JSON.stringify(events), /WRONG_ACCOUNT/u)
     assert.equal(firstServer.requests.length, 0)
     assert.equal(secondServer.requests[0]?.authorization, 'Bearer private-second')
@@ -216,6 +228,10 @@ test('registered same-provider connections attach and recover the accepted HTTP 
     const dispatched = admissions.find((value) => value.phase === 'dispatched')
     assert.ok(dispatched?.phase === 'dispatched')
     assert.equal(dispatched.controlRef.runId, accepted.runId)
+    assert.equal(
+      observed.event.observation.providerEnvironmentId,
+      dispatched.controlRef.environmentId,
+    )
     const receipt = createAdmissionReceipt({
       runId: input.runId,
       turnId: input.turnId!,

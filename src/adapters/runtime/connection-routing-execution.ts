@@ -217,7 +217,14 @@ export class ConnectionRoutingExecutionPort implements ExecutionPort {
   #forRecovery(input: { readonly runId: string } & RetainedExecutionRecoveryContext): Route {
     if (input.receipt !== undefined && input.receipt.runId !== input.runId)
       throw new Error('The recovery receipt belongs to another run')
-    const connectionId = input.receipt?.requested.connectionId
+    const requestedConnectionId = input.receipt?.requested.connectionId
+    const admittedConnectionId = input.receipt?.materializationReceipt?.connectionId
+    if (
+      admittedConnectionId !== undefined &&
+      (typeof admittedConnectionId !== 'string' ||
+        (requestedConnectionId !== undefined && requestedConnectionId !== admittedConnectionId))
+    )
+      throw new Error('The recovery receipt has conflicting connection identities')
     const acceptedDigest = input.receipt?.requested.expectedConnectionDigest
     const admittedDigest = input.receipt?.materializationReceipt?.connectionDigest
     if (
@@ -227,6 +234,9 @@ export class ConnectionRoutingExecutionPort implements ExecutionPort {
     )
       throw new Error('The recovery receipt has conflicting connection revisions')
     const expectedDigest = acceptedDigest ?? admittedDigest
+    // Every shipped backend records the admitted connection in its materialization receipt,
+    // so a receipt names its connection even when the user never selected one explicitly.
+    const connectionId = requestedConnectionId ?? admittedConnectionId
     const known = this.#runs.get(input.runId)
     if (known !== undefined) {
       if (connectionId !== undefined && connectionId !== known.record.id)
@@ -234,9 +244,10 @@ export class ConnectionRoutingExecutionPort implements ExecutionPort {
       this.#assertExpectedConnection(expectedDigest, known.record)
       return known
     }
-    if (connectionId === undefined)
-      throw new Error('Recovery requires the admitted connection identity')
-    const route = this.#forConnection(connectionId, expectedDigest)
+    // Recovery that carries no connection identity at all was admitted by a composition
+    // with one configured connection, which is the default here. Recover it there, as
+    // that composition did; the provider still verifies the exact run identity.
+    const route = this.#forConnection(connectionId ?? this.#defaultConnectionId, expectedDigest)
     this.#runs.set(input.runId, route)
     return route
   }

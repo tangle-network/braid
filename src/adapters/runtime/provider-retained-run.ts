@@ -43,7 +43,7 @@ export interface PreparedRetainedProviderConnection {
   readonly runner: HarnessType
   readonly provider: AgentEnvironmentProvider
   readonly capabilities: import('@tangle-network/agent-interface').AgentEnvironmentCapabilities
-  readonly observation?: ExecutionObservationSource
+  readonly observation: ExecutionObservationSource
   readonly executionId?: string
   readonly environmentId?: string
   readonly providerRunId?: string
@@ -137,7 +137,7 @@ export function createProviderRetainedPlan(
       }
       return exact
     },
-    observe: () => prepared.observation?.snapshot() ?? Promise.resolve(undefined),
+    observe: () => prepared.observation.snapshot(),
     projectStatus: ({ status, detached }) => retainedStatus(status, detached),
     isTerminalStatus: isTerminalRetainedStatus,
     projectResult: (result): RetainedResultProjection => ({
