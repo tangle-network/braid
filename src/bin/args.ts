@@ -12,6 +12,7 @@ export interface CliOptions {
     | 'supervision'
     | 'native-children'
     | 'cancellation-unavailable'
+    | 'profile-handoff'
   readonly inline: boolean
   readonly noColor: boolean
   readonly highContrast: boolean
@@ -126,10 +127,11 @@ export function parseArgs(argv: readonly string[], cwd: string): CliOptions {
         value !== 'product-demo' &&
         value !== 'supervision' &&
         value !== 'native-children' &&
-        value !== 'cancellation-unavailable'
+        value !== 'cancellation-unavailable' &&
+        value !== 'profile-handoff'
       )
         throw new CliUsageError(
-          '--ui-fixture supports "interaction", "fork", "analysis", "comparison", "product-demo", "supervision", "native-children", or "cancellation-unavailable"',
+          '--ui-fixture supports "interaction", "fork", "analysis", "comparison", "product-demo", "supervision", "native-children", "cancellation-unavailable", or "profile-handoff"',
         )
       uiFixture = value
       index += 1

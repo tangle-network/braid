@@ -241,14 +241,17 @@ function forkAdditionalScope(
       return 'workspace: checkpoint status unreported'
     case 'cross-runner': {
       // A profile change is a new agent session that receives copied context.
-      const profileChange = preview.plan?.profileSelection !== undefined
-      const subject = profileChange ? 'profile' : 'runner'
+      // The destination name leads so a narrow terminal still shows it.
+      const destinationProfile = preview.plan?.profileSelection?.name
+      const subject = destinationProfile === undefined ? 'runner' : 'profile'
       if (
         preview.allowed &&
         preview.plan?.environment === 'new' &&
         preview.plan.providerSession === 'new'
       ) {
-        return profileChange ? 'profile: new session with copied context' : 'runner: new session'
+        return destinationProfile === undefined
+          ? 'runner: new session'
+          : `${sanitizeTerminalText(destinationProfile)}: new session with copied context`
       }
       if (!preview.allowed || preview.plan?.environment === 'unavailable') {
         return `${subject}: transfer unavailable`

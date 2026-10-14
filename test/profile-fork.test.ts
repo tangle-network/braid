@@ -128,31 +128,31 @@ function harness(): Harness {
   const transfers: ContextTransferRequest[] = []
   const admitted: ExecuteTurnInput[] = []
   const accepted = new Map<string, ContextTransferResult>()
+  // Later turns on a destination branch continue the session the transfer created.
+  const sessions = new Map<string, ContextTransferResult>()
+  const continued = (input: ExecuteTurnInput) =>
+    input.sessionId === undefined ? undefined : sessions.get(input.sessionId)
   const execution: ExecutionPort = {
     admissionMode: 'sync',
     capabilities: () => capabilities(),
     admit(input) {
       admitted.push(input)
-      const destination = input.contextTransfer !== undefined
-      const provider = destination
-        ? (input.contextTransferReceipt?.provider ??
-          input.contextTransfer?.plan.destination.provider ??
-          'destination-provider')
-        : SOURCE_PROVIDER
+      const destination = input.contextTransferReceipt ?? continued(input)
+      const provider = destination?.status === 'accepted' ? destination.provider : SOURCE_PROVIDER
       return {
         capabilities: capabilities(),
         provider,
-        environmentId: destination
-          ? (input.contextTransferReceipt?.environmentId ?? 'provider-context-destination')
-          : 'provider-source-environment',
-        providerSessionId: destination
-          ? input.contextTransfer?.plan.destination.sessionId
-          : SOURCE_SESSION,
+        environmentId:
+          destination?.status === 'accepted'
+            ? destination.environmentId
+            : 'provider-source-environment',
+        providerSessionId:
+          input.contextTransfer?.plan.destination.sessionId ?? input.sessionId ?? SOURCE_SESSION,
         materializationReceipt: { provider },
       }
     },
     async *streamTurn(input) {
-      if (input.contextTransfer === undefined) {
+      if (input.contextTransfer === undefined && continued(input) === undefined) {
         yield {
           type: 'braid.execution.observed',
           observation: {
@@ -195,6 +195,7 @@ function harness(): Harness {
         transfers.push(request)
         const result = receipt(request)
         accepted.set(request.operationId, result)
+        if (result.status === 'accepted') sessions.set(result.sessionId, result)
         return result
       },
     },
@@ -809,9 +810,9 @@ test('keyboard review accepts, declines, cancels, and the bound branch survives 
     assert.ok(lines.length <= rows)
     if (columns >= 80) {
       const screen = lines.join('\n')
-      assert.match(screen, /profile: new session with copied context/u)
+      assert.match(screen, /Discovery operator: new session with copied context/u)
       assert.match(screen, /profile: Source operator → Discovery operator/u)
-      assert.match(screen, /copied context: selected history → \d+ messages?/u)
+      assert.match(screen, /copied context: history → \d+ messages?/u)
       assert.match(screen, /enter\/y create fork/u)
     }
   }

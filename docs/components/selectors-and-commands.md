@@ -37,7 +37,9 @@ Command selection emits the same command path that typed slash input uses.
 
 Disabled commands remain visible with the exact capability reason.
 
-The fork command usage is `/fork [message] [--workspace | --runner name [--provider name]] [--confidential JSON]`.
+The fork command usage is `/fork [message] [--workspace | --runner name [--provider name]] [--profile ref] [--connection id] [--confidential JSON]`.
+
+`--profile ref` names a profile from the same catalog `/profile list` shows; headless `plan_fork` and `execute_fork` take it as `profileRef`.
 
 The TUI accepts one confidential JSON request with either `--confidential JSON` or `--confidential=JSON` and validates it with the shared schema.
 

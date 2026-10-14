@@ -19,6 +19,10 @@ Changing that connection after preview invalidates the plan before transfer.
 The destination branch keeps that connection after journal replay; the source branch retains its own connection.
 Provider-neutral context routing validates the canonical request before resolving credentials and validates every lookup or transfer result before returning it to the application.
 
+An explicit destination profile is bound into the fork plan with its canonical digest.
+Execution refuses a changed or missing profile before reserving the operation, then commits one deterministic profile snapshot after the transfer is accepted and before the branch is created.
+The destination branch carries that snapshot through journal replay, and `effectiveRunConfiguration` uses it in place of the selected profile.
+
 Fork planning reads the destination provider's transfer capability asynchronously before confirmation.
 It creates no environment or session.
 A source or destination change during that read invalidates the preview.

@@ -476,7 +476,7 @@ function forkPreview(plan: ForkPlan, input: ForkPlanInput): ForkPreviewView {
             { label: 'profile', source: profile.sourceName, destination: profile.name },
             {
               label: 'copied context',
-              source: 'selected history',
+              source: 'history',
               destination: copiedContextSummary(plan),
             },
           ]),
