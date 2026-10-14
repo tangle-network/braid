@@ -50,6 +50,8 @@ export interface PreparedRetainedProviderConnection {
   readonly providerSessionId: string
   readonly workspaceRequest?: Readonly<WorkspaceRequest>
   readonly resourceRequest?: ConnectionResourceRequest
+  /** Stored Sandbox secret names granted with the environment; never values. */
+  readonly secretNames?: readonly string[]
   readonly environmentIdempotencyKey: string
   readonly environmentName: string
   readonly environmentMetadata: Readonly<Record<string, unknown>>
@@ -157,6 +159,17 @@ export function createProviderRetainedPlan(
   return Object.freeze(plan)
 }
 
+/**
+ * A subscription turn carries its exact profile, because the Tangle provider selects a model seat
+ * for each fresh native turn and refuses a turn without the profile it selects for. Managed turns
+ * omit it and keep the request identity they were admitted with.
+ */
+function subscriptionTurnProfile(profile: Readonly<AgentProfile>): {
+  readonly profile?: Readonly<AgentProfile>
+} {
+  return profile.model?.metadata?.credentialSource === 'subscription' ? { profile } : {}
+}
+
 export async function startProviderRetainedRun(
   plan: ProviderRetainedPlan,
   input: ExecuteTurnInput,
@@ -168,6 +181,7 @@ export async function startProviderRetainedRun(
   // Do not destroy it after an ambiguous dispatch failure without a provider-issued creation receipt.
   const turn = {
     ...(input.contextTransfer === undefined ? {} : { contextTransfer: input.contextTransfer }),
+    ...subscriptionTurnProfile(plan.prepared.profile),
     prompt: input.text,
     turnId: exactTurnId(input),
     interactions: input.interactions ?? {},
@@ -187,6 +201,9 @@ export async function startProviderRetainedRun(
       ...(plan.prepared.resourceRequest === undefined
         ? {}
         : { resources: plan.prepared.resourceRequest }),
+      ...(plan.prepared.secretNames === undefined
+        ? {}
+        : { secrets: [...plan.prepared.secretNames] }),
       name: plan.prepared.environmentName,
       metadata: plan.prepared.environmentMetadata,
       idempotencyKey: plan.environmentIdempotencyKey,
@@ -231,6 +248,9 @@ async function recoverProviderRetainedRun(
           ...(plan.prepared.resourceRequest === undefined
             ? {}
             : { resources: plan.prepared.resourceRequest }),
+          ...(plan.prepared.secretNames === undefined
+            ? {}
+            : { secrets: [...plan.prepared.secretNames] }),
           name: plan.prepared.environmentName,
           metadata: plan.prepared.environmentMetadata,
           idempotencyKey: admission.idempotencyKey,
@@ -239,6 +259,7 @@ async function recoverProviderRetainedRun(
           ...(input.receipt.requested.portableContextTransferRequest === undefined
             ? {}
             : { contextTransfer: input.receipt.requested.portableContextTransferRequest }),
+          ...subscriptionTurnProfile(plan.prepared.profile),
           prompt: input.receipt.requested.text,
           turnId: admission.turnId,
           interactions: input.receipt.requested.interactions ?? {},

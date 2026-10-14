@@ -1,5 +1,10 @@
 import { canonicalDigest } from '../domain/canonical.js'
-import type { ConnectionKind, ConnectionRecord } from '../domain/entities.js'
+import { connectionCredentialReferenceProblem } from '../domain/connection-credential-references.js'
+import type {
+  ConnectionKind,
+  ConnectionModelCredentials,
+  ConnectionRecord,
+} from '../domain/entities.js'
 import type { ConnectionId, Digest, WorkspaceId } from '../domain/ids.js'
 import { parseConnectionId } from '../domain/ids.js'
 import { assertConnectionRecord } from '../domain/invariants-profile.js'
@@ -196,6 +201,20 @@ function assertSecretFree(record: ConnectionRecord): void {
       )
     }
   }
+  // Credential references get a plain refusal here; the domain invariant repeats the same rule.
+  const credentialProblem = connectionCredentialReferenceProblem(
+    record.kind,
+    record.providerOptions,
+  )
+  if (credentialProblem !== undefined) {
+    throw new ConnectionError(
+      credentialProblem.credentialMaterial
+        ? 'SECRET_IN_CONNECTION_RECORD'
+        : 'INVALID_CONNECTION_RECORD',
+      credentialProblem.message,
+      { connectionId: record.id },
+    )
+  }
   const healthKeys = new Set(['status', 'checkedAt', 'message'])
   for (const key of Object.keys(record.lastHealth)) {
     if (!healthKeys.has(key)) {
@@ -274,6 +293,12 @@ function freezeConnectionRecord(record: ConnectionRecord): ConnectionRecord {
     ...(record.providerOptions.resources === undefined
       ? {}
       : { resources: Object.freeze({ ...record.providerOptions.resources }) }),
+    ...(record.providerOptions.secrets === undefined
+      ? {}
+      : { secrets: Object.freeze([...record.providerOptions.secrets]) }),
+    ...(record.providerOptions.modelCredentials === undefined
+      ? {}
+      : { modelCredentials: frozenModelCredentials(record.providerOptions.modelCredentials) }),
   })
   const lastHealth = Object.freeze({ ...record.lastHealth })
   const lastModelVerification =
@@ -298,5 +323,16 @@ function freezeConnectionRecord(record: ConnectionRecord): ConnectionRecord {
     providerOptions,
     lastHealth,
     ...(lastModelVerification === undefined ? {} : { lastModelVerification }),
+  })
+}
+
+function frozenModelCredentials(reference: ConnectionModelCredentials): ConnectionModelCredentials {
+  if ('cliAuth' in reference) {
+    return Object.freeze({ cliAuth: Object.freeze({ ...reference.cliAuth }) })
+  }
+  return Object.freeze({
+    ...reference,
+    command: Object.freeze([...reference.command]),
+    ...(reference.env === undefined ? {} : { env: Object.freeze([...reference.env]) }),
   })
 }

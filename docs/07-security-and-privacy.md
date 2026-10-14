@@ -275,6 +275,12 @@ Team or account context is visible before any resource-creating operation.
 
 Sandbox creation previews image or environment, repository, ref, resource limits, network policy, region, secrets by name, maximum lifetime when available, and confidentiality request.
 
+A Tangle Sandbox connection stores stored-secret names and a model-seat reference, never their values.
+Validation refuses value maps, unknown fields, and credential-shaped strings, and its refusal text never quotes the value.
+The journal and encrypted storage keep these two fields only after the same validation passes; any other field with a secret-like name is still redacted or refused.
+A model-seat resolver runs inside the Tangle provider, not in Braid, and receives the connection key only in its private process environment.
+Its output is a public reference to a stored Sandbox secret; Sandbox injects the value inside the environment.
+
 Workspace, checkpoint, fork, run cancel, and environment destroy are separate capabilities and separate audit events.
 
 The selected connection's configured adapter capability must agree with the provider-backed source environment before Braid attempts confidential placement.

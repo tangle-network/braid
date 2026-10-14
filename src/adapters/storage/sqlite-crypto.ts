@@ -5,6 +5,7 @@ import {
   isSafeTokenUsageRecord,
 } from '../../domain/bounded-structured.js'
 import { canonicalJson } from '../../domain/canonical.js'
+import { connectionCredentialReferenceProblem } from '../../domain/connection-credential-references.js'
 import { persistedContextTransferEventRequest } from '../../domain/portable-context-persistence.js'
 import type { JsonValue } from '../../ports/storage.js'
 import { isJsonValue } from '../../ports/storage.js'
@@ -86,6 +87,32 @@ function isSafeEnvironmentSecretNames(path: string, key: string, value: JsonValu
     key === 'secretNames' &&
     Array.isArray(value) &&
     value.every((name) => typeof name === 'string' && /^[A-Za-z][A-Za-z0-9._-]{0,127}$/u.test(name))
+  )
+}
+
+function jsonRecord(value: JsonValue | undefined): Readonly<Record<string, JsonValue>> | undefined {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Readonly<Record<string, JsonValue>>)
+    : undefined
+}
+
+const CONNECTION_REFERENCE_PATH = '$.__braidEvent.connection.providerOptions'
+const CONNECTION_REFERENCE_KEYS = new Set(['secrets', 'modelCredentials'])
+
+/**
+ * Whether a journaled connection's stored-secret names and model-seat reference passed the shared
+ * validator. Their field names match the secret-key rule, but the validator proves they hold names
+ * and commands only.
+ */
+function hasValidatedConnectionReferences(value: JsonValue): boolean {
+  const event = jsonRecord(jsonRecord(value)?.__braidEvent)
+  if (event?.kind !== 'connection.upserted') return false
+  const connection = jsonRecord(event.connection)
+  const options = jsonRecord(connection?.providerOptions)
+  return (
+    typeof connection?.kind === 'string' &&
+    options !== undefined &&
+    connectionCredentialReferenceProblem(connection.kind, options) === undefined
   )
 }
 
@@ -192,6 +219,8 @@ export function assertPersistablePayload(value: JsonValue): void {
       ? undefined
       : `$.__braidEvent.${canonicalTransfer.path.join('.')}.plan`
 
+  const connectionReferences = hasValidatedConnectionReferences(value)
+
   function visit(node: JsonValue, path: string, secretDesignated = false): void {
     if (Array.isArray(node)) {
       node.forEach((child, index) => {
@@ -223,6 +252,14 @@ export function assertPersistablePayload(value: JsonValue): void {
         child === canonicalTransfer.request.plan.estimatedTokens
       const isSafeCapability = !containsSecret && isSafeInteractionCapabilityFlag(path, key, child)
       const isSafeSecretMetadata = !containsSecret && isSafeEnvironmentSecretNames(path, key, child)
+      if (
+        connectionReferences &&
+        !containsSecret &&
+        path === CONNECTION_REFERENCE_PATH &&
+        CONNECTION_REFERENCE_KEYS.has(key)
+      ) {
+        continue
+      }
       if (
         SECRET_KEY.test(key) &&
         !SAFE_REFERENCE_SUFFIX.test(key) &&

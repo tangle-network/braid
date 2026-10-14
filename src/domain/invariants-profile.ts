@@ -1,6 +1,7 @@
 import { canonicalAgentProfileDigest } from '@tangle-network/agent-interface'
 import { snapshotAgentProfile } from '@tangle-network/agent-interface/profile-snapshot'
 
+import { connectionCredentialReferenceProblem } from './connection-credential-references.js'
 import type {
   ConnectionRecord,
   CredentialReference,
@@ -100,6 +101,8 @@ export function assertConnectionRecord(record: ConnectionRecord): void {
     'lifecycle',
     'idleTtlSeconds',
     'resources',
+    'secrets',
+    'modelCredentials',
   ])
   for (const [key, value] of Object.entries(record.providerOptions)) {
     if (!allowedOptions.has(key)) fail(`connection.providerOptions.${key} is provider-native state`)
@@ -126,6 +129,8 @@ export function assertConnectionRecord(record: ConnectionRecord): void {
       }
     } else if (key === 'resources') {
       assertConnectionResources(value, record.kind === 'tangle-sandbox')
+    } else if (key === 'secrets' || key === 'modelCredentials') {
+      // Validated together below, so the journal and the registry share one rule.
     } else if (typeof value !== 'string' || value.length === 0) {
       fail(`connection.providerOptions.${key} must be a non-empty string`)
     }
@@ -159,6 +164,11 @@ export function assertConnectionRecord(record: ConnectionRecord): void {
   ) {
     fail('connection.providerOptions.resources requires an environment provider connection')
   }
+  const credentialProblem = connectionCredentialReferenceProblem(
+    record.kind,
+    record.providerOptions,
+  )
+  if (credentialProblem !== undefined) fail(credentialProblem.message)
   if (record.kind === 'agent-provider') {
     if (
       !record.providerOptions.provider ||

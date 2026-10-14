@@ -292,6 +292,7 @@ export async function prepareProductionWorkspace({
   modelProvider,
   connectionName,
   workspaceRequest,
+  profile: authoredProfile,
   providerOptions = {},
   confidentialAttestationPolicy,
   credentialRef,
@@ -315,7 +316,8 @@ export async function prepareProductionWorkspace({
         : `credential-live-${kindId}-${randomUUID().replaceAll('-', '')}`
     const selectedCredentialId = generatedCredentialId ?? credentialRef
     if (selectedCredentialId !== undefined) validCredentialId(selectedCredentialId)
-    const profile = profileFor({ kind, model, runner, modelProvider })
+    // An authored profile, such as a published operator, replaces the generated release profile.
+    const profile = authoredProfile ?? profileFor({ kind, model, runner, modelProvider })
     const profileFile = `profile-${kindId}.json`
     const profilePath = join(profileDirectory, profileFile)
     const now = timestamp()
