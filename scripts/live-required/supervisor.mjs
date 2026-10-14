@@ -1,10 +1,6 @@
 import { createHash } from 'node:crypto'
-import { realpath } from 'node:fs/promises'
-import { createRequire } from 'node:module'
-import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
 
-import { connectionConfiguration, resolveModelProvider } from './configuration.mjs'
+import { resolveModelProvider } from './configuration.mjs'
 import {
   PROOF_OPERATIONS,
   proofInvocation,
@@ -14,9 +10,6 @@ import {
   scalarMeasurement,
 } from './contracts.mjs'
 import { DEFAULT_TANGLE_ROUTER_MODEL } from './model-defaults.mjs'
-import { prepareProductionWorkspace, resolveBinary } from './headless.mjs'
-
-const REPOSITORY = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 
 const SUPERVISOR_CHECKS = Object.freeze([
   'snapshot',
@@ -73,184 +66,26 @@ function configuredDuration(environment, names, fallback, label) {
   return value
 }
 
-async function publicRuntimeApi(runtime, repository, environment) {
-  if (runtime !== undefined) return { api: runtime }
-  const binary = await realpath(await resolveBinary(repository, environment))
-  const candidateRequire = createRequire(pathToFileURL(binary))
-  const [kernel, tui] = await Promise.all([
-    import(pathToFileURL(candidateRequire.resolve('@tangle-network/agent-runtime/kernel')).href),
-    import(pathToFileURL(candidateRequire.resolve('@tangle-network/agent-runtime/tui')).href),
-  ])
-  return { api: { ...kernel, ...tui }, binary }
+function publicRuntimeApi(runtime) {
+  if (runtime !== undefined) return runtime
+  return Promise.all([
+    import('@tangle-network/agent-runtime/kernel'),
+    import('@tangle-network/agent-runtime/tui'),
+  ]).then(([kernel, tui]) => ({ ...kernel, ...tui }))
 }
 
-async function loadPublicRuntimeApi(runtime, repository, environment) {
+async function loadPublicRuntimeApi(runtime) {
   try {
-    const loaded = await publicRuntimeApi(runtime, repository, environment)
-    if (loaded.api === null || typeof loaded.api !== 'object')
+    const api = await publicRuntimeApi(runtime)
+    if (api === null || typeof api !== 'object')
       throw new Error('public runtime API is not an object')
-    return loaded
+    return api
   } catch (error) {
     throw protectedUnavailable(
       'RUNTIME_SUPERVISOR_API_REQUIRED',
-      'The candidate Braid package does not expose the public Runtime supervisor APIs',
+      'The installed agent-runtime package does not expose the public supervisor APIs',
       error,
     )
-  }
-}
-
-async function loadPublicBraidApi(braid, repository, environment, candidateBinary) {
-  try {
-    const binary =
-      braid === undefined
-        ? candidateBinary ?? (await realpath(await resolveBinary(repository, environment)))
-        : undefined
-    const api =
-      braid ?? (await import(pathToFileURL(join(dirname(dirname(binary)), 'index.js')).href))
-    for (const name of [
-      'ConnectionRegistry',
-      'createSupervisorExecutionConnection',
-      'createSupervisorWorkerProviderResolver',
-      'createTangleEnvironmentProvider',
-      'createRegisteredEnvironmentProvider',
-      'createProductionCredentialContext',
-      'credentialRef',
-    ]) {
-      if (typeof api[name] !== 'function') throw new Error(`missing public Braid API '${name}'`)
-    }
-    if (!Number.isSafeInteger(api.DEFAULT_RETAINED_IDLE_TTL_SECONDS))
-      throw new Error('missing public Braid retained lifetime default')
-    return {
-      api,
-      credentialRepository: binary === undefined ? repository : resolve(dirname(binary), '../..'),
-    }
-  } catch (error) {
-    throw protectedUnavailable(
-      'BRAID_SUPERVISOR_CONNECTION_API_REQUIRED',
-      'LIVE-11 requires the candidate Braid saved-connection launch and resolver APIs',
-      error,
-    )
-  }
-}
-
-/** Compose the same saved configuration, protected credential store, and provider as Braid. */
-async function prepareSupervisorLaunch({
-  braid,
-  repository,
-  environment,
-  connection,
-  prepareWorkspace,
-  candidateBinary,
-}) {
-  const { api, credentialRepository } = await loadPublicBraidApi(
-    braid, repository, environment, candidateBinary,
-  )
-  let workspace
-  let credentialContext
-  let cleanupPromise
-  const cleanup = () => {
-    cleanupPromise ??= (async () => {
-      const failures = []
-      try {
-        credentialContext?.dispose()
-      } catch (error) {
-        failures.push(error)
-      }
-      let workspaceCleanup
-      try {
-        workspaceCleanup = await workspace?.cleanup()
-        if (workspace !== undefined && (
-          workspaceCleanup?.credentialRemoved !== true ||
-          workspaceCleanup?.temporaryRootRemoved !== true
-        ))
-          throw new Error('LIVE-11 connection cleanup did not prove credential and temporary state removal')
-      } catch (error) {
-        failures.push(error)
-      }
-      if (failures.length > 0) throw new AggregateError(failures, 'LIVE-11 connection cleanup failed')
-      return workspace === undefined
-        ? { status: 'not-owned' }
-        : { status: 'completed', credentialContextDisposed: true, ...workspaceCleanup }
-    })()
-    return cleanupPromise
-  }
-  try {
-    let record = connection?.record
-    let options = connection?.options ?? {}
-    if (connection === undefined) {
-      const configuration = supervisorConnection(environment)
-      if (configuration.kind !== 'tangle-sandbox')
-        throw protectedUnavailable(
-          'PROTECTED_SUPERVISOR_CONNECTION_REQUIRED',
-          'LIVE-11 registered providers require an exact saved connection record and options',
-        )
-      workspace = await prepareWorkspace({
-        repository: credentialRepository,
-        environment,
-        ...configuration,
-        providerOptions: {
-          lifecycle: 'retained',
-          idleTtlSeconds: api.DEFAULT_RETAINED_IDLE_TTL_SECONDS,
-        },
-        credentialContextFactory: api.createProductionCredentialContext,
-      })
-      record = workspace.connection
-      credentialContext = api.createProductionCredentialContext({
-        workspace: workspace.workspace,
-        configPath: workspace.configPath,
-        databaseKeyFile: workspace.databaseKeyFile,
-        dataDirectory: workspace.dataDirectory,
-      })
-      if (credentialContext === undefined)
-        throw new Error('LIVE-11 protected credential context is unavailable')
-      options = {
-        credentials: credentialContext.store,
-        credentialRefResolver: (ref) => api.credentialRef(`cred:v1:${ref}`),
-      }
-    }
-    if (record === undefined) throw new Error('LIVE-11 requires an exact saved connection record')
-    const connections = new api.ConnectionRegistry([record])
-    record = connections.select({ connectionId: record.id }).record
-    // A preconstructed client has no saved-account binding. Launch and reconnect use the same
-    // record-aware factory or official provider constructor.
-    const { sandboxClient: _unboundClient, ...connectionOptions } = options
-    const capturedOptions = Object.freeze(connectionOptions)
-    const executionConnection = api.createSupervisorExecutionConnection(record, capturedOptions)
-    const provider =
-      record.kind === 'tangle-sandbox'
-        ? await api.createTangleEnvironmentProvider(record, capturedOptions)
-        : record.kind === 'agent-provider'
-          ? await api.createRegisteredEnvironmentProvider(record, capturedOptions)
-          : undefined
-    if (provider === undefined) throw new Error('LIVE-11 requires an environment provider connection')
-    const resolveProvider = api.createSupervisorWorkerProviderResolver(connections, capturedOptions)
-    let resolvedConnection = false
-    const providers = async (lookup) => {
-      const resolvedProvider = await resolveProvider(lookup)
-      if (resolvedProvider !== undefined) {
-        if (
-          lookup.executionConnection?.connectionId !== executionConnection.connectionId ||
-          lookup.executionConnection?.executionConfigDigest !==
-            executionConnection.executionConfigDigest
-        )
-          throw new Error('LIVE-11 worker resolved another execution connection')
-        resolvedConnection = true
-      }
-      return resolvedProvider
-    }
-    return {
-      connection: { provider, executionConnection },
-      providers,
-      connectionResolved: () => resolvedConnection,
-      cleanup,
-    }
-  } catch (error) {
-    try {
-      await cleanup()
-    } catch (cleanupError) {
-      throw new AggregateError([error, cleanupError], 'LIVE-11 connection preparation and cleanup failed')
-    }
-    throw error
   }
 }
 
@@ -511,25 +346,25 @@ function firstConfigured(environment, names) {
 }
 
 export function supervisorConnection(environment) {
+  const endpoint = environment.BRAID_SUPERVISOR_ENDPOINT?.trim() || DEFAULT_SANDBOX_ENDPOINT
   const apiKey = firstConfigured(environment, [
     'BRAID_SUPERVISOR_API_KEY',
     'BRAID_SUPERVISOR_AUTH',
     'BRAID_SUPERVISOR_BEARER',
     'TANGLE_API_KEY',
   ])
+  if (apiKey === undefined)
+    throw protectedUnavailable(
+      'PROTECTED_CREDENTIAL_REQUIRED',
+      'LIVE-11 supervisor requires BRAID_SUPERVISOR_API_KEY, BRAID_SUPERVISOR_AUTH, BRAID_SUPERVISOR_BEARER, or TANGLE_API_KEY',
+    )
   const kind =
     environment.BRAID_SUPERVISOR_CONNECTION_KIND?.trim() || DEFAULT_SUPERVISOR_CONNECTION_KIND
-  return connectionConfiguration(
-    { ...environment, ...(apiKey === undefined ? {} : { BRAID_SUPERVISOR_AUTH: apiKey }) },
-    {
-      prefix: 'BRAID_SUPERVISOR',
-      kind,
-      fallbackEndpoint: DEFAULT_SANDBOX_ENDPOINT,
-      fallbackModel: DEFAULT_SUPERVISOR_MODEL,
-      fallbackRunner: DEFAULT_SUPERVISOR_RUNNER,
-      fallbackModelProvider: DEFAULT_SUPERVISOR_MODEL_PROVIDER,
-    },
-  )
+  return {
+    endpoint,
+    apiKey,
+    kind,
+  }
 }
 
 export function supervisorWorkerEnvironment(environment, invocationId) {
@@ -577,7 +412,6 @@ function supervisorConfiguration(environment) {
     providers: undefined,
     terminalTakeover: 'unspecified',
     cleanup: undefined,
-    connectionOwnership: 'not-proven-external-binding',
   }
 }
 
@@ -638,10 +472,6 @@ async function acquireSupervisor({
   profile,
   connection,
   workerEnvironment,
-  braid,
-  repository,
-  prepareWorkspace,
-  candidateBinary,
 }) {
   const configured = supervisorConfiguration(environment)
   if (configured !== undefined) return configured
@@ -651,22 +481,13 @@ async function acquireSupervisor({
       'RUNTIME_SUPERVISOR_PROVISION_REQUIRED',
       'The installed agent-runtime package must expose provisionSupervisor for the protected LIVE-11 path',
     )
-  const launch = await prepareSupervisorLaunch({
-    braid,
-    repository,
-    environment,
-    connection,
-    prepareWorkspace,
-    candidateBinary,
-  })
-  let returnedOwnerCleanup
   try {
     const receipt = await provisioner(
       provisionRequest({
         invocationId,
         task: task ?? supervisorTask(environment),
         profile: profile ?? supervisorProfile(environment),
-        connection: launch.connection,
+        connection: connection ?? supervisorConnection(environment),
         workerEnvironment:
           workerEnvironment ?? supervisorWorkerEnvironment(environment, invocationId),
         workspaceDir: environment.BRAID_SUPERVISOR_WORKSPACE?.trim(),
@@ -674,52 +495,8 @@ async function acquireSupervisor({
         pollMs,
       }),
     )
-    // Retain the actual allocation owner's closure before validating the acknowledgement.
-    if (receipt !== null && typeof receipt === 'object' && typeof receipt.cleanup === 'function')
-      returnedOwnerCleanup = receipt.cleanup.bind(receipt)
-    const owned = validateProvisionedSupervisor(receipt)
-    return {
-      ...owned,
-      providers: launch.providers,
-      executionConnection: launch.connection.executionConnection,
-      connectionResolved: launch.connectionResolved,
-      cleanup: async () => {
-        let runtimeCleanup
-        let runtimeError
-        try {
-          runtimeCleanup = validateCleanupReceipt(await owned.cleanup(), owned)
-        } catch (error) {
-          runtimeError = error
-        }
-        let connectionCleanup
-        try {
-          connectionCleanup = await launch.cleanup()
-        } catch (error) {
-          if (runtimeError !== undefined)
-            throw new AggregateError(
-              [runtimeError, error],
-              'LIVE-11 Runtime and connection cleanup failed',
-            )
-          throw error
-        }
-        if (runtimeError !== undefined) throw runtimeError
-        return { ...runtimeCleanup, connectionCleanup }
-      },
-    }
+    return validateProvisionedSupervisor(receipt)
   } catch (error) {
-    const failures = [error]
-    try {
-      await returnedOwnerCleanup?.()
-    } catch (cleanupError) {
-      failures.push(cleanupError)
-    }
-    try {
-      await launch.cleanup()
-    } catch (cleanupError) {
-      failures.push(cleanupError)
-    }
-    if (failures.length > 1)
-      throw new AggregateError(failures, 'LIVE-11 provisioning and cleanup failed')
     if (error?.unavailable === true) throw error
     throw new Error(
       `Runtime supervisor provisioning failed before LIVE-11 controls: ${safeMessage(error, environment)}`,
@@ -771,7 +548,6 @@ function validateCleanupReceipt(value, binding) {
     workerStatus: value.workerStatus,
     resourcesReleased: true,
     remainingResources: [],
-    ...(value.connectionCleanup === undefined ? {} : { connectionCleanup: value.connectionCleanup }),
   }
 }
 
@@ -785,7 +561,6 @@ function cleanupObservation(value) {
     workerStatus: value.workerStatus,
     resourcesReleased: value.resourcesReleased,
     remainingResources: value.remainingResources,
-    ...(value.connectionCleanup === undefined ? {} : { connectionCleanup: value.connectionCleanup }),
   }
 }
 
@@ -799,9 +574,6 @@ export async function runSupervisorFlow({
   profile,
   connection,
   workerEnvironment,
-  braid,
-  repository = REPOSITORY,
-  prepareWorkspace = prepareProductionWorkspace,
 } = {}) {
   const startedAt = new Date().toISOString()
   const timeoutMs = configuredDuration(
@@ -822,9 +594,7 @@ export async function runSupervisorFlow({
     environment.BRAID_SUPERVISOR_MESSAGE ?? `Braid live supervisor ${invocationId}`,
     'BRAID_SUPERVISOR_MESSAGE',
   )
-  const { api: runtimeApi, binary: candidateBinary } = await loadPublicRuntimeApi(
-    runtime, repository, environment,
-  )
+  const runtimeApi = await loadPublicRuntimeApi(runtime)
   requireRuntimeFunctions(runtimeApi)
   const binding = await acquireSupervisor({
     environment,
@@ -837,13 +607,9 @@ export async function runSupervisorFlow({
     profile,
     connection,
     workerEnvironment,
-    braid,
-    repository,
-    prepareWorkspace,
-    candidateBinary,
   })
   const { rootDir, supervisorId, workerId } = binding
-  const providerSource = binding.mode === 'provisioned' ? binding.providers : providers
+  const providerSource = providers ?? binding.providers
   let cleanupStarted = false
   let cleanupReceipt = notOwnedCleanup(binding)
   const cleanupOwned = async () => {
@@ -918,12 +684,6 @@ export async function runSupervisorFlow({
         }
       }
     }
-    if (
-      binding.mode === 'provisioned' &&
-      terminalTakeover.status === 'attached' &&
-      !binding.connectionResolved()
-    )
-      throw new Error('LIVE-11 attachment did not resolve the attested saved connection')
     if (binding.terminalTakeover === 'required' && terminalTakeover.status !== 'attached')
       throw new Error(
         `Runtime provider supports terminal takeover, but LIVE-11 could not attach the exact worker: ${terminalTakeover.reason}`,
@@ -1008,15 +768,6 @@ export async function runSupervisorFlow({
       supervisorId,
       workerId,
       terminalTakeover: binding.terminalTakeover,
-      connectionOwnership:
-        binding.mode === 'provisioned'
-          ? terminalTakeover.status === 'attached' && binding.connectionResolved()
-            ? 'attested-connection-resolver'
-            : 'not-proven-no-attachment'
-          : binding.connectionOwnership,
-      ...(binding.executionConnection === undefined
-        ? {}
-        : { executionConnection: binding.executionConnection }),
     }
     const cleanup = cleanupObservation(cleanupReceipt)
     const proof = proofReceipt({
@@ -1044,8 +795,6 @@ export async function runSupervisorFlow({
         cancellationAvailable: true,
         provisioned: binding.mode === 'provisioned',
         cleanupVerified: binding.mode === 'provisioned',
-        connectionOwnershipVerified:
-          provisioning.connectionOwnership === 'attested-connection-resolver',
       },
       checks: SUPERVISOR_CHECKS,
       observations: {

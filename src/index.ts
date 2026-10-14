@@ -1,14 +1,9 @@
 export type {
-  ProductionConnectionOptions,
   NitroConfidentialAttestationTrustPolicy,
   NitroConfidentialAttestationVerifierOptions,
   NitroConfidentialAttestationVerifiers,
 } from './adapters/connections/production-connections.js'
 export {
-  createSupervisorExecutionConnection,
-  createSupervisorWorkerProviderResolver,
-  createTangleEnvironmentProvider,
-  createRegisteredEnvironmentProvider,
   createNitroConfidentialAttestationVerifiers,
   normalizeNitroConfidentialAttestationTrustPolicy,
 } from './adapters/connections/production-connections.js'
@@ -89,15 +84,12 @@ export {
 } from './app/effect-coordinator.js'
 export { FailClosedJournal } from './app/fail-closed-journal.js'
 export { MemoryJournal } from './app/journal.js'
-export { ConnectionRegistry } from './app/connections.js'
-export { createProductionCredentialContext } from './bin/production-credential-context.js'
 export { StorageJournal } from './app/storage-journal.js'
 export {
   canonicalDigest,
   canonicalJson,
 } from './domain/canonical.js'
 export type * from './domain/entities.js'
-export { DEFAULT_RETAINED_IDLE_TTL_SECONDS } from './domain/entities-core.js'
 export type {
   EffectRecord as DomainEffectRecord,
   OperationRecord as DomainOperationRecord,

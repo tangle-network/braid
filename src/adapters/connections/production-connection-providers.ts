@@ -2,7 +2,6 @@ import type {
   AgentWorkspaceBranching,
   AgentWorkspaceBranchingProvider,
 } from '@tangle-network/agent-interface'
-import { canonicalCandidateDigest } from '@tangle-network/agent-interface'
 import type {
   AgentEnvironment,
   AgentEnvironmentCapabilities,
@@ -14,13 +13,8 @@ import {
   defaultTangleSandboxCapabilities,
   type SandboxClientLike,
 } from '@tangle-network/agent-provider-tangle'
-import type {
-  ExecutionConnection,
-  WorkerInteractiveProviderResolver,
-} from '@tangle-network/agent-runtime/kernel'
 import { Sandbox } from '@tangle-network/sandbox'
 import { ConnectionError } from '../../app/connection-errors.js'
-import { type ConnectionRegistry, connectionExecutionDigest } from '../../app/connections.js'
 import type { ConnectionRecord } from '../../domain/entities.js'
 import { assertConnectionRecord } from '../../domain/invariants-profile.js'
 import {
@@ -28,10 +22,7 @@ import {
   supportsNativeContinuation,
 } from '../../ports/execution.js'
 import { withRetainedSandboxPolicy } from '../runtime/tangle-sandbox-retention.js'
-import {
-  nitroVerifiersForConnection,
-  normalizeNitroConfidentialAttestationTrustPolicy,
-} from './nitro-confidential-attestation.js'
+import { nitroVerifiersForConnection } from './nitro-confidential-attestation.js'
 import { readConnectionCredential } from './production-connection-credentials.js'
 import { connectionEndpoint } from './production-connection-endpoints.js'
 import type {
@@ -41,10 +32,7 @@ import type {
   ConnectionRuntimeCapabilities,
   ProductionConnectionOptions,
 } from './production-connection-types.js'
-import {
-  createConnectionProviderResolver,
-  createRegisteredEnvironmentProvider,
-} from './registered-provider.js'
+import { createRegisteredEnvironmentProvider } from './registered-provider.js'
 import { supportsTangleRetainedControlLookup } from './tangle-retained-control-lookup.js'
 
 export async function createTangleSandboxClient(
@@ -94,72 +82,6 @@ export async function createTangleEnvironmentProvider(
       ? {}
       : { confidentialAttestationVerifier: confidential.tangle }),
   })
-}
-
-/** Bind a new worker to the saved connection and the public transport actually used. */
-export function createSupervisorExecutionConnection(
-  record: ConnectionRecord,
-  options: ProductionConnectionOptions = {},
-): ExecutionConnection {
-  return Object.freeze({
-    connectionId: record.id,
-    executionConfigDigest: canonicalCandidateDigest({
-      connectionDigest: connectionExecutionDigest(record),
-      endpoint: connectionEndpoint(record, options),
-      confidentialAttestationPolicy:
-        options.tangleConfidentialAttestationPolicy ?? record.confidentialAttestationPolicy ?? null,
-    }),
-  })
-}
-
-/** Resolve only the connection attested by Runtime's exact live worker receipt. */
-export function createSupervisorWorkerProviderResolver(
-  connections: ConnectionRegistry,
-  options: ProductionConnectionOptions,
-): WorkerInteractiveProviderResolver {
-  // A startup-wide client has no saved-account binding. Only a record-aware
-  // factory or the official client may reconstruct another worker's owner.
-  const { sandboxClient: _startupClient, ...configuredOptions } = options
-  const connectionOptions = Object.freeze({
-    ...configuredOptions,
-    ...(configuredOptions.tangleConfidentialAttestationPolicy === undefined
-      ? {}
-      : {
-          tangleConfidentialAttestationPolicy: normalizeNitroConfidentialAttestationTrustPolicy(
-            configuredOptions.tangleConfidentialAttestationPolicy,
-          ),
-        }),
-  })
-  const resolveRegistered = createConnectionProviderResolver(connectionOptions)
-  return async ({ binding, executionConnection, signal }) => {
-    signal?.throwIfAborted()
-    if (executionConnection === undefined) return undefined
-    let record: ConnectionRecord
-    try {
-      record = connections.select({ connectionId: executionConnection.connectionId }).record
-    } catch (error) {
-      if (error instanceof ConnectionError) return undefined
-      throw error
-    }
-    try {
-      if (
-        createSupervisorExecutionConnection(record, connectionOptions).executionConfigDigest !==
-        executionConnection.executionConfigDigest
-      )
-        return undefined
-    } catch (error) {
-      if (error instanceof ConnectionError) return undefined
-      throw error
-    }
-    if (record.kind === 'tangle-sandbox' && binding.ref.run.provider === 'tangle-sandbox')
-      return createTangleEnvironmentProvider(record, connectionOptions, signal)
-    if (
-      record.kind === 'agent-provider' &&
-      record.providerOptions.provider === binding.ref.run.provider
-    )
-      return resolveRegistered(record, signal)
-    return undefined
-  }
 }
 
 /**

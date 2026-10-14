@@ -24,8 +24,6 @@ export {
   normalizeCliBridgeRuntimeBaseUrl,
 } from './production-connection-endpoints.js'
 export {
-  createSupervisorExecutionConnection,
-  createSupervisorWorkerProviderResolver,
   createTangleEnvironmentProvider,
   createTangleSandboxClient,
   createTangleWorkspaceBranchingProvider,

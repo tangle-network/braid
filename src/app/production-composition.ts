@@ -5,7 +5,6 @@ import type { ProductionConnectionOptions } from '../adapters/connections/produc
 import {
   connectionEndpoint,
   createConnectionProviderResolver,
-  createSupervisorWorkerProviderResolver,
   createTangleEnvironmentProvider,
   createTangleWorkspaceBranchingProvider,
 } from '../adapters/connections/production-connections.js'
@@ -222,10 +221,36 @@ export function createProductionComposition(
   }
   snapshotWorkspaceRequest(config.workspaceRequest)
   const resolverOptions = resolverOptionsBase
+  const withConfidentialVerifiers = (
+    record: ConnectionRecord,
+    options: ProductionBackendResolverOptions,
+  ): ProductionBackendResolverOptions => {
+    const confidential = nitroVerifiersForConnection(record, options)
+    return {
+      ...options,
+      ...(confidential?.tangle === undefined
+        ? {}
+        : { tangleConfidentialAttestationVerifier: confidential.tangle }),
+      ...(confidential?.canonical === undefined
+        ? {}
+        : { confidentialAttestationVerifier: confidential.canonical }),
+    }
+  }
   const backendResolver = createProductionBackendResolver(resolverOptions)
-  const supervisorController = new RuntimeSupervisorController({
-    providers: createSupervisorWorkerProviderResolver(connections, resolverOptions),
-  })
+  // Published Runtime binds a worker to its provider name, not to the saved
+  // connection that admitted it. Attach only workers of the active Tangle
+  // connection until Runtime records that connection in the worker binding.
+  const supervisorController =
+    connection.kind === 'tangle-sandbox'
+      ? new RuntimeSupervisorController({
+          providers: (signal) =>
+            createTangleEnvironmentProvider(
+              connection,
+              withConfidentialVerifiers(connection, resolverOptions),
+              signal,
+            ),
+        })
+      : undefined
   const recoveryInput = (
     runId: string,
     providerSessionId: string | undefined,
@@ -314,15 +339,8 @@ export function createProductionComposition(
   })
   const broker = new NativeInteractiveRunBroker()
   const createExecution = (connection: ConnectionRecord): ExecutionPort => {
-    const confidential = nitroVerifiersForConnection(connection, resolverOptions)
     const scopedOptions: ProductionBackendResolverOptions = {
-      ...resolverOptions,
-      ...(confidential?.tangle === undefined
-        ? {}
-        : { tangleConfidentialAttestationVerifier: confidential.tangle }),
-      ...(confidential?.canonical === undefined
-        ? {}
-        : { confidentialAttestationVerifier: confidential.canonical }),
+      ...withConfidentialVerifiers(connection, resolverOptions),
       connections: new ConnectionRegistry([connection]),
       select: () => ({
         connection: {

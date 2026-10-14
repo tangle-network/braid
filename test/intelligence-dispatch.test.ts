@@ -12,12 +12,8 @@ import {
   agentExecutionPreparationReceiptSchema,
   canonicalCandidateDigest,
 } from '@tangle-network/agent-interface'
-import { createTangleProvider } from '@tangle-network/agent-provider-tangle'
-import type { SandboxClientLike } from '@tangle-network/agent-provider-tangle'
-import { createAgentEnvironmentProviderRegistry } from '@tangle-network/agent-runtime/kernel'
 import type {
   RetainedInteractiveRunHandle,
-  WorkerInteractiveProviderResolver,
   WorkerInteractiveProviderSource,
   WorkerInteractiveSession,
 } from '@tangle-network/agent-runtime/kernel'
@@ -26,13 +22,6 @@ import {
   type AnalystRegistryPort,
 } from '../src/adapters/analysis/eval-analyst.js'
 import { BRAID_QUESTION_ANALYST_ID } from '../src/adapters/analysis/question-analyst.js'
-import { bindCredentialToOrigin } from '../src/adapters/connections/production-connection-credentials.js'
-import {
-  createSupervisorExecutionConnection,
-  createSupervisorWorkerProviderResolver,
-  createTangleEnvironmentProvider,
-} from '../src/adapters/connections/production-connections.js'
-import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
 import { AgentRuntimeExecutionPort } from '../src/adapters/runtime/agent-runtime-execution.js'
 import { RuntimeSupervisorController } from '../src/adapters/runtime/supervisor-control.js'
 import {
@@ -43,14 +32,10 @@ import { createApplicationUiController } from '../src/adapters/tui/application-u
 import { freezeAnalysisSource } from '../src/app/analysis-source.js'
 import { BraidApplication } from '../src/app/application.js'
 import { createBraidApplication, DETERMINISTIC_PROFILE } from '../src/app/composition.js'
-import { ConnectionRegistry } from '../src/app/connections.js'
 import { createMemoryJournal } from '../src/app/journal.js'
 import { createNativeInteractiveUiActions } from '../src/bin/native-interactive-actions.js'
-import type { ConnectionRecord } from '../src/domain/entities.js'
-import { createConnectionId, createCredentialRefId } from '../src/domain/ids.js'
 import type { NativeTerminalSignalPort } from '../src/index.js'
 import { FixedClock } from '../src/ports/clock.js'
-import { credentialRef } from '../src/ports/credentials.js'
 import { SequenceIds } from '../src/ports/ids.js'
 import { deterministicBackend } from '../src/testing/deterministic-backend.js'
 import { createSupervisionSnapshot } from '../src/testing/supervision-fixture.js'
@@ -1148,270 +1133,6 @@ test('activity follows runtime workers while open and stops cleanly when closed'
   await app.close()
 })
 
-test('worker reconnect resolves only its attested connection before reading credentials', async () => {
-  const credentials = new MemoryCredentialStore()
-  const credentialReads: string[] = []
-  const constructed: string[] = []
-  const account = (name: string): ConnectionRecord => ({
-    id: createConnectionId(`connection-worker-${name}`),
-    kind: 'agent-provider',
-    name: `Worker account ${name}`,
-    endpoint: `https://worker-${name}.example.test`,
-    credentialRef: createCredentialRefId(`credential-worker-${name}`),
-    providerOptions: { provider: 'test-provider', transport: 'https' },
-    createdAt: NOW,
-    updatedAt: NOW,
-    lastHealth: { status: 'unknown' },
-  })
-  const accountA = account('a')
-  const accountB = account('b')
-  for (const record of [accountA, accountB]) {
-    assert(record.credentialRef && record.endpoint)
-    await credentials.store({
-      ref: credentialRef(`cred:v1:${record.credentialRef}`),
-      value: bindCredentialToOrigin(Buffer.from('test-only-worker-key'), record.endpoint),
-    })
-  }
-  // Account B is first in the restarted registry; neither order nor a picker owns worker A.
-  const connections = new ConnectionRegistry([accountB, accountA])
-  const resolver = () => createSupervisorWorkerProviderResolver(connections, {
-    credentials,
-    credentialRefResolver: (ref) => {
-      credentialReads.push(ref)
-      return credentialRef(`cred:v1:${ref}`)
-    },
-    providerRegistryFactory: ({ record }) => {
-      constructed.push(record.id)
-      return createAgentEnvironmentProviderRegistry([createTangleProvider({
-        name: 'test-provider',
-        client: { create: async () => { throw new Error('Worker reconnect must not allocate') } },
-      })])
-    },
-  })
-  const binding: Parameters<WorkerInteractiveProviderResolver>[0]['binding'] = {
-    schemaVersion: 1,
-    status: 'available',
-    workerId: 'worker-account-a',
-    label: 'Account A worker',
-    journalRoot: 'supervisor-worker-accounts',
-    recordedAt: NOW,
-    ref: workerInteractiveRef,
-    refDigest: canonicalCandidateDigest(workerInteractiveRef),
-  }
-  const executionConnection = createSupervisorExecutionConnection(accountA)
-  assert.equal((await resolver()({ binding, executionConnection }))?.name, 'test-provider')
-  assert.deepEqual(credentialReads, [accountA.credentialRef])
-  assert.deepEqual(constructed, [accountA.id])
-  assert.equal((await resolver()({ binding, executionConnection }))?.name, 'test-provider')
-  assert.deepEqual(credentialReads, [accountA.credentialRef, accountA.credentialRef])
-  assert.deepEqual(constructed, [accountA.id, accountA.id])
-  credentialReads.length = 0
-  constructed.length = 0
-
-  const resolve = resolver()
-  assert.equal(await resolve({ binding }), undefined)
-  assert.equal(await resolve({ binding, executionConnection: {
-    ...executionConnection, connectionId: 'connection-worker-missing',
-  } }), undefined)
-  assert.equal(await resolve({ binding, executionConnection: {
-    ...executionConnection, executionConfigDigest: `sha256:${'0'.repeat(64)}`,
-  } }), undefined)
-  assert.equal(await resolve({ binding: {
-    ...binding, ref: { ...binding.ref, run: { ...binding.ref.run, provider: 'another-provider' } },
-  }, executionConnection }), undefined)
-  connections.upsert({ ...accountA, endpoint: 'https://changed.example.test' })
-  assert.equal(await resolve({ binding, executionConnection }), undefined)
-  connections.remove({ connectionId: accountA.id })
-  assert.equal(await resolve({ binding, executionConnection }), undefined)
-  const aborted = new AbortController()
-  aborted.abort()
-  await assert.rejects(resolve({ binding, executionConnection, signal: aborted.signal }), {
-    name: 'AbortError',
-  })
-  assert.deepEqual(credentialReads, [])
-  assert.deepEqual(constructed, [])
-})
-
-test('Tangle worker reconnect binds endpoint defaults and ignores an unbound startup client', async () => {
-  const endpointA = 'https://worker-tangle-a.example.test'
-  const endpointB = 'https://worker-tangle-b.example.test'
-  const credentials = new MemoryCredentialStore()
-  const credentialReads: string[] = []
-  const constructed: string[] = []
-  const retrieved: string[] = []
-  let startupClientCalls = 0
-  const account = (name: string): ConnectionRecord => ({
-    id: createConnectionId(`connection-tangle-worker-${name}`),
-    kind: 'tangle-sandbox',
-    name: `Tangle worker ${name}`,
-    credentialRef: createCredentialRefId(`credential-tangle-worker-${name}`),
-    providerOptions: { transport: 'https' },
-    createdAt: NOW,
-    updatedAt: NOW,
-    lastHealth: { status: 'unknown' },
-  })
-  const accountA = account('a')
-  const accountB = { ...account('b'), endpoint: endpointB }
-  for (const [record, endpoint] of [[accountA, endpointA], [accountB, endpointB]] as const) {
-    assert(record.credentialRef)
-    await credentials.store({
-      ref: credentialRef(`cred:v1:${record.credentialRef}`),
-      value: bindCredentialToOrigin(Buffer.from('test-only-tangle-worker-key'), endpoint),
-    })
-  }
-  const startupClient: SandboxClientLike = {
-    create: async () => { throw new Error('Worker reconnect must not allocate') },
-    get: async () => {
-      startupClientCalls += 1
-      throw new Error('Unbound startup account B must not own worker A')
-    },
-  }
-  const options = {
-    credentials,
-    defaultSandboxEndpoint: endpointA,
-    sandboxClient: startupClient,
-    credentialRefResolver: (ref: NonNullable<ConnectionRecord['credentialRef']>) => {
-      credentialReads.push(ref)
-      return credentialRef(`cred:v1:${ref}`)
-    },
-    sandboxClientFactory: ({ record, endpoint }: { record: ConnectionRecord; endpoint: string }) => {
-      constructed.push(record.id)
-      assert.equal(endpoint, endpointA)
-      return {
-        create: async () => { throw new Error('Worker reconnect must not allocate') },
-        get: async (id: string) => {
-          retrieved.push(id)
-          return null
-        },
-      }
-    },
-  }
-  const connections = new ConnectionRegistry([accountB, accountA])
-  const executionConnection = createSupervisorExecutionConnection(accountA, options)
-  const binding: Parameters<WorkerInteractiveProviderResolver>[0]['binding'] = {
-    schemaVersion: 1,
-    status: 'available',
-    workerId: 'worker-tangle-account-a',
-    label: 'Tangle account A worker',
-    journalRoot: 'supervisor-tangle-worker-accounts',
-    recordedAt: NOW,
-    ref: { ...workerInteractiveRef, run: { ...workerInteractiveRef.run, provider: 'tangle-sandbox' } },
-    refDigest: canonicalCandidateDigest({
-      ...workerInteractiveRef, run: { ...workerInteractiveRef.run, provider: 'tangle-sandbox' },
-    }),
-  }
-  for (let restart = 0; restart < 2; restart += 1) {
-    const resolve = createSupervisorWorkerProviderResolver(connections, options)
-    const provider = await resolve({ binding, executionConnection })
-    assert.equal(provider?.name, 'tangle-sandbox')
-    assert(provider?.get)
-    assert.equal(await provider.get(binding.ref.run.environmentId), null)
-  }
-  assert.deepEqual(credentialReads, [accountA.credentialRef, accountA.credentialRef])
-  assert.deepEqual(constructed, [accountA.id, accountA.id])
-  assert.deepEqual(retrieved, [binding.ref.run.environmentId, binding.ref.run.environmentId])
-  assert.equal(startupClientCalls, 0)
-  credentialReads.length = 0
-  constructed.length = 0
-  retrieved.length = 0
-
-  for (const defaultSandboxEndpoint of [endpointB, 'not-an-http-endpoint']) {
-    const resolve = createSupervisorWorkerProviderResolver(connections, {
-      ...options, defaultSandboxEndpoint,
-    })
-    assert.equal(await resolve({ binding, executionConnection }), undefined)
-  }
-  const changedPolicy = createSupervisorWorkerProviderResolver(connections, {
-    ...options,
-    tangleConfidentialAttestationPolicy: {
-      acceptedMeasurements: [`sha256:${'1'.repeat(64)}`],
-      acceptedPolicyIds: ['worker-policy'],
-      maxAgeSeconds: 300,
-    },
-  })
-  assert.equal(await changedPolicy({ binding, executionConnection }), undefined)
-  assert.deepEqual(
-    createSupervisorExecutionConnection(accountA, { ...options, defaultSandboxEndpoint: `${endpointA}/` }),
-    executionConnection,
-  )
-  assert.deepEqual(credentialReads, [])
-  assert.deepEqual(constructed, [])
-  assert.deepEqual(retrieved, [])
-  assert.equal(startupClientCalls, 0)
-
-  for (const mode of ['reconnect', 'launch'] as const) {
-    credentialReads.length = 0
-    constructed.length = 0
-    const policy: {
-      acceptedMeasurements: `sha256:${string}`[]
-      acceptedPolicyIds: string[]
-      maxAgeSeconds: number
-    } = {
-      acceptedMeasurements: [`sha256:${'2'.repeat(64)}`],
-      acceptedPolicyIds: ['original-worker-policy'],
-      maxAgeSeconds: 300,
-    }
-    let waitingForCredential = false
-    const releaseCredential = Promise.withResolvers<void>()
-    const policyOptions = {
-      ...options,
-      tangleConfidentialAttestationPolicy: policy,
-      credentialRefResolver: async (ref: NonNullable<ConnectionRecord['credentialRef']>) => {
-        credentialReads.push(ref)
-        waitingForCredential = true
-        await releaseCredential.promise
-        return credentialRef(`cred:v1:${ref}`)
-      },
-    }
-    const capturedPolicy = createSupervisorExecutionConnection(accountA, policyOptions)
-    const { sandboxClient: _startupClient, ...launchOptions } = policyOptions
-    const resolving = mode === 'reconnect'
-      ? createSupervisorWorkerProviderResolver(connections, policyOptions)({
-          binding, executionConnection: capturedPolicy,
-        })
-      : createTangleEnvironmentProvider(accountA, launchOptions)
-    try {
-      await waitUntil(() => waitingForCredential)
-      // Invalid replacement data would fail construction if read after the credential await.
-      policy.acceptedMeasurements[0] = 'sha256:changed-invalid-measurement'
-      policy.acceptedPolicyIds[0] = 'changed invalid policy'
-      policy.maxAgeSeconds = -1
-    } finally {
-      releaseCredential.resolve()
-    }
-    assert.equal((await resolving)?.name, 'tangle-sandbox')
-    assert.deepEqual(credentialReads, [accountA.credentialRef])
-    assert.deepEqual(constructed, [accountA.id])
-    assert.equal(startupClientCalls, 0)
-  }
-
-  credentialReads.length = 0
-  constructed.length = 0
-  const cancellation = new AbortController()
-  const releaseCredential = Promise.withResolvers<void>()
-  let waitingForCredential = false
-  const resolveCancelled = createSupervisorWorkerProviderResolver(connections, {
-    ...options,
-    credentialRefResolver: async (ref) => {
-      credentialReads.push(ref)
-      waitingForCredential = true
-      await releaseCredential.promise
-      return credentialRef(`cred:v1:${ref}`)
-    },
-  })
-  const resolving = resolveCancelled({ binding, executionConnection, signal: cancellation.signal })
-  try {
-    await waitUntil(() => waitingForCredential)
-    cancellation.abort()
-  } finally {
-    releaseCredential.resolve()
-  }
-  await assert.rejects(resolving, { name: 'AbortError' })
-  assert.deepEqual(credentialReads, [accountA.credentialRef])
-  assert.deepEqual(constructed, [])
-  assert.equal(startupClientCalls, 0)
-})
-
 test('activity attaches a running worker through the native terminal and restores Braid', async () => {
   const raw = createSupervisionSnapshot({
     supervisors: [{ workers: [{ id: 'runtime-worker-attach', label: 'worker-attach' }] }],
@@ -1420,18 +1141,17 @@ test('activity attaches a running worker through the native terminal and restore
   const session = new DetachingWorkerTerminalSession()
   const attached: AgentInteractiveSessionControlClaimRequest[] = []
   const handle = workerInteractiveHandle(session, attached)
-  const resolveWorkerProvider: WorkerInteractiveProviderResolver = async () => undefined
   let attachInput:
-    | { readonly eventDir: string; readonly workerId: string; readonly providers: WorkerInteractiveProviderSource }
+    | { readonly eventDir: string; readonly workerId: string; readonly providerCount: number }
     | undefined
   const runtimeController = new RuntimeSupervisorController({
     watcher,
-    providers: resolveWorkerProvider,
+    providers: async () => ({}) as WorkerInteractiveProviderSource,
     attachWorker: async (eventDir, workerId, options): Promise<WorkerInteractiveSession> => {
       attachInput = {
         eventDir,
         workerId,
-        providers: options.providers,
+        providerCount: Object.keys(options.providers).length,
       }
       return { status: 'available', handle }
     },
@@ -1521,7 +1241,7 @@ test('activity attaches a running worker through the native terminal and restore
   assert.deepEqual(attachInput, {
     eventDir: '/workspace/.agent',
     workerId: 'runtime-worker-attach',
-    providers: resolveWorkerProvider,
+    providerCount: 0,
   })
   assert.equal(attached[0]?.holderId, 'braid-worker-attach')
   assert.equal(attached[0]?.expectedGeneration, 1)

@@ -4,7 +4,7 @@ import {
   cancelWorker,
   type RunCancellation,
   type WorkerCancellation,
-  type WorkerInteractiveProviderResolver,
+  type WorkerInteractiveProviderSource,
   type WorkerInteractiveSession,
   type WorkerInteractiveUnavailableReason,
   type WorkerSteerAcknowledgement,
@@ -72,7 +72,9 @@ export type SupervisorWorkerAttachResult =
       readonly issue?: SupervisorCapabilityIssue
     }
 
-export type SupervisorWorkerProviderResolver = WorkerInteractiveProviderResolver
+export type SupervisorWorkerProviderResolver = (
+  signal?: AbortSignal,
+) => Promise<WorkerInteractiveProviderSource>
 
 function missingWorkerIssue(worker: string): SupervisorCapabilityIssue {
   return {
@@ -260,8 +262,10 @@ export class RuntimeSupervisorController {
         reason: 'interactive-provider-not-configured',
       }
     }
+    const providers = await this.#providers(signal)
+    signal?.throwIfAborted()
     const attached = await this.#attachWorker(supervisor.stateDir, worker.id, {
-      providers: this.#providers,
+      providers,
       ...(signal === undefined ? {} : { signal }),
     })
     return attached.status === 'available'
