@@ -239,6 +239,7 @@ export class FakeTangleRetainedSandbox {
           cancel: { canonicalRunCancellation: true, digestBound: true, idempotent: true },
           runs: { executionScopedStatus: true, eventReplay: true },
           interactions: { responseDedupe: true },
+          ...(sandbox.#backendTypes.includes('claude-code') ? { cliAuthReferences: true } : {}),
         }
       },
       async refresh() {},

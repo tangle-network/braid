@@ -36,9 +36,13 @@ function material(message: string): ConnectionCredentialReferenceProblem {
   return { credentialMaterial: true, message }
 }
 
-/** A value that the shared sanitizer would rewrite, or an opaque key-like run. */
+/**
+ * A value that the shared sanitizer would rewrite, or an opaque key-like run.
+ * An absolute path skips the run check, because generated directory names look random.
+ */
 export function credentialShaped(value: string): boolean {
   if (redactSensitiveText(value) !== value) return true
+  if (value.startsWith('/')) return false
   for (const run of value.match(OPAQUE_RUN) ?? []) {
     if (/[a-z]/u.test(run) && /[A-Z]/u.test(run) && /[0-9]/u.test(run)) return true
   }
