@@ -26,6 +26,8 @@ import { ConnectionActionService } from '../src/app/connection-actions.js'
 import { ConnectionError } from '../src/app/connection-errors.js'
 import { ConnectionRegistry } from '../src/app/connections.js'
 import { MemoryJournal } from '../src/app/journal.js'
+import { createAdmissionReceipt } from '../src/domain/receipts.js'
+import type { RetainedRunAdmissionRecord } from '../src/ports/execution.js'
 import { activateProductionConnection } from '../src/bin/production-application.js'
 import type { ConnectionRecord, ConnectionTransportOptions } from '../src/domain/entities.js'
 import { createConnectionId, createCredentialRefId } from '../src/domain/ids.js'
@@ -535,6 +537,96 @@ test('a cloud run with a resolver seat stores no secret value in the journal, st
     await reopened?.storage.close()
     await rm(resolver.directory, { recursive: true, force: true })
     await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('retained intent recovery replays a subscription turn with the same profile material', async () => {
+  const sandbox = new FakeTangleRetainedSandbox({ backends: ['claude-code'] })
+  const resolver = await resolverScript('cliAuth')
+  const previous = process.env.BRAID_SEAT_FORWARDED
+  process.env.BRAID_SEAT_FORWARDED = FORWARDED_CANARY
+  try {
+    const keyed = await storedConnectionKey(
+      record({
+        lifecycle: 'retained',
+        idleTtlSeconds: 1_800,
+        secrets: [...GRANTED],
+        modelCredentials: {
+          command: [process.execPath, resolver.path],
+          env: ['BRAID_SEAT_FORWARDED'],
+          connectionKeyEnv: 'BRAID_SEAT_CONNECTION_KEY',
+        },
+      }),
+    )
+    const selection = { connection: { connectionId: keyed.connection.id } }
+    const profile = subscriptionProfile('claude-code')
+    const input = {
+      operationId: 'operation-subscription-recovery',
+      runId: 'run/subscription-recovery',
+      turnId: 'turn/subscription-recovery',
+      text: 'Use the seat after a crash.',
+      profile,
+      connectionId: keyed.connection.id,
+      signal: new AbortController().signal,
+    }
+    const prepared = await resolveTangleSandboxRetainedConnection(
+      {
+        connections: new ConnectionRegistry([keyed.connection]),
+        select: () => selection,
+        credentials: keyed.credentials,
+        credentialRefResolver: keyed.credentialRefResolver,
+        sandboxClient: sandbox.client(),
+      },
+      input,
+      selection,
+      keyed.connection.id,
+    )
+    const plan = createProviderRetainedPlan(prepared, input.runId)
+    const admissions: RetainedRunAdmissionRecord[] = []
+    await assert.rejects(() =>
+      startProviderRetainedRun(plan, {
+        ...input,
+        onRetainedAdmission: async (admission) => {
+          admissions.push(admission)
+          if (admission.phase === 'intent') throw new Error('simulated intent crash')
+        },
+      }),
+    )
+    const intent = admissions[0]
+    assert.ok(intent?.phase === 'intent')
+    assert.equal(sandbox.createCalls.length, 0)
+    const receipt = createAdmissionReceipt({
+      runId: input.runId,
+      turnId: input.turnId,
+      operationId: input.operationId,
+      conversationId: 'conversation-subscription-recovery',
+      branchId: 'branch-subscription-recovery',
+      admittedAt: at,
+      profile,
+      connectionId: keyed.connection.id,
+      capabilities: plan.capabilities,
+      provider: plan.providerName,
+      materializationReceipt: plan.materializationReceipt,
+      text: input.text,
+    })
+    const recovering = createProviderRetainedPlan(prepared, input.runId, undefined, {
+      retainedAdmission: intent,
+      receipt,
+    })
+    assert.ok(
+      await recovering.recover?.({
+        admission: intent,
+        receipt,
+        onRetainedAdmission: async () => {},
+      }),
+    )
+    assert.equal(sandbox.createCalls.length, 1)
+    assert.equal(sandbox.dispatches.length, 1)
+    assert.equal(sandbox.nativeGrants.length, 1)
+  } finally {
+    if (previous === undefined) delete process.env.BRAID_SEAT_FORWARDED
+    else process.env.BRAID_SEAT_FORWARDED = previous
+    await rm(resolver.directory, { recursive: true, force: true })
   }
 })
 

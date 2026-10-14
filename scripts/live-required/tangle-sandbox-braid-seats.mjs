@@ -265,18 +265,20 @@ async function journalEvidence(config, { secrets, modelCredentials, canaries }) 
       startupOptions: effective,
       production: loaded,
     })
-    const events = opened.app.events()
-    const serialized = JSON.stringify(events)
-    const upserts = events.filter(({ event }) => event.kind === 'connection.upserted')
-    const stored = upserts.at(-1)?.event.connection.providerOptions
+    // Restored state is what the next process trusts; the event list holds only this session.
+    const state = opened.app.state()
+    const serialized = JSON.stringify({ state, events: opened.app.events() })
+    const stored = state.connections.find(
+      (connection) => connection.id === config.connection.id,
+    )?.providerOptions
     return {
-      events: events.length,
-      connectionUpserts: upserts.length,
+      source: 'restored-state',
+      connectionRestored: stored !== undefined,
       grantedNamesKept: JSON.stringify(stored?.secrets ?? null) === JSON.stringify(secrets),
       seatReferenceKept:
         JSON.stringify(stored?.modelCredentials ?? null) ===
         JSON.stringify(modelCredentials ?? null),
-      canaryEvents: canaries.filter((canary) => serialized.includes(canary)).length,
+      canaryMatches: canaries.filter((canary) => serialized.includes(canary)).length,
     }
   } finally {
     await opened?.close().catch(() => undefined)
@@ -297,6 +299,15 @@ export async function reevaluateSeatsReceipt(receiptPath, recordPath) {
   const updated = {
     ...receipt,
     ...evidence,
+    ...(receipt.journal?.source === 'restored-state'
+      ? {}
+      : {
+          journal: {
+            measured: false,
+            reason:
+              'This run read the session event list, not restored state; test/tangle-connection-seats.test.ts proves the restored SQLite state',
+          },
+        }),
     modelTurnReached: receipt.run.status === 'completed' && evidence.modelTurnReached,
     evaluatedFromRecord: new Date().toISOString(),
   }
@@ -491,7 +502,7 @@ if (process.argv[1] === scriptPath) {
     result.modelTurnReached === true &&
     result.canaryScan?.root?.length === 0 &&
     result.canaryScan?.cast === 0 &&
-    (result.journal?.canaryEvents ?? 0) === 0
+    (result.journal?.canaryMatches ?? 0) === 0
   process.stdout.write(
     `${JSON.stringify({
       label: result.label,

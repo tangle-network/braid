@@ -45,6 +45,10 @@ A connection contains secret-free transport and account metadata plus a credenti
 
 Credential bytes live only in the operating-system credential facility or their bounded setup path.
 
+A Tangle Sandbox connection may name stored Sandbox secrets and a model-seat reference.
+One validator, `domain/connection-credential-references.ts`, admits them to the registry, the journal redaction rule, and the encrypted storage guard.
+The Tangle adapter turns the seat reference into the provider's `modelCredentials` option and grants the secret names with every environment create.
+
 `WorkspaceRequest` is an immutable startup selection, not connection metadata.
 
 Sandbox `cwd` uses the shared explicit repository base and a canonical POSIX path relative to the repository root; `.` selects that root.

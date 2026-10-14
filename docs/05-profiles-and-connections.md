@@ -251,6 +251,16 @@ interface ConnectionTransportOptions {
   lifecycle?: 'ephemeral' | 'retained'
   idleTtlSeconds?: number
   resources?: { cpu?: number; memoryMb?: number; diskMb?: number; gpu?: string }
+  // Tangle Sandbox only. Names and references; values never appear.
+  secrets?: string[]
+  modelCredentials?:
+    | {
+        command: string[]
+        env?: string[]
+        connectionKeyEnv?: string
+        connectionEndpointEnv?: string
+      }
+    | { cliAuth: { account: string; secretEnv: string; format: 'token' | 'bundle' | 'files' } }
 }
 ```
 
@@ -342,6 +352,27 @@ Braid rejects provider-native resource options and resources on other connection
 Headless materialization receipts include the resource request in the environment request digest.
 Interactive materialization receipts include a separate digest of the resource request.
 The environment view shows the requested resources beside any values the provider reports.
+
+A Tangle Sandbox connection can set `secrets` to stored Sandbox secret names, such as a GitHub token secret for `gh`.
+Braid grants those names with every ephemeral, retained, and interactive environment create, and Sandbox injects each value under its name inside the environment.
+Braid never reads or stores a value; the account owner creates the secret through the Sandbox secrets API or `acct sandbox`.
+Headless receipts include the names in the environment request digest, interactive receipts carry a separate digest, and retained intent recovery refuses a changed list before create.
+
+A Tangle Sandbox connection can set `modelCredentials` so that a profile whose `model.metadata.credentialSource` is `subscription` gets a model seat.
+The `command` form names a resolver that the Tangle provider runs through its `createCommandModelCredentialResolver`; Braid never spawns it.
+The provider calls it when it creates the environment and again for each fresh native turn, with the exact profile and a stable create or turn identity on standard input, and the resolver prints a public stored-secret reference.
+A retained subscription turn therefore carries its exact profile; managed turns omit it and keep their admitted request identity.
+`env` lists variables from Braid's environment that the resolver reads, and Braid refuses the create with a plain message naming any that are unset.
+`connectionKeyEnv` and `connectionEndpointEnv` name the variables that receive this connection's own Sandbox key and endpoint, so the seat lands in the account that creates the sandbox.
+Braid reads the key from the operating-system credential store when the resolver runs and passes it only in the resolver's private process environment.
+The `cliAuth` form names a seat that is already stored.
+For example, Discovery Lab's account owner is `{"command": ["acct", "sandbox", "resolve"], "connectionKeyEnv": "DISCOVERY_SANDBOX_API_KEY", "connectionEndpointEnv": "DISCOVERY_SANDBOX_BASE_URL"}`.
+Managed profiles ignore the reference and never contact the resolver.
+
+Validation accepts only names, a command, and a seat reference.
+It refuses a value map, an unknown field, a duplicate or malformed name, and any string that looks like a credential, with a plain message that never quotes the value.
+`secrets` and `modelCredentials` are refused on other connection kinds.
+`scripts/live-required/tangle-sandbox-braid-seats.mjs` runs one retained cloud turn in the Braid terminal with both references and records the tool trace, interaction requests, canary scan, and exact sandbox cleanup.
 
 The ephemeral path deletes its environment after one turn.
 
