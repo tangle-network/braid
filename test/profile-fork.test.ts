@@ -712,7 +712,11 @@ test('headless plan_fork and execute_fork accept profileRef and never echo the p
       requestId: 'rpc-profile-fork',
       operationId: 'op-rpc-profile-fork',
       command: 'plan_fork',
-      params: { profileRef: 'Discovery operator' },
+      params: {
+        conversationId: 'conversation-source',
+        branchId: 'branch-source',
+        profileRef: 'Discovery operator',
+      },
     }),
   )
   assert.equal(
