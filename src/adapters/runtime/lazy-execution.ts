@@ -131,6 +131,11 @@ export class LazyExecutionPort implements ExecutionPort {
     return port.environmentCapabilities()
   }
 
+  /** Load the production port so its capability fields are no longer undefined. */
+  async ready(): Promise<void> {
+    await this.#load()
+  }
+
   get context(): ExecutionPort['context'] {
     return this.#loadedPort?.context
   }

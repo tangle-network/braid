@@ -183,9 +183,12 @@ test('lazy execution defers provider loading and reuses the loaded port', async 
 
   assert.equal(loads, 0)
   assert.equal(execution.context, undefined)
-  assert.deepEqual(await execution.admit(input), admission)
+  // Capability readers resolve the deferred port before reading its synchronous fields.
+  await execution.ready()
   assert.equal(loads, 1)
   assert.equal(execution.context, context)
+  assert.deepEqual(await execution.admit(input), admission)
+  assert.equal(loads, 1)
   assert.equal(execution.contextTransfer, contextTransfer)
   assert.equal(execution.workspaceBranching, workspaceBranching)
   assert.equal(execution.workspaceBranchingProvider, workspaceBranchingProvider)

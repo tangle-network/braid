@@ -213,6 +213,11 @@ export interface ExecutionPort {
     } & RetainedExecutionRecoveryContext,
   ): Promise<NativeContextBoundaryProof | null>
   environmentCapabilities?(): AgentEnvironmentCapabilities | Promise<AgentEnvironmentCapabilities>
+  /**
+   * Resolve a deferred provider so the fields below describe it.
+   * Callers await this before judging a capability from those fields.
+   */
+  ready?(): Promise<void>
   /** Provider-owned context planning and fresh-session transfer, when supported. */
   readonly context?: ContextTransferExecutionPort | undefined
   /** Alias retained for adapters that name the capability after its operation. */

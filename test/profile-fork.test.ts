@@ -13,6 +13,7 @@ import type {
 import { defineAgentProfile } from '@tangle-network/agent-interface'
 import { canonicalAgentProfileDigestHex } from '../src/adapters/agent-interface/profile-runtime.js'
 import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
+import { LazyExecutionPort } from '../src/adapters/runtime/lazy-execution.js'
 import { openSqliteStorage } from '../src/adapters/storage/sqlite.js'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import {
@@ -23,13 +24,17 @@ import {
 import type { BraidApplication } from '../src/app/application.js'
 import { createBraidApplication } from '../src/app/composition.js'
 import { executeBranchEffect } from '../src/app/conversation-branch-effects.js'
-import type { ConversationHost, ForkDestinationProfile } from '../src/app/conversation-types.js'
+import type {
+  ConversationHost,
+  ForkDestinationProfile,
+  ForkPlan,
+} from '../src/app/conversation-types.js'
 import { MemoryJournal } from '../src/app/journal.js'
 import { ProfileActionService } from '../src/app/profile-actions.js'
 import { createProfileRecord, type ProfileDiscoveryInput } from '../src/app/profiles.js'
 import { StorageJournal } from '../src/app/storage-journal.js'
 import { canonicalDigest } from '../src/domain/canonical.js'
-import type { ConnectionRecord } from '../src/domain/entities.js'
+import type { BranchRecord, ConnectionRecord } from '../src/domain/entities.js'
 import { createConnectionId, createOperationId } from '../src/domain/ids.js'
 import { replayEvents } from '../src/domain/reducer.js'
 import { initialState } from '../src/domain/state.js'
@@ -68,6 +73,13 @@ const DESTINATION_PROFILE = defineAgentProfile({
   harness: 'pi',
   model: { default: 'destination-model' },
   prompt: { instructions: ['DESTINATION_ROLE_INSTRUCTION'] },
+})
+
+const CODEX_PROFILE = defineAgentProfile({
+  name: 'Codex operator',
+  harness: 'codex',
+  model: { default: 'gpt-5.5' },
+  prompt: { instructions: ['Continue in Codex.'] },
 })
 
 interface Harness {
@@ -123,8 +135,12 @@ function receipt(request: ContextTransferRequest): ContextTransferResult {
   }
 }
 
-/** A provider double with exact transfer lookup; it records the profile of every admitted turn. */
-function harness(): Harness {
+/**
+ * A provider double with exact transfer lookup; it records the profile of every admitted turn.
+ * `acceptsRunner` makes it accept context only for that destination runner, as CLI Bridge
+ * accepts a Codex handoff only on its Codex route.
+ */
+function harness(options: { readonly acceptsRunner?: string } = {}): Harness {
   const transfers: ContextTransferRequest[] = []
   const admitted: ExecuteTurnInput[] = []
   const accepted = new Map<string, ContextTransferResult>()
@@ -185,8 +201,8 @@ function harness(): Harness {
       }
     },
     context: {
-      async supports() {
-        return true
+      async supports(destination) {
+        return options.acceptsRunner === undefined || destination.runner === options.acceptsRunner
       },
       async lookup(request: ContextTransferRequest) {
         return accepted.get(request.operationId)
@@ -786,6 +802,191 @@ test('headless plan_fork and execute_fork accept profileRef and never echo the p
   assert(executed?.kind === 'accepted')
   const branch = executed.data as { readonly profileSnapshotId?: string }
   assert.equal(typeof branch.profileSnapshotId, 'string')
+})
+
+test('a profile fork runs the destination profile harness unless the fork names a runner', async () => {
+  const provider = harness({ acceptsRunner: 'codex' })
+  const journal = new MemoryJournal(new FixedClock(AT))
+  const app = openApp(provider.execution, journal)
+  await prepareSource(app)
+  await app.send({ operationId: 'op-codex-source', text: 'source history' }).completion
+  const { conversationId, branchId: sourceBranchId } = app.state()
+  const profiles = profileService(app, { profiles: [catalogRecord(CODEX_PROFILE)] })
+  const context = dispatchContext(app, profiles)
+
+  // profileRef alone: the Codex profile's harness picks the runner, not the source runner.
+  const planned = await dispatchConversationHeadlessCommand(
+    {
+      type: 'headless-command',
+      command: 'plan_fork',
+      operationId: 'op-codex-fork',
+      params: { profileRef: 'Codex operator' },
+    },
+    context,
+  )
+  assert(planned?.kind === 'accepted')
+  const plan = planned.data as ForkPlan
+  assert.equal(plan.reason, undefined)
+  assert.equal(plan.allowed, true)
+  assert.equal(plan.portableContextPlan?.destination.runner, 'codex')
+  assert.equal(plan.destinationProfile?.harness, 'codex')
+  const executed = await dispatchConversationHeadlessCommand(
+    {
+      type: 'headless-command',
+      command: 'execute_fork',
+      operationId: 'op-codex-fork',
+      params: {
+        planDigest: plan.digest,
+        profileRef: 'Codex operator',
+        ...(plan.portableContextPlan?.requiresAcceptance === true
+          ? { acceptedDigest: plan.portableContextPlan.digest }
+          : {}),
+      },
+    },
+    context,
+  )
+  assert(executed?.kind === 'accepted')
+  const branch = executed.data as BranchRecord
+  assert.equal(branch.id, plan.destinationBranchId)
+  assert.equal(provider.transfers.length, 1)
+  assert.equal(provider.transfers[0]?.plan.destination.runner, 'codex')
+  assert.equal(provider.transfers[0]?.profile?.harness, 'codex')
+  await app.send({ operationId: 'op-codex-turn', branchId: branch.id, text: 'continue' }).completion
+  assert.equal(lastAdmitted(provider.admitted).profile.harness, 'codex')
+  assert.deepEqual(lastAdmitted(provider.admitted).contextTransfer, provider.transfers[0])
+
+  // An explicit runner still wins, and the provider still decides whether it accepts it.
+  const overridden = await app.conversations.branches.plan({
+    operationId: 'op-codex-fork-pi',
+    conversationId,
+    branchId: sourceBranchId,
+    destinationProfile: await profiles.resolveForFork('Codex operator'),
+    runner: 'pi',
+  })
+  assert.equal(overridden.portableContextPlan?.destination.runner, 'pi')
+  assert.equal(overridden.destinationProfile?.harness, 'pi')
+  assert.equal(overridden.allowed, false)
+  assert.match(overridden.reason ?? '', /does not report retry-safe portable context transfer/u)
+
+  const restarted = openApp(provider.execution, journal)
+  await restarted.send({ operationId: 'op-codex-restart', branchId: branch.id, text: 'after' })
+    .completion
+  assert.equal(lastAdmitted(provider.admitted).profile.harness, 'codex')
+  assert.equal(provider.transfers.length, 1)
+})
+
+test('plan_fork in a fresh process loads the deferred provider before judging context transfer', async () => {
+  const provider = harness()
+  const journal = new MemoryJournal(new FixedClock(AT))
+  const source = openApp(provider.execution, journal)
+  await prepareSource(source)
+  await source.send({ operationId: 'op-fresh-source', text: 'source history' }).completion
+
+  // A new `braid rpc` process defers the CLI Bridge port until something needs the provider.
+  let loads = 0
+  const fresh = openApp(
+    new LazyExecutionPort({
+      load: async () => {
+        loads += 1
+        return provider.execution
+      },
+    }),
+    journal,
+  )
+  const conversationOnly = await fresh.conversations.branches.plan({
+    operationId: 'op-fresh-conversation',
+    kind: 'conversation',
+  })
+  assert.equal(conversationOnly.allowed, true)
+  assert.equal(loads, 0)
+  const context = dispatchContext(fresh, profileService(fresh))
+  const planned = await dispatchConversationHeadlessCommand(
+    {
+      type: 'headless-command',
+      command: 'plan_fork',
+      operationId: 'op-fresh-fork',
+      params: { profileRef: 'Discovery operator' },
+    },
+    context,
+  )
+  assert(planned?.kind === 'accepted')
+  const plan = planned.data as ForkPlan
+  assert.equal(plan.reason, undefined)
+  assert.equal(plan.allowed, true)
+  assert.equal(loads, 1)
+  const executed = await dispatchConversationHeadlessCommand(
+    {
+      type: 'headless-command',
+      command: 'execute_fork',
+      operationId: 'op-fresh-fork',
+      params: { planDigest: plan.digest, profileRef: 'Discovery operator' },
+    },
+    context,
+  )
+  assert(executed?.kind === 'accepted')
+  assert.equal((executed.data as BranchRecord).id, plan.destinationBranchId)
+  assert.equal(provider.transfers.length, 1)
+  assert.equal(loads, 1)
+
+  // Capability still comes from the loaded provider: one without context transfer refuses.
+  const { context: _context, ...withoutContext } = provider.execution
+  const unsupported = openApp(new LazyExecutionPort({ load: async () => withoutContext }), journal)
+  const refused = await unsupported.conversations.branches.plan({
+    operationId: 'op-fresh-unsupported',
+    conversationId: plan.sourceConversationId,
+    branchId: plan.sourceBranchId,
+    destinationProfile: await profileService(unsupported).resolveForFork('Discovery operator'),
+  })
+  assert.equal(refused.allowed, false)
+  assert.match(refused.reason ?? '', /does not expose canonical fresh-session context transfer/u)
+  assert.equal(provider.transfers.length, 1)
+})
+
+test('a pending profile handoff resumes in a fresh process without a second transfer', async () => {
+  const provider = harness()
+  const providerContext = provider.execution.context
+  assert(providerContext?.transfer)
+  const transfer = providerContext.transfer
+  let lost = true
+  const execution: ExecutionPort = {
+    ...provider.execution,
+    context: {
+      ...providerContext,
+      async transfer(request, target) {
+        const result = await transfer(request, target)
+        if (lost) {
+          lost = false
+          throw new Error('connection lost after provider acceptance')
+        }
+        return result
+      },
+    },
+  }
+  const journal = new MemoryJournal(new FixedClock(AT))
+  const app = openApp(execution, journal)
+  await prepareSource(app)
+  await app.send({ operationId: 'op-pending-source', text: 'source history' }).completion
+  const destination = await profileService(app).resolveForFork('Discovery operator')
+  const input = { operationId: 'op-pending-profile-fork', destinationProfile: destination }
+  const plan = await app.conversations.branches.plan(input)
+  await assert.rejects(
+    () => app.conversations.branches.execute({ ...input, planDigest: plan.digest }),
+    /connection lost after provider acceptance/u,
+  )
+  assert.equal(
+    app.state().operations.find((operation) => operation.id === input.operationId)?.status,
+    'pending',
+  )
+
+  const fresh = openApp(new LazyExecutionPort({ load: async () => execution }), journal)
+  const branch = await fresh.conversations.branches.execute({ ...input, planDigest: plan.digest })
+  assert.equal(branch.id, plan.destinationBranchId)
+  assert.equal(typeof branch.profileSnapshotId, 'string')
+  assert.equal(provider.transfers.length, 1)
+  assert.equal(
+    fresh.state().operations.find((operation) => operation.id === input.operationId)?.status,
+    'acknowledged',
+  )
 })
 
 function assertFits(lines: readonly string[], width: number): void {

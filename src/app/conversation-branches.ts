@@ -318,7 +318,7 @@ export class ConversationBranches {
   }
 
   async plan(input: ForkPlanInput): Promise<ForkPlan> {
-    const plan = this.#plan(input)
+    const plan = await this.#planWithProvider(input)
     const context = contextTransferPort(this.#host.execution)
     if (
       plan.kind !== 'cross-runner' ||
@@ -352,6 +352,17 @@ export class ConversationBranches {
         'The selected destination provider does not report retry-safe portable context transfer',
     }
     return { ...unavailable, digest: canonicalDigest(unavailable) }
+  }
+
+  /**
+   * Plan after the provider port is loaded when the fork depends on provider capabilities.
+   * A fresh process defers that port, and judging before it loads would refuse a capable provider.
+   */
+  async #planWithProvider(input: ForkPlanInput): Promise<ForkPlan> {
+    const plan = this.#plan(input)
+    if (plan.kind === 'conversation' || this.#host.execution?.ready === undefined) return plan
+    await this.#host.execution.ready()
+    return this.#plan(input)
   }
 
   #plan(input: ForkPlanInput): ForkPlan {
@@ -400,15 +411,18 @@ export class ConversationBranches {
       ...(input.effort === undefined ? {} : { effort: input.effort }),
       ...(input.mode === undefined ? {} : { mode: input.mode }),
     })
-    const requestedRunner = targetOverrides.runner ?? sourceRunner
-    const targetProfile = resolveEffectiveProfile({
+    const target = resolveEffectiveProfile({
       profile: { profile: destinationProfile?.profile ?? sourceProfile ?? selectedProfile },
       branchOverrides: {
         ...(targetOverrides.runner === undefined ? {} : { harness: targetOverrides.runner }),
         ...(targetOverrides.model === undefined ? {} : { model: targetOverrides.model }),
         ...(targetOverrides.effort === undefined ? {} : { effort: targetOverrides.effort }),
       },
-    }).effectiveProfile
+    })
+    const targetProfile = target.effectiveProfile
+    // Runner override, then the destination profile's harness, then the model's preferred runner,
+    // so a profile handoff reaches that profile's runner instead of keeping the source runner.
+    const requestedRunner = target.runner
     const sourceRun = sourceRunForBranch(state, source.branch.id, source.through?.runId)
     const sourceEnvironmentId = source.branch.environmentId ?? sourceRun?.environmentId
     const kind =
@@ -597,7 +611,7 @@ export class ConversationBranches {
     // capabilities cannot decide whether the original operation was accepted.
     const pendingPlan =
       existing?.kind === 'conversation-fork' && existing.status === 'pending'
-        ? this.#plan(input)
+        ? await this.#planWithProvider(input)
         : undefined
     const plan = pendingPlan?.kind === 'cross-runner' ? pendingPlan : await this.plan(input)
     if (plan.digest !== input.planDigest) {
