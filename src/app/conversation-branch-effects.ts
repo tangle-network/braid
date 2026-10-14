@@ -1,8 +1,8 @@
 import {
   type ContextTransferRequest,
   type ContextTransferResult,
-  contextTransferRequestDigest,
   contextTransferResultMatchesRequest,
+  createContextTransferRequest,
   forkedEnvironmentConfidentialityVerified,
   type PlacementInfo,
   type PortableContextPlanRequest,
@@ -28,6 +28,7 @@ import type {
   CheckpointRecord,
   EnvironmentRecord,
   OperationRecord,
+  RunRecord,
 } from '../domain/entities.js'
 import { graphEdge, graphNode } from '../domain/graph-records.js'
 import {
@@ -36,14 +37,18 @@ import {
   type Digest,
   parseBranchId,
   parseCheckpointId,
+  parseConnectionId,
   parseEnvironmentId,
   parseMessageId,
   parseOperationId,
   parseRunId,
 } from '../domain/ids.js'
 import { assertJsonValue, objectValue } from '../domain/invariants-base.js'
+import { persistedContextTransferRequest } from '../domain/portable-context-persistence.js'
 import { type BraidState, isActiveRunStatus } from '../domain/state.js'
 import type { ExecutionPort } from '../ports/execution.js'
+import { parseConfidentialWorkspaceForkRequest } from './confidential-workspace-fork.js'
+import { connectionExecutionDigest } from './connections.js'
 import type {
   ConversationHost,
   ForkPlan,
@@ -51,8 +56,8 @@ import type {
   WorkspaceForkCleanupInput,
   WorkspaceForkCleanupResult,
 } from './conversation-types.js'
-import { parseConfidentialWorkspaceForkRequest } from './confidential-workspace-fork.js'
 import { AppError } from './errors.js'
+import { retainedExecutionRecoveryContext } from './run-recovery-context.js'
 
 type ForkExecutionInput = ForkPlanInput & { readonly planDigest: string }
 type CreateBranch = (input: ForkPlanInput) => Promise<BranchRecord>
@@ -142,7 +147,7 @@ export async function cleanupWorkspaceFork(
     throw new AppError('UNKNOWN_CHECKPOINT', 'The checkpoint has no provider reference')
   if (environment !== undefined && environment.providerEnvironmentId === undefined)
     throw new AppError('UNKNOWN_ENVIRONMENT', 'The environment has no provider reference')
-  assertCleanupCapabilities(state, checkpoint, environment)
+  const sourceRun = assertCleanupCapabilities(state, checkpoint, environment)
   const sourceEnvironment = sourceEnvironmentForCleanup(state, checkpoint, environment)
   const digest = canonicalDigest({
     command: 'cleanup_workspace_fork',
@@ -164,6 +169,8 @@ export async function cleanupWorkspaceFork(
   const branching = await workspaceBranchingForEnvironment(
     execution,
     sourceEnvironment?.providerEnvironmentId,
+    sourceRun,
+    state.workspace,
   )
   if (!hasWorkspaceBranching(branching))
     throw new AppError('CAPABILITY_UNAVAILABLE', 'Workspace cleanup is unavailable')
@@ -279,7 +286,22 @@ async function executeCrossRunner(
       throw new AppError('CONTEXT_PLAN_CONFLICT', 'The provider changed the accepted context plan')
   }
 
+  if (plan.destinationProfile === undefined)
+    throw new AppError(
+      'FORK_PLAN_CONFLICT',
+      'The accepted handoff requires its complete destination profile',
+    )
+  const destinationConnection = state.connections.find(
+    (record) => record.id === plan.destinationConnectionId,
+  )
   const transferMaterial = {
+    profile: plan.destinationProfile,
+    ...(plan.destinationWorkspaceRequest === undefined
+      ? {}
+      : { workspace: plan.destinationWorkspaceRequest }),
+    ...(destinationConnection?.providerOptions.resources === undefined
+      ? {}
+      : { resources: destinationConnection.providerOptions.resources }),
     operationId: `${input.operationId}:context`,
     plan: portablePlan,
     acceptance: {
@@ -288,46 +310,84 @@ async function executeCrossRunner(
       acceptedBy: input.acceptedDigest === undefined ? ('policy' as const) : ('user' as const),
     },
   }
-  const transferRequest: ContextTransferRequest = {
-    ...transferMaterial,
-    requestDigest: contextTransferRequestDigest(transferMaterial),
-  }
-  const transfer = await lookupOrTransfer(contextPort, transferRequest)
+  const transferRequest = persistedContextTransferRequest(
+    createContextTransferRequest(transferMaterial),
+  )
+  const transfer = await lookupOrTransfer(
+    contextPort,
+    transferRequest,
+    plan.destinationConnectionId,
+    plan.destinationConnectionDigest,
+  )
   if (!contextTransferResultMatchesRequest(transferRequest, transfer))
     throw new AppError(
       'CONTEXT_RECEIPT_CONFLICT',
       'The context transfer result does not match its request',
     )
   const receipt = assertAcceptedTransfer(transfer)
+  assertDestinationConnection(host.state(), plan)
+  const handoffResult = operationResult({
+    kind: 'handoff',
+    branchId: String(plan.destinationBranchId),
+    planDigest: plan.digest,
+    request: transferRequest,
+    receipt,
+    ...(plan.destinationConnectionId === undefined
+      ? {}
+      : { connectionId: plan.destinationConnectionId }),
+    ...(plan.destinationConnectionDigest === undefined
+      ? {}
+      : { connectionDigest: plan.destinationConnectionDigest }),
+  })
+  // Persist the accepted binding before the branch can receive its first turn.
+  await updateOperation(host, operationId, digest, { status: 'pending', result: handoffResult })
   const destinationEnvironment = await recordDestinationEnvironment(host, plan, receipt)
   const branch = await createBranch({
     ...input,
     operationId: derivedOperationId(input.operationId, 'branch'),
     destinationBranchId: plan.destinationBranchId,
+    ...(plan.destinationConnectionId === undefined
+      ? {}
+      : { connectionId: plan.destinationConnectionId }),
     ...(destinationEnvironment === undefined ? {} : { environmentId: destinationEnvironment.id }),
   })
   await recordHandedOffEdge(host, plan, branch, receipt.contextDigest, operationId)
 
   if (input.text !== undefined && input.text.trim() !== '' && host.send !== undefined) {
+    assertDestinationConnection(host.state(), plan)
     const sent = host.send({
       operationId: derivedOperationId(input.operationId, 'send'),
       conversationId: branch.conversationId,
       branchId: branch.id,
       text: input.text,
       sessionId: receipt.sessionId,
+      ...(plan.destinationConnectionDigest === undefined
+        ? {}
+        : { expectedConnectionDigest: plan.destinationConnectionDigest }),
+      ...(plan.destinationWorkspaceRequest === undefined
+        ? {}
+        : { workspaceRequest: plan.destinationWorkspaceRequest }),
       portableContextPlan: portablePlan,
       portableContextTransferRequest: transferRequest,
       portableContextTransferReceipt: receipt,
     })
     await sent.admissionReady
   }
-  await acknowledgeOperation(host, operationId, digest, branch, {
-    kind: 'handoff',
-    branchId: String(branch.id),
-    planDigest: plan.digest,
-    receipt,
-  })
+  await acknowledgeOperation(host, operationId, digest, branch, handoffResult)
   return branch
+}
+
+function assertDestinationConnection(state: BraidState, plan: ForkPlan): void {
+  if (plan.destinationConnectionId === undefined) return
+  const connection = state.connections.find((record) => record.id === plan.destinationConnectionId)
+  if (
+    connection === undefined ||
+    connectionExecutionDigest(connection) !== plan.destinationConnectionDigest
+  )
+    throw new AppError(
+      'FORK_PLAN_CONFLICT',
+      'The destination connection changed after the accepted context plan',
+    )
 }
 
 async function executeWorkspace(
@@ -411,6 +471,8 @@ async function executeWorkspace(
   const branching = await workspaceBranchingForEnvironment(
     host.execution,
     sourceEnvironmentRecord.providerEnvironmentId,
+    sourceRun,
+    state.workspace,
   )
   if (!hasWorkspaceBranching(branching))
     throw new AppError('CAPABILITY_UNAVAILABLE', plan.reason ?? 'Workspace fork is unavailable')
@@ -534,11 +596,23 @@ async function executeWorkspace(
 async function lookupOrTransfer(
   port: NonNullable<ReturnType<typeof contextTransferPort>>,
   request: ContextTransferRequest,
+  connectionId?: string,
+  connectionDigest?: string,
 ): Promise<ContextTransferResult> {
-  const found = port.lookup === undefined ? undefined : await port.lookup(request)
-  if (found !== undefined) return found
+  const target =
+    connectionId === undefined
+      ? undefined
+      : { connectionId, ...(connectionDigest === undefined ? {} : { connectionDigest }) }
+  const found = port.lookup === undefined ? undefined : await port.lookup(request, target)
+  if (
+    found !== undefined &&
+    (!contextTransferResultMatchesRequest(request, found) ||
+      found.status !== 'unknown' ||
+      found.retryable !== true)
+  )
+    return found
   return (
-    (await port.transfer?.(request)) ?? {
+    (await port.transfer?.(request, target)) ?? {
       status: 'unknown',
       operationId: request.operationId,
       requestDigest: request.requestDigest,
@@ -653,7 +727,7 @@ function assertCleanupCapabilities(
   state: BraidState,
   checkpoint: CheckpointRecord | undefined,
   environment: EnvironmentRecord | undefined,
-): void {
+): RunRecord {
   const sourceCheckpoint =
     checkpoint ??
     (environment === undefined
@@ -691,6 +765,7 @@ function assertCleanupCapabilities(
       'CAPABILITY_UNAVAILABLE',
       'The selected run does not report retry-safe workspace cleanup support',
     )
+  return sourceRun
 }
 
 function sourceEnvironmentForCleanup(
@@ -838,7 +913,10 @@ async function recordDestinationEnvironment(
   const environment: EnvironmentRecord = {
     id,
     workspaceId: source.workspaceId,
-    connectionId: source.connectionId,
+    connectionId:
+      plan.destinationConnectionId === undefined
+        ? source.connectionId
+        : parseConnectionId(plan.destinationConnectionId),
     lifecycle: 'ready',
     placement: {
       provider: receipt.provider,
@@ -1117,11 +1195,19 @@ function hasWorkspaceBranching(
 async function workspaceBranchingForEnvironment(
   execution: ExecutionPort | undefined,
   providerEnvironmentId: string | undefined,
+  sourceRun: RunRecord,
+  workspaceRoot: string | null,
 ): Promise<ExecutionPort['workspaceBranching']> {
   const provider = execution?.workspaceBranchingProvider
   if (provider !== undefined) {
     if (providerEnvironmentId === undefined) return undefined
-    return (await provider.forEnvironment(providerEnvironmentId)) ?? undefined
+    return (
+      (await provider.forEnvironment(providerEnvironmentId, {
+        runId: sourceRun.id,
+        ...(sourceRun.controlRef === undefined ? {} : { controlRef: sourceRun.controlRef }),
+        ...retainedExecutionRecoveryContext(sourceRun, workspaceRoot),
+      })) ?? undefined
+    )
   }
   return execution?.workspaceBranching
 }

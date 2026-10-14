@@ -2,13 +2,17 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   type ContextTransferRequest,
+  type ContextTransferResult,
+  type AgentEnvironmentProvider,
   canonicalAgentProfileDigest,
-  contextTransferRequestDigest,
+  createContextTransferRequest,
   defineAgentProfile,
   type PortableConversationContext,
   portableContextPlanDigest,
   portableConversationContextDigest,
 } from '@tangle-network/agent-interface'
+import { execOnlyEnvironmentCapabilities } from '@tangle-network/agent-interface/environment-provider'
+import { createProviderContextTransferPort } from '../src/adapters/runtime/provider-context-transfer.js'
 import { createProductionComposition } from '../src/app/production-composition.js'
 import type { ConnectionRecord } from '../src/domain/entities.js'
 import { createConnectionId } from '../src/domain/ids.js'
@@ -60,10 +64,22 @@ test('production CLI Bridge transfers context into one exact fresh retained sess
       sessionId: receipt.sessionId,
       signal: new AbortController().signal,
       contextTransfer: transfer,
+      contextTransferReceipt: receipt,
       onRetainedAdmission: async (admission) => {
         admissions.push(structuredClone(admission))
       },
     }
+    for (const changed of [
+      { ...input, workspaceRoot: '/changed-workspace' },
+      { ...input, workspaceRequest: { cwd: { base: 'repository' as const, path: '.' } } },
+    ]) {
+      await assert.rejects(
+        () => Promise.resolve(production.execution.admit!(changed)),
+        /exact host workspace/u,
+      )
+    }
+    assert.equal(bridge.requests.length, 0)
+    assert.equal(admissions.length, 0)
     const admission = await production.execution.admit?.(input)
     assert.equal(admission?.environmentId, transfer.plan.destination.environmentId)
     assert.equal(admission?.providerSessionId, transfer.plan.destination.sessionId)
@@ -87,6 +103,10 @@ test('production CLI Bridge transfers context into one exact fresh retained sess
     assert.notEqual(input.runId, transfer.plan.destination.runId)
     assert.equal(bridge.requests[0]?.runId, transfer.plan.destination.runId)
     assert.deepEqual(bridge.requests[0]?.body.context_transfer, transfer)
+    assert.doesNotMatch(
+      JSON.stringify(bridge.requests[0]?.body.context_transfer),
+      /source-only-omitted-canary|private omission reason/u,
+    )
     assert.equal(bridge.requests[0]?.body.environment_id, transfer.plan.destination.environmentId)
     assert.equal(bridge.requests[0]?.body.execution_id, transfer.plan.destination.executionId)
   } finally {
@@ -94,7 +114,226 @@ test('production CLI Bridge transfers context into one exact fresh retained sess
   }
 })
 
-function contextTransfer(profile: ReturnType<typeof defineAgentProfile>): ContextTransferRequest {
+test('portable context routes any capable provider by exact destination connection', async () => {
+  const profile = defineAgentProfile({ name: 'portable destination' })
+  const request = contextTransfer(profile, 'daytona')
+  const capability = {
+    ...execOnlyEnvironmentCapabilities({
+      read: false,
+      write: false,
+      exec: false,
+      git: false,
+      upload: false,
+      download: false,
+    }),
+    streaming: { live: true, replay: true, detach: true, turnIdempotency: true },
+    retainedControl: {
+      exactRunIdentity: true,
+      resultIdentity: true,
+      eventIdentity: true,
+      cancellationIdempotency: true,
+    },
+    contextTransfer: {
+      freshSession: true as const,
+      requestIdempotency: true as const,
+      lookup: true as const,
+      attach: true as const,
+    },
+  }
+  let target: string | undefined
+  let calls = 0
+  const result: ContextTransferResult = {
+    status: 'unknown',
+    operationId: request.operationId,
+    requestDigest: request.requestDigest,
+    message: 'No prior admission',
+    retryable: true,
+  }
+  const provider: AgentEnvironmentProvider = {
+    name: 'daytona',
+    async get() {
+      return null
+    },
+    capabilities: () => capability,
+    async create() {
+      throw new Error('Transfer routing must not create an environment')
+    },
+    contextTransfer: {
+      async lookup() {
+        return undefined
+      },
+      async transfer(input) {
+        calls += 1
+        assert.deepEqual(input, request)
+        return result
+      },
+    },
+  }
+  const port = createProviderContextTransferPort({
+    async resolve(_request, selected) {
+      target = selected?.connectionId
+      return { provider, capabilities: capability }
+    },
+  })
+  assert.equal(
+    await port.supports?.(request.plan.destination, { connectionId: 'connection-daytona' }),
+    true,
+  )
+  assert.equal(await port.lookup?.(request, { connectionId: 'connection-daytona' }), undefined)
+  assert.deepEqual(await port.transfer?.(request, { connectionId: 'connection-daytona' }), result)
+  assert.equal(target, 'connection-daytona')
+  assert.equal(calls, 1)
+  const snapshotDestination = {
+    ...request.plan.destination,
+    workspaceSnapshotDigest: `sha256:${'b'.repeat(64)}` as const,
+  }
+  for (const [transferSnapshots, createSnapshots, expected] of [
+    [undefined, true, false],
+    [false, true, false],
+    [true, false, true],
+  ] as const) {
+    const snapshotCapabilities = {
+      ...capability,
+      create: { workspaceSnapshot: createSnapshots },
+      contextTransfer: {
+        ...capability.contextTransfer,
+        ...(transferSnapshots === undefined ? {} : { workspaceSnapshot: transferSnapshots }),
+      },
+    }
+    const snapshotPort = createProviderContextTransferPort({
+      async resolve() {
+        return { provider, capabilities: snapshotCapabilities }
+      },
+    })
+    assert.equal(await snapshotPort.supports?.(snapshotDestination), expected)
+  }
+  assert.equal(calls, 1)
+  const wrongProvider = createProviderContextTransferPort({
+    async resolve() {
+      return { provider: { ...provider, name: 'another-provider' }, capabilities: capability }
+    },
+  })
+  assert.equal(await wrongProvider.supports?.(request.plan.destination), false)
+  assert.equal((await wrongProvider.transfer?.(request))?.status, 'unknown')
+  assert.equal(calls, 1)
+  const wrongReceipt = createProviderContextTransferPort({
+    async resolve() {
+      return {
+        provider: {
+          ...provider,
+          contextTransfer: {
+            async lookup() {
+              return { ...result, operationId: 'another-operation' }
+            },
+            async transfer() {
+              return { ...result, requestDigest: `sha256:${'f'.repeat(64)}` }
+            },
+          },
+        },
+        capabilities: capability,
+      }
+    },
+  })
+  await assert.rejects(() => wrongReceipt.lookup!(request), /does not match the exact request/)
+  await assert.rejects(() => wrongReceipt.transfer!(request), /does not match the exact request/)
+})
+
+test('portable context validates the request before selecting a credential route', async () => {
+  let resolutions = 0
+  const port = createProviderContextTransferPort({
+    async resolve() {
+      resolutions += 1
+      return undefined
+    },
+  })
+  const request = contextTransfer(defineAgentProfile({ name: 'invalid destination' }))
+  await assert.rejects(() =>
+    port.transfer!({ ...request, requestDigest: `sha256:${'f'.repeat(64)}` }),
+  )
+  assert.equal(resolutions, 0)
+})
+
+test('portable lookup recovers an exact receipt when fresh admission is unavailable', async () => {
+  const request = contextTransfer(defineAgentProfile({ name: 'retained destination' }), 'daytona')
+  const capabilities = {
+    ...execOnlyEnvironmentCapabilities({
+      read: false,
+      write: false,
+      exec: false,
+      git: false,
+      upload: false,
+      download: false,
+    }),
+    contextTransfer: { freshSession: false, requestIdempotency: false, lookup: true },
+  }
+  const receipt: ContextTransferResult = {
+    status: 'replayed',
+    operationId: request.operationId,
+    requestDigest: request.requestDigest,
+    planDigest: request.plan.digest,
+    contextDigest: request.plan.context.digest,
+    source: request.plan.source.source,
+    destination: request.plan.destination,
+    provider: request.plan.destination.provider,
+    environmentId: request.plan.destination.environmentId!,
+    sessionId: request.plan.destination.sessionId,
+    runId: request.plan.destination.runId,
+    executionId: request.plan.destination.executionId,
+    sessionCreatedForOperationId: request.operationId,
+    sessionCreatedAt: at,
+    admittedAt: at,
+    transferredMessageIds: ['message-context-source'],
+    omittedMessageIds: ['message-omitted'],
+  }
+  let lookups = 0
+  let transfers = 0
+  const provider: AgentEnvironmentProvider = {
+    name: 'daytona',
+    capabilities: () => capabilities,
+    async create() {
+      throw new Error('Lookup must not allocate')
+    },
+    contextTransfer: {
+      async lookup(input) {
+        lookups += 1
+        assert.deepEqual(input, request)
+        return receipt
+      },
+      async transfer() {
+        transfers += 1
+        throw new Error('Fresh admission is unavailable')
+      },
+    },
+  }
+  const port = createProviderContextTransferPort({
+    async resolve() {
+      return { provider, capabilities }
+    },
+  })
+  assert.equal(await port.supports?.(request.plan.destination), false)
+  assert.deepEqual(await port.lookup?.(request), receipt)
+  assert.equal((await port.transfer?.(request))?.status, 'unknown')
+  assert.equal(lookups, 1)
+  assert.equal(transfers, 0)
+  const denied = createProviderContextTransferPort({
+    async resolve() {
+      return {
+        provider,
+        capabilities: {
+          ...capabilities,
+          contextTransfer: { ...capabilities.contextTransfer, lookup: false },
+        },
+      }
+    },
+  })
+  assert.equal(await denied.lookup?.(request), undefined)
+  assert.equal(lookups, 1)
+})
+
+function contextTransfer(
+  profile: ReturnType<typeof defineAgentProfile>,
+  provider = 'cli-bridge',
+): ContextTransferRequest {
   const sourceMaterial = {
     source: {
       runId: 'run-context-source',
@@ -113,6 +352,12 @@ function contextTransfer(profile: ReturnType<typeof defineAgentProfile>): Contex
         parts: [{ type: 'text' as const, text: 'portable context marker 96e1' }],
         timestamp: '2026-08-20T11:59:58.000Z',
       },
+      {
+        id: 'message-omitted',
+        role: 'user' as const,
+        parts: [{ type: 'text' as const, text: 'source-only-omitted-canary' }],
+        timestamp: '2026-08-20T11:59:59.000Z',
+      },
     ],
     attachments: [],
   }
@@ -122,7 +367,7 @@ function contextTransfer(profile: ReturnType<typeof defineAgentProfile>): Contex
   }
   const destination = {
     runner: 'pi',
-    provider: 'cli-bridge',
+    provider,
     environmentId: 'environment-context-destination',
     sessionId: 'session-context-destination',
     runId: 'run-context-destination',
@@ -140,12 +385,29 @@ function contextTransfer(profile: ReturnType<typeof defineAgentProfile>): Contex
         action: 'include' as const,
         parts: [{ partIndex: 0, action: 'include' as const }],
       },
+      {
+        messageId: 'message-omitted',
+        action: 'omit' as const,
+        reason: 'private omission reason',
+        parts: [{ partIndex: 0, action: 'omit' as const, reason: 'private omission reason' }],
+      },
     ],
-    context,
-    requiresAcceptance: false,
+    context: (() => {
+      const selected = {
+        ...sourceMaterial,
+        completeness: 'partial' as const,
+        messages: sourceMaterial.messages.slice(0, 1),
+      }
+      return { ...selected, digest: portableConversationContextDigest(selected) }
+    })(),
+    requiresAcceptance: true,
   }
   const plan = { ...planMaterial, digest: portableContextPlanDigest(planMaterial) }
   const requestMaterial = {
+    profile,
+    ...(provider === 'cli-bridge'
+      ? { workspace: { cwd: { base: 'host' as const, path: '/workspace' } } }
+      : {}),
     operationId: 'transfer-context-destination',
     plan,
     acceptance: {
@@ -154,8 +416,5 @@ function contextTransfer(profile: ReturnType<typeof defineAgentProfile>): Contex
       acceptedBy: 'policy' as const,
     },
   }
-  return {
-    ...requestMaterial,
-    requestDigest: contextTransferRequestDigest(requestMaterial),
-  }
+  return createContextTransferRequest(requestMaterial)
 }

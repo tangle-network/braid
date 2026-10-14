@@ -203,7 +203,7 @@ test('connection state accepts transport metadata but rejects provider-native op
         ...connection,
         providerOptions: { lifecycle: 'retained', idleTtlSeconds: 1_800 },
       }),
-    /only for tangle-sandbox/u,
+    /lifecycle requires an environment provider connection/u,
   )
 })
 

@@ -145,3 +145,33 @@ test('editor shows Tangle-only fields and stays within all reference widths', ()
     for (const line of fields) assert.ok(visibleWidth(line) <= width, `${width}: ${line}`)
   }
 })
+
+test('registered provider metadata round-trips with account and region without credentials', () => {
+  const draft = {
+    kind: 'agent-provider' as const,
+    provider: 'daytona',
+    name: 'Daytona team',
+    endpoint: 'https://provider.example.test',
+    account: 'team-one',
+    region: 'us-east',
+  }
+  const validated = validateConnectionMetadataDraft(draft)
+  assert.equal(validated.ok, true)
+  if (validated.ok) assert.deepEqual(validated.draft, draft)
+  assert.equal(validateConnectionMetadataDraft({ ...draft, provider: '' }).ok, false)
+  assert.equal(
+    validateConnectionMetadataDraft({ ...draft, provider: 'native --credential value' }).ok,
+    false,
+  )
+  const editor = new ConnectionMetadataEditor({
+    theme,
+    initialDraft: draft,
+    onApply: () => {},
+    onCancel: () => {},
+  })
+  editor.focused = true
+  editor.handleInput('\r')
+  assert.match(editor.render(80).join('\n'), /installed provider name/u)
+  for (const width of [40, 80, 120, 200])
+    assert.ok(editor.render(width).every((line) => visibleWidth(line) <= width))
+})

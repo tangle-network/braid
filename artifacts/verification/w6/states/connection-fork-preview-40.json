@@ -1,0 +1,578 @@
+{
+  "schemaVersion": 2,
+  "state": "connection-fork-preview-40",
+  "source": {
+    "binary": "packed real binary from clean npm install",
+    "binarySha256": "141288e0fe917635d723b4b70d464dc49baff14cc356f54de1d3f8faa5d8254f",
+    "tarball": "tangle-network-braid-0.3.4.tgz",
+    "tarballSha256": "56d3c09ae96b5b42870fc3a10d53bb96dbc9cc4f1a931e9f85fbe9b36e5534d6"
+  },
+  "dimensions": {
+    "columns": 40,
+    "rows": 12
+  },
+  "terminal": "node-pty/xterm-256color",
+  "provenance": {
+    "renderer": {
+      "package": "@earendil-works/pi-tui@1.1.0",
+      "pty": "node-pty@1.1.0",
+      "emulator": "@xterm/headless@6.0.0",
+      "node": "v24.21.0",
+      "terminal": "xterm-256color"
+    },
+    "raster": {
+      "agg": "agg 1.9.0",
+      "imagemagick": "Version: ImageMagick 6.9.12-98 Q16 x86_64 18038 https://legacy.imagemagick.org",
+      "fontFamily": "DejaVu Sans Mono",
+      "font": "DejaVu Sans Mono | Book | /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+      "colorMode": "sRGB 8-bit"
+    }
+  },
+  "capturePhase": "atomic-signal-frame",
+  "captureRevision": 4,
+  "frame": " fork preview              cross-runner\n────────────────────────────────────────\n same conversation · new branch\n runner: transfer unavailable\n source: conv-1\n source branch: branch-1\n destination branch: branch-1eb960cb...\n boundary: branch-1 → 0 messages\n provider session: current → new\n connection: source connection → con...\n────────────────────────────────────────\n ↑/↓ inspect · ←/esc cancel\n",
+  "packedState": {
+    "schemaVersion": 2,
+    "capturePhase": "atomic-signal-frame",
+    "state": {
+      "schemaVersion": 2,
+      "revision": 4,
+      "sequence": 4,
+      "workspace": "/home/drew/code/_wt/braid-pr138-captures-20261014",
+      "conversationId": "conv-1",
+      "branchId": "branch-1",
+      "conversations": [
+        {
+          "id": "conv-1",
+          "title": "New conversation",
+          "branchId": "branch-1",
+          "archived": false,
+          "updatedAt": "2026-08-01T00:00:00.000Z"
+        }
+      ],
+      "profile": {
+        "name": "Release engineer",
+        "description": "Ships durable changes with concise, reproducible evidence",
+        "version": "1.0.0",
+        "tags": [
+          "coding",
+          "release"
+        ],
+        "harness": "pi",
+        "model": {
+          "default": "openai-codex/gpt-5.6-luna",
+          "provider": "openai-codex",
+          "reasoningEffort": "high"
+        },
+        "prompt": {
+          "instructions": [
+            "Inspect the repository before changing it.",
+            "Run focused checks and report exact evidence."
+          ]
+        },
+        "tools": {
+          "read": true,
+          "write": true,
+          "shell": true
+        },
+        "permissions": {
+          "read": "allow",
+          "write": "ask",
+          "shell": "ask"
+        },
+        "resources": {
+          "skills": [
+            {
+              "kind": "inline",
+              "name": "verify-before-ship",
+              "content": "Run the smallest relevant check before reporting a result."
+            }
+          ]
+        },
+        "metadata": {
+          "redacted": "[redacted]"
+        }
+      },
+      "runConfiguration": {
+        "profileName": "Release engineer",
+        "runner": "pi",
+        "model": "openai-codex/gpt-5.6-luna",
+        "effort": "high",
+        "connectionId": "connection-local-cli-bridge",
+        "overrides": {}
+      },
+      "draft": "",
+      "messages": [],
+      "runs": [],
+      "sessionUsage": {
+        "turns": {
+          "sourceCount": 0,
+          "input": 0,
+          "output": 0,
+          "tokenStatus": "unknown",
+          "costStatus": "unknown",
+          "unknownTokenSources": 0,
+          "unknownCostSources": 0,
+          "callStatus": "unknown",
+          "latencyStatus": "unknown",
+          "unknownCallSources": 0,
+          "unknownLatencySources": 0
+        },
+        "analyses": {
+          "sourceCount": 0,
+          "input": 0,
+          "output": 0,
+          "tokenStatus": "unknown",
+          "costStatus": "unknown",
+          "unknownTokenSources": 0,
+          "unknownCostSources": 0,
+          "callStatus": "unknown",
+          "latencyStatus": "unknown",
+          "unknownCallSources": 0,
+          "unknownLatencySources": 0
+        },
+        "delegated": {
+          "sourceCount": 0,
+          "input": 0,
+          "output": 0,
+          "tokenStatus": "unknown",
+          "costStatus": "unknown",
+          "unknownTokenSources": 0,
+          "unknownCostSources": 0,
+          "callStatus": "unknown",
+          "latencyStatus": "unknown",
+          "unknownCallSources": 0,
+          "unknownLatencySources": 0
+        },
+        "attribution": "complete"
+      },
+      "environments": [],
+      "interactions": [],
+      "queue": [],
+      "activeRunId": null,
+      "focusedRunId": null,
+      "activeRuns": [],
+      "lastError": null
+    },
+    "view": {
+      "revision": 4,
+      "workspace": "/home/drew/code/_wt/braid-pr138-captures-20261014",
+      "profileName": "Release engineer",
+      "profileDigest": "0419cd010f2d05e7939939e719f739d29f5da348d74a5f240b88411431378043",
+      "runner": "pi",
+      "model": "openai-codex/gpt-5.6-luna",
+      "effort": "high",
+      "runOverrides": {},
+      "connection": "Local CLI Bridge",
+      "conversationId": "conv-1",
+      "conversationTitle": "New conversation",
+      "conversations": [
+        {
+          "id": "conv-1",
+          "title": "New conversation",
+          "branchId": "branch-1",
+          "archived": false,
+          "active": true,
+          "updatedAt": "2026-08-01T00:00:00.000Z"
+        }
+      ],
+      "branch": "branch-1",
+      "status": "empty",
+      "statusText": "The selected connection does not expose canonical fresh-session context transfer",
+      "queueCount": 0,
+      "queue": [],
+      "messages": [],
+      "hiddenMessageCount": 0,
+      "runs": [],
+      "sessionUsage": {
+        "turns": {
+          "sourceCount": 0,
+          "input": 0,
+          "output": 0,
+          "tokenStatus": "unknown",
+          "costStatus": "unknown",
+          "unknownTokenSources": 0,
+          "unknownCostSources": 0,
+          "callStatus": "unknown",
+          "latencyStatus": "unknown",
+          "unknownCallSources": 0,
+          "unknownLatencySources": 0
+        },
+        "analyses": {
+          "sourceCount": 0,
+          "input": 0,
+          "output": 0,
+          "tokenStatus": "unknown",
+          "costStatus": "unknown",
+          "unknownTokenSources": 0,
+          "unknownCostSources": 0,
+          "callStatus": "unknown",
+          "latencyStatus": "unknown",
+          "unknownCallSources": 0,
+          "unknownLatencySources": 0
+        },
+        "delegated": {
+          "sourceCount": 0,
+          "input": 0,
+          "output": 0,
+          "tokenStatus": "unknown",
+          "costStatus": "unknown",
+          "unknownTokenSources": 0,
+          "unknownCostSources": 0,
+          "callStatus": "unknown",
+          "latencyStatus": "unknown",
+          "unknownCallSources": 0,
+          "unknownLatencySources": 0
+        },
+        "attribution": "complete"
+      },
+      "environments": [],
+      "interactions": [],
+      "activity": [],
+      "graph": [
+        {
+          "id": "conv-1",
+          "type": "conversation",
+          "title": "New conversation",
+          "status": "complete",
+          "depth": 0,
+          "edgeLabel": "attached",
+          "startedAt": "2026-08-01T00:00:00.000Z"
+        },
+        {
+          "id": "branch-1",
+          "type": "branch",
+          "title": "Main",
+          "status": "complete",
+          "depth": 1,
+          "edgeLabel": "attached",
+          "parentIds": [
+            "conversation:conv-1"
+          ],
+          "startedAt": "2026-08-01T00:00:00.000Z"
+        }
+      ],
+      "graphQuery": "",
+      "entityDetails": [],
+      "capabilities": {
+        "conversation.create": {
+          "available": true,
+          "source": "application"
+        },
+        "conversation.open": {
+          "available": true,
+          "source": "application"
+        },
+        "run.runner": {
+          "available": true,
+          "source": "application"
+        },
+        "run.model": {
+          "available": true,
+          "source": "application"
+        },
+        "run.effort": {
+          "available": true,
+          "source": "application"
+        },
+        "conversation.branch": {
+          "available": true,
+          "source": "application"
+        },
+        "conversation.clone": {
+          "available": true,
+          "source": "application"
+        },
+        "conversation.fork": {
+          "available": true,
+          "source": "application"
+        },
+        "analysis.ask": {
+          "available": false,
+          "source": "application",
+          "reason": "Complete or fail a run before analyzing it"
+        },
+        "analysis.recipe": {
+          "available": false,
+          "source": "application",
+          "reason": "Complete or fail a run before analyzing it"
+        },
+        "analysis.compare": {
+          "available": false,
+          "source": "application",
+          "reason": "Two completed or failed runs are required for comparison"
+        },
+        "interaction.respond": {
+          "available": false,
+          "source": "runtime",
+          "reason": "Interaction response is not exposed by the current runtime adapter"
+        },
+        "interaction.automation": {
+          "available": false,
+          "source": "application",
+          "reason": "Interaction automation requires the shared response contract"
+        },
+        "run.interactive": {
+          "available": false,
+          "source": "application",
+          "reason": "Native terminal mode requires an interactive TUI and a supported provider"
+        },
+        "run.attach": {
+          "available": false,
+          "source": "application",
+          "reason": "Native terminal attachment requires an interactive TUI and a retained session"
+        },
+        "supervisor.worker.attach": {
+          "available": false,
+          "source": "runtime",
+          "reason": "Worker terminal attachment requires the interactive TUI; Runtime retains the exact worker binding"
+        },
+        "export.create": {
+          "available": true,
+          "source": "application"
+        },
+        "analysis.cancel": {
+          "available": false,
+          "source": "application",
+          "reason": "There is no running analysis to cancel"
+        },
+        "application.quit": {
+          "available": true,
+          "source": "local"
+        },
+        "help.read": {
+          "available": true,
+          "source": "local"
+        },
+        "profile.select": {
+          "available": true,
+          "source": "application"
+        },
+        "connection.select": {
+          "available": true,
+          "source": "application"
+        },
+        "settings.open": {
+          "available": true,
+          "source": "application"
+        },
+        "activity.read": {
+          "available": true,
+          "source": "local"
+        },
+        "graph.read": {
+          "available": true,
+          "source": "local"
+        },
+        "feedback.read": {
+          "available": true,
+          "source": "application"
+        },
+        "details.read": {
+          "available": true,
+          "source": "local"
+        },
+        "supervisor.refresh": {
+          "available": true,
+          "source": "runtime"
+        },
+        "supervisor.worker.steer": {
+          "available": false,
+          "source": "runtime",
+          "reason": "There is no running supervised worker to steer"
+        },
+        "supervisor.worker.cancel": {
+          "available": false,
+          "source": "runtime",
+          "reason": "There is no running supervised worker to cancel"
+        },
+        "supervisor.cancel": {
+          "available": false,
+          "source": "runtime",
+          "reason": "There is no running supervisor to cancel"
+        },
+        "draft.write": {
+          "available": true,
+          "source": "application"
+        },
+        "run.send": {
+          "available": true,
+          "source": "provider"
+        },
+        "run.cancel": {
+          "available": false,
+          "source": "runtime",
+          "reason": "There is no active run to cancel"
+        },
+        "run.queue": {
+          "available": false,
+          "source": "provider",
+          "reason": "There is no active run"
+        },
+        "run.steer": {
+          "available": false,
+          "source": "provider",
+          "reason": "There is no active run"
+        },
+        "run.detach": {
+          "available": false,
+          "source": "provider",
+          "reason": "There is no active run"
+        },
+        "run.reconnect": {
+          "available": false,
+          "source": "provider",
+          "reason": "There is no recoverable run to reconnect"
+        },
+        "run.reconcile": {
+          "available": false,
+          "source": "provider",
+          "reason": "There is no recoverable run to reconcile"
+        }
+      },
+      "draft": "",
+      "selectedSurface": "transcript",
+      "appearance": {
+        "color": "256",
+        "highContrast": false,
+        "reducedMotion": false
+      },
+      "notice": "The selected connection does not expose canonical fresh-session context transfer",
+      "forkPreview": {
+        "source": "conv-1 / branch-1",
+        "destination": "conv-1 / branch-1eb960cbff926887d305ca429e4fd2b4",
+        "kind": "cross-runner",
+        "execution": {
+          "operationId": "op-terminal-000002"
+        },
+        "fields": [
+          {
+            "label": "conversation context",
+            "source": "branch-1",
+            "destination": "0 messages"
+          },
+          {
+            "label": "provider session",
+            "source": "current",
+            "destination": "new"
+          },
+          {
+            "label": "connection",
+            "source": "source connection",
+            "destination": "connection-local-cli-bridge"
+          },
+          {
+            "label": "workspace",
+            "source": "current",
+            "destination": "unavailable"
+          }
+        ],
+        "allowed": false,
+        "unavailableReason": "The selected connection does not expose canonical fresh-session context transfer"
+      }
+    },
+    "events": [
+      {
+        "sequence": 1,
+        "revision": 1,
+        "kind": "workspace.opened",
+        "payload": {
+          "value": {
+            "kind": "workspace.opened",
+            "workspace": "/home/drew/code/_wt/braid-pr138-captures-20261014"
+          }
+        }
+      },
+      {
+        "sequence": 2,
+        "revision": 2,
+        "kind": "connection.upserted",
+        "payload": {
+          "value": {
+            "kind": "connection.upserted",
+            "connection": {
+              "id": "connection-local-cli-bridge",
+              "kind": "cli-bridge",
+              "name": "Local CLI Bridge",
+              "endpoint": "http://127.0.0.1:3344/v1",
+              "credentialRef": "credential-ref-local-subscription",
+              "providerOptions": {
+                "transport": "local",
+                "capabilityHints": [
+                  "streaming",
+                  "usage",
+                  "session-continuity"
+                ]
+              },
+              "createdAt": "2026-08-09T00:00:00.000Z",
+              "updatedAt": "2026-08-09T00:00:00.000Z",
+              "lastHealth": {
+                "status": "healthy",
+                "checkedAt": "2026-08-09T00:00:00.000Z"
+              },
+              "lastModelVerification": {
+                "model": "openai-codex/gpt-5.6-luna",
+                "status": "verified",
+                "checkedAt": "2026-08-09T00:00:00.000Z"
+              }
+            }
+          }
+        }
+      },
+      {
+        "sequence": 3,
+        "revision": 3,
+        "kind": "connection.selected",
+        "payload": {
+          "value": {
+            "kind": "connection.selected",
+            "connectionId": "connection-local-cli-bridge"
+          }
+        }
+      },
+      {
+        "sequence": 4,
+        "revision": 4,
+        "kind": "operation.updated",
+        "payload": {
+          "value": {
+            "kind": "operation.updated",
+            "operation": {
+              "id": "op-terminal-000001",
+              "kind": "connection-change",
+              "requestDigest": "4d44703dd05940e8a7ad1ff45e137e4160464ce3959a0e656062af2929b5ebc9",
+              "status": "acknowledged",
+              "result": {
+                "connectionId": "connection-local-cli-bridge",
+                "connection": {
+                  "id": "connection-local-cli-bridge",
+                  "name": "Local CLI Bridge",
+                  "kind": "cli-bridge",
+                  "endpoint": "http://127.0.0.1:3344/v1",
+                  "health": {
+                    "status": "healthy",
+                    "checkedAt": "2026-08-09T00:00:00.000Z"
+                  },
+                  "modelVerification": {
+                    "model": "openai-codex/gpt-5.6-luna",
+                    "status": "verified",
+                    "checkedAt": "2026-08-09T00:00:00.000Z"
+                  },
+                  "capabilityHints": [
+                    "streaming",
+                    "usage",
+                    "session-continuity"
+                  ],
+                  "ready": true
+                }
+              },
+              "createdAt": "2026-10-14T09:31:52.907Z",
+              "updatedAt": "2026-10-14T09:31:52.907Z",
+              "acknowledgedAt": "2026-10-14T09:31:52.907Z"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

@@ -67,12 +67,14 @@ export async function createCliBridgeRetainedPlan(
   const environmentId =
     exactControlRef?.environmentId ??
     (admission?.phase === 'environment' ? admission.environmentId : undefined) ??
+    prepared.contextTransferReceipt?.environmentId ??
     contextDestination?.environmentId
   const executionId =
     exactControlRef?.executionId ??
     (admission?.phase === 'intent' || admission?.phase === 'environment'
       ? admission.executionId
       : undefined) ??
+    prepared.contextTransferReceipt?.executionId ??
     contextDestination?.executionId ??
     safeExecutionId(runId)
   const providerSessionId =
@@ -88,7 +90,7 @@ export async function createCliBridgeRetainedPlan(
     ...prepared.materializationReceipt,
     backend: 'environment-provider',
     ...(environmentId === undefined ? {} : { environmentId }),
-    providerRunId: exactControlRef?.runId ?? executionId,
+    providerRunId: exactControlRef?.runId ?? prepared.contextTransferReceipt?.runId ?? executionId,
     retainedControl: 'exact-after-dispatch',
   })
   const plan: CliBridgeRetainedPlan = {
@@ -135,14 +137,14 @@ export async function startCliBridgeRetainedRun(
   }
   return startRetainedRun({
     provider: plan.provider,
+    ...(input.contextTransferReceipt === undefined
+      ? {}
+      : { contextTransferReceipt: input.contextTransferReceipt }),
     environment: {
       profile: plan.prepared.profile,
       backend: plan.prepared.runner,
       workspace: cliBridgeWorkspace(plan),
       idempotencyKey: plan.environmentIdempotencyKey,
-      ...(input.contextTransfer === undefined
-        ? {}
-        : { requestedId: input.contextTransfer.plan.destination.environmentId }),
     },
     turn: {
       prompt: input.text,
@@ -182,16 +184,14 @@ async function recoverCliBridgeRetainedRun(
       provider: plan.provider,
       admission,
       replay: {
+        ...(input.receipt.requested.portableContextTransferReceipt === undefined
+          ? {}
+          : { contextTransferReceipt: input.receipt.requested.portableContextTransferReceipt }),
         environment: {
           profile: plan.prepared.profile,
           backend: plan.prepared.runner,
           workspace: cliBridgeWorkspace(plan),
           idempotencyKey: admission.idempotencyKey,
-          ...(plan.prepared.contextTransfer === undefined
-            ? {}
-            : {
-                requestedId: plan.prepared.contextTransfer.plan.destination.environmentId,
-              }),
         },
         turn: {
           prompt: input.receipt.requested.text,

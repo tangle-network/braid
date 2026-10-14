@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { existsSync, readFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import test from 'node:test'
 import { createTraceAnalyst } from '@tangle-network/agent-eval'
@@ -51,11 +52,35 @@ import { startRuntimeBridgeServer } from './support/runtime-bridge-server.js'
 const NOW = '2026-08-03T20:00:00.000Z'
 const PRICING = { inputUsdPerMillion: 1, outputUsdPerMillion: 2 }
 
+// Last artifact upload of each pinned RPC release, from
+// https://pypi.org/pypi/agent-eval-rpc/<version>/json
+const RPC_LAST_ARTIFACT_PUBLISHED_AT: Readonly<Record<string, string>> = {
+  '0.213.0': '2026-10-12T05:46:52.259Z',
+}
+
+function pinnedAgentEvalVersion(): string {
+  const manifest = [
+    new URL('../package.json', import.meta.url),
+    new URL('../../package.json', import.meta.url),
+  ].find((candidate) => existsSync(candidate))
+  if (manifest === undefined) throw new Error('Could not locate the Braid package manifest')
+  const document = JSON.parse(readFileSync(manifest, 'utf8')) as {
+    readonly dependencies: Readonly<Record<string, string>>
+  }
+  const version = document.dependencies['@tangle-network/agent-eval']
+  if (version === undefined) throw new Error('The package manifest does not pin agent-eval')
+  return version
+}
+
 test('managed analysis cutoff includes the pinned RPC release artifacts', () => {
-  assert.equal(MANAGED_AGENT_EVAL_RPC_VERSION, '0.209.1')
-  // https://pypi.org/pypi/agent-eval-rpc/0.209.1/json
-  const lastArtifactPublishedAt = Date.parse('2026-10-06T07:30:18.018Z')
-  assert.ok(Date.parse(MANAGED_ANALYSIS_RESOLUTION_CUTOFF) > lastArtifactPublishedAt)
+  const pinned = pinnedAgentEvalVersion()
+  assert.equal(MANAGED_AGENT_EVAL_RPC_VERSION, pinned)
+  const lastArtifactPublishedAt = RPC_LAST_ARTIFACT_PUBLISHED_AT[pinned]
+  assert.ok(
+    lastArtifactPublishedAt !== undefined,
+    `Record the last PyPI artifact upload for agent-eval-rpc ${pinned} and move the cutoff past it`,
+  )
+  assert.ok(Date.parse(MANAGED_ANALYSIS_RESOLUTION_CUTOFF) > Date.parse(lastArtifactPublishedAt))
 })
 
 test('managed analysis uses bundled uv with exact isolated runtime versions', () => {

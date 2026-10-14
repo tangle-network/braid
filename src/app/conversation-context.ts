@@ -291,6 +291,7 @@ export function canonicalPortableContextPlanForState(
     readonly destinationProvider?: string
     readonly destinationModel?: string
     readonly profileDigest: string
+    readonly workspaceSnapshotDigest?: Sha256Digest
   },
 ): CanonicalPortableContextPlan | undefined {
   const branch = resolveBranch(state, input.branchId)
@@ -331,6 +332,9 @@ export function canonicalPortableContextPlanForState(
     provider: input.destinationProvider ?? source.provider,
     ...(input.destinationModel === undefined ? {} : { model: input.destinationModel }),
     profileDigest: canonicalSha256(input.profileDigest),
+    ...(input.workspaceSnapshotDigest === undefined
+      ? {}
+      : { workspaceSnapshotDigest: input.workspaceSnapshotDigest }),
   })
 
   const messages: PortableContextMessagePlan[] = []
@@ -593,6 +597,7 @@ function canonicalDestination(input: {
   readonly provider: string
   readonly model?: string
   readonly profileDigest: Sha256Digest
+  readonly workspaceSnapshotDigest?: Sha256Digest
 }): PortableContextDestination {
   const suffix = canonicalDigest({
     operationId: input.operationId,
@@ -605,7 +610,9 @@ function canonicalDestination(input: {
   return {
     runner: input.runner,
     provider: input.provider,
-    environmentId: `environment-handoff-${suffix}`,
+    ...(input.workspaceSnapshotDigest === undefined
+      ? {}
+      : { workspaceSnapshotDigest: input.workspaceSnapshotDigest }),
     sessionId: `session-handoff-${suffix}`,
     runId: `run-handoff-${suffix}`,
     executionId: `execution-handoff-${suffix}`,

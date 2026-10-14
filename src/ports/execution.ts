@@ -6,6 +6,7 @@ import type {
   AgentWorkspaceBranchingProvider,
   ConfidentialAttestationVerifier,
   ContextTransferRequest,
+  ContextTransferReceipt,
   ContextTransferResult,
   InteractionResponseCommand,
   NativeContextBoundaryProof,
@@ -38,6 +39,7 @@ export interface ExecuteTurnInput {
   /** Exact per-turn interaction posture derived from admitted capabilities. */
   readonly interactions?: RequestedInteractions
   readonly connectionId?: string
+  readonly expectedConnectionDigest?: string
   /** Provider-neutral remote workspace request. Separate from local workspaceRoot. */
   readonly workspaceRequest?: Readonly<WorkspaceRequest>
   readonly workspaceRoot?: string
@@ -49,6 +51,7 @@ export interface ExecuteTurnInput {
   /** Exact provider proof required for one retry-safe same-session turn. */
   readonly nativeContextBoundaryProof?: NativeContextBoundaryProof
   /** Canonical context transfer request for a fresh destination session. */
+  readonly contextTransferReceipt?: ContextTransferReceipt
   readonly contextTransfer?: ContextTransferRequest
   readonly onRetainedAdmission?: RetainedRunAdmissionRecorder
 }
@@ -75,9 +78,19 @@ export interface ExecutionAdmission {
  * describes how Braid reaches an adapter that implements them.
  */
 export interface ContextTransferExecutionPort {
+  readonly supports?: (
+    destination: ContextTransferRequest['plan']['destination'],
+    target?: { readonly connectionId: string; readonly connectionDigest?: string },
+  ) => Promise<boolean>
   readonly plan?: (input: PortableContextPlanRequest) => Promise<PortableContextPlanResult>
-  readonly transfer?: (input: ContextTransferRequest) => Promise<ContextTransferResult>
-  readonly lookup?: (input: ContextTransferRequest) => Promise<ContextTransferResult | undefined>
+  readonly transfer?: (
+    input: ContextTransferRequest,
+    target?: { readonly connectionId: string; readonly connectionDigest?: string },
+  ) => Promise<ContextTransferResult>
+  readonly lookup?: (
+    input: ContextTransferRequest,
+    target?: { readonly connectionId: string; readonly connectionDigest?: string },
+  ) => Promise<ContextTransferResult | undefined>
 }
 
 export interface ProviderRunSnapshot {
@@ -98,6 +111,18 @@ export interface RetainedExecutionRecoveryContext {
   /** Receipt-bound remote workspace request; absent on legacy receipts. */
   readonly workspaceRequest?: Readonly<WorkspaceRequest>
   readonly workspaceRoot?: string
+}
+
+/** Select the source run's connection before asking its provider for a workspace handle. */
+export interface WorkspaceBranchingExecutionProvider extends AgentWorkspaceBranchingProvider {
+  forEnvironment(
+    sourceEnvironmentId: string,
+    operation?: NonNullable<Parameters<AgentWorkspaceBranchingProvider['forEnvironment']>[1]> &
+      RetainedExecutionRecoveryContext & {
+        readonly runId?: string
+        readonly controlRef?: AgentExactRunControlRef
+      },
+  ): Promise<AgentWorkspaceBranching | null>
 }
 
 export interface ControlAcknowledgement {
@@ -195,7 +220,7 @@ export interface ExecutionPort {
   /** Retry-safe checkpoint, fork, lookup, and cleanup operations, when supported. */
   readonly workspaceBranching?: AgentWorkspaceBranching | undefined
   /** Provider-owned source lookup used to reconstruct branching after restart. */
-  readonly workspaceBranchingProvider?: AgentWorkspaceBranchingProvider | undefined
+  readonly workspaceBranchingProvider?: WorkspaceBranchingExecutionProvider | undefined
   /** External verifier required before Braid marks a confidential fork verified. */
   readonly confidentialAttestationVerifier?: ConfidentialAttestationVerifier | undefined
   /** Provider identity used when Braid builds a destination context plan. */

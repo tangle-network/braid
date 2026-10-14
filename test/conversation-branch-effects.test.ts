@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 import type {
   AgentExactRunControlRef,
@@ -10,17 +13,22 @@ import type {
   WorkspaceForkRequest,
   WorkspaceForkResult,
 } from '@tangle-network/agent-interface'
-import { defineAgentProfile } from '@tangle-network/agent-interface'
+import { defineAgentProfile, projectPortableContextPlan } from '@tangle-network/agent-interface'
 import { canonicalAgentProfileDigestHex } from '../src/adapters/agent-interface/profile-runtime.js'
+import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
+import { openSqliteStorage } from '../src/adapters/storage/sqlite.js'
 import {
   type ConversationDispatchContext,
   dispatchConversationHeadlessCommand,
   dispatchConversationRunCommand,
 } from '../src/adapters/tui/ui-conversation-dispatch.js'
 import { createBraidApplication } from '../src/app/composition.js'
+import { connectionExecutionDigest } from '../src/app/connections.js'
 import { executeBranchEffect } from '../src/app/conversation-branch-effects.js'
 import type { ConversationHost } from '../src/app/conversation-types.js'
 import { MemoryJournal } from '../src/app/journal.js'
+import { snapshotRunExecution } from '../src/app/run-execution-snapshot.js'
+import { StorageJournal } from '../src/app/storage-journal.js'
 import { canonicalDigest } from '../src/domain/canonical.js'
 import type { ConnectionRecord, OperationRecord } from '../src/domain/entities.js'
 import type { BraidEvent, BraidEventEnvelope } from '../src/domain/events.js'
@@ -28,15 +36,17 @@ import { createConnectionId, createOperationId } from '../src/domain/ids.js'
 import { replayEvents } from '../src/domain/reducer.js'
 import type { BraidState } from '../src/domain/state.js'
 import { FixedClock } from '../src/ports/clock.js'
+import { credentialRef } from '../src/ports/credentials.js'
 import {
   DEFAULT_RUN_CAPABILITIES,
   type ExecutionPort,
   type RunCapabilities,
 } from '../src/ports/execution.js'
+import { RandomIds } from '../src/ports/ids.js'
 
 const AT = '2026-08-28T00:00:00.000Z'
 const SOURCE_PROVIDER = 'source-provider'
-const TARGET_PROVIDER = 'target-provider'
+const TARGET_PROVIDER = 'tangle-sandbox'
 const SOURCE_SESSION = 'provider-session-source'
 
 function deferred<T = void>(): {
@@ -173,7 +183,7 @@ function contextResult(request: ContextTransferRequest): ContextTransferResult {
     source: plan.source.source,
     destination: plan.destination,
     provider: plan.destination.provider,
-    environmentId: plan.destination.environmentId,
+    environmentId: plan.destination.environmentId ?? 'provider-context-destination',
     sessionId: plan.destination.sessionId,
     runId: plan.destination.runId,
     executionId: plan.destination.executionId,
@@ -371,16 +381,23 @@ function executionFor(options: {
     capabilities: () => options.capabilities,
     admit(input) {
       const destination = input.contextTransfer !== undefined
+      const provider = destination
+        ? (input.contextTransferReceipt?.provider ??
+          input.contextTransfer?.plan.destination.provider ??
+          TARGET_PROVIDER)
+        : SOURCE_PROVIDER
+      const environmentId = destination
+        ? (input.contextTransferReceipt?.environmentId ??
+          input.contextTransfer?.plan.destination.environmentId)
+        : 'provider-source-environment'
       return {
         capabilities: options.capabilities,
-        provider: destination ? TARGET_PROVIDER : SOURCE_PROVIDER,
-        environmentId: destination
-          ? input.contextTransfer?.plan.destination.environmentId
-          : 'provider-source-environment',
+        provider,
+        ...(environmentId === undefined ? {} : { environmentId }),
         providerSessionId: destination
           ? input.contextTransfer?.plan.destination.sessionId
           : SOURCE_SESSION,
-        materializationReceipt: { provider: destination ? TARGET_PROVIDER : SOURCE_PROVIDER },
+        materializationReceipt: { provider },
       }
     },
     async *streamTurn(input) {
@@ -476,7 +493,7 @@ test('cross-runner handoff transfers canonical history and replays after restart
   await prepareSource(app)
   await app.send({ operationId: 'op-source-branch-effects', text: 'source history' }).completion
 
-  const plan = app.conversations.branches.plan({
+  const plan = await app.conversations.branches.plan({
     operationId: 'op-cross-runner-branch-effects',
     kind: 'cross-runner',
     runner: 'codex',
@@ -536,6 +553,309 @@ test('cross-runner handoff transfers canonical history and replays after restart
   )
 })
 
+test('same-runner handoff binds the selected destination connection through restart', async () => {
+  const contextState: ContextProviderState = { transfers: [] }
+  const journal = new MemoryJournal(new FixedClock(AT))
+  const routeTargets: (string | undefined)[] = []
+  const execution = executionFor({ capabilities: branchCapabilities(), contextState })
+  const transfer = execution.context?.transfer
+  assert(transfer)
+  const routedExecution = {
+    ...execution,
+    context: {
+      async transfer(request: ContextTransferRequest, target?: { readonly connectionId: string }) {
+        routeTargets.push(target?.connectionId)
+        return transfer(request)
+      },
+    },
+  }
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    execution: routedExecution,
+    clock: new FixedClock(AT),
+    journal,
+    effectStorage: journal,
+  })
+  await prepareSource(app)
+  await app.send({ operationId: 'op-connection-source', text: 'source history' }).completion
+  const sourceBranch = structuredClone(app.state().branches[0])
+  assert(sourceBranch)
+  const destination: ConnectionRecord = {
+    ...sourceConnection(),
+    id: createConnectionId('connection-branch-effects-destination'),
+    kind: 'cli-bridge',
+    name: 'destination connection',
+  }
+  await app.configuration.upsertConnection({
+    connection: destination,
+    operation: {
+      id: createOperationId('operation-register-destination'),
+      kind: 'connection-change',
+      requestDigest: canonicalDigest(destination),
+      status: 'acknowledged',
+      createdAt: AT,
+      updatedAt: AT,
+      acknowledgedAt: AT,
+    },
+  })
+  const input = {
+    operationId: 'op-same-runner-connection',
+    connectionId: destination.id,
+    runner: app.state().profile.harness ?? 'pi',
+  }
+  const plan = await app.conversations.branches.plan(input)
+  assert.equal(plan.kind, 'cross-runner')
+  assert.equal(plan.destinationConnectionId, destination.id)
+  assert.equal(plan.destinationConnectionDigest, connectionExecutionDigest(destination))
+  assert.equal(plan.portableContextPlan?.destination.provider, destination.kind)
+  const branch = await app.conversations.branches.execute({ ...input, planDigest: plan.digest })
+  assert.equal(branch.connectionId, destination.id)
+  assert.equal(
+    app.state().environments.find((environment) => environment.id === branch.environmentId)
+      ?.connectionId,
+    destination.id,
+  )
+  assert.deepEqual(routeTargets, [destination.id])
+  const restarted = createBraidApplication({
+    fixture: 'deterministic',
+    execution: routedExecution,
+    clock: new FixedClock(AT),
+    journal,
+    effectStorage: journal,
+  })
+  const replay = await restarted.conversations.branches.execute({
+    ...input,
+    planDigest: plan.digest,
+  })
+  assert.equal(replay.connectionId, destination.id)
+  assert.equal(replay.id, branch.id)
+  assert.equal(contextState.transfers.length, 1)
+  assert.deepEqual(
+    restarted.state().branches.find((candidate) => candidate.id === sourceBranch.id),
+    sourceBranch,
+  )
+  assert.equal(restarted.state().selectedConnectionId, sourceConnection().id)
+})
+
+test('handoff rejects a removed or changed destination before provider transfer', async () => {
+  const contextState: ContextProviderState = { transfers: [] }
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    execution: executionFor({ capabilities: branchCapabilities(), contextState }),
+    clock: new FixedClock(AT),
+  })
+  await prepareSource(app)
+  await app.send({ operationId: 'op-destination-change-source', text: 'source history' }).completion
+  const connection = sourceConnection()
+  const input = {
+    operationId: 'op-destination-change-handoff',
+    connectionId: connection.id,
+    runner: 'codex',
+  }
+  const plan = await app.conversations.branches.plan(input)
+  await app.configuration.upsertConnection({
+    connection: { ...connection, endpoint: 'http://127.0.0.1:9999' },
+    operation: {
+      id: createOperationId('operation-change-destination'),
+      kind: 'connection-change',
+      requestDigest: canonicalDigest({ endpoint: 'http://127.0.0.1:9999' }),
+      status: 'acknowledged',
+      createdAt: AT,
+      updatedAt: AT,
+      acknowledgedAt: AT,
+    },
+  })
+  await assert.rejects(
+    () => app.conversations.branches.execute({ ...input, planDigest: plan.digest }),
+    /accepted fork plan no longer matches/,
+  )
+  await assert.rejects(
+    () => app.conversations.branches.plan({ ...input, connectionId: 'connection-removed' }),
+    /destination connection does not exist/,
+  )
+  await assert.rejects(
+    () => app.conversations.branches.plan({ ...input, destinationProvider: 'cli-bridge' }),
+    /provider does not match/,
+  )
+  assert.equal(contextState.transfers.length, 0)
+})
+
+test('handoff inherits the branch connection and accepts the exact CLI host workspace through restart', async () => {
+  const contextState: ContextProviderState = { transfers: [] }
+  const journal = new MemoryJournal(new FixedClock(AT))
+  const execution = executionFor({ capabilities: branchCapabilities(), contextState })
+  const targets: (string | undefined)[] = []
+  const inputs: Parameters<NonNullable<ExecutionPort['admit']>>[0][] = []
+  const transfer = execution.context?.transfer
+  assert(transfer)
+  const routedExecution: ExecutionPort = {
+    ...execution,
+    admit(input) {
+      inputs.push(input)
+      return execution.admit!(input)
+    },
+    context: {
+      async transfer(request, target) {
+        targets.push(target?.connectionId)
+        return transfer(request, target)
+      },
+    },
+  }
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    execution: routedExecution,
+    clock: new FixedClock(AT),
+    journal,
+    effectStorage: journal,
+  })
+  await prepareSource(app)
+  await app.send({ operationId: 'op-inherit-account-source', text: 'source history' }).completion
+  const destination: ConnectionRecord = {
+    ...sourceConnection(),
+    id: createConnectionId('connection-inherited-cli'),
+    kind: 'cli-bridge',
+    name: 'inherited CLI account',
+  }
+  await app.configuration.upsertConnection({
+    connection: destination,
+    operation: {
+      id: createOperationId('operation-register-inherited-cli'),
+      kind: 'connection-change',
+      requestDigest: canonicalDigest(destination),
+      status: 'acknowledged',
+      createdAt: AT,
+      updatedAt: AT,
+      acknowledgedAt: AT,
+    },
+  })
+  const child = await app.conversations.branches.create({
+    operationId: 'op-inherit-account-child',
+    connectionId: destination.id,
+  })
+  await app.send({
+    operationId: 'op-inherit-account-child-turn',
+    branchId: child.id,
+    text: 'child history',
+  }).completion
+  const input = {
+    operationId: 'op-inherit-account-handoff',
+    branchId: child.id,
+    runner: 'codex',
+    text: 'Continue here',
+  }
+  const plan = await app.conversations.branches.plan(input)
+  assert.equal(app.state().selectedConnectionId, sourceConnection().id)
+  assert.equal(plan.destinationConnectionId, destination.id)
+  assert.equal(plan.portableContextPlan?.destination.provider, 'cli-bridge')
+  assert.deepEqual(plan.destinationWorkspaceRequest, { cwd: { base: 'host', path: '/workspace' } })
+  const branch = await app.conversations.branches.execute({ ...input, planDigest: plan.digest })
+  assert.equal(branch.connectionId, destination.id)
+  assert.deepEqual(targets, [destination.id])
+  assert.deepEqual(contextState.transfers[0]?.workspace, plan.destinationWorkspaceRequest)
+  const first = inputs.find((candidate) => candidate.contextTransfer !== undefined)
+  assert(first)
+  assert.equal(first.connectionId, destination.id)
+  assert.deepEqual(first.workspaceRequest, plan.destinationWorkspaceRequest)
+  assert.equal(first.workspaceRoot, '/workspace')
+  const restarted = createBraidApplication({
+    fixture: 'deterministic',
+    execution: routedExecution,
+    clock: new FixedClock(AT),
+    journal,
+    effectStorage: journal,
+  })
+  const replay = await restarted.conversations.branches.execute({
+    ...input,
+    planDigest: plan.digest,
+  })
+  assert.equal(replay.id, branch.id)
+  assert.equal(replay.connectionId, destination.id)
+  assert.deepEqual(targets, [destination.id])
+})
+
+test('handoff preview refuses an unsupported destination without admission effects', async () => {
+  const contextState: ContextProviderState = { transfers: [] }
+  const execution = executionFor({ capabilities: branchCapabilities(), contextState })
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    clock: new FixedClock(AT),
+    execution: {
+      ...execution,
+      context: {
+        ...execution.context,
+        async supports() {
+          return false
+        },
+      },
+    },
+  })
+  await prepareSource(app)
+  await app.send({ operationId: 'op-preflight-source', text: 'source history' }).completion
+  const before = app.state()
+  const input = {
+    operationId: 'op-preflight-refusal',
+    connectionId: sourceConnection().id,
+    runner: 'codex',
+  }
+  const plan = await app.conversations.branches.plan(input)
+  assert.equal(plan.allowed, false)
+  assert.equal(plan.environment, 'unavailable')
+  assert.match(plan.reason ?? '', /does not report retry-safe/)
+  assert.deepEqual(app.state(), before)
+  await assert.rejects(
+    () => app.conversations.branches.execute({ ...input, planDigest: plan.digest }),
+    /does not report retry-safe/,
+  )
+  assert.equal(contextState.transfers.length, 0)
+  assert.equal(app.state().branches.length, before.branches.length)
+})
+
+test('handoff preflight detects destination changes while capabilities are being read', async () => {
+  const reading = deferred()
+  const finish = deferred()
+  const contextState: ContextProviderState = { transfers: [] }
+  const execution = executionFor({ capabilities: branchCapabilities(), contextState })
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    clock: new FixedClock(AT),
+    execution: {
+      ...execution,
+      context: {
+        ...execution.context,
+        async supports() {
+          reading.resolve()
+          await finish.promise
+          return true
+        },
+      },
+    },
+  })
+  await prepareSource(app)
+  await app.send({ operationId: 'op-preflight-race-source', text: 'source history' }).completion
+  const connection = sourceConnection()
+  const pending = app.conversations.branches.plan({
+    operationId: 'op-preflight-race',
+    connectionId: connection.id,
+    runner: 'codex',
+  })
+  await reading.promise
+  await app.configuration.upsertConnection({
+    connection: { ...connection, endpoint: 'http://127.0.0.1:9999' },
+    operation: {
+      id: createOperationId('operation-preflight-change'),
+      kind: 'connection-change',
+      requestDigest: canonicalDigest({ endpoint: 'http://127.0.0.1:9999' }),
+      status: 'acknowledged',
+      createdAt: AT,
+      updatedAt: AT,
+      acknowledgedAt: AT,
+    },
+  })
+  finish.resolve()
+  await assert.rejects(pending, /changed during capability preflight/)
+  assert.equal(contextState.transfers.length, 0)
+})
+
 test('cross-runner planning resolves a completed run inherited by a child branch', async () => {
   const contextState: ContextProviderState = { transfers: [] }
   const execution = executionFor({
@@ -559,7 +879,7 @@ test('cross-runner planning resolves a completed run inherited by a child branch
     throughMessageId: boundary.id,
   })
 
-  const plan = app.conversations.branches.plan({
+  const plan = await app.conversations.branches.plan({
     operationId: 'op-inherited-cross-runner',
     kind: 'cross-runner',
     branchId: child.id,
@@ -597,7 +917,7 @@ test('cross-runner planning binds the exact destination profile after redaction 
   await prepareSource(app)
   await app.send({ operationId: 'op-profile-source', text: 'source history' }).completion
 
-  const plan = app.conversations.branches.plan({
+  const plan = await app.conversations.branches.plan({
     operationId: 'op-profile-cross-runner',
     kind: 'cross-runner',
     runner: 'codex',
@@ -661,7 +981,7 @@ test('fork execution on another branch preserves a live run', async () => {
     assert.equal(liveBranch.id, app.state().branchId)
     assert.equal(app.state().activeRunId, live.runId)
 
-    const plan = app.conversations.branches.plan({
+    const plan = await app.conversations.branches.plan({
       operationId: 'op-fork-while-live',
       kind: 'conversation',
       branchId: sourceBranchId,
@@ -719,7 +1039,7 @@ test('workspace fork requires a completed source boundary', async () => {
   try {
     await started.promise
     await new Promise<void>((resolve) => setImmediate(resolve))
-    const plan = app.conversations.branches.plan({
+    const plan = await app.conversations.branches.plan({
       operationId: 'op-workspace-boundary-required',
       kind: 'workspace',
     })
@@ -750,7 +1070,7 @@ test('workspace fork rejects a source control reference from another provider', 
   })
   await prepareSource(app)
   await app.send({ operationId: 'op-provider-mismatch-source', text: 'source' }).completion
-  const plan = app.conversations.branches.plan({
+  const plan = await app.conversations.branches.plan({
     operationId: 'op-provider-mismatch-fork',
     kind: 'workspace',
   })
@@ -761,6 +1081,7 @@ test('workspace fork rejects a source control reference from another provider', 
 
 test('cross-runner retry reuses the original acceptance timestamp in its request digest', async () => {
   const contextState: ContextProviderState = { transfers: [] }
+  const lookups: ContextTransferRequest[] = []
   let failOnce = true
   const baseExecution = executionFor({
     capabilities: branchCapabilities(),
@@ -769,6 +1090,17 @@ test('cross-runner retry reuses the original acceptance timestamp in its request
   const execution: ExecutionPort = {
     ...baseExecution,
     context: {
+      async lookup(request) {
+        lookups.push(request)
+        if (failOnce) return undefined
+        return {
+          status: 'unknown',
+          operationId: request.operationId,
+          requestDigest: request.requestDigest,
+          message: 'The original admission is pending',
+          retryable: true,
+        }
+      },
       async transfer(request) {
         contextState.transfers.push(request)
         if (failOnce) {
@@ -795,7 +1127,7 @@ test('cross-runner retry reuses the original acceptance timestamp in its request
   })
   await prepareSource(app)
   await app.send({ operationId: 'op-source-transfer-retry', text: 'source history' }).completion
-  const plan = app.conversations.branches.plan({
+  const plan = await app.conversations.branches.plan({
     operationId: 'op-cross-runner-transfer-retry',
     kind: 'cross-runner',
     runner: 'codex',
@@ -826,12 +1158,189 @@ test('cross-runner retry reuses the original acceptance timestamp in its request
   await restarted.conversations.branches.execute(input)
 
   assert.equal(contextState.transfers.length, 2)
+  assert.equal(lookups.length, 2)
+  assert.equal(lookups[0]?.operationId, lookups[1]?.operationId)
+  assert.equal(lookups[0]?.requestDigest, lookups[1]?.requestDigest)
   assert.equal(
     contextState.transfers[0]?.acceptance.acceptedAt,
     contextState.transfers[1]?.acceptance.acceptedAt,
   )
   assert.equal(contextState.transfers[0]?.requestDigest, contextState.transfers[1]?.requestDigest)
 })
+
+test('pending handoff recovers its original receipt after fresh transfer support disappears', async () => {
+  const contextState: ContextProviderState = { transfers: [] }
+  const lookups: ContextTransferRequest[] = []
+  let freshSupported = true
+  let capabilityReads = 0
+  let acceptedReceipt: ContextTransferResult | undefined
+  const baseExecution = executionFor({ capabilities: branchCapabilities(), contextState })
+  const execution: ExecutionPort = {
+    ...baseExecution,
+    context: {
+      async supports() {
+        capabilityReads += 1
+        return freshSupported
+      },
+      async lookup(request) {
+        lookups.push(request)
+        return acceptedReceipt
+      },
+      async transfer(request) {
+        contextState.transfers.push(request)
+        acceptedReceipt = contextResult(request)
+        return {
+          status: 'unknown',
+          operationId: request.operationId,
+          requestDigest: request.requestDigest,
+          message: 'The acceptance acknowledgement was lost',
+          retryable: true,
+        }
+      },
+    },
+  }
+  const journal = new MemoryJournal(new FixedClock(AT))
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    execution,
+    clock: new FixedClock(AT),
+    journal,
+    effectStorage: journal,
+  })
+  await prepareSource(app)
+  await app.send({ operationId: 'op-source-historical-recovery', text: 'source history' })
+    .completion
+  const planInput = {
+    operationId: 'op-historical-recovery',
+    kind: 'cross-runner' as const,
+    runner: 'codex',
+    destinationProvider: TARGET_PROVIDER,
+  }
+  const plan = await app.conversations.branches.plan(planInput)
+  const portablePlan = plan.portableContextPlan
+  assert(portablePlan)
+  assert.equal(plan.allowed, true)
+  const input = {
+    ...planInput,
+    planDigest: plan.digest,
+    ...(portablePlan.requiresAcceptance ? { acceptedDigest: portablePlan.digest } : {}),
+  }
+  await assert.rejects(() => app.conversations.branches.execute(input), /acknowledgement was lost/)
+  assert.equal(
+    app.state().operations.find((operation) => operation.id === input.operationId)?.status,
+    'pending',
+  )
+  freshSupported = false
+  const readsBeforeRecovery = capabilityReads
+  const restarted = createBraidApplication({
+    fixture: 'deterministic',
+    execution,
+    clock: new FixedClock('2026-08-29T00:00:00.000Z'),
+    journal,
+    effectStorage: journal,
+  })
+  await assert.rejects(
+    () => restarted.conversations.branches.execute({ ...input, text: 'changed-request' }),
+    /accepted fork plan no longer matches/,
+  )
+  await assert.rejects(
+    () =>
+      restarted.conversations.branches.execute({ ...input, acceptedDigest: 'changed-acceptance' }),
+    portablePlan.requiresAcceptance
+      ? /requires explicit acceptance/
+      : /already used with different input/,
+  )
+  assert.equal(lookups.length, 1)
+  const recovered = await restarted.conversations.branches.execute(input)
+  assert.equal(recovered.id, plan.destinationBranchId)
+  assert.equal(contextState.transfers.length, 1)
+  assert.equal(lookups.length, 2)
+  assert.deepEqual(lookups[1], lookups[0])
+  assert.equal(capabilityReads, readsBeforeRecovery)
+  const operation = restarted
+    .state()
+    .operations.find((candidate) => candidate.id === input.operationId)
+  assert.equal(operation?.status, 'acknowledged')
+  assert.equal(operation?.result?.planDigest, plan.digest)
+  assert.equal((await restarted.conversations.branches.execute(input)).id, recovered.id)
+  assert.equal(lookups.length, 2)
+  assert.equal(contextState.transfers.length, 1)
+  const newPlan = await restarted.conversations.branches.plan({
+    ...planInput,
+    operationId: 'op-new-unsupported-handoff',
+    branchId: plan.sourceBranchId,
+  })
+  assert.equal(newPlan.allowed, false)
+  await assert.rejects(
+    () =>
+      restarted.conversations.branches.execute({
+        ...planInput,
+        operationId: newPlan.operationId,
+        branchId: plan.sourceBranchId,
+        planDigest: newPlan.digest,
+      }),
+    /does not report retry-safe/,
+  )
+  assert.equal(contextState.transfers.length, 1)
+})
+
+for (const scenario of [
+  { status: 'transport_failure', retryable: true, differentRequest: false },
+  { status: 'unknown', retryable: false, differentRequest: false },
+  { status: 'unknown', retryable: true, differentRequest: true },
+] as const) {
+  test(`handoff preserves ${scenario.status} lookup with retryable=${scenario.retryable} and differentRequest=${scenario.differentRequest}`, async () => {
+    const contextState: ContextProviderState = { transfers: [] }
+    const baseExecution = executionFor({ capabilities: branchCapabilities(), contextState })
+    const transfer = baseExecution.context?.transfer
+    assert(transfer)
+    const execution: ExecutionPort = {
+      ...baseExecution,
+      context: {
+        async lookup(request) {
+          return {
+            status: scenario.status,
+            operationId: request.operationId,
+            requestDigest: scenario.differentRequest
+              ? `sha256:${'f'.repeat(64)}`
+              : request.requestDigest,
+            message: 'Preserve the original lookup outcome',
+            retryable: scenario.retryable,
+          }
+        },
+        transfer,
+      },
+    }
+    const app = createBraidApplication({
+      fixture: 'deterministic',
+      execution,
+      clock: new FixedClock(AT),
+    })
+    await prepareSource(app)
+    await app.send({ operationId: 'op-source-preserved-lookup', text: 'source history' }).completion
+    const plan = await app.conversations.branches.plan({
+      operationId: 'op-preserved-lookup',
+      kind: 'cross-runner',
+      runner: 'codex',
+      destinationProvider: TARGET_PROVIDER,
+    })
+    const portableContextPlan = plan.portableContextPlan
+    assert(portableContextPlan)
+    await assert.rejects(() =>
+      app.conversations.branches.execute({
+        operationId: 'op-preserved-lookup',
+        kind: 'cross-runner',
+        runner: 'codex',
+        destinationProvider: TARGET_PROVIDER,
+        planDigest: plan.digest,
+        ...(portableContextPlan.requiresAcceptance
+          ? { acceptedDigest: portableContextPlan.digest }
+          : {}),
+      }),
+    )
+    assert.equal(contextState.transfers.length, 0)
+  })
+}
 
 test('workspace fork uses exact provider operations, isolates destination, and cleans both resources', async () => {
   let app: ReturnType<typeof createBraidApplication> | undefined
@@ -867,7 +1376,34 @@ test('workspace fork uses exact provider operations, isolates destination, and c
   await prepareSource(app)
   await app.send({ operationId: 'op-source-workspace-effects', text: 'checkpoint source' })
     .completion
-  const plan = app.conversations.branches.plan({
+  const otherConnection = {
+    ...sourceConnection(),
+    id: createConnectionId('connection-other-workspace-account'),
+  }
+  await app.configuration.upsertConnection({
+    connection: otherConnection,
+    operation: {
+      id: createOperationId('operation-register-other-workspace-account'),
+      kind: 'connection-change',
+      requestDigest: canonicalDigest(otherConnection),
+      status: 'acknowledged',
+      createdAt: AT,
+      updatedAt: AT,
+      acknowledgedAt: AT,
+    },
+  })
+  await assert.rejects(
+    () =>
+      app!.conversations.branches.plan({
+        operationId: 'op-wrong-workspace-account',
+        kind: 'workspace',
+        connectionId: otherConnection.id,
+      }),
+    /must keep the source run connection/u,
+  )
+  assert.equal(provider.state.checkpointRequests.length, 0)
+  assert.equal(provider.state.forkRequests.length, 0)
+  const plan = await app.conversations.branches.plan({
     operationId: 'op-workspace-branch-effects',
     kind: 'workspace',
   })
@@ -991,7 +1527,7 @@ test('workspace cleanup restarts between fork and checkpoint cleanup without rep
   await prepareSource(app)
   await app.send({ operationId: 'op-source-workspace-restart', text: 'checkpoint source' })
     .completion
-  const plan = app.conversations.branches.plan({
+  const plan = await app.conversations.branches.plan({
     operationId: 'op-workspace-restart-fork',
     kind: 'workspace',
   })
@@ -1138,7 +1674,7 @@ test('confidential workspace fork records verification only after canonical atte
     kind: 'workspace' as const,
     confidential,
   }
-  const plan = app.conversations.branches.plan(planInput)
+  const plan = await app.conversations.branches.plan(planInput)
   assert.equal(plan.allowed, true)
   assert.equal(plan.confidential?.requested, true)
   const branch = await app.conversations.branches.execute({
@@ -1203,6 +1739,8 @@ test('TUI and headless fork surfaces preserve the canonical confidential request
   assert.deepEqual(preview?.plan?.confidential, confidential)
   assert.equal(preview?.plan?.text, 'follow-up message')
   assert.equal(Object.isFrozen(preview?.execution), true)
+  assert.deepEqual(preview?.execution?.params?.confidential, confidential)
+  assert.equal(Object.isFrozen(preview?.execution?.params), true)
   const serializedPreview = JSON.stringify(preview)
   assert.doesNotMatch(serializedPreview, /surface-confidential-nonce|surface-confidential-policy/u)
   assert.doesNotMatch(serializedPreview, /sha256:c{64}/u)
@@ -1254,7 +1792,7 @@ test('confidential workspace planning stays unavailable without an external veri
   })
   await prepareSource(app)
   await app.send({ operationId: 'op-source-confidential-unverified', text: 'source' }).completion
-  const plan = app.conversations.branches.plan({
+  const plan = await app.conversations.branches.plan({
     operationId: 'op-confidential-unverified',
     kind: 'workspace',
     confidential: {
@@ -1288,7 +1826,7 @@ test('confidential workspace planning stays unavailable when branching lacks con
   })
   await prepareSource(app)
   await app.send({ operationId: 'op-source-confidential-capability', text: 'source' }).completion
-  const plan = app.conversations.branches.plan({
+  const plan = await app.conversations.branches.plan({
     operationId: 'op-confidential-capability',
     kind: 'workspace',
     confidential: {
@@ -1369,7 +1907,7 @@ test('confidential workspace execution rechecks branching, environment, and veri
       profileDigest: `sha256:${'b'.repeat(64)}` as `sha256:${string}`,
     },
   }
-  const plan = app.conversations.branches.plan(planInput)
+  const plan = await app.conversations.branches.plan(planInput)
   assert.equal(plan.allowed, true)
   assert(plan.sourceRunId)
 
@@ -1440,7 +1978,7 @@ test('ordinary workspace planning remains available without confidential branchi
   })
   await prepareSource(app)
   await app.send({ operationId: 'op-source-ordinary-capability', text: 'source' }).completion
-  const plan = app.conversations.branches.plan({
+  const plan = await app.conversations.branches.plan({
     operationId: 'op-ordinary-capability',
     kind: 'workspace',
   })
@@ -1458,7 +1996,7 @@ test('confidential placement cannot be downgraded to a conversation or cross-run
     profileDigest: `sha256:${'b'.repeat(64)}` as `sha256:${string}`,
   }
   for (const kind of ['conversation', 'cross-runner'] as const) {
-    assert.throws(
+    await assert.rejects(
       () =>
         app.conversations.branches.plan({
           operationId: `op-confidential-kind-${kind}`,
@@ -1476,7 +2014,7 @@ test('confidential placement planning rejects requests that fail the Interface 2
   const app = createBraidApplication({ fixture: 'deterministic', clock: new FixedClock(AT) })
   await prepareSource(app)
   await app.send({ operationId: 'op-source-confidential-schema', text: 'source' }).completion
-  assert.throws(
+  await assert.rejects(
     () =>
       app.conversations.branches.plan({
         operationId: 'op-confidential-schema',
@@ -1517,7 +2055,7 @@ test('direct fork effects reject invalid or changed confidential requests before
     kind: 'workspace' as const,
     confidential,
   }
-  const plan = app.conversations.branches.plan(planInput)
+  const plan = await app.conversations.branches.plan(planInput)
   const host: ConversationHost = {
     state: () => app.state(),
     now: () => AT,
@@ -1570,7 +2108,7 @@ test('cross-runner planning stays unavailable without a provider transfer method
   })
   await prepareSource(app)
   await app.send({ operationId: 'op-source-no-transfer', text: 'source history' }).completion
-  const plan = app.conversations.branches.plan({
+  const plan = await app.conversations.branches.plan({
     operationId: 'op-cross-runner-no-transfer',
     kind: 'cross-runner',
     runner: 'codex',
@@ -1578,3 +2116,586 @@ test('cross-runner planning stays unavailable without a provider transfer method
   assert.equal(plan.allowed, false)
   assert.match(plan.reason ?? '', /context transfer/iu)
 })
+
+test('handoff refuses a destination changed while transfer is in flight before dispatch', async () => {
+  const contextState: ContextProviderState = { transfers: [] }
+  const started = deferred()
+  const release = deferred()
+  const baseExecution = executionFor({ capabilities: branchCapabilities(), contextState })
+  const transfer = baseExecution.context?.transfer
+  assert(transfer)
+  const admit = baseExecution.admit
+  assert(admit)
+  let destinationAdmissions = 0
+  const execution: ExecutionPort = {
+    ...baseExecution,
+    admit(input) {
+      if (input.contextTransfer !== undefined) destinationAdmissions += 1
+      return admit(input)
+    },
+    context: {
+      async transfer(request, target) {
+        started.resolve()
+        await release.promise
+        return transfer(request, target)
+      },
+    },
+  }
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    execution,
+    clock: new FixedClock(AT),
+  })
+  await prepareSource(app)
+  await app.send({ operationId: 'op-in-flight-source', text: 'source history' }).completion
+  const input = {
+    operationId: 'op-in-flight-handoff',
+    connectionId: sourceConnection().id,
+    runner: 'codex',
+    text: 'Continue only on the accepted destination',
+  }
+  const plan = await app.conversations.branches.plan(input)
+  const executing = app.conversations.branches.execute({
+    ...input,
+    planDigest: plan.digest,
+    ...(plan.portableContextPlan?.requiresAcceptance === true
+      ? { acceptedDigest: plan.portableContextPlan.digest }
+      : {}),
+  })
+  await started.promise
+  const connection = { ...sourceConnection(), endpoint: 'http://127.0.0.1:9999' }
+  await app.configuration.upsertConnection({
+    connection,
+    operation: {
+      id: createOperationId('operation-change-in-flight-destination'),
+      kind: 'connection-change',
+      requestDigest: canonicalDigest(connection),
+      status: 'acknowledged',
+      createdAt: AT,
+      updatedAt: AT,
+      acknowledgedAt: AT,
+    },
+  })
+  release.resolve()
+  await assert.rejects(executing, /destination connection changed/i)
+  assert.equal(destinationAdmissions, 0)
+  assert.equal(contextState.transfers.length, 1)
+})
+
+test('pending legacy full-record handoff plans refuse after journal restart before transfer', async () => {
+  const contextState: ContextProviderState = { transfers: [] }
+  const journal = new MemoryJournal(new FixedClock(AT))
+  const execution = executionFor({ capabilities: branchCapabilities(), contextState })
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    execution,
+    clock: new FixedClock(AT),
+    journal,
+    effectStorage: journal,
+  })
+  await prepareSource(app)
+  await app.send({ operationId: 'op-legacy-source', text: 'source history' }).completion
+  const input = {
+    operationId: 'op-legacy-handoff',
+    connectionId: sourceConnection().id,
+    runner: 'codex',
+  }
+  const { digest: _digest, ...material } = await app.conversations.branches.plan(input)
+  const legacyDigest = canonicalDigest({
+    ...material,
+    destinationConnectionDigest: canonicalDigest(sourceConnection()),
+  })
+  appendSeededEvent(journal, app.state(), {
+    kind: 'operation.requested',
+    operation: {
+      id: createOperationId(input.operationId),
+      kind: 'conversation-fork',
+      requestDigest: canonicalDigest({
+        command: 'execute_cross_runner_fork',
+        operationId: input.operationId,
+        planDigest: legacyDigest,
+        acceptedDigest: null,
+      }),
+      status: 'pending',
+      createdAt: AT,
+      updatedAt: AT,
+    },
+  })
+  const restarted = createBraidApplication({
+    fixture: 'deterministic',
+    execution,
+    clock: new FixedClock(AT),
+    journal,
+    effectStorage: journal,
+  })
+  await assert.rejects(
+    () => restarted.conversations.branches.execute({ ...input, planDigest: legacyDigest }),
+    /accepted fork plan no longer matches/,
+  )
+  assert.equal(contextState.transfers.length, 0)
+})
+
+test('handoff first-turn admission retains its accepted connection digest through journal restart', async () => {
+  const contextState: ContextProviderState = { transfers: [] }
+  const journal = new MemoryJournal(new FixedClock(AT))
+  const execution = executionFor({ capabilities: branchCapabilities(), contextState })
+  const app = createBraidApplication({
+    fixture: 'deterministic',
+    execution,
+    clock: new FixedClock(AT),
+    journal,
+    effectStorage: journal,
+  })
+  await prepareSource(app)
+  await app.send({ operationId: 'op-bound-source', text: 'source history' }).completion
+  const input = {
+    operationId: 'op-bound-handoff',
+    connectionId: sourceConnection().id,
+    runner: 'codex',
+    text: 'Continue on the accepted connection',
+  }
+  const plan = await app.conversations.branches.plan(input)
+  const branch = await app.conversations.branches.execute({ ...input, planDigest: plan.digest })
+  const restarted = createBraidApplication({
+    fixture: 'deterministic',
+    execution,
+    clock: new FixedClock(AT),
+    journal,
+    effectStorage: journal,
+  })
+  const run = restarted.state().runs.find((candidate) => candidate.branchId === branch.id)
+  assert(run)
+  assert.equal(run.receipt.requested.expectedConnectionDigest, plan.destinationConnectionDigest)
+  const snapshot = snapshotRunExecution(
+    { operationId: run.operationId, text: run.receipt.requested.text },
+    restarted.state(),
+    run.receipt.requested.profile,
+    run.receipt.requested.connectionId,
+  )
+  assert.equal(snapshot.expectedConnectionDigest, plan.destinationConnectionDigest)
+  const originalRequest = contextState.transfers[0]
+  assert(originalRequest)
+  const acceptedPlan = plan.portableContextPlan
+  assert(acceptedPlan)
+  // The provider receives the selected-content wire projection of the accepted plan.
+  assert.deepEqual(originalRequest.plan, projectPortableContextPlan(acceptedPlan))
+  assert.throws(
+    () =>
+      restarted.send({
+        operationId: run.operationId,
+        text: run.receipt.requested.text,
+        expectedConnectionDigest: canonicalDigest({ changed: true }),
+        portableContextPlan: acceptedPlan,
+        portableContextTransferRequest: originalRequest,
+        portableContextTransferReceipt: contextResult(originalRequest) as Extract<
+          ContextTransferResult,
+          { status: 'accepted' }
+        >,
+      }),
+    /conflict|different|already used/i,
+  )
+})
+
+for (const restart of [false, true]) {
+  test(`handoff without immediate text preserves the accepted first turn after restart=${restart}`, async () => {
+    const contextState: ContextProviderState = { transfers: [] }
+    const journal = new MemoryJournal(new FixedClock(AT))
+    const baseExecution = executionFor({ capabilities: branchCapabilities(), contextState })
+    const baseTransfer = baseExecution.context?.transfer
+    const baseAdmit = baseExecution.admit
+    assert(baseTransfer)
+    assert(baseAdmit)
+    const admitted: Parameters<NonNullable<ExecutionPort['admit']>>[0][] = []
+    let providerTransfers = 0
+    const execution: ExecutionPort = {
+      ...baseExecution,
+      context: {
+        async transfer(request) {
+          providerTransfers += 1
+          return baseTransfer(request)
+        },
+      },
+      admit(input) {
+        admitted.push(input)
+        return baseAdmit(input)
+      },
+    }
+    let app = createBraidApplication({
+      fixture: 'deterministic',
+      ids: new RandomIds(),
+      execution,
+      clock: new FixedClock(AT),
+      journal,
+      effectStorage: journal,
+    })
+    await prepareSource(app)
+    await app.send({ operationId: `op-deferred-source-${restart}`, text: 'source history' })
+      .completion
+    const input = {
+      operationId: `op-deferred-handoff-${restart}`,
+      connectionId: sourceConnection().id,
+      runner: 'codex',
+    }
+    const plan = await app.conversations.branches.plan(input)
+    const branch = await app.conversations.branches.execute({
+      ...input,
+      planDigest: plan.digest,
+      ...(plan.portableContextPlan?.requiresAcceptance === true
+        ? { acceptedDigest: plan.portableContextPlan.digest }
+        : {}),
+    })
+    if (restart)
+      app = createBraidApplication({
+        fixture: 'deterministic',
+        ids: new RandomIds(),
+        execution,
+        clock: new FixedClock(AT),
+        journal,
+        effectStorage: journal,
+      })
+    await app.send({
+      operationId: `op-deferred-first-turn-${restart}`,
+      branchId: branch.id,
+      text: 'Continue the accepted handoff',
+    }).completion
+    const firstTurn = admitted.at(-1)
+    assert(firstTurn)
+    assert.deepEqual(firstTurn.contextTransfer, contextState.transfers[0])
+    assert.equal(firstTurn.sessionId, contextState.transfers[0]?.plan.destination.sessionId)
+    assert.equal(firstTurn.contextTransferReceipt?.status, 'accepted')
+    assert.equal(providerTransfers, 1)
+  })
+}
+
+test('handoff without text survives encrypted SQLite close and reopen with exact canonical commitments', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-handoff-restart-'))
+  const credentialStore = new MemoryCredentialStore()
+  const options = {
+    path: join(root, 'braid.sqlite'),
+    workspaceRoot: root,
+    credentialStore,
+    databaseKeyRef: credentialRef('cred:v1:handoff-restart-database'),
+  }
+  const contextState: ContextProviderState = { transfers: [] }
+  const baseExecution = executionFor({ capabilities: branchCapabilities(), contextState })
+  const baseTransfer = baseExecution.context?.transfer
+  const baseAdmit = baseExecution.admit
+  assert(baseTransfer)
+  assert(baseAdmit)
+  let failDestination = true
+  let providerTransfers = 0
+  const admitted: Parameters<NonNullable<ExecutionPort['admit']>>[0][] = []
+  const execution: ExecutionPort = {
+    ...baseExecution,
+    context: {
+      async transfer(request) {
+        providerTransfers += 1
+        return baseTransfer(request)
+      },
+    },
+    admit(input) {
+      if (input.contextTransfer !== undefined && failDestination) {
+        failDestination = false
+        throw new Error('Destination unavailable before execution')
+      }
+      admitted.push(input)
+      return baseAdmit(input)
+    },
+  }
+  let storage = await openSqliteStorage(options)
+  let journal = await StorageJournal.fromStorage(storage, new FixedClock(AT))
+  let app = createBraidApplication({
+    fixture: 'deterministic',
+    ids: new RandomIds(),
+    execution,
+    journal,
+    effectStorage: journal,
+    clock: new FixedClock(AT),
+  })
+  try {
+    app.initialize('/workspace')
+    await app.whenDurable()
+    await prepareSource(app)
+    await app.send({ operationId: 'op-sqlite-source', text: 'retained source history' }).completion
+    const input = {
+      operationId: 'op-sqlite-handoff',
+      connectionId: sourceConnection().id,
+      runner: 'codex',
+    }
+    const plan = await app.conversations.branches.plan(input)
+    const branch = await app.conversations.branches.execute({ ...input, planDigest: plan.digest })
+    await app.whenDurable()
+    const accepted = contextState.transfers[0]
+    assert(accepted)
+    const resultBefore = app
+      .state()
+      .operations.find((operation) => operation.id === input.operationId)?.result
+    assert.deepEqual(resultBefore?.request, accepted)
+    await app.close()
+    storage = await openSqliteStorage(options)
+    journal = await StorageJournal.fromStorage(storage, new FixedClock(AT))
+    app = createBraidApplication({
+      fixture: 'deterministic',
+      ids: new RandomIds(),
+      execution,
+      journal,
+      effectStorage: journal,
+      clock: new FixedClock(AT),
+    })
+    assert.deepEqual(
+      app.state().operations.find((operation) => operation.id === input.operationId)?.result,
+      resultBefore,
+    )
+    const send = {
+      operationId: 'op-sqlite-first-turn',
+      branchId: branch.id,
+      text: 'Continue after reopen',
+    }
+    const failed = app.send({ ...send, operationId: 'op-sqlite-failed-first-turn' })
+    assert(failed.admissionReady)
+    await assert.rejects(failed.admissionReady, /Destination unavailable/)
+    await assert.rejects(failed.completion, /Destination unavailable/)
+    assert.equal(app.state().runs.filter((run) => run.branchId === branch.id).length, 0)
+    await app.close()
+    storage = await openSqliteStorage(options)
+    journal = await StorageJournal.fromStorage(storage, new FixedClock(AT))
+    app = createBraidApplication({
+      fixture: 'deterministic',
+      ids: new RandomIds(),
+      execution,
+      journal,
+      effectStorage: journal,
+      clock: new FixedClock(AT),
+    })
+    const first = app.send(send)
+    await first.completion
+    assert.equal(providerTransfers, 1)
+    assert.deepEqual(admitted.at(-1)?.contextTransfer, accepted)
+    assert.equal(admitted.at(-1)?.sessionId, accepted.plan.destination.sessionId)
+    const beforeRetry = admitted.length
+    await app.close()
+    storage = await openSqliteStorage(options)
+    journal = await StorageJournal.fromStorage(storage, new FixedClock(AT))
+    app = createBraidApplication({
+      fixture: 'deterministic',
+      ids: new RandomIds(),
+      execution,
+      journal,
+      effectStorage: journal,
+      clock: new FixedClock(AT),
+    })
+    const persistedRun = app.state().runs.find((run) => run.operationId === send.operationId)
+    assert.deepEqual(persistedRun?.receipt.requested.portableContextTransferRequest, accepted)
+    assert.equal(
+      persistedRun?.receipt.requested.expectedConnectionDigest,
+      plan.destinationConnectionDigest,
+    )
+    assert.throws(
+      () => app.send({ ...send, expectedConnectionDigest: canonicalDigest({ changed: true }) }),
+      /conflict|different|already used/i,
+    )
+    const retried = app.send(send)
+    await retried.completion
+    assert.equal(retried.runId, first.runId)
+    assert.equal(admitted.length, beforeRetry)
+    assert.equal(providerTransfers, 1)
+  } finally {
+    await app.close()
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+for (const [label, metadata] of [
+  ['secret', { apiKey: 'HANDOFF_SECRET_CANARY' }],
+  [
+    'typed-secret',
+    {
+      answerSpec: { fields: [{ name: 'code', type: 'secret' }] },
+      answers: { code: 'HANDOFF_SECRET_CANARY' },
+    },
+  ],
+  ['depth', { a: { b: { c: { d: { e: { f: { g: { h: { value: 'too deep' } } } } } } } } }],
+  ['size', { values: Array.from({ length: 8 }, () => 'x'.repeat(10_000)) }],
+] as const) {
+  test(`handoff refuses ${label} persistence loss before any provider transfer`, async () => {
+    const contextState: ContextProviderState = { transfers: [] }
+    const profile = defineAgentProfile({
+      name: 'Bounded canonical handoff',
+      harness: 'pi',
+      metadata,
+    })
+    const execution = executionFor({ capabilities: branchCapabilities(), contextState })
+    const app = createBraidApplication({
+      fixture: 'deterministic',
+      profile,
+      execution,
+      clock: new FixedClock(AT),
+    })
+    await prepareSource(app)
+    await app.send({ operationId: `op-unsafe-source-${label}`, text: 'source history' }).completion
+    const input = {
+      operationId: `op-unsafe-handoff-${label}`,
+      connectionId: sourceConnection().id,
+      runner: 'codex',
+    }
+    const plan = await app.conversations.branches.plan(input)
+    const branches = app.state().branches.length
+    await assert.rejects(
+      () => app.conversations.branches.execute({ ...input, planDigest: plan.digest }),
+      /redaction|truncation|limit|Secret-designated/,
+    )
+    assert.equal(contextState.transfers.length, 0)
+    assert.equal(app.state().branches.length, branches)
+  })
+}
+
+for (const change of ['legacy', 'connection', 'profile', 'pending'] as const) {
+  test(`handoff first turn after restart fences ${change} state`, async () => {
+    const contextState: ContextProviderState = { transfers: [] }
+    const journal = new MemoryJournal(new FixedClock(AT))
+    const execution = executionFor({ capabilities: branchCapabilities(), contextState })
+    const app = createBraidApplication({
+      fixture: 'deterministic',
+      ids: new RandomIds(),
+      execution,
+      journal,
+      effectStorage: journal,
+      clock: new FixedClock(AT),
+    })
+    await prepareSource(app)
+    await app.send({ operationId: `op-fence-source-${change}`, text: 'source history' }).completion
+    const input = {
+      operationId: `op-fence-handoff-${change}`,
+      connectionId: sourceConnection().id,
+      runner: 'codex',
+    }
+    const plan = await app.conversations.branches.plan(input)
+    const branch = await app.conversations.branches.execute({ ...input, planDigest: plan.digest })
+    const operation = app.state().operations.find((item) => item.id === input.operationId)
+    assert(operation?.result)
+    if (change === 'legacy') {
+      const {
+        request: _request,
+        connectionId: _connectionId,
+        connectionDigest: _connectionDigest,
+        ...legacy
+      } = operation.result
+      appendSeededEvent(journal, app.state(), {
+        kind: 'operation.updated',
+        operation: { ...operation, result: legacy },
+      })
+    } else if (change === 'pending') {
+      appendSeededEvent(journal, app.state(), {
+        kind: 'operation.updated',
+        operation: { ...operation, status: 'pending' },
+      })
+    } else if (change === 'connection') {
+      appendSeededEvent(journal, app.state(), {
+        kind: 'connection.upserted',
+        connection: { ...sourceConnection(), endpoint: 'https://different-account.example.test' },
+      })
+    }
+    const restarted = createBraidApplication({
+      fixture: 'deterministic',
+      ids: new RandomIds(),
+      execution,
+      journal,
+      effectStorage: journal,
+      clock: new FixedClock(AT),
+      ...(change === 'profile'
+        ? { profile: defineAgentProfile({ name: 'Changed profile', harness: 'pi' }) }
+        : {}),
+    })
+    const send = {
+      operationId: `op-fence-turn-${change}`,
+      branchId: branch.id,
+      text: 'Continue on the accepted destination',
+    }
+    if (change === 'pending') {
+      assert.throws(
+        () => restarted.send({ ...send, sessionId: 'session-unaccepted' }),
+        /conflicts with the retained/,
+      )
+      await restarted.send(send).completion
+      assert.deepEqual(contextState.transfers[1], contextState.transfers[0])
+    } else {
+      assert.throws(() => restarted.send(send), /replan the handoff/)
+      assert.equal(contextState.transfers.length, 1)
+      assert.equal(restarted.state().runs.filter((run) => run.branchId === branch.id).length, 0)
+    }
+  })
+}
+
+for (const admissionMode of ['sync', 'async'] as const) {
+  test(`handoff survives a failed first ${admissionMode} admission and a new operation after restart`, async () => {
+    const contextState: ContextProviderState = { transfers: [] }
+    const journal = new MemoryJournal(new FixedClock(AT))
+    const baseExecution = executionFor({ capabilities: branchCapabilities(), contextState })
+    const baseAdmit = baseExecution.admit
+    assert(baseAdmit)
+    const attempts: Parameters<NonNullable<ExecutionPort['admit']>>[0][] = []
+    let failNextDestination = true
+    const execution: ExecutionPort = {
+      ...baseExecution,
+      admissionMode,
+      admit(input) {
+        if (input.contextTransfer !== undefined) {
+          attempts.push(input)
+          if (failNextDestination) {
+            failNextDestination = false
+            throw new Error('Destination unavailable before execution')
+          }
+        }
+        return baseAdmit(input)
+      },
+    }
+    let app = createBraidApplication({
+      fixture: 'deterministic',
+      ids: new RandomIds(),
+      execution,
+      journal,
+      effectStorage: journal,
+      clock: new FixedClock(AT),
+    })
+    await prepareSource(app)
+    await app.send({ operationId: `op-admission-source-${admissionMode}`, text: 'source history' })
+      .completion
+    const input = {
+      operationId: `op-admission-handoff-${admissionMode}`,
+      connectionId: sourceConnection().id,
+      runner: 'codex',
+    }
+    const plan = await app.conversations.branches.plan(input)
+    const branch = await app.conversations.branches.execute({ ...input, planDigest: plan.digest })
+    const firstSend = {
+      operationId: `op-failed-first-${admissionMode}`,
+      branchId: branch.id,
+      text: 'Continue accepted work',
+    }
+    if (admissionMode === 'sync')
+      assert.throws(() => app.send(firstSend), /Destination unavailable/)
+    else {
+      const failed = app.send(firstSend)
+      assert(failed.admissionReady)
+      await assert.rejects(failed.admissionReady, /Destination unavailable/)
+      await assert.rejects(failed.completion, /Destination unavailable/)
+    }
+    assert.equal(app.state().runs.filter((run) => run.branchId === branch.id).length, 0)
+    assert.equal(contextState.transfers.length, 1)
+    app = createBraidApplication({
+      fixture: 'deterministic',
+      ids: new RandomIds(),
+      execution,
+      journal,
+      effectStorage: journal,
+      clock: new FixedClock(AT),
+    })
+    await app.send({ ...firstSend, operationId: `op-retry-first-${admissionMode}` }).completion
+    assert.equal(attempts.length, 2)
+    assert.deepEqual(attempts[1]?.contextTransfer, attempts[0]?.contextTransfer)
+    assert.deepEqual(attempts[1]?.contextTransferReceipt, attempts[0]?.contextTransferReceipt)
+    assert.equal(attempts[1]?.sessionId, attempts[0]?.sessionId)
+    assert.equal(attempts[1]?.expectedConnectionDigest, plan.destinationConnectionDigest)
+    assert.deepEqual(contextState.transfers[1], contextState.transfers[0])
+  })
+}

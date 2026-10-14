@@ -39,7 +39,7 @@ import {
 import { connectionMetadataEditorChildren } from './connection-metadata-editor-rendering.js'
 import type { BraidTheme } from './theme.js'
 
-type EditableField = 'name' | 'endpoint' | 'account' | 'region'
+type EditableField = 'provider' | 'name' | 'endpoint' | 'account' | 'region'
 type EditorStage = 'kind' | 'fields' | 'review'
 export interface ConnectionMetadataEditorOptions {
   readonly theme: BraidTheme

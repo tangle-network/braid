@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  contextTransferRequestDigest,
+  createContextTransferRequest,
   defineAgentProfile,
   portableContextPlanDigest,
   portableConversationContextDigest,
@@ -200,10 +200,7 @@ test('canonical context transfer binds admission to its destination session', ()
       acceptedBy: 'policy' as const,
     },
   }
-  const request = {
-    ...requestMaterial,
-    requestDigest: contextTransferRequestDigest(requestMaterial),
-  }
+  const request = createContextTransferRequest(requestMaterial)
   assert.throws(
     () =>
       validateContextPlan({

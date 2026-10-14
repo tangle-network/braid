@@ -30,6 +30,8 @@ export {
   getTangleSandboxEnvironment,
 } from './production-connection-providers.js'
 export {
+  type ConnectionProviderRegistryFactory,
+  type ConnectionProviderRegistryInput,
   type ConnectionCapabilityAction,
   type ConnectionCapabilityReport,
   type ConnectionHealthOptions,
@@ -59,3 +61,8 @@ export function createProductionConnectionAdapter(
       verifyModelForConnection(record, options, model, verificationOptions),
   })
 }
+
+export {
+  createRegisteredEnvironmentProvider,
+  createConnectionProviderResolver,
+} from './registered-provider.js'

@@ -4,8 +4,9 @@ import { AGENT_EVAL_VERSION } from './agent-eval-version.js'
 const AGENT_EVAL_RPC_VERSION = AGENT_EVAL_VERSION
 const PYTHON_VERSION = '3.12'
 // Resolve the Python cohort after the pinned RPC wheel and source archive were published.
-// https://pypi.org/pypi/agent-eval-rpc/0.209.1/json
-const RESOLUTION_CUTOFF = '2026-10-06T07:31:00Z'
+// Move this past the last artifact upload whenever the agent-eval pin changes:
+// https://pypi.org/pypi/agent-eval-rpc/<AGENT_EVAL_VERSION>/json
+const RESOLUTION_CUTOFF = '2026-10-12T05:47:00Z'
 const RUNTIME_PROBE = [
   'import importlib.metadata',
   'import sys',

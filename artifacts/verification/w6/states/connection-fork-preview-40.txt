@@ -1,0 +1,12 @@
+ fork preview              cross-runner
+────────────────────────────────────────
+ same conversation · new branch
+ runner: transfer unavailable
+ source: conv-1
+ source branch: branch-1
+ destination branch: branch-1eb960cb...
+ boundary: branch-1 → 0 messages
+ provider session: current → new
+ connection: source connection → con...
+────────────────────────────────────────
+ ↑/↓ inspect · ←/esc cancel

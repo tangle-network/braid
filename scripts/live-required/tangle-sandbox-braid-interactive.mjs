@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import { readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as agentInterface from '@tangle-network/agent-interface'
@@ -8,8 +8,8 @@ import { AgentExactRunControlRefSchema } from '@tangle-network/agent-interface'
 import { Sandbox } from '@tangle-network/sandbox'
 import xterm from '@xterm/headless'
 import * as pty from 'node-pty'
+import { readFreshStateFrame, stateFrameVersion } from '../interface-state-frame.mjs'
 import { sleep } from '../live-bridge/process.mjs'
-import { countProtectedWork, observeOwnedSandbox } from '../proof-tools.mjs'
 import {
   processTreeEnvironment,
   terminateTrackedProcessTree,
@@ -18,6 +18,7 @@ import {
 } from '../live-bridge/process-tree.mjs'
 import { runFromState, stateForRun } from '../live-bridge/protocol.mjs'
 import { installPackedBraid } from '../packed-binary.mjs'
+import { countProtectedWork, observeOwnedSandbox } from '../proof-tools.mjs'
 import { connectionConfiguration } from './configuration.mjs'
 import {
   EXIT_CODES,
@@ -741,29 +742,9 @@ async function captureStateFrame(runtime, recordPath, timeoutMs) {
   process.kill(runtime.child.pid, 'SIGUSR2')
   return waitFor(
     'atomic Braid interactive state frame',
-    async () => {
-      try {
-        const version = await stateFrameVersion(framePath)
-        if (version === undefined || version === previousVersion) return undefined
-        const frame = JSON.parse(await readFile(framePath, 'utf8'))
-        return (await stateFrameVersion(framePath)) === version ? frame : undefined
-      } catch (error) {
-        if (error?.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error
-        return undefined
-      }
-    },
+    () => readFreshStateFrame(framePath, previousVersion),
     timeoutMs,
   )
-}
-
-async function stateFrameVersion(path) {
-  try {
-    const value = await stat(path, { bigint: true })
-    return `${value.dev}:${value.ino}:${value.mtimeNs}:${value.size}`
-  } catch (error) {
-    if (error?.code === 'ENOENT') return undefined
-    throw error
-  }
 }
 
 async function proveTuiReturned(runtime, timeoutMs, label) {

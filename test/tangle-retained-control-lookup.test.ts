@@ -9,9 +9,9 @@ import type { SandboxClientLike, SandboxInstanceLike } from '@tangle-network/age
 import type { SessionInfo } from '@tangle-network/sandbox'
 import { createTangleRetainedControlLookup } from '../src/adapters/connections/tangle-retained-control-lookup.js'
 import {
-  createTangleRetainedPlan,
-  startTangleRetainedRun,
-} from '../src/adapters/runtime/tangle-retained-run.js'
+  createProviderRetainedPlan,
+  startProviderRetainedRun,
+} from '../src/adapters/runtime/provider-retained-run.js'
 import { retainedSandboxIdentity } from '../src/adapters/runtime/tangle-sandbox-retention.js'
 import { createConnectionId } from '../src/domain/ids.js'
 import type { RetainedRunAdmissionRecord } from '../src/ports/execution.js'
@@ -132,8 +132,8 @@ test('two Tangle provider instances recover Runtime environment admissions', asy
       admissions.push(structuredClone(admission))
     },
   }
-  const firstHandle = await startTangleRetainedRun(
-    createTangleRetainedPlan(firstPrepared, input.runId),
+  const firstHandle = await startProviderRetainedRun(
+    createProviderRetainedPlan(firstPrepared, input.runId),
     input,
   )
   const environmentAdmission = admissions.find((admission) => admission.phase === 'environment')
@@ -146,7 +146,7 @@ test('two Tangle provider instances recover Runtime environment admissions', asy
     providerSessionId: firstPrepared.providerSessionId,
   })
   assert.notStrictEqual(secondPrepared.provider, firstPrepared.provider)
-  const secondPlan = createTangleRetainedPlan(secondPrepared, input.runId, undefined, {
+  const secondPlan = createProviderRetainedPlan(secondPrepared, input.runId, undefined, {
     retainedAdmission: environmentAdmission,
   })
   const recovered = await secondPlan.recover?.({ admission: environmentAdmission })

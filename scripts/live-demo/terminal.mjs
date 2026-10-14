@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
-import { readFile, rm } from 'node:fs/promises'
 import xterm from '@xterm/headless'
 import * as pty from 'node-pty'
+import { readFreshStateFrame, stateFrameVersion } from '../interface-state-frame.mjs'
 
 const XtermTerminal = xterm.Terminal
 const PTY_TERM_GRACE_MS = 1_000
@@ -127,10 +127,6 @@ function killTerminalTree(session, signal) {
   }
 }
 
-async function readJson(path) {
-  return JSON.parse(await readFile(path, 'utf8'))
-}
-
 export async function createCapturedTerminal(options) {
   const emulator = new XtermTerminal({
     cols: options.columns,
@@ -184,13 +180,14 @@ export async function createCapturedTerminal(options) {
     waitFor(() => pendingWrites === 0 && performance.now() - lastOutputAt >= 100, label, 10_000)
   const captureState = async (timeoutMs = 10_000) => {
     await waitForStable()
-    await rm(`${options.recordPath}.frame`, { force: true })
+    const previousVersion = await stateFrameVersion(`${options.recordPath}.frame`)
     process.kill(session.pid, 'SIGUSR2')
+    let frame
     await waitFor(
       async () => {
         try {
-          await readJson(`${options.recordPath}.frame`)
-          return true
+          frame = await readFreshStateFrame(`${options.recordPath}.frame`, previousVersion)
+          return frame !== undefined
         } catch {
           return false
         }
@@ -198,7 +195,7 @@ export async function createCapturedTerminal(options) {
       'atomic semantic frame',
       timeoutMs,
     )
-    return readJson(`${options.recordPath}.frame`)
+    return frame
   }
   const closeNormally = async () => {
     if (exited) return

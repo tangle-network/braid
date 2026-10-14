@@ -9,6 +9,7 @@ import type { AnalysisComparisonResult } from '../src/app/analysis-comparison-co
 import { createBraidApplication } from '../src/app/composition.js'
 import { type BraidState, initialState } from '../src/domain/state.js'
 import { DEFAULT_RUN_CAPABILITIES } from '../src/ports/execution.js'
+import type { BraidIntent, BraidUiController } from '../src/views/shared/intents.js'
 import type { BraidViewModel, InteractionView } from '../src/views/shared/models.js'
 import { liveRunId, runIdForControl } from '../src/views/shared/run-selection.js'
 import { ActivityBrowserPanel } from '../src/views/tui/activity-browser.js'
@@ -19,9 +20,11 @@ import {
   comparisonViewForResult,
 } from '../src/views/tui/comparison.js'
 import { ConversationConfirmation } from '../src/views/tui/conversation-dialogs.js'
+import { ConversationOverlayActions } from '../src/views/tui/conversation-overlay-actions.js'
 import { ForkPreviewPanel } from '../src/views/tui/fork-preview.js'
 import { GraphView } from '../src/views/tui/graph.js'
 import { InteractionShell } from '../src/views/tui/interaction.js'
+import { ModalCoordinator } from '../src/views/tui/modal-coordinator.js'
 import { createWorkerSteerPrompt } from '../src/views/tui/supervisor-actions.js'
 import { BraidTerminalApp } from '../src/views/tui/terminal-app.js'
 import { createBraidTheme } from '../src/views/tui/theme.js'
@@ -1101,6 +1104,76 @@ test('approval actions are navigable and secret responses never render values', 
   secretShell.handleInput('\r')
   assert.deepEqual(secretResponses, [{ outcome: 'once', value: secret }])
 })
+
+for (const withRunOverrides of [false, true]) {
+  test(`fork confirmation preserves reviewed parameters with run overrides ${withRunOverrides}`, async () => {
+    const app = createBraidApplication({ fixture: 'deterministic' })
+    app.initialize('/workspace')
+    const controller = createApplicationUiController(app)
+    const base = forkView()
+    assert(base.forkPreview)
+    const plan = FIXTURE_FORK.plan
+    assert(plan)
+    const params = {
+      conversationId: plan.sourceConversationId,
+      branchId: plan.sourceBranchId,
+      connectionId: 'connection-reviewed',
+      workspaceRequest: { cwd: { base: 'repository', path: 'reviewed' } },
+      ...(withRunOverrides ? { runner: 'codex', model: 'reviewed-model', effort: 'high' } : {}),
+      workspace: false,
+    }
+    const view: BraidViewModel = {
+      ...base,
+      forkPreview: {
+        ...base.forkPreview,
+        plan: {
+          ...plan,
+          kind: 'cross-runner',
+          allowed: true,
+          context: { ...plan.context, destinationRunner: 'codex' },
+        },
+        allowed: true,
+        kind: 'cross-runner',
+        execution: { operationId: plan.operationId, planDigest: plan.digest, params },
+      },
+    }
+    let dispatched: BraidIntent | undefined
+    const recording: BraidUiController = {
+      view: () => view,
+      state: () => controller.state(),
+      events: () => controller.events(),
+      initialize: (workspace) => controller.initialize(workspace),
+      subscribe: (...args) => controller.subscribe(...args),
+      waitForIdle: async () => view,
+      async dispatch(intent) {
+        dispatched = intent
+        return { kind: 'accepted', revision: 0 }
+      },
+    }
+    const tui = new TuiMainScreen(new VirtualTerminal(80, 24))
+    const modals = new ModalCoordinator(tui)
+    const actions = new ConversationOverlayActions({
+      theme,
+      controller: recording,
+      modals,
+      nextOperationId: () => 'operation-unused',
+      rows: () => 24,
+    })
+    try {
+      actions.openForkPreview(view)
+      assert.equal(modals.handleInput('y'), true)
+      await Promise.resolve()
+      assert.equal(dispatched?.type, 'headless-command')
+      assert(dispatched?.type === 'headless-command')
+      assert.equal(dispatched.command, 'execute_fork')
+      assert.equal(dispatched.operationId, plan.operationId)
+      assert.deepEqual(dispatched.params, { ...params, planDigest: plan.digest })
+    } finally {
+      modals.closeAll()
+      tui.stop()
+    }
+  })
+}
 
 test('fork and confirmation dialogs expose only short, actionable keys', () => {
   let confirmed = false

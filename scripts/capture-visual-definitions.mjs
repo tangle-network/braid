@@ -8,6 +8,7 @@ export function createStateDefinitions(normalized) {
     ...[40, 80, 120, 200].map((columns) => cancellationUnavailableDefinition(columns, normalized)),
     ...[40, 80, 120, 200].map((columns) => forkPreviewDefinition(columns, normalized)),
     ...[40, 80, 120, 200].map((columns) => conversationForkPreviewDefinition(columns, normalized)),
+    ...[40, 80, 120, 200].map((columns) => connectionForkPreviewDefinition(columns, normalized)),
     {
       name: 'empty',
       columns: 80,
@@ -321,6 +322,56 @@ function conversationForkPreviewDefinition(columns, normalized) {
         'conversation fork preview',
       )
       const { point, record } = await terminal.captureState()
+      await terminal.closeNormally()
+      return { point, record }
+    },
+  }
+}
+
+function connectionForkPreviewDefinition(columns, normalized) {
+  return {
+    name: `connection-fork-preview-${columns}`,
+    columns,
+    rows: columns === 40 ? 12 : columns === 80 ? 24 : columns === 120 ? 40 : 60,
+    uiFixture: 'product-demo',
+    run: async (terminal) => {
+      terminal.input('/connection select connection-local-cli-bridge')
+      await terminal.waitForStable('connection selection draft')
+      terminal.input('\r')
+      await terminal.waitForStable('connection selection submitted')
+      const selected = await terminal.captureState()
+      if (selected.record.state?.runConfiguration?.connectionId !== 'connection-local-cli-bridge')
+        throw new Error(
+          `keyboard connection selection did not update the durable catalog: ${selected.point.screen}`,
+        )
+      await terminal.waitForStable('selected connection rendered')
+      terminal.input('/fork --connection connection-local-cli-bridge')
+      await terminal.waitForStable('connection fork command draft')
+      terminal.input('\r')
+      await terminal.waitFor(
+        () => normalized(terminal.screen()).includes('fork preview'),
+        'connection fork preview',
+      )
+      const { point, record } = await terminal.captureState()
+      const preview = record.view?.forkPreview
+      if (
+        preview?.allowed !== false ||
+        !preview.fields.some(
+          (field) =>
+            field.label === 'connection' && field.destination === 'connection-local-cli-bridge',
+        )
+      )
+        throw new Error('connection fork fixture did not preserve its destination or fail closed')
+      terminal.input('\r')
+      await terminal.waitForStable('unavailable fork ignores confirmation')
+      const afterConfirm = await terminal.captureState()
+      if (afterConfirm.record.state?.revision !== record.state?.revision)
+        throw new Error('an unavailable fork admitted a durable operation')
+      terminal.input('\u001b')
+      await terminal.waitFor(
+        () => !normalized(terminal.screen()).includes('fork preview'),
+        'cancel connection fork preview',
+      )
       await terminal.closeNormally()
       return { point, record }
     },

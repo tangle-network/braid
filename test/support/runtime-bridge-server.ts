@@ -189,7 +189,7 @@ const PI_NATIVE_CAPABILITIES: AgentEnvironmentCapabilities = {
     eventIdentity: true,
     cancellationIdempotency: true,
   },
-  contextTransfer: { freshSession: true, requestIdempotency: true, lookup: true },
+  contextTransfer: { freshSession: true, requestIdempotency: true, lookup: true, attach: true },
   nativeContinuation: {
     atomicBoundary: true,
     requestIdempotency: true,
@@ -249,7 +249,7 @@ const GENERIC_CAPABILITIES: AgentEnvironmentCapabilities = {
     eventIdentity: true,
     cancellationIdempotency: true,
   },
-  contextTransfer: { freshSession: true, requestIdempotency: true, lookup: true },
+  contextTransfer: { freshSession: true, requestIdempotency: true, lookup: true, attach: true },
   workspace: {
     read: false,
     write: false,
@@ -624,7 +624,7 @@ export async function startRuntimeBridgeServer(
         source: transfer.plan.source.source,
         destination: transfer.plan.destination,
         provider: transfer.plan.destination.provider,
-        environmentId: transfer.plan.destination.environmentId,
+        environmentId: transfer.plan.destination.environmentId ?? 'environment-context-destination',
         sessionId: transfer.plan.destination.sessionId,
         runId: transfer.plan.destination.runId,
         executionId: transfer.plan.destination.executionId,

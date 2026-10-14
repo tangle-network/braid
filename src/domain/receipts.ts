@@ -1,4 +1,12 @@
-import type { AgentProfile } from '@tangle-network/agent-interface'
+import {
+  ContextTransferRequestSchema,
+  ContextTransferReceiptSchema,
+} from '@tangle-network/agent-interface'
+import type {
+  AgentProfile,
+  ContextTransferRequest as CanonicalContextTransferRequest,
+  ContextTransferReceipt as CanonicalContextTransferReceipt,
+} from '@tangle-network/agent-interface'
 import { canonicalAgentProfileDigestHex } from '../adapters/agent-interface/profile-runtime.js'
 import { snapshotAgentProfile } from '@tangle-network/agent-interface/profile-snapshot'
 import { canonicalDigest } from './canonical.js'
@@ -121,6 +129,7 @@ export function createAdmissionReceipt(input: {
   readonly admittedAt: string
   readonly profile: Readonly<AgentProfile>
   readonly connectionId?: string
+  readonly expectedConnectionDigest?: string
   readonly mode?: string
   readonly workspaceRequest?: WorkspaceRequest
   readonly workspaceRoot?: string
@@ -132,6 +141,8 @@ export function createAdmissionReceipt(input: {
   readonly environmentId?: string
   readonly providerSessionId?: string
   readonly materializationReceipt?: Readonly<Record<string, unknown>>
+  readonly portableContextTransferRequest?: CanonicalContextTransferRequest
+  readonly portableContextTransferReceipt?: CanonicalContextTransferReceipt
   readonly contextPlan?: PortableContextPlan
   readonly contextPlanDigest?: string
   readonly contextTransfer?: ContextTransferReceipt
@@ -159,6 +170,9 @@ export function createAdmissionReceipt(input: {
     text,
     profile: structuredClone(profile),
     ...(input.connectionId === undefined ? {} : { connectionId: input.connectionId }),
+    ...(input.expectedConnectionDigest === undefined
+      ? {}
+      : { expectedConnectionDigest: input.expectedConnectionDigest }),
     ...(input.mode === undefined ? {} : { mode: input.mode }),
     ...(workspaceRequest === undefined ? {} : { workspaceRequest }),
     ...(input.workspaceRoot === undefined ? {} : { workspaceRoot: input.workspaceRoot }),
@@ -166,6 +180,20 @@ export function createAdmissionReceipt(input: {
     ...(profile.model?.default === undefined ? {} : { model: profile.model.default }),
     ...(profile.harness === undefined ? {} : { runner: profile.harness }),
     ...(contextPlanDigest === undefined ? {} : { contextPlanDigest }),
+    ...(input.portableContextTransferRequest === undefined
+      ? {}
+      : {
+          portableContextTransferRequest: ContextTransferRequestSchema.parse(
+            structuredClone(input.portableContextTransferRequest),
+          ),
+        }),
+    ...(input.portableContextTransferReceipt === undefined
+      ? {}
+      : {
+          portableContextTransferReceipt: ContextTransferReceiptSchema.parse(
+            structuredClone(input.portableContextTransferReceipt),
+          ),
+        }),
   }
   const requestDigest = canonicalDigest({
     runId: input.runId,
@@ -176,11 +204,26 @@ export function createAdmissionReceipt(input: {
     text,
     profileDigest,
     connectionId: input.connectionId ?? null,
+    ...(input.expectedConnectionDigest === undefined
+      ? {}
+      : { expectedConnectionDigest: input.expectedConnectionDigest }),
     mode: input.mode ?? null,
     workspaceRequest: workspaceRequest ?? null,
     workspaceRoot: input.workspaceRoot ?? null,
     interactions: input.interactions ?? {},
     contextPlanDigest: contextPlanDigest ?? null,
+    ...(input.portableContextTransferRequest === undefined
+      ? {}
+      : {
+          portableContextTransferRequestDigest: input.portableContextTransferRequest.requestDigest,
+        }),
+    ...(input.portableContextTransferReceipt === undefined
+      ? {}
+      : {
+          portableContextTransferReceiptDigest: canonicalDigest(
+            input.portableContextTransferReceipt,
+          ),
+        }),
   })
   const capabilitiesDigest = canonicalDigest(capabilities)
   const materializationDigest =

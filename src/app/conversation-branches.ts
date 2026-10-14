@@ -1,3 +1,6 @@
+import { connectionExecutionDigest } from './connections.js'
+import { agentWorkspaceSnapshotRefDigest } from '@tangle-network/agent-interface'
+import { snapshotWorkspaceRequest } from './workspace-request.js'
 import { canonicalAgentProfileDigestHex } from '../adapters/agent-interface/profile-runtime.js'
 import { canonicalDigest } from '../domain/canonical.js'
 import type { BranchRecord, ConversationRecord, MessageRecord } from '../domain/entities.js'
@@ -7,6 +10,7 @@ import {
   type ConversationId,
   type OperationId,
   parseBranchId,
+  parseConnectionId,
   parseConversationId,
   parseEnvironmentId,
   parseMessageId,
@@ -157,9 +161,13 @@ export class ConversationBranches {
       ...(source.branch.profileSnapshotId === undefined
         ? {}
         : { profileSnapshotId: source.branch.profileSnapshotId }),
-      ...(source.branch.connectionId === undefined
+      ...(input.connectionId === undefined && source.branch.connectionId === undefined
         ? {}
-        : { connectionId: source.branch.connectionId }),
+        : {
+            connectionId: parseConnectionId(
+              input.connectionId ?? String(source.branch.connectionId),
+            ),
+          }),
       overrides: runOverrides({
         inherited: source.branch.overrides,
         ...(input.runner === undefined ? {} : { runner: input.runner }),
@@ -275,9 +283,73 @@ export class ConversationBranches {
     return bundle.conversation
   }
 
-  plan(input: ForkPlanInput): ForkPlan {
+  async plan(input: ForkPlanInput): Promise<ForkPlan> {
+    const plan = this.#plan(input)
+    const context = contextTransferPort(this.#host.execution)
+    if (
+      plan.kind !== 'cross-runner' ||
+      !plan.allowed ||
+      plan.portableContextPlan === undefined ||
+      context?.supports === undefined
+    )
+      return plan
+    const target =
+      plan.destinationConnectionId === undefined
+        ? undefined
+        : {
+            connectionId: plan.destinationConnectionId,
+            ...(plan.destinationConnectionDigest === undefined
+              ? {}
+              : { connectionDigest: plan.destinationConnectionDigest }),
+          }
+    const available = await context.supports(plan.portableContextPlan.destination, target)
+    if (this.#plan(input).digest !== plan.digest)
+      throw new AppError(
+        'FORK_PLAN_CONFLICT',
+        'The source or destination changed during capability preflight',
+      )
+    if (available) return plan
+    const { digest: _digest, ...material } = plan
+    const unavailable = {
+      ...material,
+      allowed: false,
+      environment: 'unavailable' as const,
+      reason:
+        'The selected destination provider does not report retry-safe portable context transfer',
+    }
+    return { ...unavailable, digest: canonicalDigest(unavailable) }
+  }
+
+  #plan(input: ForkPlanInput): ForkPlan {
     const state = this.#host.state()
     const source = resolveSource(state, input)
+    const destinationConnectionId =
+      input.connectionId === undefined
+        ? (source.branch.connectionId ?? state.selectedConnectionId ?? undefined)
+        : parseConnectionId(input.connectionId)
+    const destinationConnection =
+      destinationConnectionId === undefined
+        ? undefined
+        : state.connections.find((connection) => connection.id === destinationConnectionId)
+    if (destinationConnectionId !== undefined && destinationConnection === undefined)
+      throw new AppError(
+        'CONNECTION_NOT_FOUND',
+        'The selected destination connection does not exist',
+      )
+    const connectionProvider =
+      destinationConnection?.kind === 'agent-provider'
+        ? destinationConnection.providerOptions.provider
+        : destinationConnection?.kind
+    const destinationProvider = input.destinationProvider ?? connectionProvider
+    if (
+      destinationConnection !== undefined &&
+      input.destinationProvider !== undefined &&
+      input.destinationProvider !== connectionProvider
+    )
+      throw new AppError(
+        'FORK_PLAN_CONFLICT',
+        'The destination provider does not match the selected connection',
+      )
     const operationId = parseOperation(input.operationId, 'plan_fork')
     const confidential = parseConfidentialWorkspaceForkRequest(input.confidential)
     const normalized = branchRequest(source, input, confidential)
@@ -304,9 +376,21 @@ export class ConversationBranches {
     const sourceEnvironmentId = source.branch.environmentId ?? sourceRun?.environmentId
     const kind =
       input.kind ??
-      (input.runner !== undefined && input.runner !== sourceRunner
+      ((input.runner !== undefined && input.runner !== sourceRunner) ||
+      (input.connectionId !== undefined && input.connectionId !== source.branch.connectionId)
         ? ('cross-runner' as const)
         : ('conversation' as const))
+    const sourceConnectionId =
+      sourceRun?.receipt.requested.connectionId ?? source.branch.connectionId
+    if (
+      kind === 'workspace' &&
+      sourceConnectionId !== undefined &&
+      destinationConnectionId !== sourceConnectionId
+    )
+      throw new AppError(
+        'FORK_PLAN_CONFLICT',
+        'A workspace fork must keep the source run connection; use a context handoff to change connections',
+      )
     if (confidential?.requested === true && kind !== 'workspace')
       throw new AppError('INVALID_FORK_PLAN', 'Confidential placement requires a workspace fork')
     const context = portablePlanForState(state, {
@@ -321,6 +405,14 @@ export class ConversationBranches {
       sourceEnvironmentId,
       confidential?.requested === true,
     )
+    const destinationWorkspaceRequest = snapshotWorkspaceRequest(
+      input.workspaceRequest ??
+        (destinationConnection?.kind === 'cli-bridge'
+          ? state.workspace === null
+            ? undefined
+            : { cwd: { base: 'host', path: state.workspace } }
+          : this.#host.workspaceRequest?.()),
+    )
     const portableContextPlan =
       kind === 'cross-runner'
         ? canonicalPortableContextPlanForState(state, {
@@ -328,13 +420,18 @@ export class ConversationBranches {
             branchId: source.branch.id,
             ...(source.through === undefined ? {} : { throughMessageId: source.through.id }),
             destinationRunner: requestedRunner ?? 'unknown-runner',
-            ...(input.destinationProvider === undefined
-              ? {}
-              : { destinationProvider: input.destinationProvider }),
+            ...(destinationProvider === undefined ? {} : { destinationProvider }),
             ...(targetProfile.model?.default === undefined
               ? {}
               : { destinationModel: targetProfile.model.default }),
             profileDigest: canonicalAgentProfileDigestHex(targetProfile),
+            ...(destinationWorkspaceRequest?.snapshot === undefined
+              ? {}
+              : {
+                  workspaceSnapshotDigest: agentWorkspaceSnapshotRefDigest(
+                    destinationWorkspaceRequest.snapshot,
+                  ),
+                }),
           })
         : undefined
     const contextPort = contextTransferPort(this.#host.execution)
@@ -359,17 +456,27 @@ export class ConversationBranches {
       ...(source.through === undefined ? {} : { throughMessageId: source.through.id }),
       destinationBranchId,
       context,
-      ...(portableContextPlan === undefined ? {} : { portableContextPlan }),
+      ...(portableContextPlan === undefined
+        ? {}
+        : {
+            portableContextPlan,
+            destinationProfile: targetProfile,
+            ...(destinationWorkspaceRequest === undefined ? {} : { destinationWorkspaceRequest }),
+          }),
       ...(sourceRun === undefined ? {} : { sourceRunId: sourceRun.id }),
       ...(sourceEnvironmentId === undefined ? {} : { sourceEnvironmentId }),
-      ...(portableContextPlan === undefined
+      ...(portableContextPlan?.destination.environmentId === undefined
         ? {}
         : { destinationEnvironmentId: portableContextPlan.destination.environmentId }),
       ...(input.placement === undefined ? {} : { placement: input.placement }),
       ...(input.text === undefined ? {} : { text: input.text }),
-      ...(input.destinationProvider === undefined
+      ...(destinationProvider === undefined ? {} : { destinationProvider }),
+      ...(destinationConnection === undefined
         ? {}
-        : { destinationProvider: input.destinationProvider }),
+        : {
+            destinationConnectionId: destinationConnection.id,
+            destinationConnectionDigest: connectionExecutionDigest(destinationConnection),
+          }),
       ...(confidential === undefined ? {} : { confidential }),
       environment:
         kind === 'conversation'
@@ -423,7 +530,14 @@ export class ConversationBranches {
         )
       return branchForOperation(this.#host.state(), existing)
     }
-    const plan = this.plan(input)
+    // Pending handoffs already passed admission preflight. Reconstruct their
+    // exact accepted intent before read-only lookup; current fresh admission
+    // capabilities cannot decide whether the original operation was accepted.
+    const pendingPlan =
+      existing?.kind === 'conversation-fork' && existing.status === 'pending'
+        ? this.#plan(input)
+        : undefined
+    const plan = pendingPlan?.kind === 'cross-runner' ? pendingPlan : await this.plan(input)
     if (plan.digest !== input.planDigest) {
       throw new AppError(
         'FORK_PLAN_CONFLICT',
@@ -500,6 +614,7 @@ function branchRequest(
     conversationId: source.conversation.id,
     branchId: source.branch.id,
     throughMessageId: source.through?.id ?? null,
+    ...(input.connectionId === undefined ? {} : { connectionId: input.connectionId }),
     text: input.text ?? '',
     runner: input.runner ?? source.branch.overrides.runner ?? null,
     model: input.model ?? source.branch.overrides.model ?? null,

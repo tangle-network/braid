@@ -5,6 +5,7 @@ import {
   isSafeTokenUsageRecord,
 } from '../../domain/bounded-structured.js'
 import { canonicalJson } from '../../domain/canonical.js'
+import { persistedContextTransferEventRequest } from '../../domain/portable-context-persistence.js'
 import type { JsonValue } from '../../ports/storage.js'
 import { isJsonValue } from '../../ports/storage.js'
 import { StorageError } from './sqlite-errors.js'
@@ -180,6 +181,16 @@ export function assertPersistablePayload(value: JsonValue): void {
   }
 
   rejectTypedSecretAnswers(value)
+  const canonicalTransfer =
+    value !== null && typeof value === 'object' && !Array.isArray(value)
+      ? persistedContextTransferEventRequest(
+          (value as Readonly<Record<string, JsonValue>>).__braidEvent,
+        )
+      : undefined
+  const canonicalPlanPath =
+    canonicalTransfer === undefined
+      ? undefined
+      : `$.__braidEvent.${canonicalTransfer.path.join('.')}.plan`
 
   function visit(node: JsonValue, path: string, secretDesignated = false): void {
     if (Array.isArray(node)) {
@@ -203,6 +214,13 @@ export function assertPersistablePayload(value: JsonValue): void {
         (isSafeNumericTelemetryField(key, child) ||
           isSafeBooleanTelemetryField(key, child) ||
           isSafeTokenUsageRecord(key, child))
+      const isCanonicalTokenEstimate =
+        !containsSecret &&
+        canonicalTransfer !== undefined &&
+        path === canonicalPlanPath &&
+        key === 'estimatedTokens' &&
+        typeof child === 'number' &&
+        child === canonicalTransfer.request.plan.estimatedTokens
       const isSafeCapability = !containsSecret && isSafeInteractionCapabilityFlag(path, key, child)
       const isSafeSecretMetadata = !containsSecret && isSafeEnvironmentSecretNames(path, key, child)
       if (
@@ -210,6 +228,7 @@ export function assertPersistablePayload(value: JsonValue): void {
         !SAFE_REFERENCE_SUFFIX.test(key) &&
         !isSecretMarker &&
         !isSafeTelemetry &&
+        !isCanonicalTokenEstimate &&
         !isSafeCapability &&
         !isSafeSecretMetadata
       ) {

@@ -10,20 +10,22 @@ When a current package blocks a real Braid flow, Braid records the unavailable a
 
 ## Evidence baseline
 
-The following published versions were resolved and their installed manifests and declarations inspected on 2026-10-08.
+The following published versions were resolved and their installed manifests and declarations inspected on 2026-10-14.
 
 | Package | Installed version | Braid boundary |
 | --- | ---: | --- |
-| [`@tangle-network/agent-interface`](https://github.com/tangle-network/agent-sdk/tree/main/packages/agent-interface) | `3.1.1` | Canonical profile, capabilities, environment, stream, portable context, native continuation, interaction, and explicitly based workspace contracts |
-| [`@tangle-network/agent-runtime`](https://github.com/tangle-network/agent-runtime) | `0.312.0` | Sole execution layer; exact executor, retained-run, interactive-run, environment-provider, and terminal-monitor exports |
-| [`@tangle-network/agent-eval`](https://github.com/tangle-network/agent-eval) | `0.209.1` | Run records, judges, trace analysts, comparisons, and feedback trajectories |
-| `@tangle-network/agent-provider-cli-bridge` | `1.1.2` | CLI Bridge environment adapter with retained sessions, live streaming, replay, retry-safe turns, exact native session close, durable interaction response, explicit cancel, and host cwd support |
-| `@tangle-network/agent-provider-tangle` | `3.6.6` | Tangle environment adapter with retained control, interaction response, workspace branching, interactive-agent operations, and stopped-environment recovery |
-| `@tangle-network/sandbox` | `0.60.27` | Tangle cloud client used by the provider, including keyed checkpoint/fork and interactive-agent operations |
+| [`@tangle-network/agent-interface`](https://github.com/tangle-network/agent-sdk/tree/main/packages/agent-interface) | `5.2.1` | Canonical profile, capabilities, environment, stream, portable context, selected-context transfer, native continuation, interaction, workspace snapshot, and explicitly based workspace contracts |
+| [`@tangle-network/agent-runtime`](https://github.com/tangle-network/agent-runtime) | `0.319.8` | Sole execution layer; exact executor, retained-run (including `contextTransferReceipt` attachment), interactive-run, environment-provider, profile materialization, and terminal-monitor exports |
+| [`@tangle-network/agent-eval`](https://github.com/tangle-network/agent-eval) | `0.213.0` | Run records, judges, trace analysts, comparisons, and feedback trajectories |
+| `@tangle-network/agent-provider-cli-bridge` | `2.0.0` | CLI Bridge environment adapter with retained sessions, live streaming, replay, retry-safe turns, exact native session close, durable interaction response, explicit cancel, and host cwd support |
+| `@tangle-network/agent-provider-tangle` | `4.0.0` | Tangle environment adapter with retained control, interaction response, workspace branching, interactive-agent operations, and stopped-environment recovery |
+| `@tangle-network/agent-provider-daytona` | `0.6.0` | Bundled registered-provider adapter; its exec-only contract refuses agent execution and context transfer |
+| `@tangle-network/sandbox` | `0.60.51` | Tangle cloud client used by the provider, including keyed checkpoint/fork and interactive-agent operations |
 
-Runtime declares peers `agent-eval >=0.209.1 <0.210.0`, `agent-interface ^3.1.1`, and `sandbox >=0.58.4 <0.61.0`.
-The Tangle provider requires Sandbox `>=0.60.27 <1.0.0` and depends on Interface `^3.0.0`.
-The CLI Bridge provider also depends on Interface `^3.0.0`.
+Runtime declares peers `agent-eval >=0.213.0 <0.214.0`, `agent-interface ^5.2.1`, and `sandbox >=0.58.4 <0.61.0`.
+The Tangle provider requires Sandbox `>=0.60.27 <1.0.0` and depends on Interface `^5.0.0`.
+The CLI Bridge and Daytona providers also depend on Interface `^5.0.0`; Daytona's `@daytonaio/sdk` peer is optional and not installed.
+Sandbox still depends on Interface `^4.0.0`, so the lockfile carries that copy beside `5.2.1`.
 The exact installed cohort satisfies these ranges, and `pnpm peers check` reports no peer issues.
 The lockfile pins the registry integrity for every installed package.
 
@@ -289,6 +291,10 @@ An `unknown` effect means the request awaits acknowledgement and never becomes l
 Runtime stores each worker's exact interactive binding outside its presentation snapshot.
 
 Braid passes the supervisor state directory, exact worker identifier, and selected provider source to Runtime `attachWorker`.
+
+Published Runtime `0.319.8` binds a worker to its provider name, not to the saved connection that launched it.
+Braid therefore attaches workers only through the active Tangle connection.
+Selecting a worker's saved connection from a Runtime launch-provenance receipt waits for a published Runtime that records that connection in the worker binding.
 
 Runtime reconstructs the retained process and returns an opaque handle or a named unavailable reason.
 
@@ -795,3 +801,13 @@ The release manifest records package names, versions, integrity hashes, source c
 | UP-14 | Checkpoint and environment-fork retries are idempotent by key and request digest, survive process death before local commit through lookup, reject key conflicts, and expose confirmed cleanup against a real Tangle sandbox. |
 
 No Braid work item that depends on an upstream check is complete until that check passes against the published artifact or the exact release candidate tarball that will be published.
+
+Connection routing retains an immutable execution port for each admitted run.
+The route uses the saved connection ID, never the provider name alone.
+Run recovery carries the admitted connection and its public configuration digest, plus the canonical selected-context request and receipt when present.
+A transferred first run uses Runtime's retained start with `contextTransferReceipt` and the exact request on `turn.contextTransfer`.
+Runtime attaches the provider-owned receipt environment through its authoritative lookup; Braid does not implement `create` as `get` or allocate a replacement environment.
+
+A pending handoff reconstructs its original plan and verifies the retained operation digest before receipt lookup.
+Changes to fresh-transfer capabilities do not prevent recovery of that operation.
+New handoffs still pass current capability preflight, and a pending retry cannot change its accepted plan, acceptance, destination connection, or request identity.

@@ -1,13 +1,15 @@
-import { type WorkspaceRequest, WorkspaceRequestSchema } from '@tangle-network/agent-interface'
+import {
+  type AgentWorkspaceSnapshotRef,
+  type WorkspaceRequest,
+  WorkspaceRequestSchema,
+} from '@tangle-network/agent-interface'
 import { canonicalDigest } from './canonical.js'
 import { assertPublicUrl } from './invariants-base.js'
 
 export type { WorkspaceRequest }
 
 /** Validate and snapshot the shared workspace request. */
-export function snapshotWorkspaceRequest(
-  request: WorkspaceRequest | undefined,
-): Readonly<WorkspaceRequest> | undefined {
+export function snapshotWorkspaceRequest(request: unknown): Readonly<WorkspaceRequest> | undefined {
   if (request === undefined) return undefined
   const parsed = WorkspaceRequestSchema.parse(structuredClone(request))
   if (parsed.providerOptions !== undefined && Object.keys(parsed.providerOptions).length > 0) {
@@ -19,6 +21,7 @@ export function snapshotWorkspaceRequest(
     throw new Error('Workspace checkpoint restore is not supported by Braid yet')
   }
   if (
+    parsed.snapshot === undefined &&
     parsed.environment === undefined &&
     parsed.image === undefined &&
     parsed.repoUrl === undefined &&
@@ -33,6 +36,7 @@ export function snapshotWorkspaceRequest(
     })
   }
   const snapshot: WorkspaceRequest = {
+    ...(parsed.snapshot === undefined ? {} : { snapshot: exactSnapshotRef(parsed.snapshot) }),
     ...(parsed.environment === undefined ? {} : { environment: parsed.environment }),
     ...(parsed.image === undefined ? {} : { image: parsed.image }),
     ...(parsed.repoUrl === undefined ? {} : { repoUrl: parsed.repoUrl }),
@@ -40,6 +44,15 @@ export function snapshotWorkspaceRequest(
     ...(parsed.cwd === undefined ? {} : { cwd: parsed.cwd }),
   }
   return freezeDeep(snapshot)
+}
+
+/**
+ * The schema types absent optional members as `T | undefined` and keeps an
+ * explicit `undefined` key. Dropping those keys makes the validated JSON value
+ * the canonical reference, so equal requests always have one digest.
+ */
+function exactSnapshotRef(snapshot: unknown): AgentWorkspaceSnapshotRef {
+  return JSON.parse(JSON.stringify(snapshot)) as AgentWorkspaceSnapshotRef
 }
 
 /** Return the exact canonical identity of a workspace request. */

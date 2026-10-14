@@ -1,0 +1,12 @@
+ review connection
+Registered provider · Daytona capture
+endpoint https://daytona.invalid
+account capture-team
+region us
+credentials separate · no values acce…
+→ Continue
+  ← edit fields
+  ← change kind
+  Cancel
+ ↑↓ choose · enter continue / back ·
+ ←/esc cancel

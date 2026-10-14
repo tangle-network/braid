@@ -3,6 +3,7 @@ import { snapshotAgentProfile } from '@tangle-network/agent-interface/profile-sn
 import type { BraidState } from '../domain/state.js'
 import type { RunExecutionSnapshot, SendInput } from './application-types.js'
 import { continuationSessionFor } from './run-continuation.js'
+import { firstTurnHandoffContext } from './run-handoff-context.js'
 import { resolveConversationTarget } from './run-targets.js'
 import { snapshotWorkspaceRequest, type WorkspaceRequest } from './workspace-request.js'
 
@@ -21,11 +22,30 @@ export function snapshotRunExecution(
     conversationId: input.conversationId ?? original?.conversationId ?? state.conversationId,
     branchId: input.branchId ?? original?.branchId ?? state.branchId,
   }
+  const handoff =
+    original === undefined
+      ? firstTurnHandoffContext(state, input, target.branchId, profile, connectionId)
+      : undefined
+  const transferRequest =
+    input.portableContextTransferRequest ??
+    original?.requested.portableContextTransferRequest ??
+    handoff?.request
+  const transferReceipt =
+    input.portableContextTransferReceipt ??
+    original?.requested.portableContextTransferReceipt ??
+    handoff?.receipt
   const workspaceSnapshot = snapshotWorkspaceRequest(
-    original?.requested.workspaceRequest ?? workspaceRequest,
+    original?.requested.workspaceRequest ??
+      input.workspaceRequest ??
+      handoff?.request.workspace ??
+      workspaceRequest,
   )
   const workspaceRoot = original === undefined ? state.workspace : original.requested.workspaceRoot
   const selectedConnection = original === undefined ? connectionId : original.requested.connectionId
+  const expectedConnectionDigest =
+    input.expectedConnectionDigest ??
+    original?.requested.expectedConnectionDigest ??
+    handoff?.connectionDigest
   const selectedMode = input.mode ?? (original === undefined ? mode : original.requested.mode)
   const nativeProof = input.nativeContextBoundaryProof ?? original?.nativeContextBoundaryProof
   const snapshot = {
@@ -35,19 +55,21 @@ export function snapshotRunExecution(
     profile: snapshotAgentProfile(profile),
     ...(selectedMode === undefined ? {} : { mode: selectedMode }),
     ...(selectedConnection === undefined ? {} : { connectionId: selectedConnection }),
+    ...(expectedConnectionDigest === undefined ? {} : { expectedConnectionDigest }),
     ...(workspaceSnapshot === undefined ? {} : { workspaceRequest: workspaceSnapshot }),
     ...(workspaceRoot == null ? {} : { workspaceRoot }),
     ...(input.sessionId === undefined
       ? (() => {
           const sessionId =
-            original === undefined
+            transferReceipt?.sessionId ??
+            (original === undefined
               ? continuationSessionFor({
                   state,
                   ...target,
                   profile,
                   ...(connectionId === undefined ? {} : { connectionId }),
                 })
-              : original.requestedSessionId
+              : original.requestedSessionId)
           return sessionId === undefined
             ? {}
             : { sessionId, sessionSource: 'continuation' as const }
@@ -58,12 +80,8 @@ export function snapshotRunExecution(
     ...(input.portableContextPlan === undefined
       ? {}
       : { portableContextPlan: input.portableContextPlan }),
-    ...(input.portableContextTransferRequest === undefined
-      ? {}
-      : { portableContextTransferRequest: input.portableContextTransferRequest }),
-    ...(input.portableContextTransferReceipt === undefined
-      ? {}
-      : { portableContextTransferReceipt: input.portableContextTransferReceipt }),
+    ...(transferRequest === undefined ? {} : { portableContextTransferRequest: transferRequest }),
+    ...(transferReceipt === undefined ? {} : { portableContextTransferReceipt: transferReceipt }),
     ...(nativeProof === undefined ? {} : { nativeContextBoundaryProof: nativeProof }),
   }
   return freezeDeep(structuredClone(snapshot))

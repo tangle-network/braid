@@ -3,10 +3,15 @@ import type {
   AgentProfile,
   HarnessType,
 } from '@tangle-network/agent-interface'
-import { canonicalAgentProfileDigest } from '@tangle-network/agent-interface'
+import {
+  canonicalAgentProfileDigest,
+  contextTransferResultMatchesRequest,
+} from '@tangle-network/agent-interface'
 import type { CliBridgeProvider } from '@tangle-network/agent-provider-cli-bridge'
 import { ConnectionError } from '../../app/connection-errors.js'
 import type { ConnectionId } from '../../domain/ids.js'
+import { canonicalDigest } from '../../domain/canonical.js'
+import { snapshotWorkspaceRequest } from '../../app/workspace-request.js'
 import type { ExecuteTurnInput } from '../../ports/execution.js'
 import { snapHarnessToModel } from '@tangle-network/agent-interface/harness-capabilities'
 import {
@@ -49,6 +54,7 @@ export interface PreparedCliBridgeConnection {
   readonly provider: CliBridgeProvider
   readonly capabilities: AgentEnvironmentCapabilities
   readonly contextTransfer?: ExecuteTurnInput['contextTransfer']
+  readonly contextTransferReceipt?: ExecuteTurnInput['contextTransferReceipt']
   readonly observation: NonNullable<PreparedExecution['observation']>
   readonly materializationReceipt: Readonly<Record<string, unknown>>
 }
@@ -85,9 +91,26 @@ export async function prepareCliBridgeConnection(
     )
   }
 
-  const providerSessionId = input.sessionId ?? stableProviderId('session-braid-', input.runId)
+  const providerSessionId =
+    input.contextTransferReceipt?.sessionId ??
+    input.sessionId ??
+    stableProviderId('session-braid-', input.runId)
   const route = materializeBridgeModelRoute(runner, model, profile.model?.provider)
   const workspace = requiredWorkspaceCwd(input.workspaceRoot, options.workspaceCwd)
+  const workspaceRequest = snapshotWorkspaceRequest(input.workspaceRequest)
+  const hostWorkspace = { cwd: { base: 'host', path: workspace } }
+  if (
+    (workspaceRequest !== undefined &&
+      canonicalDigest(workspaceRequest) !== canonicalDigest(hostWorkspace)) ||
+    (input.contextTransfer !== undefined &&
+      canonicalDigest(input.contextTransfer.workspace ?? null) !== canonicalDigest(hostWorkspace))
+  ) {
+    throw new ConnectionError(
+      'CONNECTION_UNSUPPORTED',
+      'CLI Bridge requires the exact host workspace accepted for this run',
+      { connectionId },
+    )
+  }
   const preparedProvider = await prepareCliBridgeProviderRoute(
     options,
     connectionId,
@@ -99,6 +122,8 @@ export async function prepareCliBridgeConnection(
   const createdAt = new Date().toISOString()
   const { provider, capabilities } = preparedProvider
   assertContextTransferDestination(input, provider.name, profile, runner, model)
+  if (input.contextTransfer !== undefined && capabilities.contextTransfer?.attach !== true)
+    throw new Error('The selected CLI Bridge deployment cannot attach an accepted context transfer')
   return freezeExecution({
     profile,
     model,
@@ -114,6 +139,9 @@ export async function prepareCliBridgeConnection(
     provider,
     capabilities,
     ...(input.contextTransfer === undefined ? {} : { contextTransfer: input.contextTransfer }),
+    ...(input.contextTransferReceipt === undefined
+      ? {}
+      : { contextTransferReceipt: input.contextTransferReceipt }),
     providerSessionId,
     observation: staticExecutionObservation({
       kind: bridgeLocation.location === 'local' ? 'local-process' : 'remote-service',
@@ -141,7 +169,8 @@ export async function prepareCliBridgeConnection(
       portableContext:
         capabilities.contextTransfer?.freshSession === true &&
         capabilities.contextTransfer.requestIdempotency === true &&
-        capabilities.contextTransfer.lookup === true
+        capabilities.contextTransfer.lookup === true &&
+        capabilities.contextTransfer.attach === true
           ? 'provider-owned'
           : 'unavailable',
       workspace,
@@ -207,14 +236,21 @@ function assertContextTransferDestination(
   model: string,
 ): void {
   const transfer = input.contextTransfer
-  if (transfer === undefined) return
+  const receipt = input.contextTransferReceipt
+  if (transfer === undefined) {
+    if (receipt !== undefined)
+      throw new Error('A context transfer receipt requires its accepted request')
+    return
+  }
+  if (receipt === undefined || !contextTransferResultMatchesRequest(transfer, receipt))
+    throw new Error('The transferred CLI Bridge session requires its exact accepted receipt')
   const destination = transfer.plan.destination
   if (
     destination.provider !== providerName ||
     destination.runner !== runner ||
-    destination.model !== model ||
+    (destination.model !== undefined && destination.model !== model) ||
     destination.profileDigest !== canonicalAgentProfileDigest(profile) ||
-    destination.sessionId !== input.sessionId
+    (input.sessionId !== undefined && destination.sessionId !== input.sessionId)
   ) {
     throw new Error(
       'The portable context destination does not match the selected provider, runner, model, profile, or session',

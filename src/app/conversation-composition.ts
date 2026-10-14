@@ -15,6 +15,9 @@ export interface ConversationCompositionInput {
     action: () => Promise<T>,
   ) => Promise<T>
   readonly profile?: () => Readonly<import('@tangle-network/agent-interface').AgentProfile>
+  readonly workspaceRequest?: () =>
+    | Readonly<import('@tangle-network/agent-interface').WorkspaceRequest>
+    | undefined
   readonly execution?: import('../ports/execution.js').ExecutionPort
   readonly send?: (input: SendInput) => import('./application-types.js').SendReceipt
   readonly storage?: Pick<StoragePort, 'destroyConversation'>
@@ -29,6 +32,7 @@ export function createConversationActions(
     commit: input.commit,
     coordinate: input.coordinate,
     ...(input.profile === undefined ? {} : { profile: input.profile }),
+    ...(input.workspaceRequest === undefined ? {} : { workspaceRequest: input.workspaceRequest }),
     ...(input.execution === undefined ? {} : { execution: input.execution }),
     ...(input.send === undefined ? {} : { send: input.send }),
     ...(input.storage === undefined

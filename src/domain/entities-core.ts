@@ -89,7 +89,7 @@ export interface ProfileSnapshotRecord {
   readonly createdAt: IsoDateTime
 }
 
-export type ConnectionKind = 'cli-bridge' | 'tangle-inference' | 'tangle-sandbox'
+export type ConnectionKind = 'cli-bridge' | 'tangle-inference' | 'tangle-sandbox' | 'agent-provider'
 
 /**
  * Non-secret trust constraints for a confidential Tangle connection.
@@ -168,6 +168,8 @@ export const MAX_CONFIDENTIAL_ATTESTATION_MAX_AGE_SECONDS = 86_400
  * copied into the durable product state.
  */
 export interface ConnectionTransportOptions {
+  /** Exact name in the connection-scoped Runtime provider registry. */
+  readonly provider?: string
   readonly transport?: 'local' | 'https' | 'websocket' | 'stdio'
   readonly endpoint?: string
   readonly region?: string

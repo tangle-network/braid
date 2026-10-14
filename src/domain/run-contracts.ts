@@ -1,6 +1,8 @@
 import type {
   AgentEnvironmentCapabilities,
   AgentProfile,
+  ContextTransferRequest as CanonicalContextTransferRequest,
+  ContextTransferReceipt as CanonicalContextTransferReceipt,
   NativeContextBoundaryProof,
   RequestedInteractions,
   WorkspaceRequest,
@@ -136,6 +138,7 @@ export interface RunAdmissionReceipt {
     readonly text: string
     readonly profile: Readonly<AgentProfile>
     readonly connectionId?: string
+    readonly expectedConnectionDigest?: string
     readonly mode?: string
     readonly workspaceRequest?: Readonly<WorkspaceRequest>
     /** Local Braid checkout root captured with the admission request. */
@@ -144,6 +147,8 @@ export interface RunAdmissionReceipt {
     readonly model?: string
     readonly runner?: string
     readonly contextPlanDigest?: string
+    readonly portableContextTransferRequest?: CanonicalContextTransferRequest
+    readonly portableContextTransferReceipt?: CanonicalContextTransferReceipt
   }
   readonly capabilities: RunCapabilities
   readonly provider?: string

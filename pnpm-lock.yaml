@@ -18,23 +18,26 @@ importers:
         specifier: 2.1.0
         version: 2.1.0
       '@tangle-network/agent-eval':
-        specifier: 0.209.1
-        version: 0.209.1
+        specifier: 0.213.0
+        version: 0.213.0
       '@tangle-network/agent-interface':
-        specifier: 3.1.1
-        version: 3.1.1
+        specifier: 5.2.1
+        version: 5.2.1
       '@tangle-network/agent-provider-cli-bridge':
-        specifier: 1.1.2
-        version: 1.1.2
+        specifier: 2.0.0
+        version: 2.0.0
+      '@tangle-network/agent-provider-daytona':
+        specifier: 0.6.0
+        version: 0.6.0
       '@tangle-network/agent-provider-tangle':
-        specifier: 3.6.6
-        version: 3.6.6(@tangle-network/sandbox@0.60.27)
+        specifier: 4.0.0
+        version: 4.0.0(@tangle-network/sandbox@0.60.51)
       '@tangle-network/agent-runtime':
-        specifier: 0.312.0
-        version: 0.312.0(@tangle-network/agent-eval@0.209.1)(@tangle-network/agent-interface@3.1.1)(@tangle-network/sandbox@0.60.27)
+        specifier: 0.319.8
+        version: 0.319.8(@tangle-network/agent-eval@0.213.0)(@tangle-network/agent-interface@5.2.1)(@tangle-network/sandbox@0.60.51)
       '@tangle-network/sandbox':
-        specifier: 0.60.27
-        version: 0.60.27
+        specifier: 0.60.51
+        version: 0.60.51
       '@tangle-network/tcloud-attestation':
         specifier: 0.1.1
         version: 0.1.1
@@ -176,6 +179,10 @@ packages:
   '@dataiku/uv@0.12.0':
     resolution: {integrity: sha512-GDjOPA1l3IBxRml8/3j/v4HD4mDbEOHYqYMfjMW8pISpOrq73o1QLGVWw6PC0gYV7ovO5MVAq1Brab56MS5WFQ==}
     hasBin: true
+
+  '@earendil-works/pi-codemode@1.0.4':
+    resolution: {integrity: sha512-e198pjBsdEQJ/RCjJ9ZeYIjRaQYWUgtoZbPCmJ57auuOsiRsBXeSZ1aiWtTah0/7gx97WIOD1XqHvgRU0gOXtg==}
+    engines: {node: '>=22.19.0'}
 
   '@earendil-works/pi-tui@1.1.0':
     resolution: {integrity: sha512-v7wkS0y2ErZvZkSfemqd9RrBZJ5x6p8Ujsv7NdJj01IXJyFM0kNL6rMdcKcvTe7EVTd6ugvDB9VPZSoaBF9QxQ==}
@@ -528,58 +535,85 @@ packages:
     resolution: {integrity: sha512-X5XaVWZIBCT7HHZGm5I7ZQXDwLG+bGXuSrMQAW+7Zvl87h1kmc1ZB1VSRJcpUfoUrGQp4Fkoxm5kZ+Ms+aW+eA==}
     engines: {node: '>= 20.19.0'}
 
-  '@tangle-network/agent-core@0.10.3':
-    resolution: {integrity: sha512-PMnibf/yXFlMjIpCwF8jzJJdfFp3Wm/eIj6n7tLZ5vBIB4tsinyk+iOBQd85K4ASYbU1qX/kGbz+jN5/mxaBNA==}
+  '@tangle-network/agent-core@0.11.0':
+    resolution: {integrity: sha512-INAox1kAIZ3I4bMqIK+A3Qh5Nsr0gYtC0JX/WJhIgwJGbtXJlEkkJaWWjgwlgcbsU7CkRRBXpXa/Z+jujiIwsQ==}
     peerDependencies:
       '@modelcontextprotocol/sdk': ^1.30.0
     peerDependenciesMeta:
       '@modelcontextprotocol/sdk':
         optional: true
 
-  '@tangle-network/agent-eval@0.209.1':
-    resolution: {integrity: sha512-xRB/xHkWyx/RbSXOVAzD6RSh4A+aZMTwfhviCOCiNRdWsRxqYFpNHdOfKac0uzzKBkVvK9sxeVEq4qCMhB2tsQ==}
+  '@tangle-network/agent-core@0.12.0':
+    resolution: {integrity: sha512-Ez8I2Fuznm8i8OLQyEJOsT0PiYv5H0WpRh6HJwvlYRTFZWEKvQmAUzhf2FvbJN753XW1N8zwCdzkFp3BF7wXzw==}
+    peerDependencies:
+      '@modelcontextprotocol/sdk': ^1.30.0
+    peerDependenciesMeta:
+      '@modelcontextprotocol/sdk':
+        optional: true
+
+  '@tangle-network/agent-eval@0.213.0':
+    resolution: {integrity: sha512-K6jvHzuMRXas9VTeoYX1uJKCuSVkQexBS1ZamDdHFXjICfdUVmU2ZBQPuOVWe41drtXh6aEt/nprL8TiDCQjRg==}
     engines: {node: '>=20.19.0'}
     hasBin: true
 
-  '@tangle-network/agent-interface@3.1.1':
-    resolution: {integrity: sha512-53YmcHkkip2lBZtQKuk/eQrZvsv6uxS7S03787X3jKVRdFOx1OXzVF0oSo/1Du69+g0QAx1xJl7zAuFJ6soifA==}
+  '@tangle-network/agent-interface@4.0.0':
+    resolution: {integrity: sha512-pPqvAogdW5rSLZqQ5g+0xxPMGEoLTEPwkb5tF0b8kj7i6gxWLhpqNxiV0qx+jHWnVzvzkbZjFB1P9IeUx0fogQ==}
 
-  '@tangle-network/agent-knowledge@20.0.0':
-    resolution: {integrity: sha512-a6TAZXK2NlknsAKPbgCoiHdq0txV2CAN3mXBuHQPKsi5PyKEG/OVm/gg8+7HyVW+dY7garI0r+D13wt0u5si8g==}
+  '@tangle-network/agent-interface@5.2.0':
+    resolution: {integrity: sha512-X5TCuk3N1tXwlRZIZOCMQP/DGxNcuC/AAmDxvYrsJNlkyDLHegf/kQej294Jtv6h65bGD/cARgcNvRgoplz1lQ==}
+
+  '@tangle-network/agent-interface@5.2.1':
+    resolution: {integrity: sha512-JSMUrb+lGD/1aoBMK24bi88HtZkM4Wd2HpVfpNwjTLUDwAoHxV4nYSp7WCne8biFphIEsD7nE5+0APOfx1oauw==}
+
+  '@tangle-network/agent-knowledge@22.0.1':
+    resolution: {integrity: sha512-yHrb073dXoATW5n6YrulacbKzXh0DRW6NQvjulu7DY60Fnb2YioFlsw1uNoje88roa7gfzo7+xg9WbMc4GjvVg==}
     engines: {node: '>=22.12.0'}
     hasBin: true
     peerDependencies:
-      '@tangle-network/agent-eval': '>=0.209.1 <0.210.0'
-      '@tangle-network/agent-interface': ^3.0.0
+      '@tangle-network/agent-eval': '>=0.213.0 <0.214.0'
+      '@tangle-network/agent-interface': ^5.0.0
 
-  '@tangle-network/agent-profile-materialize@0.21.0':
-    resolution: {integrity: sha512-jWUWBswQUDZQ+ukiAj1UROvTGvZbXWfpqKSyEiQsaHLhv1+aPzYg9jLLcoynyMm+OkbPm4IoLPkQqpa6KeGC9Q==}
+  '@tangle-network/agent-profile-materialize@0.25.2':
+    resolution: {integrity: sha512-W0stC2dOyDEg+ZlcNAvjlq8Np2VIdt5kirRgJYffyn5tYcpOjtPU6FvPK6C+7XMOHfzR2RtHFmI8Vtx4yccssA==}
     peerDependencies:
-      '@tangle-network/agent-interface': ^3.0.0
+      '@tangle-network/agent-interface': ^3.0.0 || ^4.0.0 || ^5.0.0
 
-  '@tangle-network/agent-provider-cli-bridge@1.1.2':
-    resolution: {integrity: sha512-qwyTTPHUTbAz+jc8M+R5ZkOWwBLgXC6l+qdff8sZte1b2GSpC2Xg4jtabdNpuj5+4lPZBE7SEptaRwm1B+FmhQ==}
+  '@tangle-network/agent-provider-cli-bridge@2.0.0':
+    resolution: {integrity: sha512-Qu82wxPv0wxpZ4/Gs2iCYfTJCKkHyBcqhWumIHKJ0yrnhsgmUR5XtV326WcG/+Ujoyvs9m9aUN+aCenvhykvdQ==}
     engines: {node: '>=22.19.0'}
 
-  '@tangle-network/agent-provider-tangle@3.6.6':
-    resolution: {integrity: sha512-KFFoPW8U6wjRgXb1rykwEV9y/hbLGGkodkgXQUKqlXCkgfPAPgWMDpp7M5AXEhTVqpPNpwy3lYO6jJOYCm8a8Q==}
+  '@tangle-network/agent-provider-daytona@0.6.0':
+    resolution: {integrity: sha512-e0SxGaYo/z6wv/gDpqqTJIoe6oRrXdBTNKQ8o0hcTXd86haAHff4Dt02VNKnI/2Z3saav0Oc1b9fOGld5zeNgg==}
+    peerDependencies:
+      '@daytonaio/sdk': '>=0.192.0 <1.0.0'
+    peerDependenciesMeta:
+      '@daytonaio/sdk':
+        optional: true
+
+  '@tangle-network/agent-provider-tangle@4.0.0':
+    resolution: {integrity: sha512-YeCfOPfGZVhuZe2gmkOnq3M9Q8jD3xxNLL0NTZxP6282f604pAONjU/vgIcUj0tBAoSe/vACm6oTNIrd/avAiw==}
     peerDependencies:
       '@tangle-network/sandbox': '>=0.60.27 <1.0.0'
 
-  '@tangle-network/agent-runtime@0.312.0':
-    resolution: {integrity: sha512-EBAU1m0BDGqmpABwREh9GDp1531k1oarQhfSWb7/33jkoSbVUKxhPEtCkyul5DdNdI/ia3LYmWLvEOBv3wYlNw==}
-    engines: {node: '>=22.13.0'}
+  '@tangle-network/agent-runtime@0.319.8':
+    resolution: {integrity: sha512-wxorL+mbRrV2OhyLPPSHdB7UjCINax2jGDDxTjpMVq4LTzuARPFQZDs7r36ewXl8YbuDfnneMYdTyptx5I551w==}
+    engines: {node: '>=22.19.0'}
     hasBin: true
     peerDependencies:
-      '@tangle-network/agent-eval': '>=0.209.1 <0.210.0'
-      '@tangle-network/agent-interface': ^3.1.1
+      '@tangle-network/agent-eval': '>=0.213.0 <0.214.0'
+      '@tangle-network/agent-interface': ^5.2.1
       '@tangle-network/sandbox': '>=0.58.4 <0.61.0'
 
   '@tangle-network/agent-trace-contract@2.0.0':
     resolution: {integrity: sha512-lq2hp3gg8FsNVA3yZAyuj3NvL57pJTsI6sUF8cYwVsUXA8QZlrO78SqRPRslWxf/sMFHxXhusOuDQ3YxVv12bw==}
 
-  '@tangle-network/sandbox@0.60.27':
-    resolution: {integrity: sha512-kQ+NwN2pGMLc1lSSO447F6GnUG1G6auCj6Wp076RKuYqFdd9eIY5LuSoWrbz4NPHFxjJ5avehuhCu+Pka09aEA==}
+  '@tangle-network/harness-sessions@0.1.1':
+    resolution: {integrity: sha512-NccSUO+pj9dmkx0uAB5C33gvTP52pjk3U7iZtyGoOzKPPj2s0JCbu/zRbo93G8hU6w0Xet79WRWbPEbAlFoeWQ==}
+    engines: {node: '>=22.13.0'}
+    hasBin: true
+
+  '@tangle-network/sandbox@0.60.51':
+    resolution: {integrity: sha512-+YLc4DAEObDuk29n4D/MyMzQtmprDTr0LvBaHC0M9ts14zwYEBlP7fzsULzXCRPgi6RdlAKc3vxZlMYQCnbetA==}
     peerDependencies:
       '@mastra/core': ^1.36.0
       '@modelcontextprotocol/sdk': ^1.30.0
@@ -866,6 +900,9 @@ packages:
   proper-lockfile@4.1.2:
     resolution: {integrity: sha512-TjNPblN4BwAWMXU8s9AEz4JmQxnD1NNL7bNOY/AKUzyamc379FWASUhc/K1pL2noVb+XmZKLL68cjzLsiOAMaA==}
 
+  quickjs-wasi@3.6.2:
+    resolution: {integrity: sha512-FCqGtGOrMgzUiIrMNMA2YnsOxCNwo31dzqXvclXUC6xeT35NJLKXQJsvbeCTjvoFAwZgEAPg8U6+KAPDGXn8Mg==}
+
   re2js@2.8.6:
     resolution: {integrity: sha512-xLgQil4kIUCrAzVk9fRSkxkFNwmygLFjVxXrLc65aE1F0+Zsb8rxumFBy4XKyvgMCTL6kilDq3EZ0piE2dP/Dg==}
     engines: {node: '>=18.0.0'}
@@ -994,6 +1031,10 @@ snapshots:
       '@dataiku/uv-win32-arm64': 0.12.0
       '@dataiku/uv-win32-ia32': 0.12.0
       '@dataiku/uv-win32-x64': 0.12.0
+
+  '@earendil-works/pi-codemode@1.0.4':
+    dependencies:
+      quickjs-wasi: 3.6.2
 
   '@earendil-works/pi-tui@1.1.0':
     dependencies:
@@ -1195,19 +1236,26 @@ snapshots:
 
   '@noble/hashes@2.4.0': {}
 
-  '@tangle-network/agent-core@0.10.3':
+  '@tangle-network/agent-core@0.11.0':
     dependencies:
-      '@tangle-network/agent-interface': 3.1.1
+      '@tangle-network/agent-interface': 4.0.0
       '@tangle-network/agent-trace-contract': 2.0.0
       zod: 4.6.5
 
-  '@tangle-network/agent-eval@0.209.1':
+  '@tangle-network/agent-core@0.12.0':
+    dependencies:
+      '@tangle-network/agent-interface': 5.2.0
+      '@tangle-network/agent-trace-contract': 2.0.0
+      zod: 4.6.5
+
+  '@tangle-network/agent-eval@0.213.0':
     dependencies:
       '@asteasolutions/zod-to-openapi': 9.1.0(zod@4.6.5)
       '@hono/node-server': 2.1.1(hono@4.13.13)
-      '@tangle-network/agent-core': 0.10.3
-      '@tangle-network/agent-interface': 3.1.1
+      '@tangle-network/agent-core': 0.12.0
+      '@tangle-network/agent-interface': 5.2.0
       '@tangle-network/agent-trace-contract': 2.0.0
+      '@tangle-network/harness-sessions': 0.1.1
       hono: 4.13.13
       linear-sum-assignment: 1.0.9
       re2js: 2.8.6
@@ -1216,43 +1264,60 @@ snapshots:
     transitivePeerDependencies:
       - '@modelcontextprotocol/sdk'
 
-  '@tangle-network/agent-interface@3.1.1':
+  '@tangle-network/agent-interface@4.0.0':
     dependencies:
       '@noble/hashes': 2.4.0
       spdx-expression-parse: 5.0.0
       zod: 4.6.5
 
-  '@tangle-network/agent-knowledge@20.0.0(@tangle-network/agent-eval@0.209.1)(@tangle-network/agent-interface@3.1.1)':
+  '@tangle-network/agent-interface@5.2.0':
     dependencies:
-      '@tangle-network/agent-eval': 0.209.1
-      '@tangle-network/agent-interface': 3.1.1
+      '@noble/hashes': 2.4.0
+      spdx-expression-parse: 5.0.0
+      zod: 4.6.5
+
+  '@tangle-network/agent-interface@5.2.1':
+    dependencies:
+      '@noble/hashes': 2.4.0
+      spdx-expression-parse: 5.0.0
+      zod: 4.6.5
+
+  '@tangle-network/agent-knowledge@22.0.1(@tangle-network/agent-eval@0.213.0)(@tangle-network/agent-interface@5.2.1)':
+    dependencies:
+      '@tangle-network/agent-eval': 0.213.0
+      '@tangle-network/agent-interface': 5.2.1
       '@types/proper-lockfile': 4.1.4
       proper-lockfile: 4.1.2
       zod: 4.6.5
 
-  '@tangle-network/agent-profile-materialize@0.21.0(@tangle-network/agent-interface@3.1.1)':
+  '@tangle-network/agent-profile-materialize@0.25.2(@tangle-network/agent-interface@5.2.1)':
     dependencies:
-      '@tangle-network/agent-interface': 3.1.1
+      '@tangle-network/agent-interface': 5.2.1
 
-  '@tangle-network/agent-provider-cli-bridge@1.1.2':
+  '@tangle-network/agent-provider-cli-bridge@2.0.0':
     dependencies:
-      '@tangle-network/agent-interface': 3.1.1
+      '@tangle-network/agent-interface': 5.2.0
       undici: 8.11.2
 
-  '@tangle-network/agent-provider-tangle@3.6.6(@tangle-network/sandbox@0.60.27)':
+  '@tangle-network/agent-provider-daytona@0.6.0':
     dependencies:
-      '@tangle-network/agent-interface': 3.1.1
-      '@tangle-network/sandbox': 0.60.27
+      '@tangle-network/agent-interface': 5.2.0
 
-  '@tangle-network/agent-runtime@0.312.0(@tangle-network/agent-eval@0.209.1)(@tangle-network/agent-interface@3.1.1)(@tangle-network/sandbox@0.60.27)':
+  '@tangle-network/agent-provider-tangle@4.0.0(@tangle-network/sandbox@0.60.51)':
     dependencies:
-      '@tangle-network/agent-core': 0.10.3
-      '@tangle-network/agent-eval': 0.209.1
-      '@tangle-network/agent-interface': 3.1.1
-      '@tangle-network/agent-knowledge': 20.0.0(@tangle-network/agent-eval@0.209.1)(@tangle-network/agent-interface@3.1.1)
-      '@tangle-network/agent-profile-materialize': 0.21.0(@tangle-network/agent-interface@3.1.1)
+      '@tangle-network/agent-interface': 5.2.0
+      '@tangle-network/sandbox': 0.60.51
+
+  '@tangle-network/agent-runtime@0.319.8(@tangle-network/agent-eval@0.213.0)(@tangle-network/agent-interface@5.2.1)(@tangle-network/sandbox@0.60.51)':
+    dependencies:
+      '@earendil-works/pi-codemode': 1.0.4
+      '@tangle-network/agent-core': 0.12.0
+      '@tangle-network/agent-eval': 0.213.0
+      '@tangle-network/agent-interface': 5.2.1
+      '@tangle-network/agent-knowledge': 22.0.1(@tangle-network/agent-eval@0.213.0)(@tangle-network/agent-interface@5.2.1)
+      '@tangle-network/agent-profile-materialize': 0.25.2(@tangle-network/agent-interface@5.2.1)
       '@tangle-network/agent-trace-contract': 2.0.0
-      '@tangle-network/sandbox': 0.60.27
+      '@tangle-network/sandbox': 0.60.51
       tar-stream: 3.2.1
       zod: 4.6.5
     transitivePeerDependencies:
@@ -1263,10 +1328,14 @@ snapshots:
 
   '@tangle-network/agent-trace-contract@2.0.0': {}
 
-  '@tangle-network/sandbox@0.60.27':
+  '@tangle-network/harness-sessions@0.1.1':
     dependencies:
-      '@tangle-network/agent-core': 0.10.3
-      '@tangle-network/agent-interface': 3.1.1
+      '@tangle-network/agent-trace-contract': 2.0.0
+
+  '@tangle-network/sandbox@0.60.51':
+    dependencies:
+      '@tangle-network/agent-core': 0.11.0
+      '@tangle-network/agent-interface': 4.0.0
       tar-stream: 3.2.1
       zod: 4.6.5
     transitivePeerDependencies:
@@ -1514,6 +1583,8 @@ snapshots:
       graceful-fs: 4.2.11
       retry: 0.12.0
       signal-exit: 3.0.7
+
+  quickjs-wasi@3.6.2: {}
 
   re2js@2.8.6: {}
 

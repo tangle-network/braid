@@ -10,15 +10,22 @@ const DEFAULT_ENDPOINTS: Readonly<Record<ConnectionMetadataKind, string>> = Obje
   'cli-bridge': 'http://127.0.0.1:3344',
   'tangle-inference': 'https://router.tangle.tools',
   'tangle-sandbox': 'https://sandbox.tangle.tools',
+  'agent-provider': '',
 })
 
 const DEFAULT_NAMES: Readonly<Record<ConnectionMetadataKind, string>> = Object.freeze({
   'cli-bridge': 'Local CLI Bridge',
   'tangle-inference': 'Tangle Inference',
   'tangle-sandbox': 'Tangle Sandbox',
+  'agent-provider': 'Registered provider',
 })
 
 const KIND_ITEMS: readonly SelectItem[] = Object.freeze([
+  {
+    value: 'agent-provider',
+    label: 'Registered provider',
+    description: 'installed agent environment adapter',
+  },
   { value: 'cli-bridge', label: 'CLI Bridge', description: 'local runner endpoint' },
   {
     value: 'tangle-inference',
@@ -32,7 +39,12 @@ const KIND_ITEMS: readonly SelectItem[] = Object.freeze([
   },
 ])
 
-export type EditableConnectionMetadataField = 'name' | 'endpoint' | 'account' | 'region'
+export type EditableConnectionMetadataField =
+  | 'provider'
+  | 'name'
+  | 'endpoint'
+  | 'account'
+  | 'region'
 
 export function connectionMetadataKindItems(): readonly SelectItem[] {
   return KIND_ITEMS
@@ -47,6 +59,7 @@ export function connectionMetadataFormDefaults(
 ): ConnectionMetadataFormValues {
   return Object.freeze({
     kind,
+    ...(kind === 'agent-provider' ? { provider: '' } : {}),
     name: DEFAULT_NAMES[kind],
     endpoint: DEFAULT_ENDPOINTS[kind],
     region: '',
@@ -61,6 +74,7 @@ export function connectionMetadataFormFromDraft(
   const defaults = connectionMetadataFormDefaults(kind)
   return Object.freeze({
     kind,
+    ...(kind === 'agent-provider' ? { provider: draftText(draft?.provider, '') } : {}),
     name: draftText(draft?.name, defaults.name),
     endpoint: draftText(draft?.endpoint, defaults.endpoint),
     region: draftText(draft?.region, defaults.region),
@@ -71,11 +85,17 @@ export function connectionMetadataFormFromDraft(
 export function connectionMetadataFieldKeys(
   kind: ConnectionMetadataKind,
 ): readonly EditableConnectionMetadataField[] {
-  return kind === 'cli-bridge' ? ['name', 'endpoint'] : ['name', 'endpoint', 'account', 'region']
+  return kind === 'agent-provider'
+    ? ['provider', 'name', 'endpoint', 'account', 'region']
+    : kind === 'cli-bridge'
+      ? ['name', 'endpoint']
+      : ['name', 'endpoint', 'account', 'region']
 }
 
 export function connectionMetadataFieldLabel(field: EditableConnectionMetadataField): string {
   switch (field) {
+    case 'provider':
+      return 'installed provider name'
     case 'name':
       return 'display name'
     case 'endpoint':
@@ -90,6 +110,7 @@ export function connectionMetadataFieldLabel(field: EditableConnectionMetadataFi
 export function connectionMetadataSummary(draft: ConnectionMetadataDraft): readonly string[] {
   return [
     `kind ${connectionMetadataKindLabel(draft.kind)}`,
+    ...(draft.provider === undefined ? [] : [`provider ${draft.provider}`]),
     `name ${draft.name}`,
     `endpoint ${draft.endpoint}`,
     ...(draft.account === undefined ? [] : [`account ${draft.account}`]),
@@ -99,7 +120,12 @@ export function connectionMetadataSummary(draft: ConnectionMetadataDraft): reado
 }
 
 function isKind(value: unknown): value is ConnectionMetadataKind {
-  return value === 'cli-bridge' || value === 'tangle-inference' || value === 'tangle-sandbox'
+  return (
+    value === 'cli-bridge' ||
+    value === 'tangle-inference' ||
+    value === 'tangle-sandbox' ||
+    value === 'agent-provider'
+  )
 }
 
 function draftText(value: unknown, fallback: string): string {

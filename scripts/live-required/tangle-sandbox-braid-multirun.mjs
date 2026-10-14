@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash, randomUUID } from 'node:crypto'
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -8,7 +8,7 @@ import { AgentExactRunControlRefSchema } from '@tangle-network/agent-interface'
 import { Sandbox } from '@tangle-network/sandbox'
 import xterm from '@xterm/headless'
 import * as pty from 'node-pty'
-
+import { readFreshStateFrame, stateFrameVersion } from '../interface-state-frame.mjs'
 import {
   processTreeEnvironment,
   terminateTrackedProcessTree,
@@ -213,19 +213,15 @@ function createTerminal(
       throw new Error(
         `Braid exited before semantic frame capture (${exitResult?.exitCode ?? 'unknown'})`,
       )
-    let previousMtime
-    try {
-      previousMtime = (await stat(`${recordPath}.frame`)).mtimeNs
-    } catch {}
+    const previousVersion = await stateFrameVersion(`${recordPath}.frame`)
     countProtectedWork('frameRequests')
     process.kill(child.pid, 'SIGUSR2')
     const deadline = performance.now() + timeoutMs
     for (;;) {
       try {
         const framePath = `${recordPath}.frame`
-        const metadata = await stat(framePath)
-        if (previousMtime === undefined || metadata.mtimeNs !== previousMtime) {
-          const frame = JSON.parse(await readFile(framePath, 'utf8'))
+        const frame = await readFreshStateFrame(framePath, previousVersion)
+        if (frame !== undefined) {
           lastFrame = frame
           lastFrameError = undefined
           return frame

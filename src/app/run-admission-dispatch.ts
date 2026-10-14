@@ -49,6 +49,9 @@ export function sendRun(context: AdmissionPort, input: RunExecutionSnapshot): Se
       profile: input.profile,
       ...(input.mode === undefined ? {} : { mode: input.mode }),
       ...(input.connectionId === undefined ? {} : { connectionId: input.connectionId }),
+      ...(input.expectedConnectionDigest === undefined
+        ? {}
+        : { expectedConnectionDigest: input.expectedConnectionDigest }),
       ...(input.workspaceRoot === undefined ? {} : { workspaceRoot: input.workspaceRoot }),
       ...(input.workspaceRequest === undefined ? {} : { workspaceRequest: input.workspaceRequest }),
       signal: new AbortController().signal,
@@ -61,6 +64,9 @@ export function sendRun(context: AdmissionPort, input: RunExecutionSnapshot): Se
       ...(input.portableContextTransferRequest === undefined
         ? {}
         : { contextTransfer: input.portableContextTransferRequest }),
+      ...(input.portableContextTransferReceipt === undefined
+        ? {}
+        : { contextTransferReceipt: input.portableContextTransferReceipt }),
     },
     conversationId,
     branchId,
@@ -147,6 +153,9 @@ export async function sendRunAsync(
       profile: input.profile,
       ...(input.mode === undefined ? {} : { mode: input.mode }),
       ...(input.connectionId === undefined ? {} : { connectionId: input.connectionId }),
+      ...(input.expectedConnectionDigest === undefined
+        ? {}
+        : { expectedConnectionDigest: input.expectedConnectionDigest }),
       ...(input.workspaceRoot === undefined ? {} : { workspaceRoot: input.workspaceRoot }),
       ...(input.workspaceRequest === undefined ? {} : { workspaceRequest: input.workspaceRequest }),
       signal,
@@ -159,6 +168,9 @@ export async function sendRunAsync(
       ...(input.portableContextTransferRequest === undefined
         ? {}
         : { contextTransfer: input.portableContextTransferRequest }),
+      ...(input.portableContextTransferReceipt === undefined
+        ? {}
+        : { contextTransferReceipt: input.portableContextTransferReceipt }),
     },
     conversationId,
     branchId,

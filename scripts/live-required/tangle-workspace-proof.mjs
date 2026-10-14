@@ -1383,7 +1383,7 @@ async function runWorkspaceProof({
     }
     const refusalBeforeStateDigest =
       confidential && providerConfidential === false ? completeStateDigest(opened) : undefined
-    plan = opened.app.conversations.branches.plan(planInput)
+    plan = await opened.app.conversations.branches.plan(planInput)
     if (confidential && providerConfidential === false) {
       let refusalExecutionCode
       let refusalExecutionResult

@@ -4,6 +4,7 @@ import { nitroVerifiersForConnection } from '../adapters/connections/nitro-confi
 import type { ProductionConnectionOptions } from '../adapters/connections/production-connections.js'
 import {
   connectionEndpoint,
+  createConnectionProviderResolver,
   createTangleEnvironmentProvider,
   createTangleWorkspaceBranchingProvider,
 } from '../adapters/connections/production-connections.js'
@@ -11,7 +12,8 @@ import {
   AgentRuntimeExecutionPort,
   type AgentTurnBackendResolver,
 } from '../adapters/runtime/agent-runtime-execution.js'
-import { createCliBridgeContextTransferPort } from '../adapters/runtime/cli-bridge-context-transfer.js'
+import { ConnectionRoutingExecutionPort } from '../adapters/runtime/connection-routing-execution.js'
+import { createProviderContextTransferPort } from '../adapters/runtime/provider-context-transfer.js'
 import { CliBridgeRetainedExecutionPort } from '../adapters/runtime/cli-bridge-retained-execution.js'
 import { ModeRoutingExecutionPort } from '../adapters/runtime/mode-routing-execution.js'
 import { NativeInteractiveRunBroker } from '../adapters/runtime/native-interactive-run-broker.js'
@@ -19,8 +21,10 @@ import {
   createProductionBackendResolver,
   type ProductionBackendResolverOptions,
   resolveProductionCliBridgeConnection,
+  resolveProductionRegisteredRetainedConnection,
   resolveProductionTangleRetainedConnection,
 } from '../adapters/runtime/production-backend-resolver.js'
+import { ProviderRetainedExecutionPort } from '../adapters/runtime/provider-retained-execution.js'
 import { prepareCliBridgeProviderRoute } from '../adapters/runtime/production-cli-bridge-backend.js'
 import { RuntimeSupervisorController } from '../adapters/runtime/supervisor-control.js'
 import { TangleRetainedExecutionPort } from '../adapters/runtime/tangle-retained-execution.js'
@@ -34,7 +38,7 @@ import type {
 } from '../ports/execution.js'
 import type { NativeInteractiveExecutionControl } from '../ports/native-interactive-execution.js'
 import { ConnectionError } from './connection-errors.js'
-import { ConnectionRegistry } from './connections.js'
+import { ConnectionRegistry, connectionExecutionDigest } from './connections.js'
 import { assertValidProfile } from './profile-validation.js'
 import { snapshotWorkspaceRequest, type WorkspaceRequest } from './workspace-request.js'
 
@@ -88,6 +92,7 @@ const SUPPORTED_CONNECTION_KINDS = new Set<ConnectionRecord['kind']>([
   'cli-bridge',
   'tangle-inference',
   'tangle-sandbox',
+  'agent-provider',
 ])
 
 export function createProductionComposition(
@@ -189,16 +194,22 @@ export function createProductionComposition(
     )
   }
 
-  if (config.workspaceRequest !== undefined && connection.kind !== 'tangle-sandbox') {
+  if (
+    config.workspaceRequest !== undefined &&
+    connection.kind !== 'tangle-sandbox' &&
+    connection.kind !== 'agent-provider'
+  ) {
     throw new ProductionCompositionError(
       'PRODUCTION_CONNECTION_UNSUPPORTED',
-      'A provider-neutral workspace request requires a tangle-sandbox connection',
+      'A remote workspace request requires an environment provider connection',
     )
   }
 
+  const resolveConnectionProvider = createConnectionProviderResolver(config.connectionOptions ?? {})
   const resolverOptionsBase: ProductionBackendResolverOptions = {
     ...(config.connectionOptions ?? {}),
     connections,
+    resolveConnectionProvider,
     ...(config.workspaceRoot === undefined ? {} : { workspaceCwd: config.workspaceRoot }),
     select: () => ({
       connection: {
@@ -209,27 +220,36 @@ export function createProductionComposition(
     }),
   }
   snapshotWorkspaceRequest(config.workspaceRequest)
-  const confidential = nitroVerifiersForConnection(connection, resolverOptionsBase)
-  const resolverOptions: ProductionBackendResolverOptions = {
-    ...resolverOptionsBase,
-    ...(confidential?.tangle === undefined
-      ? {}
-      : { tangleConfidentialAttestationVerifier: confidential.tangle }),
-    ...(confidential?.canonical === undefined
-      ? {}
-      : { confidentialAttestationVerifier: confidential.canonical }),
+  const resolverOptions = resolverOptionsBase
+  const withConfidentialVerifiers = (
+    record: ConnectionRecord,
+    options: ProductionBackendResolverOptions,
+  ): ProductionBackendResolverOptions => {
+    const confidential = nitroVerifiersForConnection(record, options)
+    return {
+      ...options,
+      ...(confidential?.tangle === undefined
+        ? {}
+        : { tangleConfidentialAttestationVerifier: confidential.tangle }),
+      ...(confidential?.canonical === undefined
+        ? {}
+        : { confidentialAttestationVerifier: confidential.canonical }),
+    }
   }
   const backendResolver = createProductionBackendResolver(resolverOptions)
+  // Published Runtime binds a worker to its provider name, not to the saved
+  // connection that admitted it. Attach only workers of the active Tangle
+  // connection until Runtime records that connection in the worker binding.
   const supervisorController =
     connection.kind === 'tangle-sandbox'
       ? new RuntimeSupervisorController({
           providers: (signal) =>
-            createTangleEnvironmentProvider(connection, resolverOptions, signal),
+            createTangleEnvironmentProvider(
+              connection,
+              withConfidentialVerifiers(connection, resolverOptions),
+              signal,
+            ),
         })
-      : undefined
-  const workspaceBranchingProvider =
-    connection.kind === 'tangle-sandbox'
-      ? createTangleWorkspaceBranchingProvider(connection, resolverOptions)
       : undefined
   const recoveryInput = (
     runId: string,
@@ -256,42 +276,121 @@ export function createProductionComposition(
       turnId,
       text: requested?.text ?? '',
       profile: requested?.profile ?? profile,
+      ...(requested?.portableContextTransferRequest === undefined
+        ? {}
+        : { contextTransfer: requested.portableContextTransferRequest }),
+      ...(requested?.portableContextTransferReceipt === undefined
+        ? {}
+        : { contextTransferReceipt: requested.portableContextTransferReceipt }),
       ...(requested?.mode === undefined ? {} : { mode: requested.mode }),
       ...(requested?.interactions === undefined ? {} : { interactions: requested.interactions }),
       connectionId: requested?.connectionId ?? connection.id,
+      ...(requested?.expectedConnectionDigest === undefined
+        ? {}
+        : { expectedConnectionDigest: requested.expectedConnectionDigest }),
       ...(sessionId === undefined ? {} : { sessionId }),
       ...(workspaceRoot === undefined ? {} : { workspaceRoot }),
       ...(workspaceRequest === undefined ? {} : { workspaceRequest }),
       signal: signal ?? new AbortController().signal,
     }
   }
-  let nativeInteractive: NativeInteractiveExecutionControl | undefined
-  const execution = (() => {
-    if (connection.kind === 'cli-bridge') {
-      const context = createCliBridgeContextTransferPort({
-        resolve: (request) => {
-          const destination = request.plan.destination
-          const runner = harnessTypeSchema.safeParse(destination.runner)
-          if (!runner.success || destination.model === undefined) {
-            throw new Error(
-              'The portable context destination requires a supported runner and exact model',
-            )
-          }
-          return prepareCliBridgeProviderRoute(
-            resolverOptions,
-            connection.id,
-            connectionEndpoint(connection, resolverOptions),
-            runner.data,
-            materializeBridgeModelRoute(runner.data, destination.model),
-          )
+  const context = createProviderContextTransferPort({
+    resolve: async (destination, target) => {
+      const destinationConnection = connections.select({
+        connectionId: target?.connectionId ?? connection.id,
+      }).record
+      if (
+        target?.connectionDigest !== undefined &&
+        connectionExecutionDigest(destinationConnection) !== target.connectionDigest
+      ) {
+        throw new ConnectionError(
+          'CONNECTION_REVISION_MISMATCH',
+          'The destination connection changed after the accepted context plan',
+          { connectionId: destinationConnection.id },
+        )
+      }
+      if (destinationConnection.kind === 'tangle-sandbox') {
+        const provider = await createTangleEnvironmentProvider(
+          destinationConnection,
+          resolverOptions,
+        )
+        return { provider, capabilities: await provider.capabilities() }
+      }
+      if (destinationConnection.kind === 'agent-provider') {
+        if (destinationConnection.providerOptions.lifecycle !== 'retained') return undefined
+        const provider = await resolveConnectionProvider(destinationConnection)
+        return { provider, capabilities: await provider.capabilities() }
+      }
+      if (destinationConnection.kind !== 'cli-bridge') return undefined
+      const runner = harnessTypeSchema.safeParse(destination.runner)
+      if (!runner.success || destination.model === undefined) {
+        throw new Error(
+          'The portable context destination requires a supported runner and exact model',
+        )
+      }
+      return prepareCliBridgeProviderRoute(
+        resolverOptions,
+        destinationConnection.id,
+        connectionEndpoint(destinationConnection, resolverOptions),
+        runner.data,
+        materializeBridgeModelRoute(runner.data, destination.model),
+      )
+    },
+  })
+  const broker = new NativeInteractiveRunBroker()
+  const createExecution = (connection: ConnectionRecord): ExecutionPort => {
+    const scopedOptions: ProductionBackendResolverOptions = {
+      ...withConfidentialVerifiers(connection, resolverOptions),
+      connections: new ConnectionRegistry([connection]),
+      select: () => ({
+        connection: {
+          connectionId: connection.id,
+          expectedKind: connection.kind,
+          expectedUpdatedAt: connection.updatedAt,
         },
+      }),
+    }
+    const workspaceBranchingProvider =
+      connection.kind === 'tangle-sandbox'
+        ? createTangleWorkspaceBranchingProvider(connection, scopedOptions)
+        : connection.kind === 'agent-provider'
+          ? {
+              forEnvironment: async (
+                environmentId: string,
+                operation?: { readonly signal?: AbortSignal },
+              ) => {
+                const provider = await resolveConnectionProvider(connection, operation?.signal)
+                return (
+                  (await provider.workspaceBranching?.forEnvironment(environmentId, operation)) ??
+                  null
+                )
+              },
+            }
+          : undefined
+    if (
+      connection.kind === 'agent-provider' &&
+      connection.providerOptions.lifecycle === 'retained'
+    ) {
+      return new ProviderRetainedExecutionPort({
+        ...(workspaceBranchingProvider === undefined ? {} : { workspaceBranchingProvider }),
+        ...(scopedOptions.confidentialAttestationVerifier === undefined
+          ? {}
+          : { confidentialAttestationVerifier: scopedOptions.confidentialAttestationVerifier }),
+        resolve: (input) => resolveProductionRegisteredRetainedConnection(scopedOptions, input),
+        recover: ({ runId, providerSessionId, signal, ...recovery }) =>
+          resolveProductionRegisteredRetainedConnection(
+            scopedOptions,
+            recoveryInput(runId, providerSessionId, recovery, signal),
+          ),
       })
+    }
+    if (connection.kind === 'cli-bridge') {
       return new CliBridgeRetainedExecutionPort({
         context,
-        resolve: (input) => resolveProductionCliBridgeConnection(resolverOptions, input),
+        resolve: (input) => resolveProductionCliBridgeConnection(scopedOptions, input),
         recover: ({ runId, providerSessionId, signal, ...recovery }) =>
           resolveProductionCliBridgeConnection(
-            resolverOptions,
+            scopedOptions,
             recoveryInput(runId, providerSessionId, recovery, signal),
           ),
       })
@@ -301,44 +400,54 @@ export function createProductionComposition(
       connection.providerOptions.lifecycle === 'retained'
     ) {
       const headless = new TangleRetainedExecutionPort({
-        resolve: (input) => resolveProductionTangleRetainedConnection(resolverOptions, input),
+        context,
+        resolve: (input) => resolveProductionTangleRetainedConnection(scopedOptions, input),
         recover: ({ runId, providerSessionId, signal, ...recovery }) =>
           resolveProductionTangleRetainedConnection(
-            resolverOptions,
+            scopedOptions,
             recoveryInput(runId, providerSessionId, recovery, signal),
           ),
         ...(workspaceBranchingProvider === undefined ? {} : { workspaceBranchingProvider }),
-        ...(resolverOptions.confidentialAttestationVerifier === undefined
+        ...(scopedOptions.confidentialAttestationVerifier === undefined
           ? {}
-          : { confidentialAttestationVerifier: resolverOptions.confidentialAttestationVerifier }),
+          : { confidentialAttestationVerifier: scopedOptions.confidentialAttestationVerifier }),
       })
-      const broker = new NativeInteractiveRunBroker()
       const interactive = new TangleRetainedInteractiveExecutionPort({
-        resolve: (input) => resolveProductionTangleRetainedConnection(resolverOptions, input),
-        recover: (input) => resolveProductionTangleRetainedConnection(resolverOptions, input),
+        resolve: (input) => resolveProductionTangleRetainedConnection(scopedOptions, input),
+        recover: (input) => resolveProductionTangleRetainedConnection(scopedOptions, input),
         broker,
         ...(workspaceBranchingProvider === undefined ? {} : { workspaceBranchingProvider }),
-        ...(resolverOptions.confidentialAttestationVerifier === undefined
+        ...(scopedOptions.confidentialAttestationVerifier === undefined
           ? {}
-          : { confidentialAttestationVerifier: resolverOptions.confidentialAttestationVerifier }),
+          : { confidentialAttestationVerifier: scopedOptions.confidentialAttestationVerifier }),
       })
-      nativeInteractive = broker
       return new ModeRoutingExecutionPort({ headless, interactive })
     }
-    return new AgentRuntimeExecutionPort(backendResolver, undefined, {
-      ...(workspaceBranchingProvider === undefined ? {} : { workspaceBranchingProvider }),
-      ...(resolverOptions.confidentialAttestationVerifier === undefined
-        ? {}
-        : { confidentialAttestationVerifier: resolverOptions.confidentialAttestationVerifier }),
-    })
-  })()
+    return new AgentRuntimeExecutionPort(
+      createProductionBackendResolver(scopedOptions),
+      undefined,
+      {
+        context,
+        ...(workspaceBranchingProvider === undefined ? {} : { workspaceBranchingProvider }),
+        ...(scopedOptions.confidentialAttestationVerifier === undefined
+          ? {}
+          : { confidentialAttestationVerifier: scopedOptions.confidentialAttestationVerifier }),
+      },
+    )
+  }
+  const execution = new ConnectionRoutingExecutionPort({
+    connections,
+    defaultConnectionId: connection.id,
+    create: createExecution,
+    context,
+  })
 
   return Object.freeze({
     profile,
     connections,
     connection,
     execution,
-    ...(nativeInteractive === undefined ? {} : { nativeInteractive }),
+    nativeInteractive: broker,
     ...(supervisorController === undefined ? {} : { supervisorController }),
     backendResolver,
   })

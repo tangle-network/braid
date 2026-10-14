@@ -1,0 +1,117 @@
+import {
+  ContextTransferRequestSchema,
+  ContextTransferResultSchema,
+  PortableContextDestinationSchema,
+  contextTransferResultMatchesRequest,
+  type AgentEnvironmentCapabilities,
+  type AgentEnvironmentProvider,
+  type ContextTransferRequest,
+  type ContextTransferResult,
+} from '@tangle-network/agent-interface'
+import type { ContextTransferExecutionPort } from '../../ports/execution.js'
+
+export interface ProviderContextTransferResolution {
+  readonly provider: AgentEnvironmentProvider
+  readonly capabilities: AgentEnvironmentCapabilities
+}
+
+export interface ProviderContextTransferOptions {
+  readonly resolve: (
+    destination: ContextTransferRequest['plan']['destination'],
+    target?: { readonly connectionId: string; readonly connectionDigest?: string },
+  ) => Promise<ProviderContextTransferResolution | undefined>
+}
+
+/** Route canonical history through the exact destination provider's admission contract. */
+export function createProviderContextTransferPort(
+  options: ProviderContextTransferOptions,
+): ContextTransferExecutionPort {
+  return Object.freeze({
+    supports: async (
+      destination: ContextTransferRequest['plan']['destination'],
+      target?: { readonly connectionId: string; readonly connectionDigest?: string },
+    ) => {
+      const validated = PortableContextDestinationSchema.parse(destination)
+      return supportsContextTransfer(await options.resolve(validated, target), validated)
+    },
+    lookup: async (
+      request: ContextTransferRequest,
+      target?: { readonly connectionId: string; readonly connectionDigest?: string },
+    ) => {
+      const validated = ContextTransferRequestSchema.parse(request)
+      const resolved = await options.resolve(validated.plan.destination, target)
+      if (!supportsContextTransferLookup(resolved, validated.plan.destination)) return undefined
+      const result = await resolved?.provider.contextTransfer?.lookup(validated)
+      return result === undefined ? undefined : checkedResult(validated, result)
+    },
+    transfer: async (
+      request: ContextTransferRequest,
+      target?: { readonly connectionId: string; readonly connectionDigest?: string },
+    ) => {
+      const validated = ContextTransferRequestSchema.parse(request)
+      const resolved = await options.resolve(validated.plan.destination, target)
+      if (!supportsContextTransfer(resolved, validated.plan.destination))
+        return unavailableContextTransfer(validated)
+      const result = await resolved?.provider.contextTransfer?.transfer(validated)
+      return result === undefined
+        ? unavailableContextTransfer(validated)
+        : checkedResult(validated, result)
+    },
+  })
+}
+
+function checkedResult(
+  request: ContextTransferRequest,
+  result: ContextTransferResult,
+): ContextTransferResult {
+  const validated = ContextTransferResultSchema.parse(result)
+  if (!contextTransferResultMatchesRequest(request, validated))
+    throw new Error('The provider context transfer result does not match the exact request')
+  return validated
+}
+
+function supportsContextTransferLookup(
+  resolved: ProviderContextTransferResolution | undefined,
+  destination: ContextTransferRequest['plan']['destination'],
+): boolean {
+  return (
+    resolved !== undefined &&
+    destination.provider === resolved.provider.name &&
+    resolved.capabilities.contextTransfer?.lookup === true &&
+    resolved.provider.contextTransfer?.lookup !== undefined
+  )
+}
+
+function supportsContextTransfer(
+  resolved: ProviderContextTransferResolution | undefined,
+  destination: ContextTransferRequest['plan']['destination'],
+): boolean {
+  if (resolved === undefined || !supportsContextTransferLookup(resolved, destination)) return false
+  const capability = resolved.capabilities.contextTransfer
+  return (
+    capability?.freshSession === true &&
+    capability.requestIdempotency === true &&
+    capability.attach === true &&
+    resolved.provider.get !== undefined &&
+    resolved.capabilities.retainedControl?.exactRunIdentity === true &&
+    resolved.capabilities.retainedControl.resultIdentity === true &&
+    resolved.capabilities.retainedControl.eventIdentity === true &&
+    resolved.capabilities.retainedControl.cancellationIdempotency === true &&
+    resolved.capabilities.streaming.replay &&
+    resolved.capabilities.streaming.detach &&
+    resolved.capabilities.streaming.turnIdempotency &&
+    (destination.workspaceSnapshotDigest === undefined || capability.workspaceSnapshot === true) &&
+    resolved.provider.contextTransfer?.transfer !== undefined
+  )
+}
+
+function unavailableContextTransfer(request: ContextTransferRequest): ContextTransferResult {
+  return ContextTransferResultSchema.parse({
+    status: 'unknown',
+    operationId: request.operationId,
+    requestDigest: request.requestDigest,
+    message:
+      'The selected destination provider does not support retry-safe portable context transfer',
+    retryable: false,
+  })
+}

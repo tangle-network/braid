@@ -16,7 +16,12 @@ import {
 import { Sandbox } from '@tangle-network/sandbox'
 import { ConnectionError } from '../../app/connection-errors.js'
 import type { ConnectionRecord } from '../../domain/entities.js'
-import { environmentSupportsInteractionResponse } from '../../ports/execution.js'
+import { assertConnectionRecord } from '../../domain/invariants-profile.js'
+import {
+  environmentSupportsInteractionResponse,
+  supportsNativeContinuation,
+} from '../../ports/execution.js'
+import { withRetainedSandboxPolicy } from '../runtime/tangle-sandbox-retention.js'
 import { nitroVerifiersForConnection } from './nitro-confidential-attestation.js'
 import { readConnectionCredential } from './production-connection-credentials.js'
 import { connectionEndpoint } from './production-connection-endpoints.js'
@@ -27,6 +32,7 @@ import type {
   ConnectionRuntimeCapabilities,
   ProductionConnectionOptions,
 } from './production-connection-types.js'
+import { createRegisteredEnvironmentProvider } from './registered-provider.js'
 import { supportsTangleRetainedControlLookup } from './tangle-retained-control-lookup.js'
 
 export async function createTangleSandboxClient(
@@ -34,9 +40,11 @@ export async function createTangleSandboxClient(
   options: ProductionConnectionOptions,
   signal?: AbortSignal,
 ): Promise<SandboxClientLike> {
+  signal?.throwIfAborted()
   if (options.sandboxClient) return options.sandboxClient
   const endpoint = connectionEndpoint(record, options)
   const apiKey = await readConnectionCredential(record, options, endpoint)
+  signal?.throwIfAborted()
   if (!apiKey) {
     throw new ConnectionError(
       'CONNECTION_CREDENTIAL_REQUIRED',
@@ -59,10 +67,16 @@ export async function createTangleEnvironmentProvider(
   options: ProductionConnectionOptions,
   signal?: AbortSignal,
 ): Promise<AgentEnvironmentProvider> {
-  const client = await createTangleSandboxClient(record, options, signal)
+  assertConnectionRecord(record)
+  const { lifecycle, idleTtlSeconds } = record.providerOptions
   const confidential = nitroVerifiersForConnection(record, options)
+  const client = await createTangleSandboxClient(record, options, signal)
+  signal?.throwIfAborted()
   return createTangleProvider({
-    client,
+    client:
+      lifecycle === 'retained' && idleTtlSeconds !== undefined
+        ? withRetainedSandboxPolicy(client, idleTtlSeconds)
+        : client,
     name: 'tangle-sandbox',
     ...(confidential?.tangle === undefined
       ? {}
@@ -120,6 +134,21 @@ export async function capabilitiesForConnection(
         list: typeof provider.list === 'function',
       })
     }
+    case 'agent-provider': {
+      const provider = await createRegisteredEnvironmentProvider(record, options)
+      const reported = await provider.capabilities()
+      const environment = retainedConnectionCapabilities(
+        record,
+        reported,
+        provider.get !== undefined,
+      )
+      const executable = reported.streaming.live && reported.create?.durableIdempotency === true
+      return capabilityReport(record, 'executor', environment, {
+        create: executable && typeof provider.create === 'function',
+        get: typeof provider.get === 'function',
+        list: typeof provider.list === 'function',
+      })
+    }
     case 'tangle-inference':
       connectionEndpoint(record, options)
       return capabilityReport(record, 'chat', undefined, {
@@ -151,7 +180,7 @@ export async function capabilitiesForConnection(
                     confidentialAttestationVerifier: confidential.tangle,
                   }),
             }).capabilities()
-      const environment = tangleConnectionCapabilities(
+      const environment = retainedConnectionCapabilities(
         record,
         reported,
         options.tangleRetainedControlLookup !== undefined ||
@@ -168,7 +197,7 @@ export async function capabilitiesForConnection(
   }
 }
 
-function tangleConnectionCapabilities(
+function retainedConnectionCapabilities(
   record: ConnectionRecord,
   reported: AgentEnvironmentCapabilities,
   hasRetainedControlLookup = false,
@@ -199,7 +228,13 @@ function tangleConnectionCapabilities(
       detach: exactRetained && reported.streaming.detach,
       turnIdempotency: exactRetained && reported.streaming.turnIdempotency,
     },
-    sessions: { ...reported.sessions, continue: false, list: false, messages: false },
+    sessions: {
+      ...reported.sessions,
+      continue:
+        record.kind === 'agent-provider' && exactRetained && supportsNativeContinuation(reported),
+      list: false,
+      messages: false,
+    },
   }
 }
 

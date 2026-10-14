@@ -3,6 +3,7 @@ import { isSensitiveFieldName, sanitizeTerminalText } from '../shared/sanitize.j
 
 export type ConnectionMetadataKind = ConnectionKind
 export type ConnectionMetadataField =
+  | 'provider'
   | 'kind'
   | 'name'
   | 'endpoint'
@@ -14,6 +15,7 @@ export type ConnectionMetadataField =
 /** The only durable value the editor can emit. Credential values are absent by design. */
 export interface ConnectionMetadataDraft {
   readonly kind: ConnectionMetadataKind
+  readonly provider?: string
   readonly name: string
   readonly endpoint: string
   readonly region?: string
@@ -22,6 +24,7 @@ export interface ConnectionMetadataDraft {
 
 export interface ConnectionMetadataFormValues {
   readonly kind: ConnectionMetadataKind
+  readonly provider?: string
   readonly name: string
   readonly endpoint: string
   readonly region: string
@@ -49,11 +52,16 @@ export type ConnectionMetadataValidation =
   | { readonly ok: true; readonly draft: ConnectionMetadataDraft }
   | { readonly ok: false; readonly issues: readonly ConnectionMetadataIssue[] }
 
-const INPUT_KEYS = new Set(['kind', 'name', 'endpoint', 'region', 'account'])
+const INPUT_KEYS = new Set(['provider', 'kind', 'name', 'endpoint', 'region', 'account'])
 const SECRET_MARKER = /\[redacted (?:secret|credential|bearer|link)\]/u
 
 export function isConnectionMetadataKind(value: unknown): value is ConnectionMetadataKind {
-  return value === 'cli-bridge' || value === 'tangle-inference' || value === 'tangle-sandbox'
+  return (
+    value === 'cli-bridge' ||
+    value === 'tangle-inference' ||
+    value === 'tangle-sandbox' ||
+    value === 'agent-provider'
+  )
 }
 
 export function connectionMetadataDraftFromForm(
@@ -63,6 +71,7 @@ export function connectionMetadataDraftFromForm(
   return validateConnectionMetadataDraft(
     {
       kind: form.kind,
+      ...(form.kind === 'agent-provider' ? { provider: form.provider ?? '' } : {}),
       name: form.name,
       endpoint: form.endpoint,
       ...(form.kind === 'cli-bridge'
@@ -103,6 +112,15 @@ export function validateConnectionMetadataDraft(
     issues.push({ field: 'kind', message: 'Choose a supported connection kind' })
   }
 
+  const provider =
+    kind === 'agent-provider' ? readText(input.provider, 'provider', issues, 128) : undefined
+  if (provider !== undefined && !/^[A-Za-z][A-Za-z0-9._:-]{0,127}$/u.test(provider))
+    issues.push({ field: 'provider', message: 'Enter an installed provider name' })
+  if (kind !== 'agent-provider' && input.provider !== undefined)
+    issues.push({
+      field: 'provider',
+      message: 'A provider name requires a registered provider connection',
+    })
   const name = readText(input.name, 'name', issues, 120)
   const endpointInput = readText(input.endpoint, 'endpoint', issues, 2_048)
   const region = readOptionalText(input.region, 'region', issues, 128)
@@ -112,7 +130,7 @@ export function validateConnectionMetadataDraft(
   if (kind === 'cli-bridge' && (region !== undefined || account !== undefined)) {
     issues.push({
       field: region !== undefined ? 'region' : 'account',
-      message: 'Region and account are only available for Tangle connections',
+      message: 'Region and account are available for remote provider connections',
     })
   }
 
@@ -124,6 +142,7 @@ export function validateConnectionMetadataDraft(
 
   const draft: ConnectionMetadataDraft = Object.freeze({
     kind,
+    ...(provider === undefined ? {} : { provider }),
     name,
     endpoint,
     ...(kind === 'cli-bridge'
@@ -142,7 +161,7 @@ export function connectionMetadataErrorText(issues: readonly ConnectionMetadataI
 
 function readText(
   value: unknown,
-  field: 'name' | 'endpoint',
+  field: 'name' | 'endpoint' | 'provider',
   issues: ConnectionMetadataIssue[],
   maxLength: number,
 ): string | undefined {
