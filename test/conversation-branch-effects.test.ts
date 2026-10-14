@@ -16,6 +16,7 @@ import type {
 import { defineAgentProfile, projectPortableContextPlan } from '@tangle-network/agent-interface'
 import { canonicalAgentProfileDigestHex } from '../src/adapters/agent-interface/profile-runtime.js'
 import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
+import { LazyExecutionPort } from '../src/adapters/runtime/lazy-execution.js'
 import { openSqliteStorage } from '../src/adapters/storage/sqlite.js'
 import {
   type ConversationDispatchContext,
@@ -1458,9 +1459,10 @@ test('workspace fork uses exact provider operations, isolates destination, and c
   assert.equal(provider.state.forkRequests.length, 1)
   assert.deepEqual(sourceLookups, ['provider-source-environment'])
 
+  // A fresh process defers the provider port; cleanup loads it before reading branching.
   const restarted = createBraidApplication({
     fixture: 'deterministic',
-    execution,
+    execution: new LazyExecutionPort({ load: async () => execution }),
     clock: new FixedClock(AT),
     journal,
   })
