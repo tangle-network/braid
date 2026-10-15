@@ -130,7 +130,10 @@ test('a retained failure keeps its cause across restart and never keeps a creden
     sandbox.fail(sandbox.dispatches[0]?.executionId ?? '', failure)
     await turn.completion
     const reason = opened.app.state().runs.find((run) => run.id === turn.runId)?.terminalReason
-    assert.match(reason ?? '', /^opencode execution failed: opencode exited: upstream refused key \[redacted/u)
+    assert.match(
+      reason ?? '',
+      /^opencode execution failed: opencode exited: upstream refused key \[redacted/u,
+    )
     const live = JSON.stringify({ state: opened.app.state(), events: opened.app.events() })
     for (const canary of canaries) assert.equal(live.includes(canary), false)
     await opened.app.close()
@@ -142,7 +145,10 @@ test('a retained failure keeps its cause across restart and never keeps a creden
     assert.equal(run?.status, 'failed')
     assert.equal(run?.error, 'RUNTIME_FINAL_ERROR')
     assert.equal(run?.terminalReason, reason)
-    const replayed = JSON.stringify({ state: restarted.app.state(), events: restarted.app.events() })
+    const replayed = JSON.stringify({
+      state: restarted.app.state(),
+      events: restarted.app.events(),
+    })
     for (const canary of canaries) assert.equal(replayed.includes(canary), false)
     await restarted.app.close()
     restarted = undefined
@@ -232,7 +238,11 @@ for (const outcome of ['failed', 'completed'] as const) {
       if (outcome === 'failed') {
         assert.equal(finished.length, 1, kinds)
         assert.equal(run?.error, 'RUNTIME_FINAL_ERROR', kinds)
-        assert.equal(run?.terminalReason, `opencode execution failed: ${FAILURE} (exit code 1)`, kinds)
+        assert.equal(
+          run?.terminalReason,
+          `opencode execution failed: ${FAILURE} (exit code 1)`,
+          kinds,
+        )
       } else {
         // A final that contradicts the committed status is not ingested.
         assert.equal(finished.length, 0, kinds)
