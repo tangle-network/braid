@@ -10,6 +10,9 @@ import { defineAgentProfile } from '@tangle-network/agent-interface'
 import xterm from '@xterm/headless'
 import * as pty from 'node-pty'
 
+// The composer is ready when it offers a new message, or explains why Send is unavailable.
+const COMPOSER_READY = /new message|send unavailable/u
+
 // Real executable, encrypted storage and loopback HTTP. Reads succeed; writes are refused.
 // This proves local setup and task admission, NOT execution in a live Tangle sandbox.
 const repository = fileURLToPath(new URL('../', import.meta.url))
@@ -457,11 +460,11 @@ async function start(endpoint, phase) {
       ).join('\n')
     })
   })
-  await expect(/new message/u)
+  await expect(COMPOSER_READY)
   capture(phase)
 }
 async function stop() {
-  await expect(/new message/u)
+  await expect(COMPOSER_READY)
   await key('\u0015')
   await key('/quit\r')
   await until(() => exit !== undefined, 'CLI /quit')
@@ -480,7 +483,7 @@ async function reopenedWorkspace(label) {
   assert.match(screen, /1800/u)
   await key('\u001b')
   await key('\u001b')
-  await expect(/new message/u)
+  await expect(COMPOSER_READY)
 }
 try {
   evidence.version = execFileSync(process.execPath, [binary, '--version'], {
@@ -588,7 +591,7 @@ try {
     assertSnapshotRedacted(afterSave)
     assert.equal(afterSave.state.runs.length, 0)
     await key('\u001b')
-    await expect(/new message/u)
+    await expect(COMPOSER_READY)
     await reopenedWorkspace('reopened in same process')
     assert.deepEqual(await readFile(configPath), savedBytes)
     assertNoTaskDispatches()
@@ -610,7 +613,7 @@ try {
     assertSnapshotRedacted(afterB)
     assert.equal(afterB.state.runConfiguration.connectionId, 'connection-tangle-sandbox-b')
     await key('\u001b')
-    await expect(/new message/u)
+    await expect(COMPOSER_READY)
     await openSetup(['\u001b[A', '\r'])
     await key('\u000c')
     await expect(/files · lifetime/u)
@@ -626,7 +629,7 @@ try {
     assertSnapshotRedacted(afterA)
     assert.equal(afterA.state.runConfiguration.connectionId, 'connection-tangle-sandbox')
     await key('\u001b')
-    await expect(/new message/u)
+    await expect(COMPOSER_READY)
     assert.deepEqual(await readFile(configPath), selectedABytes)
     assertNoTaskDispatches()
     const beforeTaskRequests = requests.length
@@ -703,7 +706,7 @@ try {
     )
     await key('\u001b')
     await until(
-      () => !screen.includes('Send unavailable') && screen.includes('new message'),
+      () => !screen.includes('Send unavailable') && COMPOSER_READY.test(screen),
       'close continuation refusal',
     )
     const afterRejectedContinuation = await snapshot()
@@ -742,7 +745,7 @@ try {
       beforeConversationCount,
       'fresh conversation after reopened unresolved run',
     )
-    await expect(/new message/u)
+    await expect(COMPOSER_READY)
     assert.notEqual(freshConversation.state.conversationId, stateBeforeNew.state.conversationId)
     assert.equal(
       freshConversation.state.messages.length,
