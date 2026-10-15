@@ -5,8 +5,9 @@
 - Select the published Operator 1.3 with `braid --profile discovery-operator`.
   A repository clone is no longer needed. Select a configured connection with
   `--connection <id>` or the existing connection picker.
-- The catalog pins the Lab revision and checks the downloaded profile's SHA-256
-  before the canonical importer accepts it. Local profile files remain supported.
+- The package bundles the validated profile from a pinned Lab revision. Selection
+  works offline, without access to the private source repository. Local profile
+  files remain supported.
 - Operator 1.3 drafts and gates plays, observes live run records, checks placement
   and seat room, and proposes settled-play learning through reviewed Lab PRs.
   Approval must name the exact play id and commit. Its prompt is not a host

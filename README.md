@@ -9,9 +9,9 @@ braid --profile discovery-operator --connection connection-local-cli-bridge
 
 The existing connection picker configures CLI Bridge or Tangle Sandbox. `--connection`
 selects its configured id. The operator needs `disco` read access, `gh-drew`, and a
-subscription seat on the execution host. The published name resolves an immutable
-Lab profile, checks its SHA-256, and validates it with the canonical profile importer.
-An unavailable download fails visibly; local profile paths remain supported.
+subscription seat on the execution host. The published name selects the immutable Lab profile snapshot bundled in the package
+and validates it with the canonical profile importer. Selection works offline;
+local profile paths remain supported.
 Play approval names the exact play id and commit. A status question authorizes
 observation only. The operator's approval rule is an instruction, not a host command
 permission boundary.

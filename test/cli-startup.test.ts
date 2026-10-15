@@ -28,34 +28,24 @@ async function repositoryRoot(): Promise<URL> {
   throw new Error('Could not locate the Braid repository root')
 }
 
-test('published profiles preserve file references and reject untrusted downloaded bytes', async () => {
-  let requests = 0
-  const unavailable: typeof fetch = async () => {
-    requests += 1
-    return new Response('', { status: 503 })
+test('published profiles resolve without a network or source checkout and preserve file references', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'braid-profile-catalog-'))
+  try {
+    for (const reference of [undefined, './profile.json', '__proto__', 'constructor']) {
+      assert.equal(resolvePublishedProfile(reference, { dataDirectory: directory }), reference)
+    }
+    const path = resolvePublishedProfile('discovery-operator', { dataDirectory: directory })
+    assert.ok(path)
+    const profile = JSON.parse(await readFile(path, 'utf8'))
+    assert.equal(profile.name, 'discovery-operator')
+    assert.equal(profile.version, '1.3.0')
+    assert.equal(profile.harness, 'codex')
+    assert.equal(profile.model.metadata.credentialSource, 'subscription')
+    assert.equal(profile.resources.skills.length, 2)
+    assert.equal(resolvePublishedProfile('discovery-operator', { dataDirectory: directory }), path)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
   }
-  for (const reference of [undefined, './profile.json', '__proto__', 'constructor']) {
-    assert.equal(await resolvePublishedProfile(reference, { fetch: unavailable }), reference)
-  }
-  assert.equal(requests, 0)
-  await assert.rejects(
-    resolvePublishedProfile('discovery-operator', { fetch: unavailable }),
-    /unavailable/u,
-  )
-  const changed: typeof fetch = async (url, options) => {
-    assert.match(
-      String(url),
-      /\/discovery-lab\/[a-f0-9]{40}\/profiles\/operators\/discovery-operator.json$/u,
-    )
-    assert.equal(options?.redirect, 'error')
-    return new Response('{"name":"tampered"}')
-  }
-  await assert.rejects(resolvePublishedProfile('discovery-operator', { fetch: changed }), /digest/u)
-  const oversized: typeof fetch = async () => new Response('x'.repeat(256 * 1024 + 1))
-  await assert.rejects(
-    resolvePublishedProfile('discovery-operator', { fetch: oversized }),
-    /download limit/u,
-  )
 })
 
 async function waitForRecordedRevision(path: string, revision: number): Promise<void> {

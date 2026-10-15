@@ -1,58 +1,22 @@
-import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import { ensurePrivateDirectory } from '../adapters/persistence/safe-file.js'
-import { importProfileJson, saveProfileFile } from '../app/profile-persistence.js'
+import { importProfileValue, saveProfileFile } from '../app/profile-persistence.js'
+// Published from discovery-lab@4494ab671d556bcb414025bc8766915c89345647.
+// The private source remains the owner; this package carries its immutable release snapshot.
+import discoveryOperator from '../profiles/discovery-operator.json' with { type: 'json' }
 import { defaultBraidDataDirectory } from './state-path.js'
 
-/** Published names resolve to immutable owner revisions, never the workspace or a moving branch. */
-const catalog: Readonly<Record<string, { readonly url: string; readonly sha256: string }>> = {
-  'discovery-operator': {
-    url: 'https://raw.githubusercontent.com/tangle-network/discovery-lab/4494ab671d556bcb414025bc8766915c89345647/profiles/operators/discovery-operator.json',
-    sha256: 'ff5aed2a3667c83507d5a160b25453e956e8bd57e21334a2dc8ad3fd6b7ebb72',
-  },
-}
+const catalog: Readonly<Record<string, unknown>> = { 'discovery-operator': discoveryOperator }
 
-export async function resolvePublishedProfile(
+export function resolvePublishedProfile(
   reference: string | undefined,
-  options: {
-    readonly fetch?: typeof globalThis.fetch
-    readonly dataDirectory?: string
-  } = {},
-): Promise<string | undefined> {
-  const entry =
-    reference === undefined || !Object.hasOwn(catalog, reference) ? undefined : catalog[reference]
-  if (entry === undefined) return reference
-  const response = await (options.fetch ?? globalThis.fetch)(entry.url, {
-    signal: AbortSignal.timeout(15_000),
-    redirect: 'error',
-  })
-  if (!response.ok || response.body === null) {
-    throw new Error(
-      'Published profile unavailable. Retry when GitHub is reachable or select a local profile file.',
-    )
-  }
-  const reader = response.body.getReader()
-  const chunks: Uint8Array[] = []
-  let size = 0
-  try {
-    for (;;) {
-      const { done, value } = await reader.read()
-      if (done) break
-      size += value.byteLength
-      if (size > 256 * 1024) throw new Error('Published profile exceeds its download limit')
-      chunks.push(value)
-    }
-  } finally {
-    await reader.cancel()
-  }
-  const bytes = Buffer.concat(chunks)
-  if (createHash('sha256').update(bytes).digest('hex') !== entry.sha256) {
-    throw new Error('Published profile digest does not match the catalog revision')
-  }
-  const imported = importProfileJson(bytes.toString('utf8'))
+  options: { readonly dataDirectory?: string } = {},
+): string | undefined {
+  if (reference === undefined || !Object.hasOwn(catalog, reference)) return reference
+  const imported = importProfileValue(catalog[reference])
   const directory = join(options.dataDirectory ?? defaultBraidDataDirectory(), 'profiles')
   ensurePrivateDirectory(directory)
-  const path = join(directory, `${reference}-${entry.sha256}.json`)
+  const path = join(directory, `${reference}-${imported.digest.slice('sha256:'.length)}.json`)
   saveProfileFile(path, imported.profile, { trusted: true })
   return path
 }
