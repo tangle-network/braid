@@ -7,6 +7,7 @@ import { DETERMINISTIC_PROFILE } from '../src/app/composition.js'
 import { MemoryJournal } from '../src/app/journal.js'
 import {
   DEFAULT_STREAM_IDLE_MS,
+  IdleArm,
   pumpWithIdleBound,
   STALLED,
   withinDeadline,

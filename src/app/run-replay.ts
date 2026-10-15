@@ -7,6 +7,7 @@ import { safeSnapshotDetail, safeSnapshotText, safeSnapshotUsage } from './provi
 import { runtimeFailureDiagnostic, safeRuntimeDiagnostic } from './provider-values.js'
 import { retainedExecutionRecoveryContext } from './run-recovery-context.js'
 import {
+  IdleArm,
   type PumpOutcome,
   pumpWithIdleBound,
   STALLED,
