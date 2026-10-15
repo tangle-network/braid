@@ -61,6 +61,10 @@ Capability reports are authoritative for availability.
 
 An unknown report disables the action instead of guessing support.
 
+Send uses admission's own rule for branch history.
+When the connection's latest admission reported that it cannot carry branch history into a new session, and the next send would not continue a provider session, Send is unavailable before anything runs.
+The reason names the last run's ending and the proven route, `/new`; admission refuses with the same text, and headless `send` returns it with code `CONTEXT_TRANSFER_UNAVAILABLE`.
+
 Reasons are sanitized and cannot carry terminal controls.
 
 Credential or provider-private details never appear in the reason.

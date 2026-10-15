@@ -14,7 +14,11 @@ import { DEFAULT_RUN_CAPABILITIES, UNKNOWN_RUN_CAPABILITIES } from '../ports/exe
 import type { AdmissionPort, ExecutionAccess, StateReader } from './application-ports.js'
 import type { SendInput } from './application-types.js'
 import { AppError } from './errors.js'
-import { branchHasVisibleHistory, resolveNativeContinuationRun } from './run-continuation.js'
+import {
+  branchHistoryBlocked,
+  branchHistoryRefusal,
+  resolveNativeContinuationRun,
+} from './run-continuation.js'
 
 export { validateContextPlan } from './run-admission-context.js'
 
@@ -81,19 +85,18 @@ export function validateExecutionContext(
   conversationId = state.conversationId,
   branchId = state.branchId,
 ): void {
-  const receipt = admission?.materializationReceipt
-  if (receipt?.portableContext !== 'unavailable') return
-  if (input.sessionId !== undefined && input.contextBoundary === undefined) return
-  const hasHistory = branchHasVisibleHistory({
+  const blocked = branchHistoryBlocked({
     state,
     conversationId,
     branchId,
+    portableContext: admission?.materializationReceipt?.portableContext,
+    continuesSession: input.sessionId !== undefined && input.contextBoundary === undefined,
   })
-  if (!hasHistory) return
-  throw new AppError(
-    'CONTEXT_TRANSFER_UNAVAILABLE',
-    'This provider cannot transfer the existing branch history across its current environment; select a supported continuation or start a new branch',
-  )
+  if (blocked)
+    throw new AppError(
+      'CONTEXT_TRANSFER_UNAVAILABLE',
+      branchHistoryRefusal(state, conversationId, branchId),
+    )
 }
 
 export function validateProfile(profile: Readonly<AgentProfile>): void {

@@ -10,6 +10,9 @@ import { defineAgentProfile } from '@tangle-network/agent-interface'
 import xterm from '@xterm/headless'
 import * as pty from 'node-pty'
 
+// The composer is ready when it offers a new message, or explains why Send is unavailable.
+const COMPOSER_READY = /new message|send unavailable/u
+
 // Real executable, encrypted storage and loopback HTTP. Reads succeed; writes are refused.
 // This proves local setup and task admission, NOT execution in a live Tangle sandbox.
 const repository = fileURLToPath(new URL('../', import.meta.url))
@@ -250,9 +253,9 @@ function assertTaskRequestAllowlist(observedRequests) {
   )
 }
 
-function assertCapabilityReadOnlyRequests(observedRequests) {
+function assertCapabilityReadOnlyRequests(observedRequests, { allowNone = false } = {}) {
   assert.ok(
-    observedRequests.length > 0 &&
+    (allowNone || observedRequests.length > 0) &&
       observedRequests.every(
         (request) =>
           request.method === 'GET' &&
@@ -457,11 +460,11 @@ async function start(endpoint, phase) {
       ).join('\n')
     })
   })
-  await expect(/new message/u)
+  await expect(COMPOSER_READY)
   capture(phase)
 }
 async function stop() {
-  await expect(/new message/u)
+  await expect(COMPOSER_READY)
   await key('\u0015')
   await key('/quit\r')
   await until(() => exit !== undefined, 'CLI /quit')
@@ -480,7 +483,7 @@ async function reopenedWorkspace(label) {
   assert.match(screen, /1800/u)
   await key('\u001b')
   await key('\u001b')
-  await expect(/new message/u)
+  await expect(COMPOSER_READY)
 }
 try {
   evidence.version = execFileSync(process.execPath, [binary, '--version'], {
@@ -588,7 +591,7 @@ try {
     assertSnapshotRedacted(afterSave)
     assert.equal(afterSave.state.runs.length, 0)
     await key('\u001b')
-    await expect(/new message/u)
+    await expect(COMPOSER_READY)
     await reopenedWorkspace('reopened in same process')
     assert.deepEqual(await readFile(configPath), savedBytes)
     assertNoTaskDispatches()
@@ -610,7 +613,7 @@ try {
     assertSnapshotRedacted(afterB)
     assert.equal(afterB.state.runConfiguration.connectionId, 'connection-tangle-sandbox-b')
     await key('\u001b')
-    await expect(/new message/u)
+    await expect(COMPOSER_READY)
     await openSetup(['\u001b[A', '\r'])
     await key('\u000c')
     await expect(/files · lifetime/u)
@@ -626,7 +629,7 @@ try {
     assertSnapshotRedacted(afterA)
     assert.equal(afterA.state.runConfiguration.connectionId, 'connection-tangle-sandbox')
     await key('\u001b')
-    await expect(/new message/u)
+    await expect(COMPOSER_READY)
     assert.deepEqual(await readFile(configPath), selectedABytes)
     assertNoTaskDispatches()
     const beforeTaskRequests = requests.length
@@ -691,9 +694,10 @@ try {
     const beforeContinuationRunCount = afterReload.state.runs.length
     const beforeContinuationMessageCount = afterReload.state.messages.length
     await key('CLOUD_SETUP_RESUMED_TASK\r')
-    await expect(/CONTEXT_TRANSFER_UNAVAILABLE/u)
+    await expect(/Send unavailable/u)
     const continuationRequests = requests.slice(beforeContinuationRequests)
-    assertCapabilityReadOnlyRequests(continuationRequests)
+    // The send capability refuses before admission, so no provider request is needed at all.
+    assertCapabilityReadOnlyRequests(continuationRequests, { allowNone: true })
     assert.equal(
       requests.filter((request) => request.method === 'POST' && request.path === '/v1/sandboxes')
         .length,
@@ -702,7 +706,7 @@ try {
     )
     await key('\u001b')
     await until(
-      () => !screen.includes('CONTEXT_TRANSFER_UNAVAILABLE') && screen.includes('new message'),
+      () => !screen.includes('Send unavailable') && COMPOSER_READY.test(screen),
       'close continuation refusal',
     )
     const afterRejectedContinuation = await snapshot()
@@ -714,7 +718,7 @@ try {
     assert.equal(afterRejectedContinuation.state.messages.length, beforeContinuationMessageCount)
     assertSnapshotRedacted(afterRejectedContinuation)
     evidence.sameBranchContinuation =
-      'CONTEXT_TRANSFER_UNAVAILABLE; authenticated read-only identity, capability, usage, and subscription GETs only; zero sandbox creates or run/message changes'
+      'Send unavailable before admission; no provider request beyond authenticated read-only setup GETs; zero sandbox creates or run/message changes'
     evidence.sameBranchReadOnlyRequestPaths = [
       ...new Set(continuationRequests.map((request) => request.path)),
     ]
@@ -741,7 +745,7 @@ try {
       beforeConversationCount,
       'fresh conversation after reopened unresolved run',
     )
-    await expect(/new message/u)
+    await expect(COMPOSER_READY)
     assert.notEqual(freshConversation.state.conversationId, stateBeforeNew.state.conversationId)
     assert.equal(
       freshConversation.state.messages.length,

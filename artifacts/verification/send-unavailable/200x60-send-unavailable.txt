@@ -1,0 +1,60 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                     Send unavailable
+                     The last run on this branch failed, and this connection continues a branch only after a completed run. Start a new conversation with /new to keep working on
+                     this connection.
+                     This action is unavailable with the selected connection.
+                     ←/esc close
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

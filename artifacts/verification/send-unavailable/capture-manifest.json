@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-15T07:58:28.381Z",
+  "command": "pnpm capture:send-unavailable",
+  "execution": "controlled provider in test/send-context-capability.test.ts; not provider proof",
+  "flows": {
+    "send-unavailable": "after a failed retained Tangle run, Enter shows why Send is unavailable, names /new, keeps the draft, and starts no run"
+  },
+  "provenance": {
+    "renderer": {
+      "package": "@earendil-works/pi-tui@1.1.0",
+      "pty": "node-pty@1.1.0",
+      "emulator": "@xterm/headless@6.0.0",
+      "node": "v22.23.3",
+      "terminal": "xterm-256color"
+    },
+    "raster": {
+      "agg": "agg 1.9.0",
+      "imagemagick": "Version: ImageMagick 6.9.12-98 Q16 x86_64 18038 https://legacy.imagemagick.org",
+      "fontFamily": "DejaVu Sans Mono",
+      "font": "DejaVu Sans Mono | Book | /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+      "colorMode": "sRGB 8-bit"
+    }
+  },
+  "artifacts": [
+    {
+      "path": "40x12-send-unavailable.txt",
+      "sha256": "8a25a254909c3e9118b8ef0bc449d0f8873da7d34e26af2a04699496b519156b",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "40x12-send-unavailable.png",
+      "sha256": "8204c4ea5c724f329f5ac55754d8f8846053e01f12a0a2e3396ecc3ffebcc967",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "80x24-send-unavailable.txt",
+      "sha256": "837ff582e50b1b17178db02856bd2b536cfaefe641effd9a84399684ee5fe123",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "80x24-send-unavailable.png",
+      "sha256": "77d87bb0fc82ac79fb499b9eb320b46e8e10c579192bc69bddf63732ecf69527",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "120x40-send-unavailable.txt",
+      "sha256": "220dc01d5b3b5255e091b28c7dfd089585ad1260bc2118cffa90a877c85020f8",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "120x40-send-unavailable.png",
+      "sha256": "c2dafac3f9ddf17ed178c993a194af97dd47022260fa3fb38d2e2ec1d7c937e3",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "200x60-send-unavailable.txt",
+      "sha256": "e060bab8492948647a7230c19454209649f620891325ff31ed93ba59cb9a1ff6",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "200x60-send-unavailable.png",
+      "sha256": "4e4c97c361c103c0b9495123c49f22e9a6261a1bb16024445d8a318e05cbd3bb",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "80x24-send-unavailable.cast",
+      "sha256": "96e1a6a9ac0495cdf33484397edaaac5e91fc43b6ef039af0db09c27d6153196",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "80x24-send-unavailable-keyboard.gif",
+      "sha256": "28b2624f7e6dbad22eb92c0e93a47afe5359af5710b4745f89d8150c5f986681",
+      "columns": 80,
+      "rows": 24
+    }
+  ]
+}

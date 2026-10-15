@@ -114,7 +114,7 @@ export type UiDispatchResult =
     }
   | {
       readonly kind: 'unavailable'
-      readonly code: 'CAPABILITY_UNAVAILABLE' | 'INVALID_INTENT'
+      readonly code: 'CAPABILITY_UNAVAILABLE' | 'CONTEXT_TRANSFER_UNAVAILABLE' | 'INVALID_INTENT'
       readonly reason: string
     }
   | {

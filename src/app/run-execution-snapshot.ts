@@ -2,7 +2,12 @@ import type { AgentProfile } from '@tangle-network/agent-interface'
 import { snapshotAgentProfile } from '@tangle-network/agent-interface/profile-snapshot'
 import type { BraidState } from '../domain/state.js'
 import type { RunExecutionSnapshot, SendInput } from './application-types.js'
-import { continuationSessionFor } from './run-continuation.js'
+import {
+  branchHistoryBlocked,
+  branchHistoryRefusal,
+  continuationSessionFor,
+  reportedPortableContext,
+} from './run-continuation.js'
 import { firstTurnHandoffContext } from './run-handoff-context.js'
 import { resolveConversationTarget } from './run-targets.js'
 import { snapshotWorkspaceRequest, type WorkspaceRequest } from './workspace-request.js'
@@ -85,6 +90,27 @@ export function snapshotRunExecution(
     ...(nativeProof === undefined ? {} : { nativeContextBoundaryProof: nativeProof }),
   }
   return freezeDeep(structuredClone(snapshot))
+}
+
+/**
+ * The admission refusal this send would meet because its connection cannot carry branch history,
+ * judged from the portable-context answer the connection gave in its latest admission.
+ */
+export function snapshotSendRefusal(
+  state: BraidState,
+  snapshot: RunExecutionSnapshot,
+): string | undefined {
+  const conversationId = snapshot.conversationId ?? state.conversationId
+  const branchId = snapshot.branchId ?? state.branchId
+  const boundary = snapshot.contextPlan?.digest ?? snapshot.portableContextPlan?.digest
+  const blocked = branchHistoryBlocked({
+    state,
+    conversationId,
+    branchId,
+    portableContext: reportedPortableContext(state, snapshot.connectionId),
+    continuesSession: snapshot.sessionId !== undefined && boundary === undefined,
+  })
+  return blocked ? branchHistoryRefusal(state, conversationId, branchId) : undefined
 }
 
 export function snapshotRunRetry(
