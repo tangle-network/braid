@@ -1,4 +1,4 @@
-import { providerCause, safeProviderDiagnostic } from '../domain/provider-values.js'
+import { providerCause, safeDiagnostic, safeProviderDiagnostic } from '../domain/provider-values.js'
 import { providerHttpFailureDiagnostic } from '../domain/runtime-diagnostics.js'
 
 export {
@@ -13,7 +13,7 @@ export {
 
 /** A runtime failure keeps its provider HTTP status and error code; other text falls back. */
 export function runtimeFailureDiagnostic(value: unknown, fallback: string): string {
-  return providerHttpFailureDiagnostic(value) ?? safeProviderDiagnostic(value, fallback)
+  return providerHttpFailureDiagnostic(value) ?? safeDiagnostic(value, fallback)
 }
 
 function safeProperty(value: object, key: string): unknown {

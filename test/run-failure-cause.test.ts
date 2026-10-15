@@ -287,7 +287,9 @@ test('a failed run records its code and readable cause, with the credential reda
     assertNoCanary('journal', journal.all())
     assertNoCanary('semantic events', app.events().map(projectSemanticEvent))
     const headless = toHeadlessState(state)
-    const message = headless.messages.find((candidate) => candidate.runId === run.id)
+    const message = headless.messages.find(
+      (candidate) => candidate.role === 'assistant' && candidate.runId === run.id,
+    )
     assert.ok(message?.outcome?.startsWith(READABLE), message?.outcome ?? 'No headless outcome recorded')
     assertNoCanary('headless state', headless)
     const view = createApplicationUiController(app).view()
@@ -516,6 +518,8 @@ for (const [flow, scenario] of Object.entries(FLOWS)) {
   for (const [columns, rows] of SIZES) {
     test(`the transcript shows the ${flow} at ${columns}x${rows} after a real keyboard send`, async () => {
       const app = scenario.open()
+      app.initialize('/workspace')
+      await app.whenDurable()
       const terminal = new RecordingTerminal(columns, rows)
       let operation = 0
       const view = new BraidTerminalApp({

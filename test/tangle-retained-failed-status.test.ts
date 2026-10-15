@@ -29,6 +29,7 @@ const profile = defineAgentProfile({
 
 // Production shape measured on Tangle Sandbox 2026-09-23: the stream reports `status: failed`
 // before the exact result, and the result carries the failure text.
+// The pinned Runtime preserves the provider bridge's complete final error, including its exit.
 const FAILURE =
   'Trusted pricing is unavailable for the direct provider selected for model "tangle-router/glm-5.3".'
 
@@ -100,7 +101,7 @@ test('a retained run that streams status failed records the exact result failure
     assert.equal(trail.filter((event) => event.kind === 'run.finished').length, 1, kinds)
     // The stable code stays in error; the result's own failure text, redacted, says why.
     assert.equal(run?.error, 'RUNTIME_FINAL_ERROR', kinds)
-    assert.equal(run?.terminalReason, FAILURE, kinds)
+    assert.equal(run?.terminalReason, `opencode execution failed: ${FAILURE} (exit code 1)`, kinds)
     assert.equal(opened.app.state().lastError, run?.error)
   } finally {
     await opened.app.close()
@@ -129,7 +130,7 @@ test('a retained failure keeps its cause across restart and never keeps a creden
     sandbox.fail(sandbox.dispatches[0]?.executionId ?? '', failure)
     await turn.completion
     const reason = opened.app.state().runs.find((run) => run.id === turn.runId)?.terminalReason
-    assert.match(reason ?? '', /^opencode exited: upstream refused key \[redacted/u)
+    assert.match(reason ?? '', /^opencode execution failed: opencode exited: upstream refused key \[redacted/u)
     const live = JSON.stringify({ state: opened.app.state(), events: opened.app.events() })
     for (const canary of canaries) assert.equal(live.includes(canary), false)
     await opened.app.close()
@@ -231,7 +232,7 @@ for (const outcome of ['failed', 'completed'] as const) {
       if (outcome === 'failed') {
         assert.equal(finished.length, 1, kinds)
         assert.equal(run?.error, 'RUNTIME_FINAL_ERROR', kinds)
-        assert.equal(run?.terminalReason, FAILURE, kinds)
+        assert.equal(run?.terminalReason, `opencode execution failed: ${FAILURE} (exit code 1)`, kinds)
       } else {
         // A final that contradicts the committed status is not ingested.
         assert.equal(finished.length, 0, kinds)
