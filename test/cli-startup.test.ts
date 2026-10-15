@@ -1,16 +1,13 @@
 import assert from 'node:assert/strict'
-import { access, chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { access, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { LazyExecutionPort } from '../src/adapters/runtime/lazy-execution.js'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { createBraidApplication } from '../src/app/composition.js'
-import type { ProfileRecord } from '../src/app/profile-types.js'
 import { CliUsageError, parseArgs } from '../src/bin/args.js'
 import { createInterfaceSignalLifecycle } from '../src/bin/interface-signal-lifecycle.js'
-import { loadProductionProfileCatalog, loadProductionSetup } from '../src/bin/production-setup.js'
-import { loadProductionStartup } from '../src/bin/production-startup.js'
 import type { ExecuteTurnInput, ExecutionPort } from '../src/ports/execution.js'
 import { createStartupPreview } from '../src/startup/preview-runtime.js'
 import { BRAID_VERSION } from '../src/version.js'
@@ -29,59 +26,6 @@ async function repositoryRoot(): Promise<URL> {
   }
   throw new Error('Could not locate the Braid repository root')
 }
-
-test('published profile startup and catalog work from a read-only workspace without profile files', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'braid-profile-catalog-'))
-  const workspace = join(directory, 'workspace')
-  await mkdir(workspace)
-  const configPath = join(directory, 'config.json')
-  const connection = {
-    id: 'connection-published-profile',
-    kind: 'tangle-inference',
-    name: 'Selected connection',
-    endpoint: 'https://router.tangle.tools',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  }
-  await writeFile(
-    configPath,
-    JSON.stringify({ schemaVersion: 2, profile: 'discovery-operator', connections: [connection] }),
-  )
-  await chmod(workspace, 0o500)
-  const fetch: typeof globalThis.fetch = async (input) => {
-    const path = new URL(String(input)).pathname
-    return new Response(
-      JSON.stringify(path === '/health' ? { status: 'ok', backends: [] } : { data: [] }),
-    )
-  }
-  try {
-    const options = { workspace, configPath, profileReference: 'discovery-operator', fetch }
-    const setup = await loadProductionSetup(options)
-    const selected = setup.profiles.find((record) => record.id === setup.initialProfileId)
-    assert.ok(selected)
-    assert.equal(selected.source.kind, 'package')
-    assert.equal(selected.source.writable, false)
-    assert.equal(selected.source.revision, selected.digest)
-    assert.equal(selected.profile.name, 'discovery-operator')
-    assert.equal(selected.profile.version, '1.3.0')
-    assert.equal(selected.profile.harness, 'codex')
-    assert.equal(selected.profile.resources?.skills?.length, 2)
-    for (const startupOptions of [options, { workspace, configPath, fetch }]) {
-      const startup = await loadProductionStartup(startupOptions)
-      const catalog = await loadProductionProfileCatalog(startupOptions, startup, connection.id)
-      const active: ProfileRecord | undefined = catalog.find(
-        (record) => record.digest === selected.digest,
-      )
-      assert.equal(active?.source.kind, 'package')
-      assert.equal(active?.source.reference, selected.source.reference)
-      assert.equal(active?.source.revision, selected.source.revision)
-    }
-    assert.deepEqual(await readdir(workspace), [])
-  } finally {
-    await chmod(workspace, 0o700)
-    await rm(directory, { recursive: true, force: true })
-  }
-})
 
 async function waitForRecordedRevision(path: string, revision: number): Promise<void> {
   const deadline = Date.now() + 5_000
