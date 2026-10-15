@@ -387,11 +387,13 @@ export class ApplicationUiController implements BraidUiController {
     const unsubscribeApp = app.subscribe((state, envelope) => {
       delivery.push(state, toEvent(envelope))
     })
+    const unsubscribeFailure = app.onStorageFailure(() => delivery.refresh())
     return {
       options,
       delivery,
       unsubscribe: () => {
         unsubscribeApp()
+        unsubscribeFailure()
         delivery.dispose()
       },
     }

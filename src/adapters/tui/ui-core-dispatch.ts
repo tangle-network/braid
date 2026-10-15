@@ -1,4 +1,4 @@
-import type { InteractionResponse } from '@tangle-network/agent-interface'
+import type { InteractionRequest, InteractionResponse } from '@tangle-network/agent-interface'
 import { checkInteractionResponse } from '../../app/interaction-response.js'
 import type {
   BraidIntent,
@@ -264,20 +264,26 @@ function responseForIntent(
   const rawValue = 'value' in value ? value.value : undefined
   const field = request.answerSpec.fields[0]
   if (request.kind === 'permission') {
-    const grant =
-      value.outcome === 'once'
-        ? 'allow_once'
-        : value.outcome === 'session'
-          ? 'allow_session'
-          : value.outcome === 'persistent'
-            ? 'allow_always'
-            : typeof rawValue === 'string' &&
-                ['allow_once', 'allow_session', 'allow_always'].includes(rawValue)
-              ? rawValue
-              : 'allow_once'
-    return { id: interactionId, outcome: 'accepted', data: { grant: [grant] } }
+    const grant = permissionGrant(value.outcome, rawValue, field)
+    return grant === undefined
+      ? undefined
+      : { id: interactionId, outcome: 'accepted', data: { grant: [grant] } }
   }
   if (!field || rawValue === undefined) return { id: interactionId, outcome: 'accepted' }
   const fieldValue = field.type === 'select' ? [String(rawValue)] : rawValue
   return { id: interactionId, outcome: 'accepted', data: { [field.name]: fieldValue } }
+}
+
+/** A scope key picks its grant; a chosen value must be one of the request's declared options. */
+function permissionGrant(
+  outcome: InteractionResponseValue['outcome'],
+  value: unknown,
+  field: InteractionRequest['answerSpec']['fields'][number] | undefined,
+): string | undefined {
+  if (outcome === 'once') return 'allow_once'
+  if (outcome === 'session') return 'allow_session'
+  if (outcome === 'persistent') return 'allow_always'
+  if (value === undefined || value === true) return 'allow_once'
+  if (typeof value !== 'string' || field?.type !== 'select') return undefined
+  return field.options.some((option) => option.value === value) ? value : undefined
 }

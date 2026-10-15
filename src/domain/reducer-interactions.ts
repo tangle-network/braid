@@ -102,19 +102,11 @@ export function reduceInteractionEvent(
     case 'run.interaction.cancelled': {
       const run = findRun(state, event.runId)
       const current = interactionFor(run, event.interactionId)
-      // A provider close cannot decide an in-flight response; its durable result must settle first.
-      if (
-        current.status === 'cancelled' ||
-        current.status === 'resolved' ||
-        current.status === 'responding'
-      ) {
-        return providerProgress(state, run, event.provider, base)
-      }
-      if (current.status !== 'pending') {
-        throw interactionInvariant(
-          `Interaction ${event.interactionId} cannot transition from ${current.status} to cancelled`,
-        )
-      }
+      // A provider close cancels only a pending request. Providers also close a request after
+      // delivering any response, so once a response is in flight or recorded the close is
+      // provider progress: it never overwrites accepted, declined, or cancelled, and an unknown
+      // response stays unknown so a retry of the same operation can still settle it.
+      if (current.status !== 'pending') return providerProgress(state, run, event.provider, base)
       const next = withoutResponseOperation(current, 'cancelled')
       return {
         ...state,
