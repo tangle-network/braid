@@ -570,10 +570,10 @@ test('a refused provider event never reaches the encrypted journal, so reopening
     const reopened = await open({ async *streamTurn(): AsyncIterable<BraidRuntimeEvent> {} })
     try {
       await reopened.app.whenDurable()
-      const kinds = reopened.app.events().map((entry) => entry.event.kind)
+      const kinds = (await reopened.storage.events()).map((entry) => entry.kind)
       assert.equal(reopened.app.storageFailure(), undefined)
-      assert.ok(kinds.includes('run.requested'))
-      assert.equal(kinds.includes('run.interaction.cancelled'), false)
+      assert.ok(kinds.includes('run.text.delta'), kinds.join(', '))
+      assert.equal(kinds.includes('run.interaction.cancelled'), false, kinds.join(', '))
     } finally {
       await reopened.storage.close()
     }
