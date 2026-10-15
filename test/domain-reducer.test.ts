@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { InteractionRequest } from '@tangle-network/agent-interface'
+import { type InteractionRequest, permissionAnswerSpec } from '@tangle-network/agent-interface'
 import { STARTER_PROFILE } from '../src/app/composition.js'
 import {
   createInteractionRequest,
@@ -415,6 +415,179 @@ test('interaction transitions reject reorder, unknown, conflicting, terminal, an
         ),
       ),
     /Interaction interaction-[0-9a-f]+ is unknown/u,
+  )
+})
+
+test('a provider close after a recorded response is provider progress only', () => {
+  const runId = createRunId('run-interaction-provider-close')
+  const close = (
+    interactionId: string,
+    sequence: number,
+    providerSequence: number,
+    eventId = `event-close-${interactionId}-${sequence}`,
+  ) =>
+    envelope(
+      {
+        kind: 'run.interaction.cancelled',
+        runId,
+        interactionId,
+        reason: 'resolved',
+        provider: { eventId: `provider-${eventId}`, providerSequence, occurredAt: at },
+      },
+      sequence,
+      createEventId(eventId),
+    )
+  const events: JournalEventEnvelope[] = [
+    envelope({ kind: 'workspace.opened', workspace: '/workspace' }, 1),
+    envelope(
+      {
+        kind: 'run.requested',
+        operationId: createOperationId('operation-provider-close'),
+        runId,
+        turnId: createTurnId('turn-provider-close'),
+        userMessageId: createMessageId('message-provider-close-user'),
+        assistantMessageId: createMessageId('message-provider-close-assistant'),
+        text: 'ask for permission',
+      },
+      2,
+    ),
+  ]
+  const append = (event: BraidEvent, eventId: string): JournalEventEnvelope => {
+    const next = envelope(event, events.length + 1, createEventId(eventId))
+    events.push(next)
+    return next
+  }
+  const interactionFor = (name: string, providerSequence: number): string => {
+    const providerId = createInteractionId(`interaction-${name}`)
+    const id = localInteractionId(runId, providerId)
+    const request = createInteractionRequest({
+      id,
+      kind: 'permission',
+      title: `Permission ${name}`,
+      answerSpec: permissionAnswerSpec({ allowFeedback: false, responseScopes: ['interaction'] }),
+      responseScopes: ['interaction'],
+      binding: {
+        runId,
+        provider: 'fixture',
+        environmentId: 'environment-provider-close',
+        sessionId: 'session-provider-close',
+        executionId: 'execution-provider-close',
+        interactionId: id,
+      },
+    })
+    append(
+      {
+        kind: 'run.interaction',
+        runId,
+        request,
+        responseBinding: providerResponseBinding(request, providerId),
+        provider: { eventId: `provider-request-${name}`, providerSequence, occurredAt: at },
+      },
+      `event-request-${name}`,
+    )
+    return id
+  }
+  const respond = (
+    interactionId: string,
+    name: string,
+    outcome: 'accepted' | 'declined' | 'cancelled',
+    result: 'accepted' | 'declined' | 'cancelled' | 'unknown' = outcome,
+  ) => {
+    const operationId = createOperationId(`operation-response-${name}`)
+    append(
+      {
+        kind: 'run.interaction.response.requested',
+        runId,
+        interactionId,
+        operationId,
+        outcome,
+        containsSecret: false,
+      },
+      `event-response-requested-${name}`,
+    )
+    append(
+      {
+        kind: 'run.interaction.responded',
+        runId,
+        interactionId,
+        operationId,
+        outcome: result,
+        containsSecret: false,
+        ...(result === 'unknown' ? { detail: 'INTERACTION_RESPONSE_TIMEOUT' } : {}),
+      },
+      `event-responded-${name}-${result}`,
+    )
+  }
+
+  const declined = interactionFor('declined', 1)
+  respond(declined, 'declined', 'declined')
+  const beforeClose = replayEvents(initialState(STARTER_PROFILE), events)
+  const declinedClose = close(declined, events.length + 1, 2)
+  events.push(declinedClose)
+  const afterClose = reduceEvent(beforeClose, declinedClose)
+  const declinedAfterClose = afterClose.runs[0]?.interactions.find(
+    (item) => item.request.id === declined,
+  )
+  assert.equal(declinedAfterClose?.status, 'declined')
+  assert.equal(declinedAfterClose?.responseOperation?.outcome, 'declined')
+  assert.equal(afterClose.runs[0]?.lastProviderSequence, 2)
+  assert.deepEqual(afterClose.runs[0]?.pendingInteractionIds ?? [], [])
+  assert.strictEqual(reduceEvent(afterClose, declinedClose), afterClose)
+  const declinedHistory = [...events]
+
+  const unknown = interactionFor('unknown', 3)
+  respond(unknown, 'unknown', 'declined', 'unknown')
+  events.push(close(unknown, events.length + 1, 4))
+  const unknownAfterClose = replayEvents(initialState(STARTER_PROFILE), events)
+  assert.equal(
+    unknownAfterClose.runs[0]?.interactions.find((item) => item.request.id === unknown)?.status,
+    'unknown',
+  )
+  // The close leaves the unknown response open to the same operation's provider result.
+  append(
+    {
+      kind: 'run.interaction.responded',
+      runId,
+      interactionId: unknown,
+      operationId: createOperationId('operation-response-unknown'),
+      outcome: 'declined',
+      containsSecret: false,
+    },
+    'event-responded-unknown-settled',
+  )
+
+  const cancelled = interactionFor('cancelled', 5)
+  respond(cancelled, 'cancelled', 'cancelled')
+  events.push(close(cancelled, events.length + 1, 6))
+  const pending = interactionFor('pending', 7)
+  events.push(close(pending, events.length + 1, 8))
+
+  const initial = initialState(STARTER_PROFILE)
+  const incremental = events.reduce(reduceEvent, initial)
+  const replayed = replayEvents(initial, events)
+  assert.deepEqual(incremental, replayed)
+  assert.equal(incremental.projectionChecksum, replayed.projectionChecksum)
+  assert.deepEqual(
+    incremental.runs[0]?.interactions.map((item) => [item.request.id, item.status]),
+    [
+      [declined, 'declined'],
+      [unknown, 'declined'],
+      [cancelled, 'cancelled'],
+      [pending, 'cancelled'],
+    ],
+  )
+  assert.equal(incremental.runs[0]?.lastProviderSequence, 8)
+  assert.equal(
+    replayEvents(replayed, declinedHistory).projectionChecksum,
+    replayed.projectionChecksum,
+  )
+  assert.throws(
+    () =>
+      reduceEvent(incremental, {
+        ...declinedClose,
+        event: { ...declinedClose.event, reason: 'changed' } as BraidEvent,
+      }),
+    DuplicateEventConflictError,
   )
 })
 
