@@ -115,12 +115,10 @@ function seatRefusalApp(journal?: MemoryJournal) {
       throw refusal()
     },
   }
-  return new BraidApplication({
-    profile: DETERMINISTIC_PROFILE,
+  return createBraidApplication({
+    fixture: 'deterministic',
     execution,
-    clock: new FixedClock(),
-    ids: new SequenceIds(),
-    ...(journal === undefined ? {} : { journal, effectStorage: journal }),
+    ...(journal === undefined ? {} : { journal }),
   })
 }
 
@@ -129,7 +127,13 @@ test('a provider cause is redacted before it is bounded and kept on one line', (
   assert.equal(providerCause(' \n\t '), undefined)
   const controlled = providerCause('upstream\nrefused\u001b[31m now\u0007') ?? ''
   assert.match(controlled, /^upstream refused /u)
-  assert.doesNotMatch(controlled, /[\u0000-\u001f\u007f]/u)
+  assert.equal(
+    Array.from(controlled).some((character) => {
+      const code = character.charCodeAt(0)
+      return code < 32 || code === 127
+    }),
+    false,
+  )
   const cause = providerCause(PROVIDER_ERROR) ?? ''
   assert.ok(cause.startsWith(`${READABLE} for key [redacted`), cause)
   assertNoCanary('cause', cause)
@@ -188,7 +192,7 @@ test('a failed run records its code and readable cause, with the credential reda
     assert.ok(finished?.kind === 'run.finished')
     assert.equal(finished.error, 'RUNTIME_FINAL_ERROR')
     assert.ok(finished.reason?.startsWith(READABLE))
-    assert.ok(runOutcomeDetail(run)?.startsWith(READABLE))
+    assert.ok(run !== undefined && runOutcomeDetail(run)?.startsWith(READABLE))
     assertNoCanary('state', state)
     assertNoCanary('journal', journal.all())
     assertNoCanary('semantic events', app.events().map(projectSemanticEvent))
@@ -249,7 +253,8 @@ test('a run whose start and recovery both fail says why instead of RUNTIME_RECON
     app.initialize('/workspace')
     const state = await app.send({ operationId: 'operation-seat', text: 'Use the seat.' }).completion
     const run = state.runs.at(-1)
-    assert.equal(run?.status, 'unknown')
+    assert.ok(run !== undefined)
+    assert.equal(run.status, 'unknown')
     const unknown = app.events().find((entry) => entry.event.kind === 'run.unknown')?.event
     assert.ok(unknown?.kind === 'run.unknown')
     assert.equal(

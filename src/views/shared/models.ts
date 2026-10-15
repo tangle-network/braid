@@ -698,6 +698,7 @@ export interface HeadlessState {
     readonly runId?: string
     readonly parts: readonly TranscriptPartView[]
     readonly partsTruncated?: boolean
+    readonly outcome?: string
   }[]
   readonly runs: readonly {
     readonly id: string
