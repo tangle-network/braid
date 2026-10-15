@@ -7,8 +7,8 @@ import { defaultBraidDataDirectory } from './state-path.js'
 /** Published names resolve to immutable owner revisions, never the workspace or a moving branch. */
 const catalog: Readonly<Record<string, { readonly url: string; readonly sha256: string }>> = {
   'discovery-operator': {
-    url: 'https://raw.githubusercontent.com/tangle-network/discovery-lab/f0b0aec701e042db79fa6bb2743294099f7f3a52/profiles/operators/discovery-operator.json',
-    sha256: '2c5bc2a759550bb6119022e53fd997bbd44baf9e7e03eaf89fe8f6462a0fb6ec',
+    url: 'https://raw.githubusercontent.com/tangle-network/discovery-lab/429a9da83a352fed8a072694dd694ab4c4026968/profiles/operators/discovery-operator.json',
+    sha256: '1cf73d191f9a4f7000498b79b73995afee0918050d13d32f94ae0caeb9c91d9d',
   },
 }
 
