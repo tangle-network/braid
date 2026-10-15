@@ -324,7 +324,9 @@ export async function runSeatsProof(environment = process.env) {
   )
   const secrets = list(environment.BRAID_SEATS_SECRETS)
   const ghSecret = environment.BRAID_SEATS_GH_SECRET ?? secrets[0]
-  if (ghSecret === undefined) throw new Error('BRAID_SEATS_SECRETS must name the GitHub secret')
+  if (ghSecret === undefined && environment.BRAID_SEATS_PROMPT === undefined) {
+    throw new Error('BRAID_SEATS_SECRETS must name the GitHub secret for the default prompt')
+  }
   const modelCredentials =
     environment.BRAID_SEATS_MODEL_CREDENTIALS === undefined
       ? undefined
@@ -436,6 +438,32 @@ export async function runSeatsProof(environment = process.env) {
     result.modelTurnReached = finalRun.status === 'completed' && result.modelTurnReached
     result.journal = await journalEvidence(config, { secrets, modelCredentials, canaries })
     cast = castFor(terminal, `Braid ${label}`, 'braid --inline')
+    result.captures = []
+    for (const [columns, rows] of [[40, 12], [80, 24], [120, 40], [200, 60]]) {
+      const capturePath = join(config.root, `restored-${columns}x${rows}.json`)
+      const restored = await createCapturedTerminal({
+        binary, args: ['--inline', '--record-state', capturePath], columns, rows,
+        cwd: config.workspace, environment: config.environment, recordPath: capturePath,
+      })
+      try {
+        await restored.waitForScreen(transcriptSurfaceReady, 'restored transcript surface', 60_000)
+        const restoredFrame = await restored.captureState(30_000)
+        const restoredRun = restoredFrame.state.runs.find((candidate) => candidate.id === runId)
+        if (restoredRun?.status !== finalRun.status) throw new Error('The packed client did not restore the same run')
+        await restored.waitForStable('restored transcript')
+        const screen = restored.snapshot().screen
+        const recording = castFor(restored, `Braid ${label} ${columns}x${rows}`, 'braid --inline')
+        if (canaries.some((canary) => screen.includes(canary) || recording.includes(canary))) {
+          throw new Error('A restored capture contains a canary')
+        }
+        await writePrivate(join(outputDirectory, `${label}-${columns}x${rows}.txt`), screen)
+        await writePrivate(join(outputDirectory, `${label}-${columns}x${rows}.cast`), recording)
+        result.captures.push({ columns, rows, runId, status: restoredRun.status })
+        await restored.closeNormally()
+      } finally {
+        await restored.dispose()
+      }
+    }
   } catch (error) {
     result.failure = safeMessage(error, environment)
     result.screen = terminal?.snapshot().screen
