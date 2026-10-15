@@ -395,6 +395,7 @@ test('an ingest slower than the deadline does not hold the turn open', async () 
     status: async (runId) => live(runId),
     reconnect: (runId) => from([text(runId, 2, 'b'), final(runId, 3, 'ab')]),
   })
+  await app.whenDurable()
   const state = await app.send({ operationId: 'op-slow-ingest', text: 'go' }).completion
   assert.equal(state.runs[0]?.status, 'completed')
   assert.equal(probe.statusCalls, 1)
