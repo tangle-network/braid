@@ -6,8 +6,8 @@
 snapshot of `tangle-network/discovery-lab`, commit
 `4494ab671d556bcb414025bc8766915c89345647`, path
 `profiles/operators/discovery-operator.json`. Discovery Lab remains its owner.
-Its private repository supplies no separate license file. The project owner
-authorized this profile's distribution as part of Braid's profile catalog.
+The project owner authorized this profile's distribution as part of Braid's
+profile catalog.
 
 The snapshot carries these resources byte for byte. Their hashes are recorded in
 `extensions.discovery-operator.resourceProvenance` in the profile.
