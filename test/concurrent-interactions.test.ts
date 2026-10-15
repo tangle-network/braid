@@ -7,7 +7,10 @@ import {
 } from '@tangle-network/agent-interface'
 import { AppError, BraidApplication } from '../src/app/application.js'
 import { DETERMINISTIC_PROFILE } from '../src/app/composition.js'
-import { createInteractionRequest, rebindInteractionRequest } from '../src/app/interaction-request.js'
+import {
+  createInteractionRequest,
+  rebindInteractionRequest,
+} from '../src/app/interaction-request.js'
 import { MemoryJournal } from '../src/app/journal.js'
 import type { BraidRuntimeEvent } from '../src/domain/runtime-events.js'
 import { FixedClock } from '../src/ports/clock.js'
@@ -115,7 +118,8 @@ async function startBoth(requests: readonly InteractionRequest[]) {
   const app = open(provider.execution, journal)
   const receipt = app.send({ operationId: 'operation-send-concurrent', text: 'two tools' })
   await until(
-    () => app.state().runs[0]?.interactions.filter((entry) => entry.status === 'pending').length === 2,
+    () =>
+      app.state().runs[0]?.interactions.filter((entry) => entry.status === 'pending').length === 2,
   )
   const runId = app.state().runs[0]?.id
   assert(runId)
