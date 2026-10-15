@@ -119,18 +119,24 @@ async function startBoth(requests: readonly InteractionRequest[]) {
   )
   const runId = app.state().runs[0]?.id
   assert(runId)
-  const respond = (id: string, outcome: InteractionResponse['outcome']) =>
-    app.respondInteraction({
+  const respond = (id: string, outcome: InteractionResponse['outcome']) => {
+    const local = localEntry(app, id)?.request.id
+    assert(local)
+    return app.respondInteraction({
       operationId: `operation-respond-${id}`,
       runId,
-      interactionId: id,
-      response: { id, outcome } as InteractionResponse,
+      interactionId: local,
+      response: { id: local, outcome } as InteractionResponse,
     })
+  }
   return { app, journal, provider, receipt, respond, runId }
 }
 
-const status = (app: BraidApplication, id: string) =>
-  app.state().runs[0]?.interactions.find((entry) => entry.request.id === id)?.status
+// Braid gives each provider request its own local id; the stream order is the stable key.
+const PROVIDER_ORDER = ['perm-a', 'perm-b']
+const localEntry = (app: BraidApplication, id: string) =>
+  app.state().runs[0]?.interactions[PROVIDER_ORDER.indexOf(id)]
+const status = (app: BraidApplication, id: string) => localEntry(app, id)?.status
 
 test('two open permission requests, one declined and one accepted, end completed', async () => {
   const { app, journal, provider, receipt, respond } = await startBoth([
