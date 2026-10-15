@@ -718,7 +718,7 @@ try {
     assert.equal(afterRejectedContinuation.state.messages.length, beforeContinuationMessageCount)
     assertSnapshotRedacted(afterRejectedContinuation)
     evidence.sameBranchContinuation =
-      'Send unavailable before admission; authenticated read-only identity, capability, usage, and subscription GETs only; zero sandbox creates or run/message changes'
+      'Send unavailable before admission; no provider request beyond authenticated read-only setup GETs; zero sandbox creates or run/message changes'
     evidence.sameBranchReadOnlyRequestPaths = [
       ...new Set(continuationRequests.map((request) => request.path)),
     ]
