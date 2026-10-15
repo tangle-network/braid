@@ -6,6 +6,7 @@ import test from 'node:test'
 import { LazyExecutionPort } from '../src/adapters/runtime/lazy-execution.js'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { createBraidApplication } from '../src/app/composition.js'
+import type { ProfileRecord } from '../src/app/profile-types.js'
 import { CliUsageError, parseArgs } from '../src/bin/args.js'
 import { createInterfaceSignalLifecycle } from '../src/bin/interface-signal-lifecycle.js'
 import { loadProductionProfileCatalog, loadProductionSetup } from '../src/bin/production-setup.js'
@@ -68,7 +69,9 @@ test('published profile startup and catalog work from a read-only workspace with
     for (const startupOptions of [options, { workspace, configPath, fetch }]) {
       const startup = await loadProductionStartup(startupOptions)
       const catalog = await loadProductionProfileCatalog(startupOptions, startup, connection.id)
-      const active = catalog.find((record) => record.digest === selected.digest)
+      const active: ProfileRecord | undefined = catalog.find(
+        (record) => record.digest === selected.digest,
+      )
       assert.equal(active?.source.kind, 'package')
       assert.equal(active?.source.reference, selected.source.reference)
       assert.equal(active?.source.revision, selected.source.revision)
