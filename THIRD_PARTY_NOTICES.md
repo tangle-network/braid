@@ -1,5 +1,28 @@
 # Third-party notices
 
+## Published Discovery Operator
+
+`src/profiles/discovery-operator.json` is the project-owner-authorized release
+snapshot of `tangle-network/discovery-lab`, commit
+`4494ab671d556bcb414025bc8766915c89345647`, path
+`profiles/operators/discovery-operator.json`. Discovery Lab remains its owner.
+Its private repository supplies no separate license file. The project owner
+authorized this profile's distribution as part of Braid's profile catalog.
+
+The snapshot carries these resources byte for byte. Their hashes are recorded in
+`extensions.discovery-operator.resourceProvenance` in the profile.
+
+| Resource | Owner and source path | Source commit | License |
+| --- | --- | --- | --- |
+| `profile-authoring` | `tangle-network/agent-runtime`, `skills/profile-authoring/SKILL.md` | `b95a36ae1e3f697fc439b9911f5611490c907511` | MIT, as declared by the owner's package manifest |
+| `inspect-agent-traces` | `tangle-network/traces`, `skills/inspect-agent-traces/SKILL.md` | `60956cefd01f41f6aaae5968ef4f7d40eeb3f9a6` | MIT, Copyright (c) 2026 Tangle Network |
+| `operator-learning` | `tangle-network/discovery-lab`, `profiles/operators/learning.md` | `f0b0aec701e042db79fa6bb2743294099f7f3a52` | Project-owner-authorized distribution |
+
+Braid's distributed `LICENSE` retains the MIT permission notice and the same
+Tangle Network copyright notice.
+
+## Other sources
+
 Braid contains a test-only adaptation from Pi and a Windows release-proof process-control adaptation from Microsoft Aspire.
 
 The implementation is expected to depend on and adapt behavior from the following MIT-licensed projects.
