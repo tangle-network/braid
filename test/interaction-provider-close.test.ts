@@ -27,7 +27,8 @@ import { DEFAULT_RUN_CAPABILITIES, type ExecutionPort } from '../src/ports/execu
 import { BraidTerminalApp } from '../src/views/tui/terminal-app.js'
 import { createBraidTheme } from '../src/views/tui/theme.js'
 import { interactionResponseRunCapabilities } from './support/run-capabilities.js'
-import { VirtualTerminal } from './support/virtual-terminal.js'
+import { RecordingTerminal } from './support/recording-terminal.js'
+import type { VirtualTerminal } from './support/virtual-terminal.js'
 
 const NOW = '2026-10-15T00:00:00.000Z'
 const ALT_2 = '\u001b2'
@@ -47,6 +48,16 @@ async function waitUntil(predicate: () => boolean, label: string, timeoutMs = 3_
     if (Date.now() >= deadline) throw new Error(`Timed out waiting for ${label}`)
     await new Promise((resolve) => setTimeout(resolve, 5))
   }
+}
+
+/** Writes the final frame and recording when the capture script asks for evidence. */
+async function writeCapture(terminal: RecordingTerminal, name: string, title: string) {
+  const root = process.env.BRAID_INTERACTION_CAPTURE_ROOT
+  if (!root) return
+  await mkdir(root, { recursive: true })
+  const frame = terminal.getViewport().join('\n')
+  await writeFile(join(root, `${name}.txt`), `${frame.replace(/[ \t]+$/gmu, '')}\n`)
+  await writeFile(join(root, `${name}.cast`), terminal.cast(title))
 }
 
 function binding(id: string) {
@@ -174,6 +185,8 @@ interface KeyboardFlow {
   readonly request: InteractionRequest
   readonly acknowledgement?: ClosingProviderOptions['acknowledgement']
   readonly expireAfterMs?: number
+  readonly size?: readonly [columns: number, rows: number]
+  readonly capture?: { readonly name: string; readonly title: string }
   readonly keys: (terminal: VirtualTerminal, controller: ApplicationUiController) => Promise<void>
 }
 
@@ -190,7 +203,8 @@ async function runKeyboardFlow(flow: KeyboardFlow) {
   })
   app = created
   created.initialize('/workspace')
-  const terminal = new VirtualTerminal(80, 24)
+  const [columns, rows] = flow.size ?? [80, 24]
+  const terminal = new RecordingTerminal(columns, rows)
   const controller = createApplicationUiController(created)
   let operation = 0
   const view = new BraidTerminalApp({
@@ -215,6 +229,10 @@ async function runKeyboardFlow(flow: KeyboardFlow) {
     )
     await created.whenDurable()
     await terminal.waitForRender()
+    if (flow.capture !== undefined) {
+      await new Promise((resolve) => setTimeout(resolve, 300))
+      await writeCapture(terminal, flow.capture.name, flow.capture.title)
+    }
     const state = created.state()
     return {
       state,
@@ -247,14 +265,24 @@ function assertSettled(
   assert.doesNotMatch(result.screen, /storage failure/u)
 }
 
-test('alt+2 declines an opencode permission and the run finishes after the provider close', async () => {
-  const result = await runKeyboardFlow({
-    request: permissionForm('interaction-alt-2'),
-    keys: async (terminal) => terminal.sendInput(ALT_2),
+for (const [columns, rows] of SIZES) {
+  test(`alt+2 declines an opencode permission and the run finishes at ${columns}x${rows}`, async () => {
+    const result = await runKeyboardFlow({
+      request: permissionForm(`interaction-alt-2-${columns}`),
+      size: [columns, rows],
+      capture: {
+        name: `${columns}x${rows}-decline-alt-2`,
+        title: 'Decline a permission with alt+2; the provider closes it and the run completes',
+      },
+      keys: async (terminal) => {
+        await new Promise((resolve) => setTimeout(resolve, 300))
+        terminal.sendInput(ALT_2)
+      },
+    })
+    assertSettled(result, 'declined', [{ outcome: 'declined' }])
+    assert.match(result.screen, /provider finished/u)
   })
-  assertSettled(result, 'declined', [{ outcome: 'declined' }])
-  assert.match(result.screen, /provider finished after the close/u)
-})
+}
 
 test('n declines a yes-or-no question and the run finishes after the provider close', async () => {
   const result = await runKeyboardFlow({
@@ -477,44 +505,21 @@ test('restart and reconnect replay a provider close after a decline without a st
 
 for (const [columns, rows] of SIZES) {
   test(`a refused event renders the storage-failure frame at ${columns}x${rows}`, async () => {
-    const request = permissionForm(`interaction-invariant-${columns}`)
-    const conflicting = createInteractionRequest({
-      id: request.id,
-      kind: 'permission',
-      title: 'Permission: a different command',
-      answerSpec: permissionAnswerSpec({ responseScopes: ['interaction'] }),
-      responseScopes: ['interaction'],
-      binding: request.binding,
-    })
     const journal = new MemoryJournal(new FixedClock(NOW))
-    const event = (runId: string, eventId: string, sequence: number, value: InteractionRequest) =>
-      ({
-        runId,
-        eventId,
-        sequence,
-        receivedAt: NOW,
-        event: {
-          type: 'interaction',
-          request: rebindInteractionRequest(value, {
-            ...value.binding,
-            runId,
-            executionId: runId,
-          }),
-        },
-      }) satisfies RuntimeEventEnvelope
     const app = createBraidApplication({
       fixture: 'deterministic',
       journal,
       execution: {
         capabilities: () => interactionResponseRunCapabilities(),
-        async *streamTurn(input): AsyncIterable<RuntimeEventEnvelope> {
-          yield event(input.runId, 'provider-request', 1, request)
-          yield event(input.runId, 'provider-conflicting-request', 2, conflicting)
+        async *streamTurn(): AsyncIterable<BraidRuntimeEvent> {
+          yield { type: 'text_delta', text: 'Checking the workspace before running bash.' }
+          // A close for a request that was never made is refused by the reducer.
+          yield { type: 'interaction.cancel', id: 'interaction-never-requested', reason: 'resolved' }
         },
       },
     })
     app.initialize('/workspace')
-    const terminal = new VirtualTerminal(columns, rows)
+    const terminal = new RecordingTerminal(columns, rows)
     const view = new BraidTerminalApp({
       controller: createApplicationUiController(app),
       tui: new TuiMainScreen(terminal),
@@ -532,24 +537,21 @@ for (const [columns, rows] of SIZES) {
         'the storage-failure frame',
       )
       const frame = terminal.getViewport().join('\n')
-      assert.match(app.storageFailure() ?? '', /was requested with different data/u)
+      assert.match(app.storageFailure() ?? '', /Interaction interaction-[0-9a-f]+ is unknown/u)
       // The reducer refuses the event before the journal append, so no stored journal holds it.
       assert.equal(
-        journal.all().filter((entry) => entry.event.kind === 'run.interaction').length,
-        1,
+        journal.all().filter((entry) => entry.event.kind === 'run.interaction.cancelled').length,
+        0,
       )
       // Replaying the stored journal reproduces the last committed state; nothing needs migration.
       const replayed = replayEvents(initialState(DETERMINISTIC_PROFILE), journal.all())
       assert.deepEqual(replayed.runs, app.state().runs)
-      assert.equal(replayed.runs[0]?.interactions[0]?.request.title, 'Permission: bash')
-      const captureRoot = process.env.BRAID_INTERACTION_CAPTURE_ROOT
-      if (captureRoot) {
-        await mkdir(captureRoot, { recursive: true })
-        await writeFile(
-          join(captureRoot, `${columns}x${rows}-storage-failure.txt`),
-          `${frame.replace(/[ \t]+$/gmu, '')}\n`,
-        )
-      }
+      assert.match(frame, /storage failure/u)
+      await writeCapture(
+        terminal,
+        `${columns}x${rows}-storage-failure`,
+        'A refused provider event latches Braid read-only and shows the storage failure',
+      )
     } finally {
       view.stop()
       await done
