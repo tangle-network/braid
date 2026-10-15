@@ -277,7 +277,7 @@ test('a failed run records its code and readable cause, with the credential reda
     const run = state.runs.at(-1)
     assert.equal(run?.status, 'failed')
     assert.equal(run?.error, 'RUNTIME_FINAL_ERROR')
-    assert.ok(run?.terminalReason?.startsWith(READABLE), run?.terminalReason)
+    assert.ok(run?.terminalReason?.startsWith(READABLE), run?.terminalReason ?? 'No terminal reason recorded')
     const finished = app.events().find((entry) => entry.event.kind === 'run.finished')?.event
     assert.ok(finished?.kind === 'run.finished')
     assert.equal(finished.error, 'RUNTIME_FINAL_ERROR')
@@ -288,7 +288,7 @@ test('a failed run records its code and readable cause, with the credential reda
     assertNoCanary('semantic events', app.events().map(projectSemanticEvent))
     const headless = toHeadlessState(state)
     const message = headless.messages.find((candidate) => candidate.runId === run.id)
-    assert.ok(message?.outcome?.startsWith(READABLE), message?.outcome)
+    assert.ok(message?.outcome?.startsWith(READABLE), message?.outcome ?? 'No headless outcome recorded')
     assertNoCanary('headless state', headless)
     const view = createApplicationUiController(app).view()
     assert.ok(view.messages.at(-1)?.outcome?.startsWith(READABLE))
@@ -405,7 +405,7 @@ test('a cause survives restart, and a duplicate provider event adds nothing', as
     .filter((part) => part.kind === 'warning')
   assert.equal(warnings.length, 1)
   assert.equal(warnings[0]?.status, 'OPENCODE_ERROR')
-  assert.ok(warnings[0]?.text?.startsWith(READABLE), warnings[0]?.text)
+  assert.ok(warnings[0]?.text?.startsWith(READABLE), warnings[0]?.text ?? 'No warning text recorded')
   assert.equal(journal.all().filter((entry) => entry.event.kind === 'run.warning').length, 1)
 
   const restartedJournal = new MemoryJournal(new FixedClock())
