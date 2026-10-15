@@ -262,7 +262,7 @@ function assertSettled(
     responses,
   )
   assert.equal(result.closes, 1)
-  assert.doesNotMatch(result.screen, /storage failure/u)
+  assert.doesNotMatch(result.screen, /storage error/u)
 }
 
 for (const [columns, rows] of SIZES) {
@@ -537,7 +537,7 @@ for (const [columns, rows] of SIZES) {
       terminal.sendInput('\r')
       await waitUntil(() => app.storageFailure() !== undefined, 'the latched failure')
       await waitUntil(
-        () => terminal.getViewport().join('\n').includes('storage failure'),
+        () => terminal.getViewport().join('\n').includes('storage error'),
         'the storage-failure frame',
       )
       const frame = terminal.getViewport().join('\n')
@@ -550,7 +550,7 @@ for (const [columns, rows] of SIZES) {
       // Replaying the stored journal reproduces the last committed state; nothing needs migration.
       const replayed = replayEvents(initialState(DETERMINISTIC_PROFILE), journal.all())
       assert.deepEqual(replayed.runs, app.state().runs)
-      assert.match(frame, /storage failure/u)
+      assert.match(frame, /storage error/u)
       await writeCapture(
         terminal,
         `${columns}x${rows}-storage-failure`,
