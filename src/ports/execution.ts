@@ -153,6 +153,10 @@ export interface ExecutionPort {
   readonly capabilities?:
     | ExecutionCapabilities
     | ((input: ExecuteTurnInput) => RunCapabilities | Promise<RunCapabilities>)
+  /** Silence, in milliseconds, after which Braid checks the provider; defaults to 45 seconds. */
+  readonly streamIdleMs?: number
+  /** Deadline for the provider status read that follows a silent stream; defaults to 15 seconds. */
+  readonly statusTimeoutMs?: number
   /** Current published agent-runtime path. Braid consumes normalized events only. */
   streamTurn(input: ExecuteTurnInput): AsyncIterable<BraidRuntimeEvent | RuntimeEventEnvelope>
   admit?(input: ExecuteTurnInput): ExecutionAdmission | Promise<ExecutionAdmission>

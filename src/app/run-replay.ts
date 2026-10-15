@@ -6,9 +6,19 @@ import { AppError } from './errors.js'
 import { safeSnapshotDetail, safeSnapshotText, safeSnapshotUsage } from './provider-snapshot.js'
 import { runtimeFailureDiagnostic, safeRuntimeDiagnostic } from './provider-values.js'
 import { retainedExecutionRecoveryContext } from './run-recovery-context.js'
+import {
+  type PumpOutcome,
+  STALLED,
+  pumpWithIdleBound,
+  statusTimeoutMs,
+  streamIdleMs,
+  withinDeadline,
+} from './run-stall.js'
 
 interface RecoveryReconnectInput extends ReconnectInput {
   readonly priorFailureDetail?: string
+  /** The live stream went silent: say so, and ask the provider before replaying. */
+  readonly stallDetail?: string
 }
 
 interface RecoveryReconcileInput extends ReconcileInput {
@@ -37,6 +47,7 @@ export async function reconnectRun(
       kind: 'run.reconnecting',
       runId: run.id,
       ...(run.lastCursor === undefined ? {} : { after: run.lastCursor }),
+      ...(input.stallDetail === undefined ? {} : { detail: input.stallDetail }),
     })
   }
   let interactionReadyNotified = false
@@ -54,8 +65,72 @@ export async function reconnectRun(
   context.ledger.setAbort(run.id, abort)
   context.ledger.clearDetached(run.id)
   try {
-    let sawTerminal = false
-    for await (const envelope of context.execution.reconnect({
+    // Each pass replays from the committed cursor. A pass that goes silent asks the provider
+    // again, so a quiet long tool call keeps replaying while a lost provider ends as unknown.
+    let probeFirst = input.stallDetail !== undefined
+    let terminalProbes = 0
+    for (;;) {
+      if (probeFirst) {
+        const verdict = await probeProvider(context, run.id, abort.signal)
+        if (verdict.kind === 'lost') {
+          await commitUnknownIfLive(context, run.id, `provider stream lost; ${verdict.detail}`)
+          break
+        }
+        if (verdict.kind === 'terminal') {
+          // A terminal provider whose replay also stalls yields its result from the status read.
+          terminalProbes += 1
+          if (terminalProbes > 1) {
+            await reconcileRun(context, {
+              runId: run.id,
+              operationId: input.operationId,
+              ...(input.priorFailureDetail === undefined
+                ? {}
+                : { priorFailureDetail: input.priorFailureDetail }),
+            })
+            break
+          }
+        }
+      }
+      const outcome = await replayFromCursor(context, run.id, abort, notifyInteractionReady)
+      if (outcome === 'stalled') {
+        if (abort.signal.aborted || context.ledger.isDetached(run.id)) break
+        probeFirst = true
+        continue
+      }
+      if (outcome === 'ended' && !context.isTerminal(context.findRun(run.id).status))
+        await reconcileRun(context, {
+          runId: run.id,
+          operationId: input.operationId,
+          ...(input.priorFailureDetail === undefined
+            ? {}
+            : { priorFailureDetail: input.priorFailureDetail }),
+        })
+      break
+    }
+  } catch (error) {
+    if (!context.isTerminal(context.findRun(run.id).status))
+      await context.commitAndWait({
+        kind: 'run.unknown',
+        runId: run.id,
+        detail: safeRuntimeDiagnostic(error, 'RUNTIME_RECONCILIATION_ERROR'),
+      })
+  }
+  return structuredClone(context.currentState())
+}
+
+async function replayFromCursor(
+  context: ReplayPort,
+  runId: string,
+  abort: AbortController,
+  notifyInteractionReady: () => void,
+): Promise<PumpOutcome> {
+  // The cursor is read at each pass: events committed by an earlier, stalled pass count.
+  const run = context.findRun(runId)
+  const reconnect = context.execution.reconnect?.bind(context.execution)
+  if (reconnect === undefined) return 'ended'
+  let sawTerminal = false
+  const outcome = await pumpWithIdleBound(
+    reconnect({
       runId: run.id,
       ...(run.lastCursor === undefined ? {} : { after: run.lastCursor }),
       afterSequence: run.lastProviderSequence,
@@ -71,28 +146,76 @@ export async function reconnectRun(
         if (committed !== undefined) await committed
       },
       signal: abort.signal,
-    })) {
+    }),
+    streamIdleMs(context.execution),
+    () => true,
+    async (envelope) => {
       const result = await context.ingestRuntimeEvent(envelope)
       if (result.accepted) notifyInteractionReady()
       if (result.accepted && envelope.event.type === 'final') sawTerminal = true
-    }
-    if (!sawTerminal && !context.isTerminal(context.findRun(run.id).status))
-      await reconcileRun(context, {
+      return 'continue'
+    },
+  )
+  return sawTerminal ? 'stopped' : outcome
+}
+
+type ProviderVerdict =
+  | { readonly kind: 'live' }
+  | { readonly kind: 'terminal' }
+  | { readonly kind: 'lost'; readonly detail: string }
+
+/** Ask the provider about the exact run before replaying or giving up on it. */
+async function probeProvider(
+  context: ReplayPort,
+  runId: string,
+  signal: AbortSignal,
+): Promise<ProviderVerdict> {
+  const run = context.findRun(runId)
+  if (!run.capabilities.controls.status || !context.execution.status)
+    return { kind: 'lost', detail: 'the provider cannot report run status' }
+  let snapshot: ProviderRunSnapshot | null | typeof STALLED
+  try {
+    snapshot = await withinDeadline(
+      context.execution.status({
         runId: run.id,
-        operationId: input.operationId,
-        ...(input.priorFailureDetail === undefined
+        ...(run.providerSessionId === undefined
           ? {}
-          : { priorFailureDetail: input.priorFailureDetail }),
-      })
+          : { providerSessionId: run.providerSessionId }),
+        ...(run.controlRef === undefined ? {} : { controlRef: run.controlRef }),
+        ...retainedExecutionRecoveryContext(run, context.currentState().workspace),
+        signal,
+      }),
+      statusTimeoutMs(context.execution),
+    )
   } catch (error) {
-    if (!context.isTerminal(context.findRun(run.id).status))
-      await context.commitAndWait({
-        kind: 'run.unknown',
-        runId: run.id,
-        detail: safeRuntimeDiagnostic(error, 'RUNTIME_RECONCILIATION_ERROR'),
-      })
+    return {
+      kind: 'lost',
+      detail: safeSnapshotDetail(error instanceof Error ? error.message : error, 'status read failed'),
+    }
   }
-  return structuredClone(context.currentState())
+  if (snapshot === STALLED) return { kind: 'lost', detail: 'the status read timed out' }
+  if (snapshot === null) return { kind: 'lost', detail: 'the provider has no record of the run' }
+  if (
+    snapshot.runId !== run.id ||
+    (run.providerSessionId !== undefined && snapshot.sessionId !== run.providerSessionId)
+  )
+    return { kind: 'lost', detail: 'the provider reported a different run' }
+  if (snapshot.status === 'unknown')
+    return {
+      kind: 'lost',
+      detail: safeSnapshotDetail(snapshot.detail, 'the provider state is unknown'),
+    }
+  return context.isTerminal(snapshot.status) ? { kind: 'terminal' } : { kind: 'live' }
+}
+
+async function commitUnknownIfLive(
+  context: ReplayPort,
+  runId: string,
+  detail: string,
+): Promise<void> {
+  const status = context.findRun(runId).status
+  if (!context.isTerminal(status) || status === 'unknown')
+    await context.commitAndWait({ kind: 'run.unknown', runId, detail })
 }
 
 export async function reconcileRun(

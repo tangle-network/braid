@@ -174,7 +174,7 @@ export function reduceLifecycleEvent(
         runs: updateRun(state, event.runId, (run) =>
           addActivity(
             { ...run, status: 'reconnecting' },
-            activity(event, 'lifecycle', 'reconnecting', event.after),
+            activity(event, 'lifecycle', 'reconnecting', event.detail ?? event.after),
           ),
         ),
       }

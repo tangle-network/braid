@@ -8,6 +8,7 @@ import { eventIdFor, providerMeta } from './run-event-mapper.js'
 import type { RunExecutionSnapshot } from './run-execution-snapshot.js'
 import { continuesTerminal, recoverPendingFinal } from './run-final-recovery.js'
 import { reconnectRun } from './run-replay.js'
+import { pumpWithIdleBound, stallDetail, streamIdleMs } from './run-stall.js'
 
 export async function executeRun(
   context: ExecutionRunPort,
@@ -64,48 +65,61 @@ export async function executeRun(
       },
     }
     if (context.ledger.isDetached(admission.runId)) return
-    for await (const runtimeEvent of context.execution.streamTurn(runtimeInput)) {
-      if (context.ledger.isDetached(admission.runId)) break
-      const status = context.findRun(admission.runId).status
-      const event = isRuntimeEventEnvelope(runtimeEvent) ? runtimeEvent.event : runtimeEvent
-      if (context.isTerminal(status)) {
-        if (!(awaitingFinal && continuesTerminal(status, event))) break
-        // A gap after a terminal status would record reconnection and reopen the proven run.
-        if (
-          isRuntimeEventEnvelope(runtimeEvent) &&
-          runtimeEvent.sequence > context.findRun(admission.runId).lastProviderSequence + 1
-        )
-          break
-      }
-      if (terminalSeen) break
-      if (isRuntimeEventEnvelope(runtimeEvent)) {
-        const result = await context.ingestRuntimeEvent(runtimeEvent)
-        if (result.accepted && runtimeEvent.event.type === 'final') {
+    let ingested = 0
+    const outcome = await pumpWithIdleBound(
+      context.execution.streamTurn(runtimeInput),
+      streamIdleMs(context.execution),
+      // Provisioning and dispatch precede the first event and have their own failures.
+      () => ingested > 0,
+      async (runtimeEvent) => {
+        if (context.ledger.isDetached(admission.runId)) return 'stop'
+        const status = context.findRun(admission.runId).status
+        const event = isRuntimeEventEnvelope(runtimeEvent) ? runtimeEvent.event : runtimeEvent
+        if (context.isTerminal(status)) {
+          if (!(awaitingFinal && continuesTerminal(status, event))) return 'stop'
+          // A gap after a terminal status would record reconnection and reopen the proven run.
+          if (
+            isRuntimeEventEnvelope(runtimeEvent) &&
+            runtimeEvent.sequence > context.findRun(admission.runId).lastProviderSequence + 1
+          )
+            return 'stop'
+        }
+        if (terminalSeen) return 'stop'
+        ingested += 1
+        if (isRuntimeEventEnvelope(runtimeEvent)) {
+          const result = await context.ingestRuntimeEvent(runtimeEvent)
+          if (result.accepted && runtimeEvent.event.type === 'final') {
+            terminalSeen = true
+            await context.flush()
+            return 'stop'
+          }
+          awaitingFinal ||= reachedTerminalByStatus(context, admission.runId, result, event)
+          return 'continue'
+        }
+        eventSequence += 1
+        const receivedAt = context.clock.now()
+        const eventId = eventIdFor(admission.runId, runtimeEvent, eventSequence)
+        const meta = providerMeta(eventId, eventSequence, runtimeEvent, receivedAt)
+        const result = await context.ingestRuntimeEvent({
+          runId: admission.runId,
+          eventId,
+          sequence: eventSequence,
+          receivedAt,
+          ...(meta.occurredAt === undefined ? {} : { occurredAt: meta.occurredAt }),
+          event: runtimeEvent,
+        })
+        if (result.accepted && runtimeEvent.type === 'final') {
           terminalSeen = true
           await context.flush()
-          break
+          return 'stop'
         }
         awaitingFinal ||= reachedTerminalByStatus(context, admission.runId, result, event)
-        continue
-      }
-      eventSequence += 1
-      const receivedAt = context.clock.now()
-      const eventId = eventIdFor(admission.runId, runtimeEvent, eventSequence)
-      const meta = providerMeta(eventId, eventSequence, runtimeEvent, receivedAt)
-      const result = await context.ingestRuntimeEvent({
-        runId: admission.runId,
-        eventId,
-        sequence: eventSequence,
-        receivedAt,
-        ...(meta.occurredAt === undefined ? {} : { occurredAt: meta.occurredAt }),
-        event: runtimeEvent,
-      })
-      if (result.accepted && runtimeEvent.type === 'final') {
-        terminalSeen = true
-        await context.flush()
-        break
-      }
-      awaitingFinal ||= reachedTerminalByStatus(context, admission.runId, result, event)
+        return 'continue'
+      },
+    )
+    if (outcome === 'stalled') {
+      await recoverStalledStream(context, input, admission, abort, awaitingFinal)
+      return
     }
     if (context.ledger.isDetached(admission.runId)) return
     if (!terminalSeen && awaitingFinal && !abort.signal.aborted)
@@ -130,6 +144,43 @@ export async function executeRun(
     )
       await drainQueue(context)
   }
+}
+
+/** The stream went silent while Braid still showed the run live; the provider decides what next. */
+async function recoverStalledStream(
+  context: ExecutionRunPort,
+  input: import('./application-types.js').SendInput,
+  admission: import('../domain/receipts.js').RunAdmissionReceipt,
+  abort: AbortController,
+  awaitingFinal: boolean,
+): Promise<void> {
+  const runId = admission.runId
+  if (context.ledger.isDetached(runId)) return
+  if (context.isTerminal(context.findRun(runId).status)) {
+    if (awaitingFinal && !abort.signal.aborted) await recoverPendingFinal(context, runId)
+    return
+  }
+  const replayable =
+    admission.capabilities.streaming.replay &&
+    admission.capabilities.events.cursor &&
+    context.execution.reconnect !== undefined
+  if (abort.signal.aborted || context.ledger.isExplicitlyCancelled(runId) || !replayable) {
+    if (!replayable && !abort.signal.aborted && !context.ledger.isExplicitlyCancelled(runId)) {
+      await commitRequiredRecovery(context, {
+        kind: 'run.unknown',
+        runId,
+        detail: 'provider stream went silent and cannot be replayed',
+      })
+      return
+    }
+    await finishWithoutTerminal(context, input, admission, abort)
+    return
+  }
+  await reconnectRun(context, {
+    operationId: `${input.operationId}:reconnect`,
+    runId,
+    stallDetail: stallDetail(context.execution),
+  })
 }
 
 function reachedTerminalByStatus(
