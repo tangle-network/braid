@@ -505,6 +505,10 @@ test('restart and reconnect replay a provider close after a decline without a st
 
 for (const [columns, rows] of SIZES) {
   test(`a refused event renders the storage-failure frame at ${columns}x${rows}`, async () => {
+    let release: () => void = () => {}
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
     const journal = new MemoryJournal(new FixedClock(NOW))
     const app = createBraidApplication({
       fixture: 'deterministic',
@@ -519,6 +523,8 @@ for (const [columns, rows] of SIZES) {
             id: 'interaction-never-requested',
             reason: 'resolved',
           }
+          // Nothing else repaints the frame: only the latch notification can show the failure.
+          await held
         },
       },
     })
@@ -557,6 +563,7 @@ for (const [columns, rows] of SIZES) {
         'A refused provider event latches Braid read-only and shows the storage failure',
       )
     } finally {
+      release()
       view.stop()
       await done
       await app.close().catch(() => undefined)
