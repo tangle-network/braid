@@ -216,7 +216,18 @@ export class TranscriptView extends Container {
       container.addChild(this.#markdown(streamingTailText(message.text, streamingTail)))
     }
     if (message.status === 'failed' || message.status === 'blocked') {
-      container.addChild(new Text(this.#theme.danger(message.status), 1, 0))
+      container.addChild(
+        new Text(this.#theme.danger(outcomeLine(message.status, message.outcome)), 1, 0),
+      )
+    } else if (message.status === 'expired' && message.outcome !== undefined) {
+      container.addChild(new Text(this.#theme.warning(outcomeLine('expired', message.outcome)), 1, 0))
+    } else if (
+      (message.status === 'incomplete' || message.status === 'unknown') &&
+      message.outcome !== undefined
+    ) {
+      container.addChild(
+        new Text(this.#theme.warning(outcomeLine('outcome unverified', message.outcome)), 1, 0),
+      )
     } else if (message.status === 'cancelled' || message.status === 'aborted') {
       container.addChild(new Text(this.#theme.warning('cancelled'), 1, 0))
     } else if (message.status === 'redacted') {
@@ -333,7 +344,20 @@ function cardLabel(part: TranscriptPartView): string {
   return subject ?? part.kind
 }
 
-export function streamingTailText(text: string, streamingTail: boolean): string {
+export /** The transcript names the cause; /activity keeps the whole record. */
+const MAX_OUTCOME_CHARACTERS = 240
+
+function outcomeLine(label: string, outcome: string | undefined): string {
+  if (outcome === undefined) return label
+  const characters = Array.from(sanitizeTerminalText(outcome))
+  const shown =
+    characters.length <= MAX_OUTCOME_CHARACTERS
+      ? characters.join('')
+      : `${characters.slice(0, MAX_OUTCOME_CHARACTERS - 1).join('')}…`
+  return `${label}: ${shown}`
+}
+
+function streamingTailText(text: string, streamingTail: boolean): string {
   if (!streamingTail) return text
   const totalBytes = Buffer.byteLength(text, 'utf8')
   if (totalBytes <= STREAMING_TAIL_BYTES) return text

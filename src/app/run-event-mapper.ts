@@ -20,7 +20,7 @@ import {
   providerHttpFailureDiagnostic,
   publicRuntimeDiagnostic,
 } from '../domain/runtime-diagnostics.js'
-import type { BraidRuntimeEvent } from '../domain/runtime-events.js'
+import type { BraidFinalRuntimeEvent, BraidRuntimeEvent } from '../domain/runtime-events.js'
 import type { BraidMessagePart, RunStatus } from '../domain/state.js'
 import { isCanonicalIsoDateTime } from '../domain/text.js'
 import {
@@ -32,7 +32,7 @@ import {
 import {
   finiteNonNegativeNumber,
   optionalFiniteNonNegativeNumber,
-  runtimeFailureDiagnostic,
+  providerCause,
   safeDiagnostic,
   safeProviderDiagnostic,
   safePublicIdentifier,
@@ -284,7 +284,7 @@ function canonicalPart(part: Part, source: ProviderEventMeta): BraidMessagePart 
           ? { result: safeValue(state.output) }
           : {}),
         ...('error' in state && state.error !== undefined
-          ? { error: safeProviderDiagnostic(state.error, 'RUNTIME_TOOL_ERROR') }
+          ? { error: providerCause(state.error) ?? 'RUNTIME_TOOL_ERROR' }
           : {}),
         source: sourceInfo,
       }
@@ -430,7 +430,10 @@ export function providerEventFor(
       return {
         kind: 'run.error',
         runId,
-        message: runtimeFailureDiagnostic(event.message, 'RUNTIME_BACKEND_ERROR'),
+        message:
+          providerHttpFailureDiagnostic(event.message) ??
+          providerCause(event.message) ??
+          'RUNTIME_BACKEND_ERROR',
         recoverable: event.recoverable,
         provider,
       }
@@ -444,20 +447,7 @@ export function providerEventFor(
             ? (streamSanitizer?.finish(runId, 'text') ?? safeText(event.text))
             : (streamSanitizer?.complete(runId, 'final', event.text) ?? safeText(event.text)),
         usage: usageFromMetadata(event.metadata),
-        ...(event.error === undefined
-          ? {}
-          : {
-              error:
-                providerHttpFailureDiagnostic(event.error.message) ??
-                safeDiagnostic(event.error.message, 'RUNTIME_FINAL_ERROR'),
-            }),
-        ...(event.reason === undefined
-          ? {}
-          : {
-              reason:
-                publicRuntimeDiagnostic(event.reason) ??
-                safeProviderDiagnostic(event.reason, 'RUNTIME_FINAL_REASON'),
-            }),
+        ...finalFailure(event),
         provider,
       }
     case 'message.part.updated': {
@@ -499,7 +489,7 @@ export function providerEventFor(
         kind: 'run.warning',
         runId,
         code: safeProviderDiagnostic(event.code, 'RUNTIME_WARNING'),
-        message: safeProviderDiagnostic(event.message, 'RUNTIME_WARNING'),
+        message: providerCause(event.message) ?? 'RUNTIME_WARNING',
         provider,
       }
     case 'status':
@@ -509,7 +499,7 @@ export function providerEventFor(
         status: statusFromCanonical(event.status),
         ...(event.detail === undefined
           ? {}
-          : { detail: safeProviderDiagnostic(event.detail, 'RUNTIME_STATUS') }),
+          : { detail: providerCause(event.detail) ?? 'RUNTIME_STATUS' }),
         provider,
       }
     case 'braid.execution.observed':
@@ -550,6 +540,48 @@ export function providerEventFor(
         },
         provider,
       }
+  }
+}
+
+/** A terminal reason that only repeats the outcome says nothing about why. */
+const GENERIC_FINAL_REASONS: ReadonlySet<string> = new Set([
+  'failed',
+  'failure',
+  'error',
+  'unknown',
+  'cancelled',
+  'canceled',
+  'aborted',
+])
+
+/**
+ * A failed final keeps a stable error code and says why in its reason.
+ *
+ * The code is the provider's HTTP class, its own typed token, or `RUNTIME_FINAL_ERROR`. The reason
+ * is the provider's terminal reason, or the error's own text when that reason only repeats the
+ * outcome, redacted and bounded by `providerCause`.
+ */
+function finalFailure(
+  event: BraidFinalRuntimeEvent,
+): { readonly error?: string; readonly reason?: string } {
+  const message = event.error?.message
+  const error =
+    event.error === undefined
+      ? undefined
+      : (providerHttpFailureDiagnostic(message) ?? safeDiagnostic(message, 'RUNTIME_FINAL_ERROR'))
+  const generic =
+    event.reason === undefined || GENERIC_FINAL_REASONS.has(event.reason.trim().toLowerCase())
+  const errorCause = error === undefined || !generic ? undefined : providerCause(message)
+  const reason =
+    errorCause ??
+    (event.reason === undefined
+      ? undefined
+      : (publicRuntimeDiagnostic(event.reason) ??
+        providerCause(event.reason) ??
+        'RUNTIME_FINAL_REASON'))
+  return {
+    ...(error === undefined ? {} : { error }),
+    ...(reason === undefined || reason === error ? {} : { reason }),
   }
 }
 

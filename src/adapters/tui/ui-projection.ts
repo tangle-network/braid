@@ -144,17 +144,67 @@ function partFor(
     : []
 }
 
+// A bare code, such as RUNTIME_FINAL_ERROR, names a failure without saying why.
+const BARE_CODE = /^[A-Z][A-Z0-9]*(?:[._:-][A-Z0-9]+)*$/u
+const OUTCOME_WORDS: ReadonlySet<string> = new Set([
+  'failed',
+  'failure',
+  'error',
+  'unknown',
+  'blocked',
+  'expired',
+])
+const NO_CAUSE = 'the provider gave no cause'
+
+function saysWhy(value: string | undefined): value is string {
+  return (
+    value !== undefined &&
+    value.trim().length > 0 &&
+    !BARE_CODE.test(value.trim()) &&
+    !OUTCOME_WORDS.has(value.trim().toLowerCase())
+  )
+}
+
+/**
+ * Why a run failed or ended unverified, in the words Braid recorded for it.
+ *
+ * A run that recorded only a code says the provider gave no cause and names that code.
+ */
+export function runOutcomeDetail(run: BraidState['runs'][number]): string | undefined {
+  if (run.status === 'unknown') {
+    const unknown = run.activity.findLast(
+      (item) => item.type === 'lifecycle' && item.label === 'unknown',
+    )?.detail
+    const detail = [unknown, run.terminalReason, run.error].find(saysWhy)
+    if (detail !== undefined) return detail
+    const code = [unknown, run.error].find((value) => value !== undefined && BARE_CODE.test(value))
+    return code === undefined ? NO_CAUSE : `${NO_CAUSE} (${code})`
+  }
+  if (run.status !== 'failed' && run.status !== 'blocked' && run.status !== 'expired')
+    return undefined
+  const [first, second] = [run.error, run.terminalReason].filter(saysWhy)
+  if (first !== undefined) {
+    if (second === undefined || first.includes(second)) return first
+    return second.includes(first) ? second : `${first}; ${second}`
+  }
+  return run.error === undefined ? NO_CAUSE : `${NO_CAUSE} (${run.error})`
+}
+
 function messagesFor(
   state: BraidState,
   options: { readonly completeText?: boolean } = {},
 ): MessageView[] {
   const branchExists = state.branches.some((branch) => branch.id === state.branchId)
   const visible = branchExists ? messagesVisibleOnBranch(state, state.branchId) : state.messages
+  const runs = new Map(state.runs.map((run) => [run.id, run]))
   return visible.slice(-MAX_VISIBLE_MESSAGES).map((message) => {
     // Canonical message text is sanitized and byte-bounded before it enters state.
     // The terminal keeps that complete value so history navigation can restore it;
     // headless snapshots retain the smaller display projection by default.
     const text = options.completeText ? message.text : boundVisibleText(message.text)
+    const run =
+      message.role === 'assistant' && message.runId ? runs.get(message.runId) : undefined
+    const outcome = run === undefined ? undefined : runOutcomeDetail(run)
     return Object.freeze({
       id: message.id,
       role: message.role,
@@ -168,6 +218,7 @@ function messagesFor(
       ...(message.runId ? { runId: message.runId } : {}),
       parts: Object.freeze(partFor(message, text)),
       ...(message.partsTruncated ? { partsTruncated: true } : {}),
+      ...(outcome === undefined ? {} : { outcome: sanitizeTerminalText(outcome) }),
     })
   })
 }

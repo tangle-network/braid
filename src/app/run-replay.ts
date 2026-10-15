@@ -3,8 +3,13 @@ import type { BraidState } from '../domain/state.js'
 import type { ProviderRunSnapshot } from '../ports/execution.js'
 import type { ReconcileInput, ReconnectInput, ReplayPort } from './application-ports.js'
 import { AppError } from './errors.js'
-import { safeSnapshotDetail, safeSnapshotText, safeSnapshotUsage } from './provider-snapshot.js'
-import { runtimeFailureDiagnostic, safeRuntimeDiagnostic } from './provider-values.js'
+import {
+  safeSnapshotDetail,
+  safeSnapshotText,
+  safeSnapshotUsage,
+  snapshotFailure,
+} from './provider-snapshot.js'
+import { runtimeFailure } from './provider-values.js'
 import { retainedExecutionRecoveryContext } from './run-recovery-context.js'
 import {
   IdleArm,
@@ -113,10 +118,25 @@ export async function reconnectRun(
       await context.commitAndWait({
         kind: 'run.unknown',
         runId: run.id,
-        detail: safeRuntimeDiagnostic(error, 'RUNTIME_RECONCILIATION_ERROR'),
+        detail: recoveryFailureDetail(
+          input.priorFailureDetail,
+          runtimeFailure(error, 'RUNTIME_RECONCILIATION_ERROR').text,
+        ),
       })
   }
   return structuredClone(context.currentState())
+}
+
+/** Say what failed first and why recovery failed too, so a lost run is never a bare code. */
+function recoveryFailureDetail(prior: string | undefined, recovery: string): string {
+  if (prior === undefined) return `provider recovery failed: ${recovery}`
+  return prior.endsWith(`: ${recovery}`)
+    ? `${prior}; recovery failed the same way`
+    : `${prior}; recovery failed: ${recovery}`
+}
+
+function withPriorFailure(prior: string | undefined, detail: string): string {
+  return prior === undefined ? detail : `${prior}; ${detail}`
 }
 
 const ALWAYS_ARMED = new IdleArm()
@@ -192,11 +212,16 @@ async function probeProvider(
       statusTimeoutMs(context.execution),
     )
   } catch (error) {
-    // Provider text is untrusted; only a typed code may accompany Braid's own plain reason.
-    const code = safeRuntimeDiagnostic(error, '')
+    // Provider text is redacted and bounded before it accompanies Braid's own plain reason.
+    const failure = runtimeFailure(error, '')
     return {
       kind: 'lost',
-      detail: code === '' ? 'status read failed' : `status read failed (${code})`,
+      detail:
+        failure.cause !== undefined
+          ? `status read failed: ${failure.text}`
+          : failure.code === ''
+            ? 'status read failed'
+            : `status read failed (${failure.code})`,
     }
   }
   if (snapshot === STALLED) return { kind: 'lost', detail: 'the status read timed out' }
@@ -234,7 +259,10 @@ export async function reconcileRun(
       await context.commitAndWait({
         kind: 'run.unknown',
         runId: run.id,
-        detail: input.priorFailureDetail ?? 'The execution path cannot reconcile provider state',
+        detail: withPriorFailure(
+          input.priorFailureDetail,
+          'the execution path cannot reconcile provider state',
+        ),
       })
     return structuredClone(context.currentState())
   }
@@ -252,9 +280,9 @@ export async function reconcileRun(
       await context.commitAndWait({
         kind: 'run.unknown',
         runId: run.id,
-        detail: safeSnapshotDetail(
-          error instanceof Error ? error.message : error,
-          'RUNTIME_STATUS_ERROR',
+        detail: withPriorFailure(
+          input.priorFailureDetail,
+          `provider status read failed: ${runtimeFailure(error, 'RUNTIME_STATUS_ERROR').text}`,
         ),
       })
     return structuredClone(context.currentState())
@@ -264,7 +292,7 @@ export async function reconcileRun(
       await context.commitAndWait({
         kind: 'run.unknown',
         runId: run.id,
-        detail: input.priorFailureDetail ?? 'The provider returned no run record',
+        detail: withPriorFailure(input.priorFailureDetail, 'the provider returned no run record'),
       })
     return structuredClone(context.currentState())
   }
@@ -276,7 +304,10 @@ export async function reconcileRun(
       await context.commitAndWait({
         kind: 'run.unknown',
         runId: run.id,
-        detail: 'Provider reconciliation returned no matching run identity',
+        detail: withPriorFailure(
+          input.priorFailureDetail,
+          'provider reconciliation returned no matching run identity',
+        ),
       })
     return structuredClone(context.currentState())
   }
@@ -293,7 +324,10 @@ export async function reconcileRun(
       await context.commitAndWait({
         kind: 'run.unknown',
         runId: run.id,
-        detail: safeSnapshotDetail(snapshot.detail, 'RUNTIME_PROVIDER_STATE_UNKNOWN'),
+        detail: withPriorFailure(
+          input.priorFailureDetail,
+          safeSnapshotDetail(snapshot.detail, 'the provider state is unknown'),
+        ),
       })
   } else if (context.isTerminal(snapshot.status)) {
     if (run.status === 'unknown') {
@@ -322,12 +356,11 @@ export async function reconcileRun(
           input: run.inputTokens,
           output: run.outputTokens,
         }),
-        ...(snapshot.error === undefined
-          ? {}
-          : { error: runtimeFailureDiagnostic(snapshot.error, 'RUNTIME_RECONCILIATION_ERROR') }),
-        ...(snapshot.detail === undefined
-          ? {}
-          : { reason: safeSnapshotDetail(snapshot.detail, 'RUNTIME_RECONCILIATION_STATUS') }),
+        ...snapshotFailure(
+          snapshot,
+          'RUNTIME_RECONCILIATION_ERROR',
+          'RUNTIME_RECONCILIATION_STATUS',
+        ),
       })
     } else {
       await context.commitAndWait({
@@ -339,12 +372,11 @@ export async function reconcileRun(
           input: run.inputTokens,
           output: run.outputTokens,
         }),
-        ...(snapshot.error === undefined
-          ? {}
-          : { error: safeSnapshotDetail(snapshot.error, 'RUNTIME_RECONCILIATION_ERROR') }),
-        ...(snapshot.detail === undefined
-          ? {}
-          : { reason: safeSnapshotDetail(snapshot.detail, 'RUNTIME_RECONCILIATION_STATUS') }),
+        ...snapshotFailure(
+          snapshot,
+          'RUNTIME_RECONCILIATION_ERROR',
+          'RUNTIME_RECONCILIATION_STATUS',
+        ),
       })
     }
   } else if (snapshot.status !== reconciliationFrom) {

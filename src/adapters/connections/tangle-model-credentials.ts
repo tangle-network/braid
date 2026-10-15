@@ -9,6 +9,15 @@ import { connectionEndpoint } from './production-connection-endpoints.js'
 import type { ProductionConnectionOptions } from './production-connection-types.js'
 
 /**
+ * How long a resolved seat must stay valid after each resolver call.
+ *
+ * An access-only seat, such as a Codex subscription, cannot refresh inside the sandbox, so its account
+ * owner refuses to bind one unless the caller names a deadline. The provider calls the resolver again
+ * for each environment create and each fresh native turn, so the deadline covers one of those.
+ */
+export const MODEL_SEAT_VALIDITY_MS = 60 * 60 * 1000
+
+/**
  * Turn a connection's model-seat reference into the Tangle provider's `modelCredentials` option.
  *
  * A stored seat passes through unchanged. A resolver command becomes a provider resolver that runs
@@ -56,6 +65,10 @@ export function tangleModelCredentialsForConnection(
     const { createCommandModelCredentialResolver } = await import(
       '@tangle-network/agent-provider-tangle/node'
     )
-    return createCommandModelCredentialResolver({ command, env })(input)
+    return createCommandModelCredentialResolver({
+      command,
+      env,
+      minimumValidityMs: MODEL_SEAT_VALIDITY_MS,
+    })(input)
   }
 }

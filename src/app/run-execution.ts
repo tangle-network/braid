@@ -3,7 +3,7 @@ import { type BraidRuntimeEvent, isRuntimeEventEnvelope } from '../domain/runtim
 import { activeRunForBranch } from '../domain/state.js'
 import type { ExecuteTurnInput } from '../ports/execution.js'
 import type { ExecutionRunPort, SendAccess } from './application-ports.js'
-import { safeRuntimeDiagnostic } from './provider-values.js'
+import { type RuntimeFailure, runtimeFailure } from './provider-values.js'
 import { eventIdFor, providerMeta } from './run-event-mapper.js'
 import type { RunExecutionSnapshot } from './run-execution-snapshot.js'
 import { continuesTerminal, recoverPendingFinal } from './run-final-recovery.js'
@@ -128,11 +128,11 @@ export async function executeRun(
     if (!terminalSeen) await finishWithoutTerminal(context, input, admission, abort)
   } catch (error) {
     if (context.ledger.isDetached(admission.runId)) return
-    const message = safeRuntimeDiagnostic(error, 'RUNTIME_EXECUTION_ERROR')
+    const failure = runtimeFailure(error, 'RUNTIME_EXECUTION_ERROR')
     if (terminalSeen) throw error
     // The run is already terminal, so reconnection refuses it; read its final result once here.
     if (awaitingFinal && !abort.signal.aborted) await recoverPendingFinal(context, admission.runId)
-    await finishAfterError(context, input, admission, abort, message)
+    await finishAfterError(context, input, admission, abort, failure)
   } finally {
     context.ledger.deleteAbort(admission.runId)
     context.ledger.clearExplicitlyCancelled(admission.runId)
@@ -256,7 +256,7 @@ async function finishAfterError(
   input: import('./application-types.js').SendInput,
   admission: import('../domain/receipts.js').RunAdmissionReceipt,
   abort: AbortController,
-  message: string,
+  failure: RuntimeFailure,
 ): Promise<void> {
   if (context.isTerminal(context.findRun(admission.runId).status)) return
   if (
@@ -268,7 +268,7 @@ async function finishAfterError(
     await reconnectRun(context, {
       operationId: `${input.operationId}:reconnect`,
       runId: admission.runId,
-      priorFailureDetail: message,
+      priorFailureDetail: `the run failed: ${failure.text}`,
     })
     return
   }
@@ -297,7 +297,8 @@ async function finishAfterError(
           : status,
       finalText: '',
       usage: UNKNOWN_TURN_USAGE,
-      error: message,
+      error: failure.code,
+      ...(failure.cause === undefined ? {} : { reason: failure.cause }),
     })
   } else {
     await commitRequiredRecovery(context, {
@@ -306,7 +307,8 @@ async function finishAfterError(
       status: 'failed',
       finalText: '',
       usage: UNKNOWN_TURN_USAGE,
-      error: message,
+      error: failure.code,
+      ...(failure.cause === undefined ? {} : { reason: failure.cause }),
     })
   }
 }
