@@ -305,10 +305,16 @@ test('a stopped sandbox ends as unknown with a plain detail and no retry', async
   })
   const state = await app.send({ operationId: 'op-stopped', text: 'go' }).completion
   assert.equal(state.runs[0]?.status, 'unknown')
-  assert.equal(unknownDetail(app), 'provider stream lost; status read failed: sandbox is gone (SANDBOX_STOPPED)')
+  assert.equal(
+    unknownDetail(app),
+    'provider stream lost; status read failed: sandbox is gone (SANDBOX_STOPPED)',
+  )
   assert.equal(probe.after.length, 0)
   assert.equal(probe.statusCalls, 1)
-  assert.equal(state.lastError, 'provider stream lost; status read failed: sandbox is gone (SANDBOX_STOPPED)')
+  assert.equal(
+    state.lastError,
+    'provider stream lost; status read failed: sandbox is gone (SANDBOX_STOPPED)',
+  )
 })
 
 test('a status read that never answers counts as a lost provider', async () => {
@@ -350,7 +356,10 @@ test('a replay that stalls after the provider died ends as unknown', async () =>
   })
   const state = await app.send({ operationId: 'op-replay-lost', text: 'go' }).completion
   assert.equal(state.runs[0]?.status, 'unknown')
-  assert.equal(unknownDetail(app), 'provider stream lost; status read failed: sandbox is gone (SANDBOX_DELETED)')
+  assert.equal(
+    unknownDetail(app),
+    'provider stream lost; status read failed: sandbox is gone (SANDBOX_DELETED)',
+  )
 })
 
 test('a terminal provider whose replay stalls twice finishes from its status read', async () => {

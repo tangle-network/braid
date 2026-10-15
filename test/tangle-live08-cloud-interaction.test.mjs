@@ -299,7 +299,10 @@ test('cloud failure classifies recovery and provider event types without retaini
     ['provider recovery failed: sandbox is gone (SANDBOX_STOPPED)', 'reconnect-error'],
     ['provider status read failed: request timed out', 'status-error'],
     ['the run failed: stream reset; the provider returned no run record', 'provider-run-missing'],
-    ['the run failed: stream reset; the execution path cannot reconcile provider state', 'status-unavailable'],
+    [
+      'the run failed: stream reset; the execution path cannot reconcile provider state',
+      'status-unavailable',
+    ],
   ])
     assert.equal(cloudRecoveryDetailCategory(detail), category, detail)
 
