@@ -204,3 +204,18 @@ test('both requests accepted in either order end completed', async () => {
     assert.equal(app.state().runs[0]?.status, 'completed')
   }
 })
+
+test('the SDK outcome derivation settles A, B, cancel A, cancel B, done as success', async () => {
+  const { deriveAgentRunOutcome } = await import('@tangle-network/sandbox')
+  const a = permission('perm-a')
+  const b = permission('perm-b')
+  const events = [
+    { type: 'interaction', data: { request: a } },
+    { type: 'interaction', data: { request: b } },
+    { type: 'interaction.cancel', data: { id: 'perm-a', reason: 'resolved' } },
+    { type: 'interaction.cancel', data: { id: 'perm-b', reason: 'resolved' } },
+    { type: 'done', data: { outcome: { type: 'completed' } } },
+  ]
+  assert.equal(deriveAgentRunOutcome(events).success, true)
+  assert.deepEqual(deriveAgentRunOutcome(events), deriveAgentRunOutcome(events))
+})
