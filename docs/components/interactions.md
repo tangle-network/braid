@@ -67,6 +67,14 @@ Duplicate provider events do not create a second modal.
 
 Timeout, provider cancellation, user cancellation, stale response, declined response, and accepted response remain distinct outcomes.
 
+A provider close (`interaction.cancel`) cancels only a pending request.
+Providers also close a request after delivering any response, so once a response is in flight or recorded the close only advances provider progress.
+It never overwrites an accepted, declined, or cancelled result, and an unknown response stays unknown so a retry of the same operation can still settle it.
+
+Choosing a permission option sends that declared grant; an option the request did not declare is refused rather than mapped to an allow.
+
+A reducer refusal latches the application read-only and repaints the terminal with the storage-failure status at once, because no journal event records the latch.
+
 A secret value never enters profiles, SQLite, logs, view models, snapshots, screenshots, or trace artifacts.
 
 An acknowledged response replays as the same result.

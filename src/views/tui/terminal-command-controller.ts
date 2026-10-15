@@ -106,6 +106,8 @@ export class TerminalCommandController {
             : 'Send unavailable',
         capability?.reason ?? 'The current connection cannot accept this message',
       )
+      // Keep the refused text as the branch draft so it survives a restart.
+      if (!active) await this.#drafts.flush(rawText)
       return
     }
     this.#editor.addToHistory(rawText)

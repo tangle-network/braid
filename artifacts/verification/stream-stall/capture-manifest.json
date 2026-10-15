@@ -1,0 +1,221 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-15T08:02:07.004Z",
+  "command": "pnpm capture:stream-stall",
+  "execution": "local deterministic provider whose stream goes silent; not provider integration proof",
+  "keyboard": "type \"run the tests\", Enter; the provider then goes silent for the idle bound",
+  "provenance": {
+    "renderer": {
+      "package": "@earendil-works/pi-tui@1.1.0",
+      "pty": "node-pty@1.1.0",
+      "emulator": "@xterm/headless@6.0.0",
+      "node": "v24.21.0",
+      "terminal": "xterm-256color"
+    },
+    "raster": {
+      "agg": "unavailable: spawn agg ENOENT",
+      "imagemagick": "unavailable: spawn convert ENOENT",
+      "fontFamily": "DejaVu Sans Mono",
+      "font": "DejaVu Sans Mono | Book | /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+      "colorMode": "sRGB 8-bit"
+    }
+  },
+  "artifacts": [
+    {
+      "path": "40x12-streaming.txt",
+      "sha256": "66e7359fe2206b5116dfaa3f2bd5e69c732269888ec05c5224c4e23d82686af8",
+      "columns": 40,
+      "rows": 12,
+      "status": "streaming"
+    },
+    {
+      "path": "40x12-reconnecting.txt",
+      "sha256": "f59a9cccac4446fea6170d08e6f184e51e63d1abe53fd8b0f7182137e6e79bc9",
+      "columns": 40,
+      "rows": 12,
+      "status": "reconnecting"
+    },
+    {
+      "path": "40x12-replaying.txt",
+      "sha256": "f59a9cccac4446fea6170d08e6f184e51e63d1abe53fd8b0f7182137e6e79bc9",
+      "columns": 40,
+      "rows": 12,
+      "status": "reconnecting"
+    },
+    {
+      "path": "40x12-completed.txt",
+      "sha256": "e56b4541f592df42bcd2136220edd95c05fac9e1f7d8c0a480a79d1235e2bd49",
+      "columns": 40,
+      "rows": 12,
+      "status": "completed"
+    },
+    {
+      "path": "40x12-streaming.txt",
+      "sha256": "66e7359fe2206b5116dfaa3f2bd5e69c732269888ec05c5224c4e23d82686af8",
+      "columns": 40,
+      "rows": 12,
+      "status": "streaming"
+    },
+    {
+      "path": "40x12-reconnecting.txt",
+      "sha256": "f59a9cccac4446fea6170d08e6f184e51e63d1abe53fd8b0f7182137e6e79bc9",
+      "columns": 40,
+      "rows": 12,
+      "status": "reconnecting"
+    },
+    {
+      "path": "40x12-unknown.txt",
+      "sha256": "2d117c08e09c26ceb7677c83cf853973b27d4bc6ad6fdd2e08b1efb366a499b9",
+      "columns": 40,
+      "rows": 12,
+      "status": "unknown"
+    },
+    {
+      "path": "80x24-streaming.txt",
+      "sha256": "4af78a6d5a602c1b030fafb898ed4bdda5c5c9929e7588fc8634111e7281e554",
+      "columns": 80,
+      "rows": 24,
+      "status": "streaming"
+    },
+    {
+      "path": "80x24-reconnecting.txt",
+      "sha256": "934372bbc39675ce2992da8de17a3480accacbd7089e44072d2990f3732dd880",
+      "columns": 80,
+      "rows": 24,
+      "status": "reconnecting"
+    },
+    {
+      "path": "80x24-replaying.txt",
+      "sha256": "934372bbc39675ce2992da8de17a3480accacbd7089e44072d2990f3732dd880",
+      "columns": 80,
+      "rows": 24,
+      "status": "reconnecting"
+    },
+    {
+      "path": "80x24-completed.txt",
+      "sha256": "940b6a65cf6797e87f1326d5eccbe9003415c2232e8f7dbb2966f6a3bdfa2ca1",
+      "columns": 80,
+      "rows": 24,
+      "status": "completed"
+    },
+    {
+      "path": "80x24-streaming.txt",
+      "sha256": "4af78a6d5a602c1b030fafb898ed4bdda5c5c9929e7588fc8634111e7281e554",
+      "columns": 80,
+      "rows": 24,
+      "status": "streaming"
+    },
+    {
+      "path": "80x24-reconnecting.txt",
+      "sha256": "934372bbc39675ce2992da8de17a3480accacbd7089e44072d2990f3732dd880",
+      "columns": 80,
+      "rows": 24,
+      "status": "reconnecting"
+    },
+    {
+      "path": "80x24-unknown.txt",
+      "sha256": "00129859b960cc18fdada6f87342d875bb02c6c97db73c1a89b944e922dceb0e",
+      "columns": 80,
+      "rows": 24,
+      "status": "unknown"
+    },
+    {
+      "path": "120x40-streaming.txt",
+      "sha256": "709b32833d3338c9a24cc65adda198326a85ee01ef0ec22c4a98983e2a2d1417",
+      "columns": 120,
+      "rows": 40,
+      "status": "streaming"
+    },
+    {
+      "path": "120x40-reconnecting.txt",
+      "sha256": "319a0379edf587cc4983e49320852ee60327ba1529f7ac8fcf0fa4d8d13e11de",
+      "columns": 120,
+      "rows": 40,
+      "status": "reconnecting"
+    },
+    {
+      "path": "120x40-replaying.txt",
+      "sha256": "319a0379edf587cc4983e49320852ee60327ba1529f7ac8fcf0fa4d8d13e11de",
+      "columns": 120,
+      "rows": 40,
+      "status": "reconnecting"
+    },
+    {
+      "path": "120x40-completed.txt",
+      "sha256": "845f1487b4a92c3be34e7830f6a7997dfdde6f668515ffa63e17c81282fe0730",
+      "columns": 120,
+      "rows": 40,
+      "status": "completed"
+    },
+    {
+      "path": "120x40-streaming.txt",
+      "sha256": "709b32833d3338c9a24cc65adda198326a85ee01ef0ec22c4a98983e2a2d1417",
+      "columns": 120,
+      "rows": 40,
+      "status": "streaming"
+    },
+    {
+      "path": "120x40-reconnecting.txt",
+      "sha256": "319a0379edf587cc4983e49320852ee60327ba1529f7ac8fcf0fa4d8d13e11de",
+      "columns": 120,
+      "rows": 40,
+      "status": "reconnecting"
+    },
+    {
+      "path": "120x40-unknown.txt",
+      "sha256": "9fc2b7c6d03bc7a0f57a661366afac56eca5d737156fd24864677b23838b4236",
+      "columns": 120,
+      "rows": 40,
+      "status": "unknown"
+    },
+    {
+      "path": "200x60-streaming.txt",
+      "sha256": "1188ae67daa105646fb80cf742c2747791f4952b625056e89e272b9263d2044d",
+      "columns": 200,
+      "rows": 60,
+      "status": "streaming"
+    },
+    {
+      "path": "200x60-reconnecting.txt",
+      "sha256": "b7da182900af53dad22fe96d7f9293bf8f7a8999a859e748970edd44c8ad10c0",
+      "columns": 200,
+      "rows": 60,
+      "status": "reconnecting"
+    },
+    {
+      "path": "200x60-replaying.txt",
+      "sha256": "b7da182900af53dad22fe96d7f9293bf8f7a8999a859e748970edd44c8ad10c0",
+      "columns": 200,
+      "rows": 60,
+      "status": "reconnecting"
+    },
+    {
+      "path": "200x60-completed.txt",
+      "sha256": "0e8dc68f08197d45bdd3fa44a9a5c3d75e0e776b4f94d8e5610a58806cb6a039",
+      "columns": 200,
+      "rows": 60,
+      "status": "completed"
+    },
+    {
+      "path": "200x60-streaming.txt",
+      "sha256": "1188ae67daa105646fb80cf742c2747791f4952b625056e89e272b9263d2044d",
+      "columns": 200,
+      "rows": 60,
+      "status": "streaming"
+    },
+    {
+      "path": "200x60-reconnecting.txt",
+      "sha256": "b7da182900af53dad22fe96d7f9293bf8f7a8999a859e748970edd44c8ad10c0",
+      "columns": 200,
+      "rows": 60,
+      "status": "reconnecting"
+    },
+    {
+      "path": "200x60-unknown.txt",
+      "sha256": "f03ad5b512567bec884c569f81c680e5767e49be05f9002b6875395df9b93ae0",
+      "columns": 200,
+      "rows": 60,
+      "status": "unknown"
+    }
+  ]
+}

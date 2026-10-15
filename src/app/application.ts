@@ -12,7 +12,12 @@ import type {
 import { redactSensitiveText } from '../domain/redaction.js'
 import { replayEvents } from '../domain/reducer.js'
 import type { RuntimeEventEnvelope } from '../domain/runtime-events.js'
-import { type BraidState, initialState, isLiveRunStatus } from '../domain/state.js'
+import {
+  activeRunForBranch,
+  type BraidState,
+  initialState,
+  isLiveRunStatus,
+} from '../domain/state.js'
 import type { Clock } from '../ports/clock.js'
 import type { ExecuteTurnInput, ExecutionPort } from '../ports/execution.js'
 import type { IdSource } from '../ports/ids.js'
@@ -63,7 +68,11 @@ import {
 } from './run-admission.js'
 import { resolveNativeContinuationRun } from './run-continuation.js'
 import { cancelRun, detachRun, queueRunInput, steerRun } from './run-controls.js'
-import { snapshotRunExecution, snapshotRunRetry } from './run-execution-snapshot.js'
+import {
+  snapshotRunExecution,
+  snapshotRunRetry,
+  snapshotSendRefusal,
+} from './run-execution-snapshot.js'
 import { recoverPendingFinalResults } from './run-final-recovery.js'
 import { createRunLedger } from './run-ledger.js'
 import { reconcileRun, reconnectRun } from './run-replay.js'
@@ -118,6 +127,9 @@ function deferred<T>(): Deferred<T> {
   return { promise, resolve, reject }
 }
 
+/** Never a real send operation: it only probes the next send's execution snapshot. */
+const SEND_AVAILABILITY_PROBE = 'operation-send-availability-probe'
+
 export class BraidApplication {
   readonly conversations: ConversationActions
   readonly intelligence: IntelligenceActions
@@ -156,6 +168,7 @@ export class BraidApplication {
   readonly #durableSender: ReturnType<typeof createDurableSender>
   #transitionTail: Promise<void> = Promise.resolve()
   #storageFailure: unknown
+  readonly #storageFailureListeners = new Set<() => void>()
   #cleanupUncertain: string | undefined
   #restartReconciliation: Promise<void> = Promise.resolve()
   #automationReconciliation: Promise<void> = Promise.resolve()
@@ -261,9 +274,7 @@ export class BraidApplication {
         this.#transitionTail = tail
       },
       storageFailure: () => this.#storageFailure,
-      markStorageFailure: (error) => {
-        this.#storageFailure ??= error
-      },
+      markStorageFailure: (error) => this.#latchStorageFailure(error),
       flush: () => this.whenDurable(),
       executeControl: (input, options) => this.#executeControl(input, options),
       admitPersistedSend: (operationId, digest) =>
@@ -362,7 +373,7 @@ export class BraidApplication {
     this.#restartReconciliation = runReconciliation
       .then(() => this.conversations.lifecycle.reconcilePendingDeletes())
       .catch((error: unknown) => {
-        this.#storageFailure ??= error
+        this.#latchStorageFailure(error)
         throw error
       })
     this.#automationReconciliation = this.#restartReconciliation.then(() =>
@@ -408,6 +419,25 @@ export class BraidApplication {
   storageFailure(): string | undefined {
     if (this.#storageFailure === undefined) return undefined
     return this.#storageFailure instanceof Error ? this.#storageFailure.message : 'Storage failure'
+  }
+
+  /** Calls the listener once when a failed commit latches this application read-only. */
+  onStorageFailure(listener: () => void): () => void {
+    this.#storageFailureListeners.add(listener)
+    return () => this.#storageFailureListeners.delete(listener)
+  }
+
+  #latchStorageFailure(error: unknown): void {
+    if (this.#storageFailure !== undefined) return
+    this.#storageFailure = error
+    // No journal event records the latch, so subscribers would otherwise keep the last frame.
+    for (const listener of this.#storageFailureListeners) {
+      try {
+        listener()
+      } catch {
+        // A renderer failure cannot change the latched failure.
+      }
+    }
   }
 
   cleanupUncertain(): string | undefined {
@@ -533,6 +563,38 @@ export class BraidApplication {
         ? {}
         : { connectionId: configuration.connectionId }),
     })?.id
+  }
+
+  /**
+   * The plain reason a new send on this branch would be refused before it runs, or undefined.
+   * It builds the same execution snapshot as `send`, so the send capability and admission share
+   * one rule; admission still checks the connection's live answer.
+   */
+  sendRefusal(input: Pick<SendInput, 'conversationId' | 'branchId'> = {}): string | undefined {
+    const state = this.#state
+    if (state.workspace === null) return undefined
+    try {
+      const target = resolveConversationTarget(state, input)
+      if (activeRunForBranch(state, target.conversationId, target.branchId)) return undefined
+      if (this.nativeContinuationRunId(target) !== undefined) return undefined
+      const configuration = effectiveRunConfiguration(
+        state,
+        this.runtimeSelection.profile(),
+        target,
+      )
+      const snapshot = snapshotRunExecution(
+        { operationId: SEND_AVAILABILITY_PROBE, text: '', ...target },
+        state,
+        configuration.profile,
+        configuration.connectionId,
+        configuration.mode,
+        this.#workspaceRequest,
+      )
+      return snapshotSendRefusal(state, snapshot)
+    } catch {
+      // A branch this probe cannot resolve gets admission's own, more specific refusal.
+      return undefined
+    }
   }
 
   queueInput(input: {

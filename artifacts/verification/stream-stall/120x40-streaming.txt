@@ -1,0 +1,40 @@
+ › run the tests                                                                                                        
+                                                                                                                        
+ working…                                                                                                               
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+› queue #1                                                                                                              
+                                                                                                                        
+                                                                                                                        
+─────────────────────────────────── type / for commands · Alt+Enter newline · paste ────────────────────────────────────
+profile Braid starter · runner pi · backend local                                           Ctrl+C cancel · Enter queues

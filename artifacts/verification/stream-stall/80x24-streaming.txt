@@ -1,0 +1,24 @@
+ › run the tests                                                                
+                                                                                
+ working…                                                                       
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+────────────────────────────────────────────────────────────────────────────────
+› queue #1                                                                      
+                                                                                
+                                                                                
+─────────────────── type / for commands · Alt+Enter · paste ────────────────────
+profile Braid starter · pi · via local                             Ctrl+C cancel

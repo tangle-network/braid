@@ -46,6 +46,7 @@ interface ViewModelCacheEntry {
   readonly cleanupUncertain: string | undefined
   readonly canRespond: boolean
   readonly graphQuery: string
+  readonly sendRefusal: string | undefined
   readonly value: BraidViewModel
 }
 
@@ -84,6 +85,7 @@ export function buildBraidViewModel(
   cleanupUncertain?: string,
   canRespond = false,
   graphQuery = '',
+  sendRefusal?: string,
 ): BraidViewModel {
   const color =
     appearance.color === undefined ? ('truecolor' as const) : resolveColorMode(appearance.color)
@@ -104,7 +106,8 @@ export function buildBraidViewModel(
     cached.storageFailure === storageFailure &&
     cached.cleanupUncertain === cleanupUncertain &&
     cached.canRespond === canRespond &&
-    cached.graphQuery === graphQuery
+    cached.graphQuery === graphQuery &&
+    cached.sendRefusal === sendRefusal
   ) {
     return cached.value
   }
@@ -240,7 +243,7 @@ export function buildBraidViewModel(
           }),
         }
       : {}),
-    capabilities: capabilityMap(state, canCancel, undefined, canRespond),
+    capabilities: capabilityMap(state, canCancel, undefined, canRespond, sendRefusal),
     draft: sanitizeTerminalText(state.draft),
     selectedSurface,
     appearance: Object.freeze({
@@ -260,6 +263,7 @@ export function buildBraidViewModel(
       cleanupUncertain,
       canRespond,
       graphQuery,
+      sendRefusal,
       value: view,
     })
   }

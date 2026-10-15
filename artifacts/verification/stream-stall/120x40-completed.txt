@@ -1,0 +1,40 @@
+ › run the tests                                                                                                        
+                                                                                                                        
+ Reading the repository. Running the long test suite. Tests passed.                                                     
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+› new message                                                                                                           
+                                                                                                                        
+                                                                                                                        
+─────────────────────────────────── type / for commands · Alt+Enter newline · paste ────────────────────────────────────
+profile Braid starter · runner pi · backend local

@@ -1,0 +1,12 @@
+ › run the tests                        
+                                        
+ working…                               
+                                        
+                                        
+                                        
+────────────────────────────────────────
+› queue #1                              
+                                        
+                                        
+─── type / for commands · Alt+Enter ────
+Braid starter      working · Ctrl+C stop
