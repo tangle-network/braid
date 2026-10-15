@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { writeCastGif } from './capture-visual-support.mjs'
@@ -11,8 +11,9 @@ import { castFor, createCapturedTerminal, pause } from './live-demo/terminal.mjs
 const root = resolve(process.env.BRAID_OPERATOR_PROOF_ROOT)
 const run = promisify(execFile)
 const workspace = join(root, 'workspace')
-const output = join(root, 'evidence')
 await mkdir(join(workspace, '.braid'), { recursive: true })
+const capture = await mkdtemp(join(root, 'capture-'))
+const output = join(capture, 'evidence')
 await mkdir(output, { recursive: true })
 const key = join(root, 'database.key')
 try {
@@ -54,7 +55,7 @@ for (const [columns, rows] of [
   [120, 40],
 ]) {
   const size = `${columns}x${rows}`
-  const recordPath = join(root, `state-${size}.json`)
+  const recordPath = join(capture, `state-${size}.json`)
   const terminal = await createCapturedTerminal({
     binary,
     columns,
@@ -183,6 +184,7 @@ await writeCastGif(join(output, '120x40-flow.cast'), join(output, 'operator-jour
 console.log(
   JSON.stringify({
     root,
+    capture,
     measurements: measurements.map(({ name, elapsedMs, run }) => ({
       name,
       elapsedMs,
