@@ -227,6 +227,8 @@ export type LegacyBraidEvent =
       readonly kind: 'run.reconnecting'
       readonly runId: string
       readonly after?: string
+      /** Plain reason, such as a silent provider stream. */
+      readonly detail?: string
     }
   | {
       readonly kind: 'run.unknown'

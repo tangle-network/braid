@@ -752,6 +752,14 @@ A cross-runner handoff always creates a new provider session identifier.
 A replay cursor advances only after Braid durably commits the associated event.
 
 An SSE connection ending without a terminal event triggers status reconciliation and replay, not a locally invented terminal state.
+A stream that stays open but delivers no event also triggers it, because an open connection is not evidence of a live run: sidecar heartbeats keep a dead stream looking alive.
+Each ingested event counts as activity, and Braid arms the idle bound after the first one, because dispatch and provisioning precede it and report their own failures.
+After the idle bound (45 seconds by default, well under agent-runtime's 8-minute observation limit) Braid commits `run.reconnecting` with the plain reason, then reads the provider's status for the exact control reference within a short deadline.
+A running or finished provider is replayed from the saved cursor; a quiet long tool call therefore costs one replay, never a failure.
+A status read that fails, times out, names another run or reports an unknown state ends the run as `unknown` with a plain detail such as "provider stream lost; status read failed (SANDBOX_STOPPED)", and never retries.
+A provider that finished but whose replay also goes silent supplies the result from its status read.
+The ingest of one event is bound by the same deadline, so a slow commit never holds the turn open.
+Cancel and detach stop the watchdog: a detached run is not reconnected, and its timers end with the stream.
 
 Duplicate event identifiers produce no duplicate transcript part, tool row, usage total, interaction, or terminal result.
 
