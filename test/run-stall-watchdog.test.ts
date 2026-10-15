@@ -278,7 +278,7 @@ test('a status read that never answers counts as a lost provider', async () => {
   })
   const state = await app.send({ operationId: 'op-status-hang', text: 'go' }).completion
   assert.equal(state.runs[0]?.status, 'unknown')
-  assert.match(unknownDetail(app), /provider stream lost; the status read timed out/)
+  assert.match(unknownDetail(app) ?? '', /provider stream lost; the status read timed out/)
   assert.equal(probe.after.length, 0)
 })
 
