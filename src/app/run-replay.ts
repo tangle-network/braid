@@ -153,7 +153,7 @@ async function replayFromCursor(
       const result = await context.ingestRuntimeEvent(envelope)
       if (result.accepted) notifyInteractionReady()
       if (result.accepted && envelope.event.type === 'final') sawTerminal = true
-      return 'continue'
+      return 'continue' as const
     },
   )
   return sawTerminal ? 'stopped' : outcome
