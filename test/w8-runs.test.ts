@@ -387,13 +387,15 @@ test('failed dispatch preserves its diagnostic when recovery finds no provider r
   const state = await app.send({ operationId: 'op-failed-dispatch', text: 'start once' }).completion
 
   assert.equal(state.runs[0]?.status, 'unknown')
-  assert.equal(state.lastError, 'SIDECAR_SCHEMA_REJECTED')
+  const cause =
+    'the run failed: [{"unrecognized":"runControlRef"}] (SIDECAR_SCHEMA_REJECTED); the provider returned no run record'
+  assert.equal(state.lastError, cause)
   const unknown = app
     .events()
     .filter((entry) => entry.event.kind === 'run.unknown')
     .at(-1)?.event
   if (unknown?.kind !== 'run.unknown') throw new Error('Missing run.unknown event')
-  assert.equal(unknown.detail, 'SIDECAR_SCHEMA_REJECTED')
+  assert.equal(unknown.detail, cause)
 })
 
 test('failed dispatch preserves its typed diagnostic when exact status is unavailable', async () => {
@@ -415,7 +417,10 @@ test('failed dispatch preserves its typed diagnostic when exact status is unavai
   const state = await app.send({ operationId: 'op-no-status', text: 'start once' }).completion
 
   assert.equal(state.runs[0]?.status, 'unknown')
-  assert.equal(state.lastError, 'CLOUD_PROVISION_REJECTED')
+  assert.equal(
+    state.lastError,
+    'the run failed: permanent cloud provisioning rejection (CLOUD_PROVISION_REJECTED); the execution path cannot reconcile provider state',
+  )
 })
 
 test('reconnect preserves its typed diagnostic when replay itself fails', async () => {
@@ -436,7 +441,10 @@ test('reconnect preserves its typed diagnostic when replay itself fails', async 
     .completion
 
   assert.equal(state.runs[0]?.status, 'unknown')
-  assert.equal(state.lastError, 'RETAINED_CONTROL_REF_REJECTED')
+  assert.equal(
+    state.lastError,
+    'the run failed: transport disconnected; recovery failed: [{"unrecognized":"runControlRef"}] (RETAINED_CONTROL_REF_REJECTED)',
+  )
 })
 
 test('explicit cancellation is acknowledged and reaches cancelled, while legacy abort remains distinct', async () => {
