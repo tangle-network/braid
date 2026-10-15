@@ -107,13 +107,19 @@ for (const [columns, rows] of [
         ['routing', 'What is 17 times 23? Do not draft a play for this small question.'],
         [
           'observation',
-          'How is run jcs-rfc8785-js-20261015b going? Use only disco report, scorecard, receipt and the run page. Do not steer, cancel, resume, preflight, press, merge, or write a retro in this observation turn. Keep unknown accounting unknown.',
+          'How is run jcs-rfc8785-js-20261015b going? Use disco report --json, disco scorecard --read-only --json, disco receipt --read-only --json and the run page. Never use the default scorecard/receipt writer commands. If the installed CLI lacks --read-only, read the saved artifacts through the run page or a bounded filesystem read; never regenerate them. Show artifact timestamps and unknowns. Do not steer, cancel, resume, preflight, press, merge, or write a retro in this observation turn. Keep unknown accounting unknown.',
         ],
         [
           'intents',
           'Draft two play intents for Drew to review here. This is NOT approval of either play. Never press, queue, resume, fork, or merge a play. First: queens21 team shapes rerun properly, with three runs per shape (solo, tree4, swarm16, peers3), a problem sized to finish in two hours, placement and seat room checked before a future press, and infrastructure failures as missing data. Second: choose one sourced open research intent that exercises observation and steering over a two-to-four-hour Codex run. Save the two intents under intents/ in this workspace, give each an id and a concise review card, and list the check proof and preflight still required before a complete spend card. No installs, builds or tests on GTR or the Mac; use beelink-gate for any such work. Do not start background work.',
         ],
       ]
+      if (process.env.BRAID_OPERATOR_PROOF_REUSE_INTENTS === '1') {
+        cases[2] = [
+          'review-intents',
+          'Show the two existing unapproved intent files under intents/: queens21-shapes-rerun-20261015a and erdos-overlap-steering-20261015a. Read the current files, give a short review card for each, and name their remaining approval gates. Do not rewrite them, draft new intents, press, preflight, queue, resume or start research.',
+        ]
+      }
       for (const [name, prompt] of cases) {
         const before = await terminal.captureState()
         const known = new Set((before.state?.runs ?? []).map((run) => run.id))

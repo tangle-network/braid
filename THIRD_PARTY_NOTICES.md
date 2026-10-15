@@ -4,7 +4,7 @@
 
 `src/profiles/discovery-operator.json` is the project-owner-authorized release
 snapshot of `tangle-network/discovery-lab`, commit
-`4494ab671d556bcb414025bc8766915c89345647`, path
+`de068d196aed580c05fe985f105768f61daa61e1`, path
 `profiles/operators/discovery-operator.json`. Discovery Lab remains its owner.
 The project owner authorized this profile's distribution as part of Braid's
 profile catalog.
