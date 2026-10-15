@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { randomBytes } from 'node:crypto'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { TuiMainScreen } from '@earendil-works/pi-tui'
@@ -8,22 +10,26 @@ import {
   type InteractionResponse,
   permissionAnswerSpec,
 } from '@tangle-network/agent-interface'
+import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
 import {
   type ApplicationUiController,
   createApplicationUiController,
 } from '../src/adapters/tui/application-ui-controller.js'
 import type { BraidApplication } from '../src/app/application.js'
-import { createBraidApplication, DETERMINISTIC_PROFILE } from '../src/app/composition.js'
+import {
+  createBraidApplication,
+  createDurableBraidApplication,
+  DETERMINISTIC_PROFILE,
+} from '../src/app/composition.js'
 import {
   createInteractionRequest,
   rebindInteractionRequest,
 } from '../src/app/interaction-request.js'
 import { MemoryJournal } from '../src/app/journal.js'
-import { replayEvents } from '../src/domain/reducer.js'
 import type { BraidRuntimeEvent, RuntimeEventEnvelope } from '../src/domain/runtime-events.js'
-import { initialState } from '../src/domain/state.js'
 import { FixedClock } from '../src/ports/clock.js'
 import { DEFAULT_RUN_CAPABILITIES, type ExecutionPort } from '../src/ports/execution.js'
+import { SequenceIds } from '../src/ports/ids.js'
 import { BraidTerminalApp } from '../src/views/tui/terminal-app.js'
 import { createBraidTheme } from '../src/views/tui/theme.js'
 import { interactionResponseRunCapabilities } from './support/run-capabilities.js'
@@ -503,30 +509,88 @@ test('restart and reconnect replay a provider close after a decline without a st
   }
 })
 
+/** Closes a request it never made, which the reducer refuses, then sends nothing else. */
+function refusedEventProvider(held: Promise<void>): ExecutionPort {
+  return {
+    capabilities: () => interactionResponseRunCapabilities(),
+    async *streamTurn(): AsyncIterable<BraidRuntimeEvent> {
+      yield { type: 'text_delta', text: 'Checking the workspace before running bash.' }
+      yield { type: 'interaction.cancel', id: 'interaction-never-requested', reason: 'resolved' }
+      // Nothing else repaints the frame: only the latch notification can show the failure.
+      await held
+    },
+  }
+}
+
+test('a refused provider event never reaches the encrypted journal, so reopening needs no migration', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-refused-event-'))
+  const workspace = join(root, 'workspace')
+  const path = join(root, 'braid.sqlite')
+  const keyPath = join(root, 'database.key')
+  const credentialStore = new MemoryCredentialStore()
+  try {
+    await mkdir(workspace)
+    await writeFile(keyPath, randomBytes(32), { mode: 0o600 })
+    const databaseKeySource = { type: 'file' as const, path: keyPath, workspaceRoot: workspace }
+    const open = (execution: ExecutionPort) =>
+      createDurableBraidApplication({
+        path,
+        storageRoot: root,
+        workspaceRoot: workspace,
+        databaseKeySource,
+        credentialStore,
+        profile: DETERMINISTIC_PROFILE,
+        ids: new SequenceIds(),
+        execution,
+      })
+    let release: () => void = () => {}
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const first = await open(refusedEventProvider(held))
+    try {
+      first.app.initialize(workspace)
+      await first.app.whenDurable()
+      const send = first.app.send({ operationId: 'operation-refused-event', text: 'ask' })
+      await waitUntil(() => first.app.storageFailure() !== undefined, 'the latched failure')
+      assert.match(
+        first.app.storageFailure() ?? '',
+        /Interaction interaction-[0-9a-f]+ is unknown/u,
+      )
+      release()
+      await Promise.race([
+        send.completion.catch(() => undefined),
+        new Promise((resolve) => setTimeout(resolve, 1_000)),
+      ])
+    } finally {
+      release()
+      await first.storage.close()
+    }
+
+    const reopened = await open({ async *streamTurn(): AsyncIterable<BraidRuntimeEvent> {} })
+    try {
+      await reopened.app.whenDurable()
+      const kinds = reopened.app.events().map((entry) => entry.event.kind)
+      assert.equal(reopened.app.storageFailure(), undefined)
+      assert.ok(kinds.includes('run.requested'))
+      assert.equal(kinds.includes('run.interaction.cancelled'), false)
+    } finally {
+      await reopened.storage.close()
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 for (const [columns, rows] of SIZES) {
   test(`a refused event renders the storage-failure frame at ${columns}x${rows}`, async () => {
     let release: () => void = () => {}
     const held = new Promise<void>((resolve) => {
       release = resolve
     })
-    const journal = new MemoryJournal(new FixedClock(NOW))
     const app = createBraidApplication({
       fixture: 'deterministic',
-      journal,
-      execution: {
-        capabilities: () => interactionResponseRunCapabilities(),
-        async *streamTurn(): AsyncIterable<BraidRuntimeEvent> {
-          yield { type: 'text_delta', text: 'Checking the workspace before running bash.' }
-          // A close for a request that was never made is refused by the reducer.
-          yield {
-            type: 'interaction.cancel',
-            id: 'interaction-never-requested',
-            reason: 'resolved',
-          }
-          // Nothing else repaints the frame: only the latch notification can show the failure.
-          await held
-        },
-      },
+      execution: refusedEventProvider(held),
     })
     app.initialize('/workspace')
     const terminal = new RecordingTerminal(columns, rows)
@@ -548,14 +612,6 @@ for (const [columns, rows] of SIZES) {
       )
       const frame = terminal.getViewport().join('\n')
       assert.match(app.storageFailure() ?? '', /Interaction interaction-[0-9a-f]+ is unknown/u)
-      // The reducer refuses the event before the journal append, so no stored journal holds it.
-      assert.equal(
-        journal.all().filter((entry) => entry.event.kind === 'run.interaction.cancelled').length,
-        0,
-      )
-      // Replaying the stored journal reproduces the last committed state; nothing needs migration.
-      const replayed = replayEvents(initialState(DETERMINISTIC_PROFILE), journal.all())
-      assert.deepEqual(replayed.runs, app.state().runs)
       assert.match(frame, /storage error/u)
       await writeCapture(
         terminal,
