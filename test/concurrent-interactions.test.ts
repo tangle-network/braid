@@ -126,7 +126,11 @@ async function startBoth(requests: readonly InteractionRequest[]) {
       operationId: `operation-respond-${id}`,
       runId,
       interactionId: local,
-      response: { id: local, outcome } as InteractionResponse,
+      response: {
+        id: local,
+        outcome,
+        ...(outcome === 'accepted' ? { data: { grant: ['allow_once'] } } : {}),
+      } as InteractionResponse,
     })
   }
   return { app, journal, provider, receipt, respond, runId }
