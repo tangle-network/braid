@@ -202,3 +202,8 @@ export function connectionCredentialReferenceProblem(
   }
   return undefined
 }
+
+/** A profile's `model.metadata.credentialSource`: how the Tangle provider supplies model access. */
+export function isModelCredentialSource(value: unknown): value is 'managed' | 'subscription' {
+  return value === 'managed' || value === 'subscription'
+}
