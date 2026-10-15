@@ -77,3 +77,60 @@ export function branchHasVisibleHistory(input: {
       message.conversationId === input.conversationId && message.branchId === input.branchId,
   )
 }
+
+/**
+ * Admission refuses a send when the connection cannot carry branch history into a new provider
+ * session and the send does not continue an existing one. The send capability uses the same rule.
+ */
+export function branchHistoryBlocked(input: {
+  readonly state: BraidState
+  readonly conversationId: string
+  readonly branchId: string
+  readonly portableContext: unknown
+  readonly continuesSession: boolean
+}): boolean {
+  return (
+    input.portableContext === 'unavailable' &&
+    !input.continuesSession &&
+    branchHasVisibleHistory(input)
+  )
+}
+
+/** The portable-context answer this connection gave in its latest admission receipt. */
+export function reportedPortableContext(
+  state: BraidState,
+  connectionId: string | undefined,
+): unknown {
+  if (connectionId === undefined) return undefined
+  const run = state.runs.findLast(
+    (candidate) =>
+      (candidate.connectionId ?? candidate.receipt.requested.connectionId) === connectionId &&
+      candidate.receipt.materializationReceipt !== undefined,
+  )
+  return run?.receipt.materializationReceipt?.portableContext
+}
+
+const ENDED_WITHOUT_COMPLETION: Readonly<Partial<Record<string, string>>> = {
+  failed: 'failed',
+  cancelled: 'was cancelled',
+  aborted: 'was stopped',
+  expired: 'expired',
+  unknown: 'ended without a confirmed result',
+}
+
+/** Plain refusal text shared by the send capability and admission. */
+export function branchHistoryRefusal(
+  state: BraidState,
+  conversationId: string,
+  branchId: string,
+): string {
+  const tip = state.runs
+    .filter((run) => run.conversationId === conversationId && run.branchId === branchId)
+    .at(-1)
+  const ended = tip === undefined ? undefined : ENDED_WITHOUT_COMPLETION[tip.status]
+  const cause =
+    ended === undefined
+      ? "This connection can't carry this branch's history into a new session"
+      : `The last run on this branch ${ended}, and this connection continues a branch only after a completed run`
+  return `${cause}. Start a new conversation with /new to keep working on this connection.`
+}

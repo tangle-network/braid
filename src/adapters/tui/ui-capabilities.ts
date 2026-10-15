@@ -33,6 +33,8 @@ export function capabilityMap(
   canCancel = true,
   fixture?: UiFixture,
   canRespond = false,
+  /** The application's plain reason a send on the selected branch would be refused. */
+  sendRefusal?: string,
 ): CapabilityMap {
   const selectedActive = activeRunForBranch(state, state.conversationId, state.branchId)
   const active = selectedActive !== undefined
@@ -178,7 +180,9 @@ export function capabilityMap(
   }
   capabilities['run.send'] =
     state.workspace !== null && !active && (deterministicFixture || configuredConnection)
-      ? { available: true, source: 'provider' }
+      ? sendRefusal === undefined
+        ? { available: true, source: 'provider' }
+        : { available: false, source: 'provider', reason: sendRefusal }
       : {
           available: false,
           source: 'application',

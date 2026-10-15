@@ -216,6 +216,7 @@ test('controller renders reuse one state clone and semantic projection per revis
     storageFailure: () => storageFailure,
     cleanupUncertain: () => cleanupUncertain,
     canRespondToInteractions: () => false,
+    sendRefusal: () => undefined,
   } as unknown as BraidApplication
   const controller = new ApplicationUiController(app)
   const initialStarted = performance.now()
