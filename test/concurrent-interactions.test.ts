@@ -153,7 +153,7 @@ test('two open permission requests, one declined and one accepted, end completed
   await receipt.completion
   assert.equal(app.state().runs[0]?.status, 'completed')
   assert.equal(status(app, 'perm-a'), 'declined')
-  assert.equal(status(app, 'perm-b'), 'accepted')
+  assert.equal(status(app, 'perm-b'), 'resolved')
   assert.equal(provider.answers.size, 2)
 
   // Restart: the journal alone reproduces the settled interactions and the terminal status.
@@ -163,7 +163,7 @@ test('two open permission requests, one declined and one accepted, end completed
   )
   assert.equal(restarted.state().runs[0]?.status, 'completed')
   assert.equal(status(restarted, 'perm-a'), 'declined')
-  assert.equal(status(restarted, 'perm-b'), 'accepted')
+  assert.equal(status(restarted, 'perm-b'), 'resolved')
 })
 
 test('a cancelled request beside an accepted one ends completed', async () => {
@@ -173,7 +173,7 @@ test('a cancelled request beside an accepted one ends completed', async () => {
   await receipt.completion
   assert.equal(app.state().runs[0]?.status, 'completed')
   assert.equal(status(app, 'perm-a'), 'cancelled')
-  assert.equal(status(app, 'perm-b'), 'accepted')
+  assert.equal(status(app, 'perm-b'), 'resolved')
 })
 
 test('a timed-out request is refused before dispatch and does not fail the run', async () => {
@@ -190,7 +190,7 @@ test('a timed-out request is refused before dispatch and does not fail the run',
   await respond('perm-b', 'accepted')
   await receipt.completion
   assert.equal(app.state().runs[0]?.status, 'completed')
-  assert.equal(status(app, 'perm-b'), 'accepted')
+  assert.equal(status(app, 'perm-b'), 'resolved')
 })
 
 test('both requests accepted in either order end completed', async () => {
