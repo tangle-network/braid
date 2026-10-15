@@ -1,12 +1,15 @@
 // Real installed-profile journey. No play is approved or pressed by this proof.
 import assert from 'node:assert/strict'
+import { execFile } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { writeCastGif, writeRaster } from './capture-visual-support.mjs'
+import { promisify } from 'node:util'
+import { writeCastGif } from './capture-visual-support.mjs'
 import { castFor, createCapturedTerminal, pause } from './live-demo/terminal.mjs'
 
 const root = resolve(process.env.BRAID_OPERATOR_PROOF_ROOT)
+const run = promisify(execFile)
 const workspace = join(root, 'workspace')
 const output = join(root, 'evidence')
 await mkdir(join(workspace, '.braid'), { recursive: true })
@@ -85,7 +88,20 @@ for (const [columns, rows] of [
       frameCast,
       castFor(terminal, 'Published Discovery Operator', 'braid --profile discovery-operator'),
     )
-    await writeRaster(frameCast, join(output, `${size}.png`), join(output, `${size}.tmp.gif`))
+    const frameGif = join(output, `${size}.tmp.gif`)
+    await writeCastGif(frameCast, frameGif)
+    await run('ffmpeg', [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-y',
+      '-i',
+      frameGif,
+      '-frames:v',
+      '1',
+      join(output, `${size}.png`),
+    ])
+    await rm(frameGif)
     if (columns === 120) {
       const cases = [
         ['routing', 'What is 17 times 23? Do not draft a play for this small question.'],
