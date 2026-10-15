@@ -20,7 +20,7 @@ The following published versions were resolved and their installed manifests and
 | `@tangle-network/agent-provider-cli-bridge` | `2.0.0` | CLI Bridge environment adapter with retained sessions, live streaming, replay, retry-safe turns, exact native session close, durable interaction response, explicit cancel, and host cwd support |
 | `@tangle-network/agent-provider-tangle` | `4.0.0` | Tangle environment adapter with retained control, interaction response, workspace branching, interactive-agent operations, and stopped-environment recovery |
 | `@tangle-network/agent-provider-daytona` | `0.6.0` | Bundled registered-provider adapter; its exec-only contract refuses agent execution and context transfer |
-| `@tangle-network/sandbox` | `0.60.51` | Tangle cloud client used by the provider, including keyed checkpoint/fork and interactive-agent operations |
+| `@tangle-network/sandbox` | `0.60.58` | Tangle cloud client used by the provider, including keyed checkpoint/fork and interactive-agent operations |
 
 Runtime declares peers `agent-eval >=0.213.0 <0.214.0`, `agent-interface ^5.2.1`, and `sandbox >=0.58.4 <0.61.0`.
 The Tangle provider requires Sandbox `>=0.60.27 <1.0.0` and depends on Interface `^5.0.0`.

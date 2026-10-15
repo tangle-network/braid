@@ -5,7 +5,10 @@ import {
   isSafeTokenUsageRecord,
 } from '../../domain/bounded-structured.js'
 import { canonicalJson } from '../../domain/canonical.js'
-import { connectionCredentialReferenceProblem } from '../../domain/connection-credential-references.js'
+import {
+  connectionCredentialReferenceProblem,
+  isModelCredentialSource,
+} from '../../domain/connection-credential-references.js'
 import { persistedContextTransferEventRequest } from '../../domain/portable-context-persistence.js'
 import type { JsonValue } from '../../ports/storage.js'
 import { isJsonValue } from '../../ports/storage.js'
@@ -78,6 +81,19 @@ function isSafeInteractionCapabilityFlag(path: string, key: string, value: JsonV
     path.endsWith('.capabilities.environment.interactions') &&
     key === 'secretAnswers' &&
     typeof value === 'boolean'
+  )
+}
+
+/**
+ * A profile's `model.metadata.credentialSource` selects how the Tangle provider supplies model
+ * access ("managed" or "subscription"); it never holds a credential. Interactive admissions persist
+ * the exact profile because Runtime replays that start request during recovery.
+ */
+function isSafeModelCredentialSource(path: string, key: string, value: JsonValue): boolean {
+  return (
+    path.endsWith('.profile.model.metadata') &&
+    key === 'credentialSource' &&
+    isModelCredentialSource(value)
   )
 }
 
@@ -251,7 +267,10 @@ export function assertPersistablePayload(value: JsonValue): void {
         typeof child === 'number' &&
         child === canonicalTransfer.request.plan.estimatedTokens
       const isSafeCapability = !containsSecret && isSafeInteractionCapabilityFlag(path, key, child)
-      const isSafeSecretMetadata = !containsSecret && isSafeEnvironmentSecretNames(path, key, child)
+      const isSafeSecretMetadata =
+        !containsSecret &&
+        (isSafeEnvironmentSecretNames(path, key, child) ||
+          isSafeModelCredentialSource(path, key, child))
       if (
         connectionReferences &&
         !containsSecret &&

@@ -71,6 +71,7 @@ import { StorageError } from '../src/adapters/storage/sqlite-errors.js'
 import { prepareConversationImport } from '../src/app/conversation-import-document.js'
 import { providerEventFor } from '../src/app/run-event-mapper.js'
 import { canonicalDigest } from '../src/domain/canonical.js'
+import { redactBraidEvent } from '../src/domain/redaction.js'
 import { TerminalControlSanitizer } from '../src/domain/terminal-sanitizer.js'
 import { credentialRef } from '../src/ports/credentials.js'
 import type { JsonValue } from '../src/ports/storage.js'
@@ -880,6 +881,48 @@ test('production composition fails closed when the credential facility is unavai
     (error: unknown) =>
       error instanceof StorageError && error.code === 'CREDENTIAL_STORE_UNAVAILABLE',
   )
+})
+
+test('an interactive admission keeps its model credential source through redaction and the journal guard', () => {
+  const event = (metadata: Record<string, string>) => ({
+    kind: 'run.retained.admitted',
+    runId: 'run-interactive-seat',
+    admission: {
+      phase: 'interactive_environment',
+      provider: 'tangle-sandbox',
+      environmentId: 'sandbox-interactive-seat',
+      request: {
+        profile: {
+          harness: 'claude-code',
+          model: { provider: 'anthropic', default: 'claude-opus-5-5', metadata },
+        },
+      },
+    },
+  })
+  for (const credentialSource of ['managed', 'subscription']) {
+    const redacted = redactBraidEvent(event({ credentialSource }))
+    assert.equal(
+      redacted.admission.request.profile.model.metadata.credentialSource,
+      credentialSource,
+    )
+    assert.doesNotThrow(() => assertPersistablePayload({ __braidEvent: redacted }))
+  }
+  const withKey = redactBraidEvent(
+    event({ credentialSource: 'subscription', apiKey: 'sk-interactive-seat-canary' }),
+  )
+  assert.equal(withKey.admission.request.profile.model.metadata.apiKey, '[redacted]')
+  assert.doesNotMatch(JSON.stringify(withKey), /sk-interactive-seat-canary/u)
+  const unknown = redactBraidEvent(event({ credentialSource: 'sk-interactive-seat-canary' }))
+  assert.equal(unknown.admission.request.profile.model.metadata.credentialSource, '[redacted]')
+  assert.throws(
+    () => assertPersistablePayload({ __braidEvent: unknown }),
+    (error: unknown) => error instanceof Error && error.message.includes('Secret-bearing'),
+  )
+  const otherKind = redactBraidEvent({
+    ...event({ credentialSource: 'subscription' }),
+    kind: 'run.requested',
+  })
+  assert.equal(otherKind.admission.request.profile.model.metadata.credentialSource, '[redacted]')
 })
 
 test('secret-designated interaction values are rejected before journal persistence', () => {
