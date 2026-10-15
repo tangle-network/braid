@@ -464,8 +464,7 @@ test('restart and reconnect replay a provider close after a decline without a st
     assert.equal(recovered.runs[0]?.status, 'completed')
     assert.equal(recovered.runs[0]?.interactions[0]?.status, 'declined')
     assert.equal(
-      restarted.events().filter((entry) => entry.event.kind === 'run.interaction.cancelled')
-        .length,
+      restarted.events().filter((entry) => entry.event.kind === 'run.interaction.cancelled').length,
       1,
     )
   } finally {
