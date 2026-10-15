@@ -16,6 +16,7 @@ import { compareCodeUnits } from '../domain/code-unit-order.js'
 import { redactSensitiveText } from '../domain/redaction.js'
 import type { BridgeModel } from './production-bridge-discovery.js'
 import type { ProductionStartupLoadOptions } from './production-startup.js'
+import { publishedProfileSource } from './published-profile.js'
 
 interface CompatibleBridgeModel {
   readonly route: string
@@ -34,6 +35,8 @@ export function trustedProfileSources(
   options: ProductionStartupLoadOptions,
 ): readonly ProfileSourceSpec[] {
   if (options.profileReference !== undefined) {
+    const published = publishedProfileSource(options.profileReference)
+    if (published !== undefined) return [published]
     const path = resolve(options.workspace, options.profileReference)
     return [
       {
