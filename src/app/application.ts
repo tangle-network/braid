@@ -577,7 +577,11 @@ export class BraidApplication {
       const target = resolveConversationTarget(state, input)
       if (activeRunForBranch(state, target.conversationId, target.branchId)) return undefined
       if (this.nativeContinuationRunId(target) !== undefined) return undefined
-      const configuration = effectiveRunConfiguration(state, this.runtimeSelection.profile(), target)
+      const configuration = effectiveRunConfiguration(
+        state,
+        this.runtimeSelection.profile(),
+        target,
+      )
       const snapshot = snapshotRunExecution(
         { operationId: SEND_AVAILABILITY_PROBE, text: '', ...target },
         state,
