@@ -1,0 +1,12 @@
+ › run the tests                        
+                                        
+ working…                               
+                                        
+                                        
+                                        
+────────────────────────────────────────
+› input unavailable                     
+                                        
+                                        
+─── type / for commands · Alt+Enter ────
+Braid starter               reconnecting
