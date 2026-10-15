@@ -766,8 +766,9 @@ Duplicate event identifiers produce no duplicate transcript part, tool row, usag
 
 Terminal run status is immutable except for an explicit correction from unknown when external evidence becomes available.
 
-A failed run keeps a stable code in `error` and says why in `reason`: the provider's own terminal reason, or its error text when that reason only repeats the outcome.
-Both pass the redaction and length bound in [security and privacy](07-security-and-privacy.md#credential-handling).
+A failed run keeps a stable code in `error` and says why in `reason`: the provider's own informative terminal reason, or its error text when that reason is blank, only repeats the outcome, or contains only a diagnostic code.
+Streamed finals and recovered snapshots classify the complete sanitized text before applying the display length bound to the selected value; redaction-only text is not a cause, an informative reason still takes precedence, and outcome-only records remain valid.
+Both use the redaction and length bound in [security and privacy](07-security-and-privacy.md#credential-handling).
 
 A provider `status` frame can make a run terminal before the stream's final event.
 Braid keeps reading that stream until the final event, which carries the exact result error, reason, and usage.

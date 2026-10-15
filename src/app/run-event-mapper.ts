@@ -33,6 +33,7 @@ import {
   finiteNonNegativeNumber,
   optionalFiniteNonNegativeNumber,
   providerCause,
+  providerFailureReason,
   safeDiagnostic,
   safeProviderDiagnostic,
   safePublicIdentifier,
@@ -543,23 +544,12 @@ export function providerEventFor(
   }
 }
 
-/** A terminal reason that only repeats the outcome says nothing about why. */
-const GENERIC_FINAL_REASONS: ReadonlySet<string> = new Set([
-  'failed',
-  'failure',
-  'error',
-  'unknown',
-  'cancelled',
-  'canceled',
-  'aborted',
-])
-
 /**
  * A failed final keeps a stable error code and says why in its reason.
  *
  * The code is the provider's HTTP class, its own typed token, or `RUNTIME_FINAL_ERROR`. The reason
- * is the provider's terminal reason, or the error's own text when that reason only repeats the
- * outcome, redacted and bounded by `providerCause`.
+ * is the provider's terminal reason, or the error's own text when that reason is blank, an outcome,
+ * or a diagnostic code. Both paths classify sanitized text, then bound the selected cause.
  */
 function finalFailure(event: BraidFinalRuntimeEvent): {
   readonly error?: string
@@ -570,16 +560,9 @@ function finalFailure(event: BraidFinalRuntimeEvent): {
     event.error === undefined
       ? undefined
       : (providerHttpFailureDiagnostic(message) ?? safeDiagnostic(message, 'RUNTIME_FINAL_ERROR'))
-  const generic =
-    event.reason === undefined || GENERIC_FINAL_REASONS.has(event.reason.trim().toLowerCase())
-  const errorCause = error === undefined || !generic ? undefined : providerCause(message)
   const reason =
-    errorCause ??
-    (event.reason === undefined
-      ? undefined
-      : (publicRuntimeDiagnostic(event.reason) ??
-        providerCause(event.reason) ??
-        'RUNTIME_FINAL_REASON'))
+    providerFailureReason(publicRuntimeDiagnostic(event.reason) ?? event.reason, message) ??
+    (event.reason === undefined ? undefined : 'RUNTIME_FINAL_REASON')
   return {
     ...(error === undefined ? {} : { error }),
     ...(reason === undefined || reason === error ? {} : { reason }),

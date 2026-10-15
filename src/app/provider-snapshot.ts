@@ -5,6 +5,7 @@ import {
   finiteNonNegativeNumber,
   optionalFiniteNonNegativeNumber,
   providerCause,
+  providerFailureReason,
   runtimeFailureDiagnostic,
   safePublicIdentifier,
 } from './provider-values.js'
@@ -19,7 +20,7 @@ export function safeSnapshotDetail(value: unknown, fallback: string): string {
 
 /**
  * A settled snapshot keeps a stable error code and says why in its reason: the provider's detail,
- * or the error's own text when the provider gave no detail.
+ * or the error's own text when the detail is blank, an outcome, or a diagnostic code.
  */
 export function snapshotFailure(
   snapshot: Pick<ProviderRunSnapshot, 'error' | 'detail'>,
@@ -31,11 +32,8 @@ export function snapshotFailure(
       ? undefined
       : runtimeFailureDiagnostic(snapshot.error, errorFallback)
   const reason =
-    snapshot.detail !== undefined
-      ? safeSnapshotDetail(snapshot.detail, reasonFallback)
-      : error === undefined
-        ? undefined
-        : providerCause(snapshot.error)
+    providerFailureReason(snapshot.detail, snapshot.error) ??
+    (snapshot.detail === undefined ? undefined : reasonFallback)
   return {
     ...(error === undefined ? {} : { error }),
     ...(reason === undefined || reason === error ? {} : { reason }),

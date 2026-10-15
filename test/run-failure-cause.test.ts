@@ -9,10 +9,16 @@ import { runOutcomeDetail, toHeadlessState } from '../src/adapters/tui/ui-projec
 import { BraidApplication } from '../src/app/application.js'
 import { createBraidApplication, DETERMINISTIC_PROFILE } from '../src/app/composition.js'
 import { MemoryJournal } from '../src/app/journal.js'
+import { snapshotFailure } from '../src/app/provider-snapshot.js'
 import { providerCause, runtimeFailure } from '../src/app/provider-values.js'
+import { providerEventFor, providerMeta } from '../src/app/run-event-mapper.js'
 import type { BraidEventEnvelope } from '../src/domain/events.js'
-import { MAX_PROVIDER_CAUSE_CHARACTERS } from '../src/domain/provider-values.js'
-import type { BraidRuntimeEvent, RuntimeEventEnvelope } from '../src/domain/runtime-events.js'
+import { hasProviderCause, MAX_PROVIDER_CAUSE_CHARACTERS } from '../src/domain/provider-values.js'
+import type {
+  BraidFinalRuntimeEvent,
+  BraidRuntimeEvent,
+  RuntimeEventEnvelope,
+} from '../src/domain/runtime-events.js'
 import { FixedClock } from '../src/ports/clock.js'
 import { DEFAULT_RUN_CAPABILITIES, type ExecutionPort } from '../src/ports/execution.js'
 import { SequenceIds } from '../src/ports/ids.js'
@@ -63,7 +69,7 @@ function assertNoCanary(label: string, value: unknown): void {
     assert.equal(text.includes(canary), false, `${label} kept a ${canary.length}-character canary`)
 }
 
-function failedFinal(runId: string, text: string): BraidRuntimeEvent {
+function failedFinal(runId: string, text: string): BraidFinalRuntimeEvent {
   return {
     type: 'final',
     task: { id: runId, intent: text },
@@ -101,7 +107,10 @@ function seatRefusalApp(journal?: MemoryJournal) {
     streamIdleMs: 1_000,
     statusTimeoutMs: 1_000,
     capabilities: () => REPLAY_CAPABILITIES,
-    admit: () => ({ capabilities: REPLAY_CAPABILITIES, providerSessionId: 'session-failure-cause' }),
+    admit: () => ({
+      capabilities: REPLAY_CAPABILITIES,
+      providerSessionId: 'session-failure-cause',
+    }),
     async *streamTurn(input): AsyncIterable<RuntimeEventEnvelope> {
       await input.onRetainedAdmission?.(INTENT_ADMISSION)
       await new Promise((resolve) => setTimeout(resolve, 50))
@@ -178,12 +187,93 @@ test('a thrown runtime failure keeps its code and says why, including wrapped ca
   assertNoCanary('thrown cause', runtimeFailure(new Error(PROVIDER_ERROR), 'X'))
 })
 
+test('streamed and recovered failures prefer a cause over blank, generic, or code-only reasons', () => {
+  for (const reason of [
+    '',
+    ' \n ',
+    'failed',
+    'failure',
+    'error',
+    'unknown',
+    'blocked',
+    'expired',
+    'cancelled',
+    'canceled',
+    'aborted',
+    'RUNTIME_STATUS',
+    `RUNTIME_${'A'.repeat(MAX_PROVIDER_CAUSE_CHARACTERS + 100)}`,
+    CANARIES[0],
+    `api_key=${CANARIES[2]}`,
+    `Authorization: Bearer ${CANARIES[1]}`,
+    `api_key=${CANARIES[2]}; Authorization: Bearer ${CANARIES[1]}`,
+    `failed: api_key=${CANARIES[2]}`,
+    `RUNTIME_STATUS; api_key=${CANARIES[2]}`,
+    `RUNTIME_${'A'.repeat(MAX_PROVIDER_CAUSE_CHARACTERS)}…`,
+  ]) {
+    const event = { ...failedFinal('run-cause', 'Go.'), reason }
+    const mapped = providerEventFor('run-cause', event, providerMeta('final-cause', 1, event, AT))
+    assert.equal(mapped.kind, 'run.finished')
+    if (mapped.kind !== 'run.finished') throw new Error('Expected a finished run')
+    const recovered = snapshotFailure(
+      { error: PROVIDER_ERROR, detail: reason },
+      'RUNTIME_RECONCILIATION_ERROR',
+      'RUNTIME_RECONCILIATION_STATUS',
+    )
+    assert.ok(mapped.reason?.startsWith(READABLE), JSON.stringify({ reason, mapped }))
+    assert.equal(recovered.reason, mapped.reason, JSON.stringify({ reason, recovered }))
+    assertNoCanary('streamed and recovered causes', { mapped, recovered })
+  }
+})
+
+test('cause classification scans long internal punctuation without treating it as an edge', () => {
+  const punctuation = ':'.repeat(64 * 1024)
+  assert.equal(hasProviderCause(`a${punctuation}b`), true)
+  assert.equal(hasProviderCause(`${punctuation}failed${punctuation}`), false)
+})
+
+test('an informative terminal reason keeps precedence and outcome-only history stays honest', () => {
+  const event = {
+    ...failedFinal('run-cause', 'Go.'),
+    reason: 'The provider exhausted its retry budget',
+  }
+  const mapped = providerEventFor('run-cause', event, providerMeta('final-cause', 1, event, AT))
+  assert.equal(mapped.kind, 'run.finished')
+  if (mapped.kind !== 'run.finished') throw new Error('Expected a finished run')
+  assert.equal(mapped.reason, event.reason)
+  assert.equal(
+    snapshotFailure({ error: PROVIDER_ERROR, detail: event.reason }, 'X', 'Y').reason,
+    event.reason,
+  )
+  assert.deepEqual(snapshotFailure({ detail: 'failed' }, 'X', 'Y'), { reason: 'failed' })
+  assert.deepEqual(snapshotFailure({ error: 'SANDBOX_STOPPED' }, 'X', 'Y'), {
+    error: 'SANDBOX_STOPPED',
+  })
+  for (const reason of [
+    `The upstream refused key ${CANARIES[0]} after its usage window closed`,
+    `The upstream refused: ${'x'.repeat(MAX_PROVIDER_CAUSE_CHARACTERS + 100)}`,
+  ]) {
+    const withReason = { ...event, reason }
+    const finished = providerEventFor(
+      'run-cause',
+      withReason,
+      providerMeta('final-cause', 1, withReason, AT),
+    )
+    assert.ok(finished.kind === 'run.finished')
+    assert.equal(finished.reason, providerCause(reason))
+    assert.equal(
+      snapshotFailure({ error: PROVIDER_ERROR, detail: reason }, 'X', 'Y').reason,
+      providerCause(reason),
+    )
+  }
+})
+
 test('a failed run records its code and readable cause, with the credential redacted everywhere', async () => {
   const journal = new MemoryJournal(new FixedClock())
   const app = failingApp(journal)
   try {
     app.initialize('/workspace')
-    const state = await app.send({ operationId: 'operation-cause', text: 'Do the task.' }).completion
+    const state = await app.send({ operationId: 'operation-cause', text: 'Do the task.' })
+      .completion
     const run = state.runs.at(-1)
     assert.equal(run?.status, 'failed')
     assert.equal(run?.error, 'RUNTIME_FINAL_ERROR')
@@ -251,7 +341,8 @@ test('a run whose start and recovery both fail says why instead of RUNTIME_RECON
   const app = seatRefusalApp()
   try {
     app.initialize('/workspace')
-    const state = await app.send({ operationId: 'operation-seat', text: 'Use the seat.' }).completion
+    const state = await app.send({ operationId: 'operation-seat', text: 'Use the seat.' })
+      .completion
     const run = state.runs.at(-1)
     assert.ok(run !== undefined)
     assert.equal(run.status, 'unknown')
@@ -340,7 +431,7 @@ test('a cause survives restart, and a duplicate provider event adds nothing', as
   }
 })
 
-test('journals written before causes were kept say the provider gave no cause and name the code', async () => {
+test('journals written before causes were kept say no cause was recorded and name the code', async () => {
   const journal = new MemoryJournal(new FixedClock())
   const failed = failingApp(journal)
   failed.initialize('/workspace')
@@ -362,12 +453,12 @@ test('journals written before causes were kept say the provider gave no cause an
     {
       journal: legacy(journal),
       app: failingApp,
-      outcome: 'the provider gave no cause (RUNTIME_FINAL_ERROR)',
+      outcome: 'no cause was recorded (RUNTIME_FINAL_ERROR)',
     },
     {
       journal: legacy(unknownJournal),
       app: seatRefusalApp,
-      outcome: 'the provider gave no cause (RUNTIME_RECONCILIATION_ERROR)',
+      outcome: 'no cause was recorded (RUNTIME_RECONCILIATION_ERROR)',
     },
   ]
   for (const { journal: old, app: open, outcome } of cases) {
@@ -378,7 +469,18 @@ test('journals written before causes were kept say the provider gave no cause an
       const run = restarted.state().runs.at(-1)
       assert.ok(run !== undefined)
       assert.equal(runOutcomeDetail(run), outcome)
-      assert.equal(createApplicationUiController(restarted).view().messages.at(-1)?.outcome, outcome)
+      for (const terminalReason of [
+        '[redacted credential]',
+        'failed: [redacted secret]',
+        'RUNTIME_STATUS; [redacted secret]',
+        `RUNTIME_${'A'.repeat(MAX_PROVIDER_CAUSE_CHARACTERS)}…`,
+      ]) {
+        assert.equal(runOutcomeDetail({ ...run, terminalReason }), outcome)
+      }
+      assert.equal(
+        createApplicationUiController(restarted).view().messages.at(-1)?.outcome,
+        outcome,
+      )
     } finally {
       await restarted.close()
     }
@@ -387,7 +489,8 @@ test('journals written before causes were kept say the provider gave no cause an
 
 function legacyEnvelope(entry: BraidEventEnvelope): BraidEventEnvelope {
   const event = entry.event
-  if (event.kind === 'run.finished') return { ...entry, event: { ...event, reason: 'RUNTIME_FINAL_REASON' } }
+  if (event.kind === 'run.finished')
+    return { ...entry, event: { ...event, reason: 'RUNTIME_FINAL_REASON' } }
   if (event.kind === 'run.unknown')
     return { ...entry, event: { ...event, detail: 'RUNTIME_RECONCILIATION_ERROR' } }
   return entry
@@ -404,7 +507,8 @@ const FLOWS = {
     open: () => seatRefusalApp(),
     text: 'Use the Codex seat.',
     expect: /outcome unverified: the run failed: Tangle credential/u,
-    title: 'A run that never started says the seat resolver refused, not RUNTIME_RECONCILIATION_ERROR',
+    title:
+      'A run that never started says the seat resolver refused, not RUNTIME_RECONCILIATION_ERROR',
   },
 } as const
 

@@ -5,6 +5,7 @@ export {
   finiteNonNegativeNumber,
   optionalFiniteNonNegativeNumber,
   providerCause,
+  providerFailureReason,
   safeDiagnostic,
   safeProviderDiagnostic,
   safePublicIdentifier,

@@ -8,6 +8,7 @@ import { profileModelSettings } from '../../app/profile-model-settings.js'
 import { isSensitiveFieldName } from '../../domain/bounded-structured.js'
 import type { BraidEventEnvelope } from '../../domain/events.js'
 import { interactionRemainingMs } from '../../domain/interaction-timeout.js'
+import { hasProviderCause } from '../../domain/provider-values.js'
 import { activeRunForBranch, type BraidState, isActiveRunStatus } from '../../domain/state.js'
 import { environmentView } from '../../views/shared/environment-presentation.js'
 import type { UiEvent } from '../../views/shared/intents.js'
@@ -146,43 +147,26 @@ function partFor(
 
 // A bare code, such as RUNTIME_FINAL_ERROR, names a failure without saying why.
 const BARE_CODE = /^[A-Z][A-Z0-9]*(?:[._:-][A-Z0-9]+)*$/u
-const OUTCOME_WORDS: ReadonlySet<string> = new Set([
-  'failed',
-  'failure',
-  'error',
-  'unknown',
-  'blocked',
-  'expired',
-])
-const NO_CAUSE = 'the provider gave no cause'
-
-function saysWhy(value: string | undefined): value is string {
-  return (
-    value !== undefined &&
-    value.trim().length > 0 &&
-    !BARE_CODE.test(value.trim()) &&
-    !OUTCOME_WORDS.has(value.trim().toLowerCase())
-  )
-}
+const NO_CAUSE = 'no cause was recorded'
 
 /**
  * Why a run failed or ended unverified, in the words Braid recorded for it.
  *
- * A run that recorded only a code says the provider gave no cause and names that code.
+ * A run that recorded only a code names that code without claiming what the provider supplied.
  */
 export function runOutcomeDetail(run: BraidState['runs'][number]): string | undefined {
   if (run.status === 'unknown') {
     const unknown = run.activity.findLast(
       (item) => item.type === 'lifecycle' && item.label === 'unknown',
     )?.detail
-    const detail = [unknown, run.terminalReason, run.error].find(saysWhy)
+    const detail = [unknown, run.terminalReason, run.error].find(hasProviderCause)
     if (detail !== undefined) return detail
     const code = [unknown, run.error].find((value) => value !== undefined && BARE_CODE.test(value))
     return code === undefined ? NO_CAUSE : `${NO_CAUSE} (${code})`
   }
   if (run.status !== 'failed' && run.status !== 'blocked' && run.status !== 'expired')
     return undefined
-  const [first, second] = [run.error, run.terminalReason].filter(saysWhy)
+  const [first, second] = [run.error, run.terminalReason].filter(hasProviderCause)
   if (first !== undefined) {
     if (second === undefined || first.includes(second)) return first
     return second.includes(first) ? second : `${first}; ${second}`
