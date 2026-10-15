@@ -44,23 +44,41 @@ export async function withinDeadline<T>(
 export type PumpOutcome = 'ended' | 'stopped' | 'stalled'
 
 /**
+ * Starts the idle bound for the wait on the next event. Provisioning and dispatch precede it and
+ * report their own failures; the bound starts once the provider run exists (its admission is
+ * committed) or the first event has arrived, whichever is first, even mid-wait.
+ */
+export class IdleArm {
+  #armed = false
+  #release!: () => void
+  readonly whenArmed = new Promise<void>((resolve) => {
+    this.#release = resolve
+  })
+  get armed(): boolean {
+    return this.#armed
+  }
+  arm(): void {
+    this.#armed = true
+    this.#release()
+  }
+}
+
+/**
  * Feed an async stream to `handle`, with the idle bound on both the next event and the
  * handler (an ingest that never commits is silence too). The timers belong to this function,
  * not to the stream's await chain, so a reader that never settles cannot hold the run open.
- * `arm` decides when the bound applies; the first events of a starting run may take minutes.
  */
 export async function pumpWithIdleBound<T>(
   stream: AsyncIterable<T>,
   idleMs: number,
-  arm: () => boolean,
+  arm: IdleArm,
   handle: (item: T) => Promise<'continue' | 'stop'> | 'continue' | 'stop',
 ): Promise<PumpOutcome> {
   const iterator = stream[Symbol.asyncIterator]()
   let settled = false
   try {
     for (;;) {
-      const pending = iterator.next()
-      const next = arm() ? await withinDeadline(pending, idleMs) : await pending
+      const next = await nextWithin(iterator.next(), idleMs, arm)
       if (next === STALLED) return 'stalled'
       if (next.done) {
         settled = true
@@ -73,6 +91,27 @@ export async function pumpWithIdleBound<T>(
   } finally {
     // A hung reader never settles its return; the abandoned call must not become a rejection.
     if (!settled) void Promise.resolve(iterator.return?.()).catch(() => undefined)
+  }
+}
+
+async function nextWithin<T>(
+  pending: Promise<T>,
+  idleMs: number,
+  arm: IdleArm,
+): Promise<T | typeof STALLED> {
+  pending.catch(() => undefined)
+  if (arm.armed) return withinDeadline(pending, idleMs)
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const deadline = arm.whenArmed.then(
+    () =>
+      new Promise<typeof STALLED>((resolve) => {
+        timer = setTimeout(() => resolve(STALLED), idleMs)
+      }),
+  )
+  try {
+    return await Promise.race([pending, deadline])
+  } finally {
+    clearTimeout(timer)
   }
 }
 

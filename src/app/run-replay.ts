@@ -7,6 +7,7 @@ import { safeSnapshotDetail, safeSnapshotText, safeSnapshotUsage } from './provi
 import { runtimeFailureDiagnostic, safeRuntimeDiagnostic } from './provider-values.js'
 import { retainedExecutionRecoveryContext } from './run-recovery-context.js'
 import {
+  IdleArm,
   type PumpOutcome,
   pumpWithIdleBound,
   STALLED,
@@ -118,6 +119,9 @@ export async function reconnectRun(
   return structuredClone(context.currentState())
 }
 
+const ALWAYS_ARMED = new IdleArm()
+ALWAYS_ARMED.arm()
+
 async function replayFromCursor(
   context: ReplayPort,
   runId: string,
@@ -148,7 +152,7 @@ async function replayFromCursor(
       signal: abort.signal,
     }),
     streamIdleMs(context.execution),
-    () => true,
+    ALWAYS_ARMED,
     async (envelope) => {
       const result = await context.ingestRuntimeEvent(envelope)
       if (result.accepted) notifyInteractionReady()

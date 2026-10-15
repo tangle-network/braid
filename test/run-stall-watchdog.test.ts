@@ -7,6 +7,7 @@ import { DETERMINISTIC_PROFILE } from '../src/app/composition.js'
 import { MemoryJournal } from '../src/app/journal.js'
 import {
   DEFAULT_STREAM_IDLE_MS,
+  IdleArm,
   pumpWithIdleBound,
   STALLED,
   withinDeadline,
@@ -30,7 +31,23 @@ const CAPABILITIES = {
   events: { stableIdentity: true, sequence: true, cursor: true },
 } as const
 
+function armed(): IdleArm {
+  const arm = new IdleArm()
+  arm.arm()
+  return arm
+}
+
 const stopped = (code: string) => Object.assign(new Error('sandbox is gone'), { code })
+const RETAINED_ADMISSION = {
+  phase: 'environment' as const,
+  provider: 'stall-test',
+  environmentId: 'environment-stall',
+  idempotencyKey: 'environment-stall',
+  turnId: 'turn-stall',
+  sessionId: 'session-stall',
+  executionId: 'execution-stall',
+}
+
 const NEVER = new Promise<never>(() => undefined)
 
 function text(runId: string, sequence: number, value: string): RuntimeEventEnvelope {
@@ -78,7 +95,10 @@ interface Probe {
 }
 
 function harness(options: {
-  readonly stream: (runId: string) => AsyncIterable<RuntimeEventEnvelope>
+  readonly stream: (
+    runId: string,
+    admit: () => Promise<void> | undefined,
+  ) => AsyncIterable<RuntimeEventEnvelope>
   readonly reconnect?: (runId: string, attempt: number) => AsyncIterable<RuntimeEventEnvelope>
   readonly status?: (runId: string, call: number) => Promise<ProviderRunSnapshot | null>
   readonly journal?: ApplicationJournal
@@ -92,7 +112,8 @@ function harness(options: {
     statusTimeoutMs: IDLE_MS,
     capabilities: () => CAPABILITIES,
     admit: () => ({ capabilities: CAPABILITIES, providerSessionId: 'session-stall' }),
-    streamTurn: (input) => options.stream(input.runId),
+    streamTurn: (input) =>
+      options.stream(input.runId, () => input.onRetainedAdmission?.(RETAINED_ADMISSION)),
     detachRun: async (input) => {
       options.detach?.()
       return { operationId: input.operationId, outcome: 'accepted' }
@@ -156,7 +177,7 @@ test('withinDeadline and the pump leave no timer behind', async () => {
       yield 2
     })(),
     1_000,
-    () => true,
+    armed(),
     (item) => {
       seen.push(item)
       return 'continue'
@@ -171,7 +192,7 @@ test('withinDeadline and the pump leave no timer behind', async () => {
         await NEVER
       })(),
       5,
-      () => true,
+      armed(),
       () => 'continue',
     ),
     'stalled',
@@ -182,7 +203,7 @@ test('withinDeadline and the pump leave no timer behind', async () => {
         yield 1
       })(),
       5,
-      () => true,
+      armed(),
       () => NEVER,
     ),
     'stalled',
@@ -190,7 +211,7 @@ test('withinDeadline and the pump leave no timer behind', async () => {
   assert.equal(timeouts(), before)
 })
 
-test('the bound is not armed before the first event', async () => {
+test('the bound is not armed while the run is still being provisioned', async () => {
   const { app } = harness({
     stream: async function* (runId) {
       await new Promise((resolve) => setTimeout(resolve, IDLE_MS * 3))
@@ -200,6 +221,25 @@ test('the bound is not armed before the first event', async () => {
   const state = await app.send({ operationId: 'op-slow-start', text: 'go' }).completion
   assert.equal(state.runs[0]?.status, 'completed')
   assert.equal(kinds(app, 'run.reconnecting').length, 0)
+})
+
+test('a stream that dies right after admission, before any event, is a stall', async () => {
+  const { app, probe } = harness({
+    stream: async function* (runId, admit) {
+      await new Promise((resolve) => setTimeout(resolve, IDLE_MS / 2))
+      await admit()
+      yield* from([], 'hang')
+      yield final(runId, 1, 'unreachable')
+    },
+    status: async (runId) => live(runId),
+    reconnect: (runId) => from([text(runId, 1, 'a'), final(runId, 2, 'a done')]),
+  })
+  const state = await app.send({ operationId: 'op-admitted-silent', text: 'go' }).completion
+  assert.equal(state.runs[0]?.status, 'completed')
+  assert.equal(state.messages[1]?.text, 'a done')
+  assert.equal(probe.statusCalls, 1)
+  assert.equal(probe.after.length, 1)
+  assert.equal(kinds(app, 'run.finished').length, 1)
 })
 
 test('a stream that hangs after two events reconnects from its cursor and finishes once', async () => {

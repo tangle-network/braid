@@ -8,7 +8,7 @@ import { eventIdFor, providerMeta } from './run-event-mapper.js'
 import type { RunExecutionSnapshot } from './run-execution-snapshot.js'
 import { continuesTerminal, recoverPendingFinal } from './run-final-recovery.js'
 import { reconnectRun } from './run-replay.js'
-import { pumpWithIdleBound, stallDetail, streamIdleMs } from './run-stall.js'
+import { IdleArm, pumpWithIdleBound, stallDetail, streamIdleMs } from './run-stall.js'
 
 export async function executeRun(
   context: ExecutionRunPort,
@@ -20,6 +20,7 @@ export async function executeRun(
   // Set when a provider status frame made the run terminal before the stream's final event.
   let awaitingFinal = false
   let eventSequence = 0
+  const idle = new IdleArm()
   try {
     const currentRun = context.currentState().runs.find((run) => run.id === admission.runId)
     const runtimeInput: ExecuteTurnInput = {
@@ -62,15 +63,15 @@ export async function executeRun(
           admission: retainedAdmission,
         })
         if (committed !== undefined) await committed
+        // The provider run exists now, so silence from here on is a stall.
+        idle.arm()
       },
     }
     if (context.ledger.isDetached(admission.runId)) return
-    let ingested = 0
     const outcome = await pumpWithIdleBound(
       context.execution.streamTurn(runtimeInput),
       streamIdleMs(context.execution),
-      // Provisioning and dispatch precede the first event and have their own failures.
-      () => ingested > 0,
+      idle,
       async (runtimeEvent) => {
         if (context.ledger.isDetached(admission.runId)) return 'stop'
         const status = context.findRun(admission.runId).status
@@ -85,7 +86,7 @@ export async function executeRun(
             return 'stop'
         }
         if (terminalSeen) return 'stop'
-        ingested += 1
+        idle.arm()
         if (isRuntimeEventEnvelope(runtimeEvent)) {
           const result = await context.ingestRuntimeEvent(runtimeEvent)
           if (result.accepted && runtimeEvent.event.type === 'final') {
