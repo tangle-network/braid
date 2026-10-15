@@ -3,7 +3,10 @@ import {
   redactStructuredValueWithNumericTelemetry,
   STRUCTURED_REDACTION_MARKER,
 } from './bounded-structured.js'
-import { connectionCredentialReferenceProblem } from './connection-credential-references.js'
+import {
+  connectionCredentialReferenceProblem,
+  isModelCredentialSource,
+} from './connection-credential-references.js'
 import type { AnalysisRecord } from './entities.js'
 import { isEventId, isMessageId, isMessagePartId } from './ids.js'
 import { persistedContextTransferEventRequest } from './portable-context-persistence.js'
@@ -145,7 +148,26 @@ export function redactBraidEvent<T>(event: T): T {
       throw new RangeError('The canonical handoff event exceeds the durable payload limit')
   }
   restoreConnectionCredentialReferences(event, redacted)
+  restoreModelCredentialSource(event, redacted)
   return redacted
+}
+
+/**
+ * Keep the profile's model credential-source selector in a retained admission.
+ *
+ * An interactive admission carries the exact start request, including its profile, because Runtime
+ * replays that request during recovery. `credentialSource` names how the provider supplies model
+ * access ("managed" or "subscription") and never holds a credential, but its field name matches the
+ * key-based rule, so redaction alone would replace it with a marker and the journal would refuse it.
+ */
+function restoreModelCredentialSource(event: unknown, redacted: unknown): void {
+  const source = recordValue(event)
+  if (source?.kind !== 'run.retained.admitted') return
+  const path = ['admission', 'request', 'profile', 'model', 'metadata']
+  const value = recordValue(valueAtPath(source, path))?.credentialSource
+  if (!isModelCredentialSource(value)) return
+  const target = recordValue(valueAtPath(redacted, path))
+  if (target !== undefined) target.credentialSource = value
 }
 
 /**
