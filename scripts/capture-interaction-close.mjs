@@ -50,8 +50,16 @@ try {
       artifacts.push({ path: `${name}.png`, sha256: await sha256(pngPath), columns, rows })
     }
   }
+  const castPath = join(outputRoot, '80x24-decline-alt-2.cast')
+  await copyFile(join(rawRoot, '80x24-decline-alt-2.cast'), castPath)
+  artifacts.push({
+    path: '80x24-decline-alt-2.cast',
+    sha256: await sha256(castPath),
+    columns: 80,
+    rows: 24,
+  })
   const gifPath = join(outputRoot, '80x24-decline-alt-2-keyboard.gif')
-  await writeCastGif(join(rawRoot, '80x24-decline-alt-2.cast'), gifPath)
+  await writeCastGif(castPath, gifPath)
   artifacts.push({
     path: '80x24-decline-alt-2-keyboard.gif',
     sha256: await sha256(gifPath),
