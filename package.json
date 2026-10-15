@@ -44,6 +44,7 @@
     "capture:profile-fork": "pnpm run build && node scripts/capture-profile-fork.mjs",
     "capture:interaction-close": "node scripts/capture-interaction-close.mjs",
     "capture:run-focus": "pnpm run build && pnpm exec tsc -p tsconfig.test.json --outDir .test-dist-run-focus && node scripts/capture-run-focus.mjs",
+    "capture:stream-stall": "pnpm run build && pnpm exec tsc -p tsconfig.test.json --outDir .test-dist-stream-stall && node scripts/capture-stream-stall.mjs",
     "capture:workspace": "pnpm run build && node scripts/capture-workspace-request.mjs",
     "capture:demo:live": "pnpm run build && node scripts/live-demo.mjs",
     "check": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run boundaries && pnpm run dependencies:check && pnpm run attribution && pnpm run licenses:check && pnpm run test && pnpm run test:live:required:self && pnpm run test:live:bridge:matrix && pnpm run check:release",
