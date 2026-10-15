@@ -97,7 +97,7 @@ for (const [columns, rows] of [
       '-y',
       '-i',
       frameGif,
-      '-frames:v',
+      '-update',
       '1',
       join(output, `${size}.png`),
     ])
