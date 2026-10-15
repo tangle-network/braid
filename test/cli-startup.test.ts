@@ -7,6 +7,7 @@ import { LazyExecutionPort } from '../src/adapters/runtime/lazy-execution.js'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { createBraidApplication } from '../src/app/composition.js'
 import { CliUsageError, parseArgs } from '../src/bin/args.js'
+import { resolvePublishedProfile } from '../src/bin/published-profile.js'
 import { createInterfaceSignalLifecycle } from '../src/bin/interface-signal-lifecycle.js'
 import type { ExecuteTurnInput, ExecutionPort } from '../src/ports/execution.js'
 import { createStartupPreview } from '../src/startup/preview-runtime.js'
@@ -26,6 +27,27 @@ async function repositoryRoot(): Promise<URL> {
   }
   throw new Error('Could not locate the Braid repository root')
 }
+
+test('published profiles preserve file references and reject untrusted downloaded bytes', async () => {
+  let requests = 0
+  const unavailable: typeof fetch = async () => {
+    requests += 1
+    return new Response('', { status: 503 })
+  }
+  for (const reference of [undefined, './profile.json', '__proto__', 'constructor']) {
+    assert.equal(await resolvePublishedProfile(reference, { fetch: unavailable }), reference)
+  }
+  assert.equal(requests, 0)
+  await assert.rejects(resolvePublishedProfile('discovery-operator', { fetch: unavailable }), /unavailable/u)
+  const changed: typeof fetch = async (url, options) => {
+    assert.match(String(url), /\/discovery-lab\/[a-f0-9]{40}\/profiles\/operators\/discovery-operator.json$/u)
+    assert.equal(options?.redirect, 'error')
+    return new Response('{"name":"tampered"}')
+  }
+  await assert.rejects(resolvePublishedProfile('discovery-operator', { fetch: changed }), /digest/u)
+  const oversized: typeof fetch = async () => new Response('x'.repeat(256 * 1024 + 1))
+  await assert.rejects(resolvePublishedProfile('discovery-operator', { fetch: oversized }), /download limit/u)
+})
 
 async function waitForRecordedRevision(path: string, revision: number): Promise<void> {
   const deadline = Date.now() + 5_000
