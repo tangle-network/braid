@@ -52,7 +52,10 @@ test('published profiles preserve file references and reject untrusted downloade
   }
   await assert.rejects(resolvePublishedProfile('discovery-operator', { fetch: changed }), /digest/u)
   const oversized: typeof fetch = async () => new Response('x'.repeat(256 * 1024 + 1))
-  await assert.rejects(resolvePublishedProfile('discovery-operator', { fetch: oversized }), /download limit/u)
+  await assert.rejects(
+    resolvePublishedProfile('discovery-operator', { fetch: oversized }),
+    /download limit/u,
+  )
 })
 
 async function waitForRecordedRevision(path: string, revision: number): Promise<void> {
