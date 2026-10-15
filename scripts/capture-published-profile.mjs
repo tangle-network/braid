@@ -3,8 +3,8 @@ import assert from 'node:assert/strict'
 import { randomBytes } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { castFor, createCapturedTerminal, pause } from './live-demo/terminal.mjs'
 import { writeCastGif, writeRaster } from './capture-visual-support.mjs'
+import { castFor, createCapturedTerminal, pause } from './live-demo/terminal.mjs'
 
 const root = resolve(process.env.BRAID_OPERATOR_PROOF_ROOT)
 const workspace = join(root, 'workspace')
@@ -73,11 +73,12 @@ for (const [columns, rows] of [
   })
   try {
     await terminal.waitForScreen(
-      (screen) => screen.includes('discovery-operator'),
+      (screen) => screen.includes('type / for commands'),
       'published profile selected',
       60_000,
     )
     await terminal.waitForStable()
+    assert.equal((await terminal.captureState()).view.profileName, 'discovery-operator')
     await writeFile(join(output, `${size}.txt`), terminal.snapshot().screen)
     const frameCast = join(output, `${size}.cast`)
     await writeFile(
@@ -145,6 +146,10 @@ for (const [columns, rows] of [
     }
     await terminal.closeNormally()
   } finally {
+    await writeFile(
+      join(output, `${size}-flow-uncut.cast`),
+      `${JSON.stringify({ version: 2, width: columns, height: rows, timestamp: Math.floor(Date.now() / 1000), title: 'Uncut operator journey' })}\n${terminal.events.map((event) => JSON.stringify(event)).join('\n')}\n`,
+    )
     await writeFile(
       join(output, `${size}-flow.cast`),
       castFor(terminal, 'Published operator journey', 'braid --profile discovery-operator'),
