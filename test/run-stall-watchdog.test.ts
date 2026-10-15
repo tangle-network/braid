@@ -131,6 +131,11 @@ function kinds(app: BraidApplication, kind: string): BraidEventEnvelope[] {
   return app.events().filter((entry) => entry.event.kind === kind)
 }
 
+function unknownDetail(app: BraidApplication): string | undefined {
+  const event = kinds(app, 'run.unknown').at(-1)?.event
+  return event?.kind === 'run.unknown' ? event.detail : undefined
+}
+
 function timeouts(): number {
   return process.getActiveResourcesInfo().filter((name) => name === 'Timeout').length
 }
@@ -211,7 +216,8 @@ test('a stream that hangs after two events reconnects from its cursor and finish
   assert.equal(kinds(app, 'run.finished').length, 1)
   const reconnecting = kinds(app, 'run.reconnecting')
   assert.equal(reconnecting.length, 1)
-  const detail = (reconnecting[0]?.event as { detail?: string }).detail
+  const first = reconnecting[0]?.event
+  const detail = first?.kind === 'run.reconnecting' ? first.detail : undefined
   assert.match(detail ?? '', /no provider events for \d+ seconds/)
   assert.equal(state.messages[1]?.text, 'one two three four')
   assert.equal(state.messages[1]?.complete, true)
@@ -259,8 +265,7 @@ test('a stopped sandbox ends as unknown with a plain detail and no retry', async
   })
   const state = await app.send({ operationId: 'op-stopped', text: 'go' }).completion
   assert.equal(state.runs[0]?.status, 'unknown')
-  const unknown = kinds(app, 'run.unknown').at(-1)?.event as { detail: string }
-  assert.equal(unknown.detail, 'provider stream lost; status read failed (SANDBOX_STOPPED)')
+  assert.equal(unknownDetail(app), 'provider stream lost; status read failed (SANDBOX_STOPPED)')
   assert.equal(probe.after.length, 0)
   assert.equal(probe.statusCalls, 1)
   assert.equal(state.lastError, 'provider stream lost; status read failed (SANDBOX_STOPPED)')
@@ -274,7 +279,7 @@ test('a status read that never answers counts as a lost provider', async () => {
   const state = await app.send({ operationId: 'op-status-hang', text: 'go' }).completion
   assert.equal(state.runs[0]?.status, 'unknown')
   assert.match(
-    (kinds(app, 'run.unknown').at(-1)?.event as { detail: string }).detail,
+    unknownDetail(app),
     /provider stream lost; the status read timed out/,
   )
   assert.equal(probe.after.length, 0)
@@ -309,7 +314,7 @@ test('a replay that stalls after the provider died ends as unknown', async () =>
   const state = await app.send({ operationId: 'op-replay-lost', text: 'go' }).completion
   assert.equal(state.runs[0]?.status, 'unknown')
   assert.equal(
-    (kinds(app, 'run.unknown').at(-1)?.event as { detail: string }).detail,
+    unknownDetail(app),
     'provider stream lost; status read failed (SANDBOX_DELETED)',
   )
 })
