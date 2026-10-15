@@ -514,7 +514,11 @@ for (const [columns, rows] of SIZES) {
         async *streamTurn(): AsyncIterable<BraidRuntimeEvent> {
           yield { type: 'text_delta', text: 'Checking the workspace before running bash.' }
           // A close for a request that was never made is refused by the reducer.
-          yield { type: 'interaction.cancel', id: 'interaction-never-requested', reason: 'resolved' }
+          yield {
+            type: 'interaction.cancel',
+            id: 'interaction-never-requested',
+            reason: 'resolved',
+          }
         },
       },
     })

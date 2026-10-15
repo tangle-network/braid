@@ -67,8 +67,6 @@ export class RecordingTerminal extends VirtualTerminal {
       env: { TERM: 'xterm-256color' },
       stdin: true,
     }
-    return [JSON.stringify(header), ...settled.map((event) => JSON.stringify(event)), ''].join(
-      '\n',
-    )
+    return [JSON.stringify(header), ...settled.map((event) => JSON.stringify(event)), ''].join('\n')
   }
 }

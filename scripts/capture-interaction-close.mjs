@@ -70,7 +70,8 @@ await writeFile(
       schemaVersion: 1,
       generatedAt: new Date().toISOString(),
       command: 'pnpm capture:interaction-close',
-      execution: 'controlled provider in test/interaction-provider-close.test.ts; not provider proof',
+      execution:
+        'controlled provider in test/interaction-provider-close.test.ts; not provider proof',
       flows: {
         'decline-alt-2':
           'alt+2 declines an opencode-shaped permission; the provider sends interaction.cancel reason resolved and then completes',
