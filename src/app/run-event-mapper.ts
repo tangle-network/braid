@@ -561,9 +561,10 @@ const GENERIC_FINAL_REASONS: ReadonlySet<string> = new Set([
  * is the provider's terminal reason, or the error's own text when that reason only repeats the
  * outcome, redacted and bounded by `providerCause`.
  */
-function finalFailure(
-  event: BraidFinalRuntimeEvent,
-): { readonly error?: string; readonly reason?: string } {
+function finalFailure(event: BraidFinalRuntimeEvent): {
+  readonly error?: string
+  readonly reason?: string
+} {
   const message = event.error?.message
   const error =
     event.error === undefined

@@ -74,6 +74,11 @@ Narrow layouts remove secondary part metadata before message content.
 
 ## Failure and safety
 
+A failed, blocked, or expired reply ends with one line that says why, such as `failed: opencode exited after 76 s: ...`.
+A reply whose run ended unknown ends with `outcome unverified:` and Braid's recorded reason.
+A run that recorded only a code says `the provider gave no cause` and names that code.
+The line is bounded by `MAX_OUTCOME_CHARACTERS` in `src/views/tui/transcript.ts`; `/activity` keeps the whole record.
+
 Provider text passes through the stream sanitizer and terminal sanitizer before rendering.
 
 Incomplete control-sequence candidates never reach the Markdown renderer.

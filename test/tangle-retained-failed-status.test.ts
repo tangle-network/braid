@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { defineAgentProfile } from '@tangle-network/agent-interface'
+// @ts-expect-error The scanner is a JavaScript release helper without a product declaration.
+import { assertNoSecretArtifacts } from '../scripts/scan-secret-artifacts.mjs'
 import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
 import { TangleRetainedExecutionPort } from '../src/adapters/runtime/tangle-retained-execution.js'
 import {
@@ -96,12 +98,57 @@ test('a retained run that streams status failed records the exact result failure
     assert.equal(run?.complete, true, kinds)
     // The status frame alone carries no result; the exact result's failure must reach the run.
     assert.equal(trail.filter((event) => event.kind === 'run.finished').length, 1, kinds)
-    // Braid persists typed diagnostics, never provider prose, so the result failure arrives as codes.
+    // The stable code stays in error; the result's own failure text, redacted, says why.
     assert.equal(run?.error, 'RUNTIME_FINAL_ERROR', kinds)
-    assert.equal(run?.terminalReason, 'RUNTIME_FINAL_REASON', kinds)
+    assert.equal(run?.terminalReason, FAILURE, kinds)
     assert.equal(opened.app.state().lastError, run?.error)
   } finally {
     await opened.app.close()
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('a retained failure keeps its cause across restart and never keeps a credential', async () => {
+  const canaries = [
+    'sk-tan-never-persist-this-failure-cause-value',
+    'never-persist-this-bearer-value',
+    'never-persist-this-assigned-value',
+  ]
+  const failure = `opencode exited: upstream refused key ${canaries[0]} with Authorization: Bearer ${canaries[1]} (api_key=${canaries[2]})`
+  const root = await mkdtemp(join(tmpdir(), 'braid-tangle-failed-canary-'))
+  const sandbox = new FakeTangleRetainedSandbox()
+  const credentials = new MemoryCredentialStore()
+  let opened: DurableBraidApplication | undefined = await openApp(sandbox, root, credentials)
+  let restarted: DurableBraidApplication | undefined
+  try {
+    opened.app.initialize(root)
+    await opened.app.whenDurable()
+    const turn = opened.app.send({ operationId: 'operation-failed-canary', text: 'Reply DONE.' })
+    await turn.admissionReady
+    await waitFor(() => sandbox.dispatches.length > 0)
+    sandbox.fail(sandbox.dispatches[0]?.executionId ?? '', failure)
+    await turn.completion
+    const reason = opened.app.state().runs.find((run) => run.id === turn.runId)?.terminalReason
+    assert.match(reason ?? '', /^opencode exited: upstream refused key \[redacted/u)
+    const live = JSON.stringify({ state: opened.app.state(), events: opened.app.events() })
+    for (const canary of canaries) assert.equal(live.includes(canary), false)
+    await opened.app.close()
+    opened = undefined
+
+    restarted = await openApp(sandbox, root, credentials)
+    await restarted.app.whenDurable()
+    const run = restarted.app.state().runs.find((candidate) => candidate.id === turn.runId)
+    assert.equal(run?.status, 'failed')
+    assert.equal(run?.error, 'RUNTIME_FINAL_ERROR')
+    assert.equal(run?.terminalReason, reason)
+    const replayed = JSON.stringify({ state: restarted.app.state(), events: restarted.app.events() })
+    for (const canary of canaries) assert.equal(replayed.includes(canary), false)
+    await restarted.app.close()
+    restarted = undefined
+    await assertNoSecretArtifacts(root, canaries)
+  } finally {
+    await opened?.app.close()
+    await restarted?.app.close()
     await rm(root, { recursive: true, force: true })
   }
 })
@@ -184,7 +231,7 @@ for (const outcome of ['failed', 'completed'] as const) {
       if (outcome === 'failed') {
         assert.equal(finished.length, 1, kinds)
         assert.equal(run?.error, 'RUNTIME_FINAL_ERROR', kinds)
-        assert.equal(run?.terminalReason, 'RUNTIME_FINAL_REASON', kinds)
+        assert.equal(run?.terminalReason, FAILURE, kinds)
       } else {
         // A final that contradicts the committed status is not ingested.
         assert.equal(finished.length, 0, kinds)

@@ -115,6 +115,11 @@ Credentials from unrelated organizations or connection records are never pooled 
 
 Authentication errors never echo response headers, request headers, token prefixes, or complete endpoints containing user information.
 
+Provider failure text, including final errors, terminal reasons, warnings, status details, and thrown start or recovery errors, is kept so Braid can say why a run failed.
+`providerCause` passes the whole text through the shared credential redactor first, then folds it to one line bounded by `MAX_PROVIDER_CAUSE_CHARACTERS` in `src/domain/provider-values.ts`, so a cut can never leave part of a credential.
+The stable code, such as `RUNTIME_FINAL_ERROR` or an HTTP class, stays in its own field; the cause is the run's `reason` or the unknown detail.
+`test/run-failure-cause.test.ts` seeds credential-shaped provider text and finds none of it in state, the journal, headless output, or rendered frames.
+
 ## Local state encryption
 
 Braid encrypts its SQLite database and WAL at rest with SQLCipher or an equivalently reviewed SQLite encryption implementation.

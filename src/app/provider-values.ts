@@ -98,7 +98,9 @@ function errorText(value: unknown): string | undefined {
     }
     current = safeProperty(current, 'cause')
   }
-  const unique = parts.filter((part, index) => !parts.slice(0, index).some((seen) => seen.includes(part)))
+  const unique = parts.filter(
+    (part, index) => !parts.slice(0, index).some((seen) => seen.includes(part)),
+  )
   return unique.length === 0 ? undefined : unique.join(': ')
 }
 
@@ -121,6 +123,7 @@ export function runtimeFailure(error: unknown, fallback: string): RuntimeFailure
   const code = providerCode || fallback
   const cause = providerCause(errorText(error))
   if (cause === undefined || cause === code) return { code, text: code }
-  const text = providerCode === '' || cause.includes(providerCode) ? cause : `${cause} (${providerCode})`
+  const text =
+    providerCode === '' || cause.includes(providerCode) ? cause : `${cause} (${providerCode})`
   return { code, cause, text }
 }

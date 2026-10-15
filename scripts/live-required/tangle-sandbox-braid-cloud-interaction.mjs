@@ -245,9 +245,22 @@ function diagnosticToken(value) {
   return typeof value === 'string' && /^[A-Za-z0-9_.:-]{1,128}$/u.test(value) ? value : null
 }
 
+// Braid now records why recovery failed in plain words; these phrases classify those details.
+// The first phrase found wins, so the most specific recovery outcome comes first.
+const RECOVERY_PHRASES = [
+  ['recovery failed', 'reconnect-error'],
+  ['provider status read failed', 'status-error'],
+  ['the provider returned no run record', 'provider-run-missing'],
+  ['provider reconciliation returned no matching run identity', 'identity-mismatch'],
+  ['the execution path cannot reconcile provider state', 'status-unavailable'],
+  ['the run failed:', 'stream-error'],
+]
+
 export function cloudRecoveryDetailCategory(detail) {
   if (typeof detail !== 'string') return null
-  return RECOVERY_DETAILS.get(detail) ?? 'unclassified'
+  const legacy = RECOVERY_DETAILS.get(detail)
+  if (legacy !== undefined) return legacy
+  return RECOVERY_PHRASES.find(([phrase]) => detail.includes(phrase))?.[1] ?? 'unclassified'
 }
 
 export function cloudInteractionFailureSnapshot(responses, runId, questionRequested) {

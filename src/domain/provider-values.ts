@@ -55,7 +55,8 @@ export function providerCause(value: unknown): string | undefined {
   if (line.length === 0) return undefined
   const characters = Array.from(line)
   if (characters.length <= MAX_PROVIDER_CAUSE_CHARACTERS) return line
-  return `${characters.slice(0, MAX_PROVIDER_CAUSE_CHARACTERS - 1).join('').trimEnd()}…`
+  const kept = characters.slice(0, MAX_PROVIDER_CAUSE_CHARACTERS - 1).join('')
+  return `${kept.trimEnd()}…`
 }
 
 export function safeProviderDiagnostic(value: unknown, fallback: string): string {

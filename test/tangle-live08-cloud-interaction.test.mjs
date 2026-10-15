@@ -294,6 +294,14 @@ test('cloud failure classifies recovery and provider event types without retaini
   assert.equal(recovery.latestState.lastProviderSequence, 2)
   assert.equal(recovery.latestState.cursorPresent, true)
   assert.equal(cloudRecoveryDetailCategory(secret), 'unclassified')
+  for (const [detail, category] of [
+    ['the run failed: seat refused; recovery failed the same way', 'reconnect-error'],
+    ['provider recovery failed: sandbox is gone (SANDBOX_STOPPED)', 'reconnect-error'],
+    ['provider status read failed: request timed out', 'status-error'],
+    ['the run failed: stream reset; the provider returned no run record', 'provider-run-missing'],
+    ['the run failed: stream reset; the execution path cannot reconcile provider state', 'status-unavailable'],
+  ])
+    assert.equal(cloudRecoveryDetailCategory(detail), category, detail)
 
   const eventTypes = cloudProviderEventTypeProjection([
     { type: 'status', data: { type: 'interaction', detail: secret } },

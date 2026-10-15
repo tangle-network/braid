@@ -33,8 +33,8 @@ import { queryActivity } from '../../views/shared/semantic-activity.js'
 import { queryGraph } from '../../views/shared/semantic-graph.js'
 import {
   projectSemanticEvent,
-  semanticPart,
   semanticInteractionRequest,
+  semanticPart,
 } from '../../views/shared/semantic-projection.js'
 import {
   type GraphQueryResult,
@@ -202,8 +202,7 @@ function messagesFor(
     // The terminal keeps that complete value so history navigation can restore it;
     // headless snapshots retain the smaller display projection by default.
     const text = options.completeText ? message.text : boundVisibleText(message.text)
-    const run =
-      message.role === 'assistant' && message.runId ? runs.get(message.runId) : undefined
+    const run = message.role === 'assistant' && message.runId ? runs.get(message.runId) : undefined
     const outcome = run === undefined ? undefined : runOutcomeDetail(run)
     return Object.freeze({
       id: message.id,
