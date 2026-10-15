@@ -148,7 +148,7 @@ test('two open permission requests, one declined and one accepted, end completed
     permission('perm-b'),
   ])
   await respond('perm-a', 'declined')
-  assert.equal(app.state().runs[0]?.status, 'streaming')
+  assert.equal(app.state().runs[0]?.status, 'waiting')
   await respond('perm-b', 'accepted')
   await receipt.completion
   assert.equal(app.state().runs[0]?.status, 'completed')
