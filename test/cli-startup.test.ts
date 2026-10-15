@@ -38,9 +38,15 @@ test('published profiles preserve file references and reject untrusted downloade
     assert.equal(await resolvePublishedProfile(reference, { fetch: unavailable }), reference)
   }
   assert.equal(requests, 0)
-  await assert.rejects(resolvePublishedProfile('discovery-operator', { fetch: unavailable }), /unavailable/u)
+  await assert.rejects(
+    resolvePublishedProfile('discovery-operator', { fetch: unavailable }),
+    /unavailable/u,
+  )
   const changed: typeof fetch = async (url, options) => {
-    assert.match(String(url), /\/discovery-lab\/[a-f0-9]{40}\/profiles\/operators\/discovery-operator.json$/u)
+    assert.match(
+      String(url),
+      /\/discovery-lab\/[a-f0-9]{40}\/profiles\/operators\/discovery-operator.json$/u,
+    )
     assert.equal(options?.redirect, 'error')
     return new Response('{"name":"tampered"}')
   }

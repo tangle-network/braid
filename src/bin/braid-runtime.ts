@@ -21,8 +21,8 @@ import {
   type ProductionStartupLoadOptions,
 } from './production-startup.js'
 import { createRuntimeStartupOptions } from './runtime-startup-options.js'
-import { defaultStatePath } from './state-path.js'
 import { resolvePublishedProfile } from './published-profile.js'
+import { defaultStatePath } from './state-path.js'
 export async function runBraid(options: CliOptions): Promise<number> {
   const profile = await resolvePublishedProfile(options.profile)
   options = { ...options, ...(profile === undefined ? {} : { profile }) }

@@ -19,14 +19,17 @@ export async function resolvePublishedProfile(
     readonly dataDirectory?: string
   } = {},
 ): Promise<string | undefined> {
-  const entry = reference === undefined || !Object.hasOwn(catalog, reference) ? undefined : catalog[reference]
+  const entry =
+    reference === undefined || !Object.hasOwn(catalog, reference) ? undefined : catalog[reference]
   if (entry === undefined) return reference
   const response = await (options.fetch ?? globalThis.fetch)(entry.url, {
     signal: AbortSignal.timeout(15_000),
     redirect: 'error',
   })
   if (!response.ok || response.body === null) {
-    throw new Error('Published profile unavailable. Retry when GitHub is reachable or select a local profile file.')
+    throw new Error(
+      'Published profile unavailable. Retry when GitHub is reachable or select a local profile file.',
+    )
   }
   const reader = response.body.getReader()
   const chunks: Uint8Array[] = []
