@@ -14,7 +14,8 @@ import { VirtualTerminal } from '../.test-dist-stream-stall/test/support/virtual
 import { captureProvenance, writeCastGif } from './capture-visual-support.mjs'
 
 const repository = new URL('../', import.meta.url).pathname
-const outputRoot = process.env.BRAID_CAPTURE_OUT ?? join(repository, 'artifacts', 'verification', 'stream-stall')
+const outputRoot =
+  process.env.BRAID_CAPTURE_OUT ?? join(repository, 'artifacts', 'verification', 'stream-stall')
 const rawRoot = join(outputRoot, 'raw')
 const sizes = [
   [40, 12],
@@ -34,7 +35,11 @@ class RecordingTerminal extends VirtualTerminal {
   events = []
   startedAt = performance.now()
   record(kind, value) {
-    this.events.push([Number(((performance.now() - this.startedAt) / 1_000).toFixed(6)), kind, value])
+    this.events.push([
+      Number(((performance.now() - this.startedAt) / 1_000).toFixed(6)),
+      kind,
+      value,
+    ])
   }
   write(value) {
     this.record('o', value)
@@ -151,7 +156,11 @@ async function scenario(columns, rows, outcome) {
       async *[Symbol.asyncIterator]() {
         await replayGate.promise
         yield envelope(input.runId, 3, { type: 'text_delta', text: 'Tests passed. ' })
-        yield envelope(input.runId, 4, finalEvent('Reading the repository. Running the long test suite. Tests passed. '))
+        yield envelope(
+          input.runId,
+          4,
+          finalEvent('Reading the repository. Running the long test suite. Tests passed. '),
+        )
       },
     }),
   }
@@ -185,7 +194,10 @@ async function scenario(columns, rows, outcome) {
     for (const character of 'run the tests') terminal.sendInput(character)
     await terminal.waitForRender()
     terminal.sendInput('\r')
-    await waitFor(() => status() === 'streaming' && app.state().runs[0]?.lastProviderSequence >= 2, 'streaming')
+    await waitFor(
+      () => status() === 'streaming' && app.state().runs[0]?.lastProviderSequence >= 2,
+      'streaming',
+    )
     await snap('streaming')
     await waitFor(() => status() === 'reconnecting', 'reconnecting after silence')
     await snap('reconnecting')
@@ -226,15 +238,31 @@ for (const [columns, rows] of sizes) {
     for (const [state, frame] of Object.entries(result.frames)) {
       const textPath = join(outputRoot, `${name}-${state}.txt`)
       await writeFile(textPath, `${frame.screen}\n`)
-      artifacts.push({ path: relative(outputRoot, textPath), sha256: await sha256(textPath), columns, rows, status: frame.status })
+      artifacts.push({
+        path: relative(outputRoot, textPath),
+        sha256: await sha256(textPath),
+        columns,
+        rows,
+        status: frame.status,
+      })
     }
     const castPath = join(rawRoot, `${name}-${outcome}.cast`)
     await writeFile(castPath, result.cast)
     if (columns === 80) {
       const gifPath = join(outputRoot, `80x24-${outcome}-keyboard.gif`)
       // agg is optional here; the asciinema cast in raw/ is the recording either way.
-      if (await writeCastGif(castPath, gifPath).then(() => true, () => false))
-        artifacts.push({ path: relative(outputRoot, gifPath), sha256: await sha256(gifPath), columns, rows })
+      if (
+        await writeCastGif(castPath, gifPath).then(
+          () => true,
+          () => false,
+        )
+      )
+        artifacts.push({
+          path: relative(outputRoot, gifPath),
+          sha256: await sha256(gifPath),
+          columns,
+          rows,
+        })
     }
   }
 }
@@ -245,7 +273,8 @@ await writeFile(
       schemaVersion: 1,
       generatedAt: new Date().toISOString(),
       command: 'pnpm capture:stream-stall',
-      execution: 'local deterministic provider whose stream goes silent; not provider integration proof',
+      execution:
+        'local deterministic provider whose stream goes silent; not provider integration proof',
       keyboard: 'type "run the tests", Enter; the provider then goes silent for the idle bound',
       provenance: await captureProvenance(),
       artifacts,

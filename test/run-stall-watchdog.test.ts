@@ -362,7 +362,10 @@ test('detach during a stall does not reconnect', async () => {
   })
   const send = app.send({ operationId: 'op-detach-stall', text: 'go' })
   await new Promise((resolve) => setTimeout(resolve, IDLE_MS / 4))
-  const detached = await app.detachRun({ operationId: 'op-detach-stall-control', runId: send.runId })
+  const detached = await app.detachRun({
+    operationId: 'op-detach-stall-control',
+    runId: send.runId,
+  })
   await detached.completion
   await send.completion
   assert.equal(probe.after.length, 0)
@@ -422,7 +425,8 @@ test('after restart the saved cursor replays and the status never regresses', as
     journal: restartedJournal,
     stream: () => from([]),
     status: async (runId) => live(runId),
-    reconnect: (runId) => from([text(runId, 2, 'restart '), final(runId, 3, 'before restart after')]),
+    reconnect: (runId) =>
+      from([text(runId, 2, 'restart '), final(runId, 3, 'before restart after')]),
   })
   const statuses: string[] = []
   restarted.app.subscribe(() => {
@@ -436,7 +440,8 @@ test('after restart the saved cursor replays and the status never regresses', as
   assert.equal(recovered.runs[0]?.status, 'completed')
   assert.deepEqual(restarted.probe.after, ['cursor-2'])
   assert.equal(
-    statuses.indexOf('completed') >= 0 && statuses.slice(statuses.indexOf('completed')).length === 1,
+    statuses.indexOf('completed') >= 0 &&
+      statuses.slice(statuses.indexOf('completed')).length === 1,
     true,
   )
   assert.equal(kinds(restarted.app, 'run.finished').length, 1)
