@@ -3,6 +3,7 @@ import test from 'node:test'
 import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
 import { BraidApplication } from '../src/app/application.js'
 import { DETERMINISTIC_PROFILE } from '../src/app/composition.js'
+import type { ApplicationJournal } from '../src/app/application-support.js'
 import { MemoryJournal } from '../src/app/journal.js'
 import {
   DEFAULT_STREAM_IDLE_MS,
@@ -25,10 +26,11 @@ const CAPABILITIES = {
   ...DEFAULT_RUN_CAPABILITIES,
   streaming: { live: true, replay: true, detach: true, turnIdempotency: true },
   sessions: { continue: true, messages: true },
-  controls: { cancel: true, steer: false, queue: true, status: true, recreate: false },
+  controls: { cancel: true, steer: false, queue: true, status: true, recreate: true },
   events: { stableIdentity: true, sequence: true, cursor: true },
 } as const
 
+const stopped = (code: string) => Object.assign(new Error('sandbox is gone'), { code })
 const NEVER = new Promise<never>(() => undefined)
 
 function text(runId: string, sequence: number, value: string): RuntimeEventEnvelope {
@@ -79,7 +81,8 @@ function harness(options: {
   readonly stream: (runId: string) => AsyncIterable<RuntimeEventEnvelope>
   readonly reconnect?: (runId: string, attempt: number) => AsyncIterable<RuntimeEventEnvelope>
   readonly status?: (runId: string, call: number) => Promise<ProviderRunSnapshot | null>
-  readonly journal?: MemoryJournal
+  readonly journal?: ApplicationJournal
+  readonly effectStorage?: MemoryJournal
   readonly detach?: () => void
 }): { app: BraidApplication; probe: Probe } {
   const probe: Probe = { after: [], afterSequence: [], statusCalls: 0 }
@@ -112,6 +115,7 @@ function harness(options: {
     clock: new FixedClock(),
     ids: new SequenceIds(),
     ...(options.journal === undefined ? {} : { journal: options.journal }),
+    ...(options.effectStorage === undefined ? {} : { effectStorage: options.effectStorage }),
   })
   app.initialize('/workspace')
   return { app, probe }
@@ -250,16 +254,16 @@ test('a stopped sandbox ends as unknown with a plain detail and no retry', async
   const { app, probe } = harness({
     stream: (runId) => from([text(runId, 1, 'x')], 'hang'),
     status: async () => {
-      throw new Error('sandbox stopped')
+      throw stopped('SANDBOX_STOPPED')
     },
   })
   const state = await app.send({ operationId: 'op-stopped', text: 'go' }).completion
   assert.equal(state.runs[0]?.status, 'unknown')
   const unknown = kinds(app, 'run.unknown').at(-1)?.event as { detail: string }
-  assert.equal(unknown.detail, 'provider stream lost; sandbox stopped')
+  assert.equal(unknown.detail, 'provider stream lost; status read failed (SANDBOX_STOPPED)')
   assert.equal(probe.after.length, 0)
   assert.equal(probe.statusCalls, 1)
-  assert.equal(state.lastError, 'provider stream lost; sandbox stopped')
+  assert.equal(state.lastError, 'provider stream lost; status read failed (SANDBOX_STOPPED)')
 })
 
 test('a status read that never answers counts as a lost provider', async () => {
@@ -298,7 +302,7 @@ test('a replay that stalls after the provider died ends as unknown', async () =>
     stream: (runId) => from([text(runId, 1, 'x')], 'hang'),
     status: async (runId, call) => {
       if (call === 1) return live(runId)
-      throw new Error('sandbox deleted')
+      throw stopped('SANDBOX_DELETED')
     },
     reconnect: () => from([], 'hang'),
   })
@@ -306,7 +310,7 @@ test('a replay that stalls after the provider died ends as unknown', async () =>
   assert.equal(state.runs[0]?.status, 'unknown')
   assert.equal(
     (kinds(app, 'run.unknown').at(-1)?.event as { detail: string }).detail,
-    'provider stream lost; sandbox deleted',
+    'provider stream lost; status read failed (SANDBOX_DELETED)',
   )
 })
 
@@ -368,8 +372,10 @@ test('detach during a stall does not reconnect', async () => {
 test('an ingest slower than the deadline does not hold the turn open', async () => {
   const inner = new MemoryJournal(new FixedClock())
   let slowed = false
-  const journal = Object.assign(Object.create(inner) as MemoryJournal, {
+  const journal: ApplicationJournal = {
     asynchronous: true,
+    all: () => inner.all(),
+    envelope: (state, event) => inner.envelope(state, event),
     append: async (envelope: BraidEventEnvelope) => {
       if (
         !slowed &&
@@ -381,9 +387,10 @@ test('an ingest slower than the deadline does not hold the turn open', async () 
       }
       return inner.append(envelope)
     },
-  })
+  }
   const { app, probe } = harness({
     journal,
+    effectStorage: inner,
     stream: (runId) => from([text(runId, 1, 'a'), text(runId, 2, 'b')], 'hang'),
     status: async (runId) => live(runId),
     reconnect: (runId) => from([text(runId, 2, 'b'), final(runId, 3, 'ab')]),
@@ -401,7 +408,7 @@ test('after restart the saved cursor replays and the status never regresses', as
     journal: sourceJournal,
     stream: (runId) => from([text(runId, 1, 'before '), text(runId, 2, 'restart ')], 'hang'),
     status: async () => {
-      throw new Error('sandbox stopped')
+      throw stopped('SANDBOX_STOPPED')
     },
   })
   const send = first.app.send({ operationId: 'op-restart-stall', text: 'go' })

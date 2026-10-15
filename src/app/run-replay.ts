@@ -188,10 +188,9 @@ async function probeProvider(
       statusTimeoutMs(context.execution),
     )
   } catch (error) {
-    return {
-      kind: 'lost',
-      detail: safeSnapshotDetail(error instanceof Error ? error.message : error, 'status read failed'),
-    }
+    // Provider text is untrusted; only a typed code may accompany Braid's own plain reason.
+    const code = safeRuntimeDiagnostic(error, '')
+    return { kind: 'lost', detail: code === '' ? 'status read failed' : `status read failed (${code})` }
   }
   if (snapshot === STALLED) return { kind: 'lost', detail: 'the status read timed out' }
   if (snapshot === null) return { kind: 'lost', detail: 'the provider has no record of the run' }
