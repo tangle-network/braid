@@ -149,6 +149,7 @@ export class ApplicationUiController implements BraidUiController {
     const canRespond = interactionViews(state).some((interaction) =>
       app.canRespondToInteractions(interaction.runId),
     )
+    const sendRefusal = app.sendRefusal()
     const view = withRunUsage(
       buildBraidViewModel(
         state,
@@ -159,6 +160,7 @@ export class ApplicationUiController implements BraidUiController {
         cleanupUncertain,
         canRespond,
         this.#graphQuery,
+        sendRefusal,
       ),
       state,
     )
@@ -172,7 +174,13 @@ export class ApplicationUiController implements BraidUiController {
         ? decorated
         : freezeView({
             ...decorated,
-            capabilities: capabilityMap(state, app.canCancel(), this.#fixture, canRespond),
+            capabilities: capabilityMap(
+              state,
+              app.canCancel(),
+              this.#fixture,
+              canRespond,
+              sendRefusal,
+            ),
           })
     const intelligenceDecorated =
       this.#selectedIntelligenceData === undefined

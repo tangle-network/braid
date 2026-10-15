@@ -250,9 +250,9 @@ function assertTaskRequestAllowlist(observedRequests) {
   )
 }
 
-function assertCapabilityReadOnlyRequests(observedRequests) {
+function assertCapabilityReadOnlyRequests(observedRequests, { allowNone = false } = {}) {
   assert.ok(
-    observedRequests.length > 0 &&
+    (allowNone || observedRequests.length > 0) &&
       observedRequests.every(
         (request) =>
           request.method === 'GET' &&
@@ -691,9 +691,10 @@ try {
     const beforeContinuationRunCount = afterReload.state.runs.length
     const beforeContinuationMessageCount = afterReload.state.messages.length
     await key('CLOUD_SETUP_RESUMED_TASK\r')
-    await expect(/CONTEXT_TRANSFER_UNAVAILABLE/u)
+    await expect(/Send unavailable/u)
     const continuationRequests = requests.slice(beforeContinuationRequests)
-    assertCapabilityReadOnlyRequests(continuationRequests)
+    // The send capability refuses before admission, so no provider request is needed at all.
+    assertCapabilityReadOnlyRequests(continuationRequests, { allowNone: true })
     assert.equal(
       requests.filter((request) => request.method === 'POST' && request.path === '/v1/sandboxes')
         .length,
@@ -702,7 +703,7 @@ try {
     )
     await key('\u001b')
     await until(
-      () => !screen.includes('CONTEXT_TRANSFER_UNAVAILABLE') && screen.includes('new message'),
+      () => !screen.includes('Send unavailable') && screen.includes('new message'),
       'close continuation refusal',
     )
     const afterRejectedContinuation = await snapshot()
@@ -714,7 +715,7 @@ try {
     assert.equal(afterRejectedContinuation.state.messages.length, beforeContinuationMessageCount)
     assertSnapshotRedacted(afterRejectedContinuation)
     evidence.sameBranchContinuation =
-      'CONTEXT_TRANSFER_UNAVAILABLE; authenticated read-only identity, capability, usage, and subscription GETs only; zero sandbox creates or run/message changes'
+      'Send unavailable before admission; authenticated read-only identity, capability, usage, and subscription GETs only; zero sandbox creates or run/message changes'
     evidence.sameBranchReadOnlyRequestPaths = [
       ...new Set(continuationRequests.map((request) => request.path)),
     ]
