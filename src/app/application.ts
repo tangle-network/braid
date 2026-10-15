@@ -156,6 +156,7 @@ export class BraidApplication {
   readonly #durableSender: ReturnType<typeof createDurableSender>
   #transitionTail: Promise<void> = Promise.resolve()
   #storageFailure: unknown
+  readonly #storageFailureListeners = new Set<() => void>()
   #cleanupUncertain: string | undefined
   #restartReconciliation: Promise<void> = Promise.resolve()
   #automationReconciliation: Promise<void> = Promise.resolve()
@@ -261,9 +262,7 @@ export class BraidApplication {
         this.#transitionTail = tail
       },
       storageFailure: () => this.#storageFailure,
-      markStorageFailure: (error) => {
-        this.#storageFailure ??= error
-      },
+      markStorageFailure: (error) => this.#latchStorageFailure(error),
       flush: () => this.whenDurable(),
       executeControl: (input, options) => this.#executeControl(input, options),
       admitPersistedSend: (operationId, digest) =>
@@ -362,7 +361,7 @@ export class BraidApplication {
     this.#restartReconciliation = runReconciliation
       .then(() => this.conversations.lifecycle.reconcilePendingDeletes())
       .catch((error: unknown) => {
-        this.#storageFailure ??= error
+        this.#latchStorageFailure(error)
         throw error
       })
     this.#automationReconciliation = this.#restartReconciliation.then(() =>
@@ -408,6 +407,25 @@ export class BraidApplication {
   storageFailure(): string | undefined {
     if (this.#storageFailure === undefined) return undefined
     return this.#storageFailure instanceof Error ? this.#storageFailure.message : 'Storage failure'
+  }
+
+  /** Calls the listener once when a failed commit latches this application read-only. */
+  onStorageFailure(listener: () => void): () => void {
+    this.#storageFailureListeners.add(listener)
+    return () => this.#storageFailureListeners.delete(listener)
+  }
+
+  #latchStorageFailure(error: unknown): void {
+    if (this.#storageFailure !== undefined) return
+    this.#storageFailure = error
+    // No journal event records the latch, so subscribers would otherwise keep the last frame.
+    for (const listener of this.#storageFailureListeners) {
+      try {
+        listener()
+      } catch {
+        // A renderer failure cannot change the latched failure.
+      }
+    }
   }
 
   cleanupUncertain(): string | undefined {
