@@ -2,13 +2,13 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
 import { BraidApplication } from '../src/app/application.js'
-import { DETERMINISTIC_PROFILE } from '../src/app/composition.js'
 import type { ApplicationJournal } from '../src/app/application-support.js'
+import { DETERMINISTIC_PROFILE } from '../src/app/composition.js'
 import { MemoryJournal } from '../src/app/journal.js'
 import {
   DEFAULT_STREAM_IDLE_MS,
-  STALLED,
   pumpWithIdleBound,
+  STALLED,
   withinDeadline,
 } from '../src/app/run-stall.js'
 import type { BraidEventEnvelope } from '../src/domain/events.js'
@@ -278,10 +278,7 @@ test('a status read that never answers counts as a lost provider', async () => {
   })
   const state = await app.send({ operationId: 'op-status-hang', text: 'go' }).completion
   assert.equal(state.runs[0]?.status, 'unknown')
-  assert.match(
-    unknownDetail(app),
-    /provider stream lost; the status read timed out/,
-  )
+  assert.match(unknownDetail(app), /provider stream lost; the status read timed out/)
   assert.equal(probe.after.length, 0)
 })
 
@@ -313,10 +310,7 @@ test('a replay that stalls after the provider died ends as unknown', async () =>
   })
   const state = await app.send({ operationId: 'op-replay-lost', text: 'go' }).completion
   assert.equal(state.runs[0]?.status, 'unknown')
-  assert.equal(
-    unknownDetail(app),
-    'provider stream lost; status read failed (SANDBOX_DELETED)',
-  )
+  assert.equal(unknownDetail(app), 'provider stream lost; status read failed (SANDBOX_DELETED)')
 })
 
 test('a terminal provider whose replay stalls twice finishes from its status read', async () => {

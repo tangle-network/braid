@@ -8,8 +8,8 @@ import { runtimeFailureDiagnostic, safeRuntimeDiagnostic } from './provider-valu
 import { retainedExecutionRecoveryContext } from './run-recovery-context.js'
 import {
   type PumpOutcome,
-  STALLED,
   pumpWithIdleBound,
+  STALLED,
   statusTimeoutMs,
   streamIdleMs,
   withinDeadline,
