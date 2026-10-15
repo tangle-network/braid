@@ -1,0 +1,130 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-15T07:08:41.300Z",
+  "command": "pnpm capture:interaction-close",
+  "execution": "controlled provider in test/interaction-provider-close.test.ts; not provider proof",
+  "flows": {
+    "decline-alt-2": "alt+2 declines an opencode-shaped permission; the provider sends interaction.cancel reason resolved and then completes",
+    "storage-failure": "the provider closes a request it never made; the reducer refuses it and the status shows the latched storage failure"
+  },
+  "provenance": {
+    "renderer": {
+      "package": "@earendil-works/pi-tui@1.1.0",
+      "pty": "node-pty@1.1.0",
+      "emulator": "@xterm/headless@6.0.0",
+      "node": "v22.23.3",
+      "terminal": "xterm-256color"
+    },
+    "raster": {
+      "agg": "agg 1.9.0",
+      "imagemagick": "Version: ImageMagick 6.9.12-98 Q16 x86_64 18038 https://legacy.imagemagick.org",
+      "fontFamily": "DejaVu Sans Mono",
+      "font": "DejaVu Sans Mono | Book | /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+      "colorMode": "sRGB 8-bit"
+    }
+  },
+  "artifacts": [
+    {
+      "path": "40x12-storage-failure.txt",
+      "sha256": "5ade011b6bb8a24e8a89288eb2498aab6dd29e7c8cc7729cc5e3d704dcd3f0c2",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "40x12-storage-failure.png",
+      "sha256": "04d5eea26baa2adc26683ba922cefa6c68b86f09c00eb3bad8d753cf3ea75909",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "80x24-storage-failure.txt",
+      "sha256": "3fcbf503140e6b84a1fc243d6667f9889f67b5e248cc7a0a1e9b63d593e6a2e6",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "80x24-storage-failure.png",
+      "sha256": "51af063ccb9fb48fb2e5505f44fc9c9b4841218483b4793ddca1048eb145e71b",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "120x40-storage-failure.txt",
+      "sha256": "26d3fe0ff8fd8355cf233fe2f49f3b4364e1bca0f40f52a3157fa37e9959dbaf",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "120x40-storage-failure.png",
+      "sha256": "911a47f2a506705d66a6eaad704b299f24fe933d4e288817a2ad49de9b40ab29",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "200x60-storage-failure.txt",
+      "sha256": "476a5ca793c8867c2ebc149f6be994e40779d528595fc7a24b0c69c22ca7254a",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "200x60-storage-failure.png",
+      "sha256": "9d607bff8ce12da6abde18467f0028ffe6bddbc6a2e5f50c722b40e8e3e0705c",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "40x12-decline-alt-2.txt",
+      "sha256": "14f03a459a769a0fa74930ad61728dcef22f5b68d6c34588022b32b1820924c9",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "40x12-decline-alt-2.png",
+      "sha256": "5e5652d13121de9dd4ed26996d374f0c42f754c632e1b9484681175315e091c5",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "80x24-decline-alt-2.txt",
+      "sha256": "3cdc03cbea60b7b568f363d0611970d96ba4763cb6c14ea0fa0f9a44f2c24237",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "80x24-decline-alt-2.png",
+      "sha256": "67ea0d73bc42995cba8030a2c4e5e9adaf84206e96a4e5b99bd9f4778f3c9074",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "120x40-decline-alt-2.txt",
+      "sha256": "b664895a74bb40c0338210470c7d0fee4257921df8ccace033b5db83b9559f17",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "120x40-decline-alt-2.png",
+      "sha256": "1def3d8b50c737bfc0fc161cacb668024db37d248a3f8a6cdd96f922c652321c",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "200x60-decline-alt-2.txt",
+      "sha256": "400d4c241d18ff01f6bf9e499f1cbc2a52424bff963a4a0acf5334ecd5e3ac4f",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "200x60-decline-alt-2.png",
+      "sha256": "f59949ced1b7caba4069e20c9d771cddfa4408988056c5ab4823797d5479d457",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "80x24-decline-alt-2-keyboard.gif",
+      "sha256": "ca12e96e92877848ef6dc6b569ecad15079c241056851535b7b8aa995e9a4158",
+      "columns": 80,
+      "rows": 24
+    }
+  ]
+}
