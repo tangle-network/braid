@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-15T07:08:41.300Z",
+  "generatedAt": "2026-10-15T07:26:02.214Z",
   "command": "pnpm capture:interaction-close",
   "execution": "controlled provider in test/interaction-provider-close.test.ts; not provider proof",
   "flows": {
@@ -32,7 +32,7 @@
     },
     {
       "path": "40x12-storage-failure.png",
-      "sha256": "04d5eea26baa2adc26683ba922cefa6c68b86f09c00eb3bad8d753cf3ea75909",
+      "sha256": "5aad560f42c353ca95ad4c2a20cb4ec09707f68f62a51333c9307dc93c828792",
       "columns": 40,
       "rows": 12
     },
@@ -44,7 +44,7 @@
     },
     {
       "path": "80x24-storage-failure.png",
-      "sha256": "51af063ccb9fb48fb2e5505f44fc9c9b4841218483b4793ddca1048eb145e71b",
+      "sha256": "b81b74af3992f339112556f3db84b1f0920b5e5416203ec32a423f3191be1798",
       "columns": 80,
       "rows": 24
     },
@@ -56,7 +56,7 @@
     },
     {
       "path": "120x40-storage-failure.png",
-      "sha256": "911a47f2a506705d66a6eaad704b299f24fe933d4e288817a2ad49de9b40ab29",
+      "sha256": "fb17da7b965c2ccd4b8870b3426697e2534ba2a7d2ecf967e1c661208ac5bc6b",
       "columns": 120,
       "rows": 40
     },
@@ -68,7 +68,7 @@
     },
     {
       "path": "200x60-storage-failure.png",
-      "sha256": "9d607bff8ce12da6abde18467f0028ffe6bddbc6a2e5f50c722b40e8e3e0705c",
+      "sha256": "0778cd1bb2d2360bfa0dea0312d9aad1348c751d62f841c26ce2637cd3095cf6",
       "columns": 200,
       "rows": 60
     },
@@ -80,7 +80,7 @@
     },
     {
       "path": "40x12-decline-alt-2.png",
-      "sha256": "5e5652d13121de9dd4ed26996d374f0c42f754c632e1b9484681175315e091c5",
+      "sha256": "98ebe865f2ca140c40f9c60c3ced5ac8c49f221c0f95613ecde56c7fe8edbc97",
       "columns": 40,
       "rows": 12
     },
@@ -92,7 +92,7 @@
     },
     {
       "path": "80x24-decline-alt-2.png",
-      "sha256": "67ea0d73bc42995cba8030a2c4e5e9adaf84206e96a4e5b99bd9f4778f3c9074",
+      "sha256": "bb454b4e6fd1d66034eb239138d9fc0d9e96098f27b4354b4a176d153f50a5fe",
       "columns": 80,
       "rows": 24
     },
@@ -104,7 +104,7 @@
     },
     {
       "path": "120x40-decline-alt-2.png",
-      "sha256": "1def3d8b50c737bfc0fc161cacb668024db37d248a3f8a6cdd96f922c652321c",
+      "sha256": "3271ed94d485b5e487107ea0795ee44f707629df8d3b3e3a4cced4e458be2ecf",
       "columns": 120,
       "rows": 40
     },
@@ -116,13 +116,19 @@
     },
     {
       "path": "200x60-decline-alt-2.png",
-      "sha256": "f59949ced1b7caba4069e20c9d771cddfa4408988056c5ab4823797d5479d457",
+      "sha256": "5f49ec539ddcfb8573d7a2d881274f61d53d22644f49f64166cef51059fb84a0",
       "columns": 200,
       "rows": 60
     },
     {
+      "path": "80x24-decline-alt-2.cast",
+      "sha256": "d4040467a8a1299df1e74becf1b5b139b94ba87eec5134d44d43ade74c4329da",
+      "columns": 80,
+      "rows": 24
+    },
+    {
       "path": "80x24-decline-alt-2-keyboard.gif",
-      "sha256": "ca12e96e92877848ef6dc6b569ecad15079c241056851535b7b8aa995e9a4158",
+      "sha256": "01d4ca2520e6802477e9f9effe582476eeb434ed899021bb547e8885b454ee26",
       "columns": 80,
       "rows": 24
     }
