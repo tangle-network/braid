@@ -123,7 +123,9 @@ function supervisorDetail(record: SupervisorRecord | undefined): EntityDetailVie
           ]),
       `id: ${safe(record.id)}`,
       `runtime id: ${safe(record.runtimeId)}`,
-      `run: ${record.rootRunId === undefined ? 'unbound workspace activity' : safe(record.rootRunId)}`,
+      ...(record.remoteEndpointEnv === undefined
+        ? [`run: ${record.rootRunId === undefined ? 'unbound workspace activity' : safe(record.rootRunId)}`]
+        : []),
       `status: ${safe(record.status)}`,
       ...(record.driverModel === undefined ? [] : [`driver model: ${safe(record.driverModel)}`]),
       ...(record.workerModel === undefined ? [] : [`worker model: ${safe(record.workerModel)}`]),
@@ -138,8 +140,8 @@ function supervisorDetail(record: SupervisorRecord | undefined): EntityDetailVie
         : [
             `driver usage: ${usageLine(record.driverUsage.inputTokens, record.driverUsage.outputTokens, record.driverUsage.spendUsd, record.driverUsage.completeness)}`,
           ]),
-      `started: ${safe(record.createdAt)}`,
-      `updated: ${safe(record.updatedAt)}`,
+      `${record.remoteEndpointEnv === undefined ? 'started' : 'first observed'}: ${safe(record.createdAt)}`,
+      `${record.remoteEndpointEnv === undefined ? 'updated' : 'last recorded change'}: ${safe(record.updatedAt)}`,
     ],
   }
 }
