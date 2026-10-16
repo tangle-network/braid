@@ -126,7 +126,7 @@ The full activity selector reuses existing bounded filtering and row rendering.
 
 ## Tests
 
-`test/application.test.ts` proves focus switching and explicit background interaction and cancellation routing.
+`test/tui.test.ts` exercises focused cancellation through the actual Pi keyboard path. Protected `LIVE-07` proves focus switching and selected-run cancellation with two real cloud conversations.
 
 The TUI test scopes prove keyboard focus dispatch, selector behavior, and stable narrow layouts.
 

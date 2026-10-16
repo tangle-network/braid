@@ -156,9 +156,9 @@ Configured provider failures remain failed and never become simulated passes.
 
 ## Tests
 
-`test/conversation-branch-effects.test.ts` proves exact requests, provider reconstruction, restart cleanup, idempotent replay, source protection, confidential capability gates, and canonical attestation verification.
+`test/profile-fork.test.ts` checks profile-bound handoff and encrypted restart. `test/cli-bridge-context-transfer.test.ts` checks the real HTTP context-transfer boundary.
 
-`test/tangle-workspace-proof.test.mjs` proves the confidential negative checks reject nonce, measurement, and self-echo mutations.
+The protected `LIVE-10` producer performs confidential nonce, measurement, and self-echo negative checks against its actual live evidence.
 
 `test/nitro-confidential-attestation.test.ts` proves COSE verification, identity derivation, mutation rejection, freshness, persistence, migration, replay, and secret-free snapshots.
 

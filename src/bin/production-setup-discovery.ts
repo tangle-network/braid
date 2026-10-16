@@ -23,6 +23,7 @@ import { projectSetupProfiles, trustedProfileSources } from './production-profil
 import { recoverPendingProductionCredential } from './production-setup-credentials.js'
 import type { ProductionStartupSetup } from './production-setup-types.js'
 import { ProductionStartupError, type ProductionStartupLoadOptions } from './production-startup.js'
+import { publishedProfileSource } from './published-profile.js'
 
 export { DEFAULT_CLI_BRIDGE_ENDPOINT } from './production-bridge-client.js'
 
@@ -167,11 +168,17 @@ export async function loadProductionProfileCatalog(
       'The selected production connection does not exist',
     )
   }
+  const published =
+    options.profileReference === undefined
+      ? publishedProfileSource(production.profile.name)
+      : undefined
   const discovered = await discoverProfiles({
-    explicit: trustedProfileSources(options),
+    explicit: [...trustedProfileSources(options), ...(published === undefined ? [] : [published])],
     resolverContext: { workspaceRoot: options.workspace },
   })
-  const active = productionActiveProfile(production.profile)
+  const configured = productionActiveProfile(production.profile)
+  const active =
+    discovered.profiles.find((record) => record.digest === configured.digest) ?? configured
   const seenDigests = new Set([active.digest])
   const profiles = [
     active,

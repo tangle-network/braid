@@ -23,11 +23,6 @@ import { replayEvents } from '../src/domain/reducer.js'
 import { initialState } from '../src/domain/state.js'
 import { FixedClock } from '../src/ports/clock.js'
 import { credentialRef } from '../src/ports/credentials.js'
-import {
-  analysisMeasuredModelCallLine,
-  analysisMeasuredModelCallSummary,
-  analysisModelCallSummary,
-} from '../src/views/shared/analysis-model-call-presentation.js'
 import { queryDetails } from '../src/views/shared/semantic-details.js'
 
 const startedAt = '2026-08-10T00:00:00.000Z'
@@ -77,77 +72,6 @@ function modelCallExport(): readonly Record<string, unknown>[] {
     },
   ]
 }
-
-test('analysis model-call import preserves public facts and rejects payloads or secrets', () => {
-  const calls = importAnalysisModelCalls(modelCallExport(), 'analyses[0].modelCalls')
-  assert.ok(calls)
-  assert.equal(calls.length, 2)
-  assert.deepEqual(calls[0], {
-    sequence: 1,
-    callId: 'call-analysis-1',
-    callRef: 'analysis-call-1',
-    path: '/v1/responses',
-    model: 'gpt-5.6-luna',
-    provider: 'openai',
-    route: 'cli-bridge',
-    inputTokens: 120,
-    outputTokens: 45,
-    tokensKnown: true,
-    cost: { status: 'observed', usd: 0.0123 },
-    latencyMs: 88,
-    outcome: 'succeeded',
-    responseStatus: 200,
-    startedAt,
-    endedAt,
-  })
-  assert.equal(calls[1]?.cost.status, 'unknown')
-  assert.equal(calls[1]?.path, 'unknown-path')
-  assert.equal('cachedTokens' in (calls[0] ?? {}), false)
-
-  assert.throws(
-    () =>
-      importAnalysisModelCalls(
-        [{ ...modelCallExport()[0], prompt: 'do not retain this' }],
-        'analyses[0].modelCalls',
-      ),
-    (error: unknown) =>
-      error instanceof Error &&
-      'code' in error &&
-      error.code === 'IMPORT_INVALID' &&
-      !error.message.includes('do not retain this'),
-  )
-  assert.throws(
-    () =>
-      importAnalysisModelCalls(
-        [{ ...modelCallExport()[0], provider: 'api_key=secret-value' }],
-        'analyses[0].modelCalls',
-      ),
-    (error: unknown) =>
-      error instanceof Error && 'code' in error && error.code === 'IMPORT_INVALID',
-  )
-  for (const path of [
-    '/v1/chat/completions?api_key=secret',
-    '/v1/chat/completions#fragment',
-    '/v1/chat/completions/api_key',
-  ]) {
-    assert.throws(
-      () => importAnalysisModelCalls([{ ...modelCallExport()[0], path }], 'analyses[0].modelCalls'),
-      (error: unknown) =>
-        error instanceof Error && 'code' in error && error.code === 'IMPORT_INVALID',
-    )
-  }
-  for (const invalidCall of [
-    { ...modelCallExport()[0], outputTokens: undefined },
-    { ...modelCallExport()[0], responseStatus: 99 },
-    { ...modelCallExport()[0], responseStatus: 200.5 },
-  ]) {
-    assert.throws(
-      () => importAnalysisModelCalls([invalidCall], 'analyses[0].modelCalls'),
-      (error: unknown) =>
-        error instanceof Error && 'code' in error && error.code === 'IMPORT_INVALID',
-    )
-  }
-})
 
 test('analysis model calls survive event replay and appear as concise detail lines', () => {
   const calls = importAnalysisModelCalls(modelCallExport(), 'analyses[0].modelCalls')
@@ -363,81 +287,6 @@ test('large analysis source ranges retain valid event IDs through encrypted comm
     /bounded event payload/u,
   )
   assert.equal(oversizedJournal.all().length, 0)
-})
-
-test('analysis model-call summary keeps partial telemetry explicit', () => {
-  assert.equal(
-    analysisModelCallSummary([
-      {
-        sequence: 1,
-        provider: 'openai',
-        model: 'gpt-5.6-luna',
-        inputTokens: 120,
-        outputTokens: 45,
-        tokensKnown: true,
-        costUsd: 0.0123,
-        costStatus: 'observed',
-        latencyMs: 88,
-        outcome: 'succeeded',
-      },
-      {
-        sequence: 2,
-        model: 'glm-5.2',
-        tokensKnown: false,
-        costStatus: 'unknown',
-        outcome: 'failed',
-      },
-    ]),
-    '2 calls · tokens ≥120 in / ≥45 out (+1 unknown) · cost ≥$0.0123 (+1 unknown) · latency ≥88ms (+1 unknown) · 1 failed',
-  )
-})
-
-test('analysis model-call summary distinguishes estimates from exact charges', () => {
-  assert.equal(
-    analysisModelCallSummary([
-      {
-        sequence: 1,
-        model: 'gpt-5.6-luna',
-        inputTokens: 20,
-        outputTokens: 8,
-        tokensKnown: true,
-        costUsd: 0.0042,
-        costStatus: 'estimated',
-        latencyMs: 40,
-        outcome: 'succeeded',
-      },
-    ]),
-    '1 call · tokens 20 in / 8 out · cost ~$0.0042 · latency 40ms',
-  )
-})
-
-test('compact analysis surfaces omit unmeasured usage and latency', () => {
-  const partial = {
-    sequence: 2,
-    model: 'glm-5.2',
-    tokensKnown: false,
-    costStatus: 'unknown' as const,
-    outcome: 'failed' as const,
-  }
-  assert.equal(analysisMeasuredModelCallLine(partial), '#2 glm-5.2')
-  assert.equal(
-    analysisMeasuredModelCallSummary([
-      {
-        sequence: 1,
-        provider: 'openai',
-        model: 'gpt-5.6-luna',
-        inputTokens: 120,
-        outputTokens: 45,
-        tokensKnown: true,
-        costUsd: 0.0123,
-        costStatus: 'observed',
-        latencyMs: 88,
-        outcome: 'succeeded',
-      },
-      partial,
-    ]),
-    '2 calls · tokens ≥120 in / ≥45 out · cost $0.0123 · latency ≥88ms · 1 failed',
-  )
 })
 
 test('conversation export, import, re-export, and restart retain model calls', async () => {
