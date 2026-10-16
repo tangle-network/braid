@@ -11,7 +11,7 @@ The existing capture owner is `node scripts/capture-visual.mjs --remote-env NAME
 | 120x40 | 5 | 5 | 0 | [tree](120x40-tree.png), [agent](120x40-agent.png) |
 | 200x60 | 5 | 5 | 0 | [tree](200x60-tree.png), [agent](200x60-agent.png) |
 
-[Uncut terminal recording](80x24-flow.mp4) · [asciicast](80x24-flow.cast) · [decoded review frames](80x24-flow-review.png) · [capture manifest](manifest.json) · [actual source](source.json).
+[Uncut terminal recording](80x24-flow.mp4) · [asciicast](80x24-flow.cast) · [decoded review frames](80x24-flow-review.png) · [capture manifest](manifest.json) · [actual source](source.json) · [source details](120x40-source.png).
 
 The flow opens the remote graph, visits every agent through keyboard selection, opens its details, closes the graph, reopens the persisted graph, and quits cleanly. The source has one recorded completed agent and four pending agents; pending never renders complete, and a parent precedes its descendants. At narrow widths details show name, structural role, status, parent, stream availability and Runtime identity. Larger terminals use the existing split pane.
 
@@ -19,4 +19,4 @@ This settled run has no retained process-local live event buffers. Braid correct
 
 The `*-before.png` images show the actual previous packed Braid revision's offline conversation shell, with no fake remote agents or provider result; see `before-provenance.json`. They are a shell comparison, not a remote-provider baseline.
 
-Capture source: the exact commit and packed tarball hash are in `manifest.json`. Beelink capture receipt: `beelink2-d5b11ba0aacbbe9a0ad9cfd3fb4e2d5c`, exit 0. All four tree/detail image pairs and decoded recording frames were reviewed.
+Capture source: the exact commit and packed tarball hash are in `manifest.json`. Beelink capture receipt: `beelink2-1ed531904662750d10bbfeb3c6ab5808`, exit 0. All four tree/detail image pairs and decoded recording frames were reviewed.
