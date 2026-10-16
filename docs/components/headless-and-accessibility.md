@@ -36,6 +36,8 @@ Events include their canonical revision and entity identifiers.
 
 Output fields preserve zero, null, unknown, and unavailable as distinct values.
 
+Run views, full state and `get_details` expose `outcomeDetail` for failed or unverified runs. They use the same recorded-cause selector as the terminal transcript, including an unknown run's lifecycle detail. A historical run with no informative cause says that no cause was recorded.
+
 
 ## First task over JSONL
 

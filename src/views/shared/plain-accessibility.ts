@@ -205,9 +205,12 @@ function plainViewSubjectText(subject: SubjectView): string {
 }
 
 function detailSuffix(payload: Readonly<Record<string, unknown>>): string {
-  const detail =
-    stringValue(payload.error) ?? stringValue(payload.reason) ?? stringValue(payload.detail)
-  return detail ? `; detail: ${safeLine(detail)}` : ''
+  // A failed run keeps its stable code in `error` and its cause in `reason`; say both.
+  const details = [payload.error, payload.reason, payload.detail]
+    .map(stringValue)
+    .filter((value): value is string => value !== undefined && value.length > 0)
+  const unique = details.filter((value, index) => details.indexOf(value) === index)
+  return unique.length === 0 ? '' : `; detail: ${safeLine(unique.join('; '))}`
 }
 
 function pushStringLine(lines: string[], label: string, value: unknown): void {
@@ -242,6 +245,7 @@ function plainMessageLines(message: MessageView): string[] {
   const role = message.role === 'user' ? 'user message' : `${message.role} message`
   const lines = [`${role}: ${safeLine(message.text || '(empty)')}`]
   if (message.status !== 'complete') lines.push(`${role} status: ${message.status}`)
+  if (message.outcome !== undefined) lines.push(`${role} outcome: ${safeLine(message.outcome)}`)
   for (const part of message.parts) {
     if (part.kind === 'text' && part.text === message.text) continue
     lines.push(...plainPartLines(role, part))

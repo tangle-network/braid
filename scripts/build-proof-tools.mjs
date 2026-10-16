@@ -203,6 +203,7 @@ export function prepareProofTools({ force = false } = {}) {
       try {
         return await restored(commit)
       } catch (error) {
+        if (process.env.BRAID_PACKAGE_PROOF_ISOLATED === '1') throw error
         // Rebuild from current source; never import an unusable cached generation.
         if (error?.code !== 'ENOENT') {
           const entry = await compile(commit)

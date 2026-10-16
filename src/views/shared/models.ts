@@ -73,6 +73,8 @@ export interface MessageView {
   readonly runId?: string
   readonly parts: readonly TranscriptPartView[]
   readonly partsTruncated?: boolean
+  /** Why the run failed or ended unverified, or that the provider gave no cause. */
+  readonly outcome?: string
 }
 
 export interface UsageView {
@@ -206,6 +208,7 @@ export interface RunView {
   readonly maxTotalOutputTokens?: number
   readonly usage?: UsageView
   readonly error?: string
+  readonly outcomeDetail?: string
   readonly cursor?: string
   readonly providerSessionId?: string
   readonly harnessSessionId?: string
@@ -696,6 +699,7 @@ export interface HeadlessState {
     readonly runId?: string
     readonly parts: readonly TranscriptPartView[]
     readonly partsTruncated?: boolean
+    readonly outcome?: string
   }[]
   readonly runs: readonly {
     readonly id: string
@@ -724,6 +728,7 @@ export interface HeadlessState {
     readonly connectionId?: string
     readonly requestedSessionId?: string
     readonly error?: string
+    readonly outcomeDetail?: string
     readonly completeness: RunView['completeness']
     readonly providerSessionId?: string
     readonly harnessSessionId?: string

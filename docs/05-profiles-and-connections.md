@@ -361,6 +361,8 @@ Headless receipts include the names in the environment request digest, interacti
 A Tangle Sandbox connection can set `modelCredentials` so that a profile whose `model.metadata.credentialSource` is `subscription` gets a model seat.
 The `command` form names a resolver that the Tangle provider runs through its `createCommandModelCredentialResolver`; Braid never spawns it.
 The provider calls it when it creates the environment and again for each fresh native turn, with the exact profile and a stable create or turn identity on standard input, and the resolver prints a public stored-secret reference.
+Each request names `minimumValidUntil`, `MODEL_SEAT_VALIDITY_MS` after the call (in `src/adapters/connections/tangle-model-credentials.ts`), because an access-only seat such as a Codex subscription cannot refresh inside the sandbox and its account owner refuses a request without a deadline.
+A resolver refusal ends the run with its cause, such as `Tangle credential command failed (exit 1)`; the provider does not relay the resolver's own message.
 A retained subscription turn therefore carries its exact profile; managed turns omit it and keep their admitted request identity.
 `env` lists variables from Braid's environment that the resolver reads, and Braid refuses the create with a plain message naming any that are unset.
 `connectionKeyEnv` and `connectionEndpointEnv` name the variables that receive this connection's own Sandbox key and endpoint, so the seat lands in the account that creates the sandbox.

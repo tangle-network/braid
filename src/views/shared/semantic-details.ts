@@ -1,4 +1,5 @@
 import type { AnalysisFinding, AnalysisModelCallRecord } from '../../domain/entities.js'
+import { runOutcomeDetail } from '../../domain/provider-values.js'
 import type { BraidState } from '../../domain/state.js'
 import { analysisModelCallLine, analysisModelCallView } from './analysis-model-call-presentation.js'
 import { environmentView } from './environment-presentation.js'
@@ -134,6 +135,7 @@ function dataFor(
     case 'run': {
       const run = state.runs.find((candidate) => candidate.id === id)
       if (run === undefined) return undefined
+      const outcomeDetail = runOutcomeDetail(run)
       return {
         id: run.id,
         conversationId: run.conversationId,
@@ -141,6 +143,7 @@ function dataFor(
         turnId: run.turnId,
         operationId: run.operationId,
         status: run.status,
+        ...(outcomeDetail === undefined ? {} : { outcomeDetail: safe(outcomeDetail) }),
         inputTokens: run.inputTokens,
         outputTokens: run.outputTokens,
         tokenStatus:

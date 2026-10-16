@@ -25,7 +25,8 @@ import {
   DEFAULT_CANCEL_REASON,
   shutdownRequestDigest,
 } from './operation-ledger.js'
-import { runtimeFailureDiagnostic, safeProviderDiagnostic } from './provider-values.js'
+import { snapshotFailure } from './provider-snapshot.js'
+import { runtimeFailure } from './provider-values.js'
 import { RUN_EFFECT_KIND, runEffectRequest } from './run-admission.js'
 import { executeRun } from './run-execution.js'
 import type { RunExecutionSnapshot } from './run-execution-snapshot.js'
@@ -301,13 +302,13 @@ async function reconcileRestartSnapshot(context: RestartPort, runId: string): Pr
       ...(run.controlRef === undefined ? {} : { controlRef: run.controlRef }),
       ...retainedExecutionRecoveryContext(run, context.currentState().workspace),
     })
-  } catch {
+  } catch (error) {
     await markRestartReconnecting(context, runId)
     if (canReplayAfterRestart(context, context.findRun(runId))) return
     await commitRequired(context, {
       kind: 'run.unknown',
       runId,
-      detail: 'Provider reconciliation failed after restart',
+      detail: `provider reconciliation failed after restart: ${runtimeFailure(error, 'RUNTIME_RECONCILIATION_ERROR').text}`,
     })
     return
   }
@@ -361,12 +362,7 @@ async function reconcileSnapshot(
       status: snapshot.status,
       finalText: snapshot.finalText ?? '',
       usage: snapshot.usage ?? usageSnapshotForRun(current),
-      ...(snapshot.error === undefined
-        ? {}
-        : { error: runtimeFailureDiagnostic(snapshot.error, 'RUNTIME_RECONCILIATION_ERROR') }),
-      ...(snapshot.detail === undefined
-        ? {}
-        : { reason: safeProviderDiagnostic(snapshot.detail, 'RUNTIME_RECONCILIATION_STATUS') }),
+      ...snapshotFailure(snapshot, 'RUNTIME_RECONCILIATION_ERROR', 'RUNTIME_RECONCILIATION_STATUS'),
     })
   }
 }

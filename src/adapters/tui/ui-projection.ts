@@ -8,6 +8,7 @@ import { profileModelSettings } from '../../app/profile-model-settings.js'
 import { isSensitiveFieldName } from '../../domain/bounded-structured.js'
 import type { BraidEventEnvelope } from '../../domain/events.js'
 import { interactionRemainingMs } from '../../domain/interaction-timeout.js'
+import { runOutcomeDetail } from '../../domain/provider-values.js'
 import { activeRunForBranch, type BraidState, isActiveRunStatus } from '../../domain/state.js'
 import { environmentView } from '../../views/shared/environment-presentation.js'
 import type { UiEvent } from '../../views/shared/intents.js'
@@ -33,8 +34,8 @@ import { queryActivity } from '../../views/shared/semantic-activity.js'
 import { queryGraph } from '../../views/shared/semantic-graph.js'
 import {
   projectSemanticEvent,
-  semanticPart,
   semanticInteractionRequest,
+  semanticPart,
 } from '../../views/shared/semantic-projection.js'
 import {
   type GraphQueryResult,
@@ -150,11 +151,14 @@ function messagesFor(
 ): MessageView[] {
   const branchExists = state.branches.some((branch) => branch.id === state.branchId)
   const visible = branchExists ? messagesVisibleOnBranch(state, state.branchId) : state.messages
+  const runs = new Map(state.runs.map((run) => [run.id, run]))
   return visible.slice(-MAX_VISIBLE_MESSAGES).map((message) => {
     // Canonical message text is sanitized and byte-bounded before it enters state.
     // The terminal keeps that complete value so history navigation can restore it;
     // headless snapshots retain the smaller display projection by default.
     const text = options.completeText ? message.text : boundVisibleText(message.text)
+    const run = message.role === 'assistant' && message.runId ? runs.get(message.runId) : undefined
+    const outcome = run === undefined ? undefined : runOutcomeDetail(run)
     return Object.freeze({
       id: message.id,
       role: message.role,
@@ -168,12 +172,14 @@ function messagesFor(
       ...(message.runId ? { runId: message.runId } : {}),
       parts: Object.freeze(partFor(message, text)),
       ...(message.partsTruncated ? { partsTruncated: true } : {}),
+      ...(outcome === undefined ? {} : { outcome: sanitizeTerminalText(outcome) }),
     })
   })
 }
 
 export function runViews(state: BraidState): RunView[] {
   return state.runs.slice(-MAX_VISIBLE_RUNS).map((run) => {
+    const outcomeDetail = runOutcomeDetail(run)
     const elapsed = completedRunDurationMs(run)
     const profile = run.receipt.requested.profile
     const modelSettings = profileModelSettings(profile)
@@ -191,6 +197,9 @@ export function runViews(state: BraidState): RunView[] {
       branchId: String(run.branchId),
       operationId: run.operationId,
       status: statusForRun(state, run),
+      ...(outcomeDetail === undefined
+        ? {}
+        : { outcomeDetail: sanitizeTerminalText(outcomeDetail) }),
       ...(profile.name === undefined ? {} : { profileName: sanitizeTerminalText(profile.name) }),
       profileDigest: sanitizeTerminalText(run.receipt.profileDigest),
       ...(model === undefined ? {} : { model: sanitizeTerminalText(model) }),
@@ -692,11 +701,15 @@ export function toHeadlessState(
     runs: state.runs.slice(-MAX_VISIBLE_RUNS).map((run) => {
       const replayCursor = replayCursorByRun.get(run.id)
       const durationMs = completedRunDurationMs(run)
+      const outcomeDetail = runOutcomeDetail(run)
       return {
         id: run.id,
         turnId: run.turnId,
         operationId: run.operationId,
         status: run.status,
+        ...(outcomeDetail === undefined
+          ? {}
+          : { outcomeDetail: sanitizeTerminalText(outcomeDetail) }),
         startedAt: run.startedAt,
         updatedAt: run.updatedAt,
         ...(run.terminalAt === undefined ? {} : { terminalAt: run.terminalAt }),
