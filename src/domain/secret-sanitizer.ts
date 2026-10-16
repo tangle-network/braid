@@ -178,8 +178,14 @@ export class SecretTextSanitizer {
     const bare = incompleteBareCredential(pending, 'x')
     const url = incompleteUrlAtBoundary(pending, 'x')
     const unsafe = secret ?? bare ?? url
-    const visible = unsafe === undefined ? pending : `${pending.slice(0, unsafe.start)}[redacted incomplete value]`
-    return takeUtf8Prefix(redactStable(visible), Math.max(0, this.#maxOutputBytes - this.#outputBytes))
+    const visible =
+      unsafe === undefined
+        ? pending
+        : `${pending.slice(0, unsafe.start)}[redacted incomplete value]`
+    return takeUtf8Prefix(
+      redactStable(visible),
+      Math.max(0, this.#maxOutputBytes - this.#outputBytes),
+    )
   }
 
   finish(): string {

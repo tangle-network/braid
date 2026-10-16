@@ -75,11 +75,16 @@ function protectChunk(input: string, values: readonly string[]): { text: string;
       }
     }
   }
-  return { text: held === 0 ? text : text.slice(0, -held), pending: held === 0 ? '' : text.slice(-held) }
+  return {
+    text: held === 0 ? text : text.slice(0, -held),
+    pending: held === 0 ? '' : text.slice(-held),
+  }
 }
 
 function bounded(text: string): string {
-  return text.length > MAX_STREAM_CHARACTERS ? `[earlier display text omitted]\n${text.slice(-MAX_STREAM_CHARACTERS)}` : text
+  return text.length > MAX_STREAM_CHARACTERS
+    ? `[earlier display text omitted]\n${text.slice(-MAX_STREAM_CHARACTERS)}`
+    : text
 }
 
 function endpoint(name: string): {
@@ -195,7 +200,9 @@ export class RemoteSupervisorWatcher {
             `${events.reset ? '' : (previous?.protectedPending ?? '')}${added}`,
             [spec.url, ...Object.values(spec.protectedHeaders)],
           )
-          const committedText = bounded(`${prefix}${notice}${sanitizer.push(protectedChunk.text)}${terminal ? sanitizer.finish() : ''}`)
+          const committedText = bounded(
+            `${prefix}${notice}${sanitizer.push(protectedChunk.text)}${terminal ? sanitizer.finish() : ''}`,
+          )
           let text = `${committedText}${terminal ? '' : sanitizer.preview()}${terminal && protectedChunk.pending.length > 0 ? '\n[withheld incomplete protected value]' : ''}`
           for (const protectedValue of [spec.url, ...Object.values(spec.protectedHeaders)]) {
             text = text.split(protectedValue).join('[redacted credential]')

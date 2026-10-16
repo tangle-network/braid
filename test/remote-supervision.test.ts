@@ -90,9 +90,21 @@ test('real Runtime workers cross authenticated HTTP into the conversation graph,
                       const credential = Object.values(server.readOnly.headers)[0]
                       assert.ok(credential)
                       const split = Math.ceil(credential.length / 2)
-                      yield { kind: 'progress' as const, progress: { kind: 'text_delta' as const, text: ` credential="${credential.slice(0, split)}` } }
+                      yield {
+                        kind: 'progress' as const,
+                        progress: {
+                          kind: 'text_delta' as const,
+                          text: ` credential="${credential.slice(0, split)}`,
+                        },
+                      }
                       await secretAllowed
-                      yield { kind: 'progress' as const, progress: { kind: 'text_delta' as const, text: `${credential.slice(split)}" ` } }
+                      yield {
+                        kind: 'progress' as const,
+                        progress: {
+                          kind: 'text_delta' as const,
+                          text: `${credential.slice(split)}" `,
+                        },
+                      }
                       yield {
                         kind: 'progress' as const,
                         progress: { kind: 'tool_call' as const, toolName: 'write_file' },
@@ -199,15 +211,31 @@ test('real Runtime workers cross authenticated HTTP into the conversation graph,
             assert.equal(selected.status, 'running')
             allowTools()
             for (let attempt = 0; attempt < 30; attempt += 1) {
-              await controller.dispatch({ type: 'headless-command', command: 'refresh_supervision', params: { workerId: selected.id } })
-              if (durable.app.state().workers.find((worker) => worker.id === selected.id)?.logTail?.includes('[redacted')) break
+              await controller.dispatch({
+                type: 'headless-command',
+                command: 'refresh_supervision',
+                params: { workerId: selected.id },
+              })
+              if (
+                durable.app
+                  .state()
+                  .workers.find((worker) => worker.id === selected.id)
+                  ?.logTail?.includes('[redacted')
+              )
+                break
               await new Promise((resolve) => setTimeout(resolve, 10))
             }
-            const partial = durable.app.state().workers.find((worker) => worker.id === selected.id)?.logTail
+            const partial = durable.app
+              .state()
+              .workers.find((worker) => worker.id === selected.id)?.logTail
             assert.match(String(partial), /redacted/u)
             const credential = Object.values(server.readOnly.headers)[0]
             assert.ok(credential)
-            assert.ok(!JSON.stringify(durable.app.events()).includes(credential.slice(0, Math.ceil(credential.length / 2))))
+            assert.ok(
+              !JSON.stringify(durable.app.events()).includes(
+                credential.slice(0, Math.ceil(credential.length / 2)),
+              ),
+            )
             allowSecret()
             for (let attempt = 0; attempt < 30; attempt += 1) {
               await controller.dispatch({
@@ -215,15 +243,28 @@ test('real Runtime workers cross authenticated HTTP into the conversation graph,
                 command: 'refresh_supervision',
                 params: { workerId: selected.id },
               })
-              if (durable.app.state().workers.find((worker) => worker.id === selected.id)?.logTail?.includes('write_file')) break
+              if (
+                durable.app
+                  .state()
+                  .workers.find((worker) => worker.id === selected.id)
+                  ?.logTail?.includes('write_file')
+              )
+                break
               await new Promise((resolve) => setTimeout(resolve, 10))
             }
-            assert.match(String(durable.app.state().workers.find((worker) => worker.id === selected.id)?.logTail), /write_file/u)
+            assert.match(
+              String(
+                durable.app.state().workers.find((worker) => worker.id === selected.id)?.logTail,
+              ),
+              /write_file/u,
+            )
             assert.equal(
               durable.app.state().workers.find((worker) => worker.title === 'Checker')?.logTail,
               undefined,
             )
-            const before = String(durable.app.state().workers.find((worker) => worker.id === selected.id)?.logTail)
+            const before = String(
+              durable.app.state().workers.find((worker) => worker.id === selected.id)?.logTail,
+            )
             await controller.dispatch({
               type: 'headless-command',
               command: 'refresh_supervision',
@@ -254,25 +295,58 @@ test('real Runtime workers cross authenticated HTTP into the conversation graph,
               before,
             )
             const second = await serveCoordinationMcp({
-              scope, blobs: runtimeContext.blobs, authentication: true,
+              scope,
+              blobs: runtimeContext.blobs,
+              authentication: true,
               identity: { runId: 'remote-supervision-integration', actorId: 'second-reader' },
+              perWorker: { maxIterations: 1, maxTokens: 10 },
               toolNames: ['observe_agent', 'read_journal'],
-              makeWorkerAgent() { throw new Error('Read-only source') },
+              makeWorkerAgent() {
+                throw new Error('Read-only source')
+              },
             })
             try {
               process.env[secondEnv] = JSON.stringify(second.readOnly)
-              const attached = await controller.dispatch({ type: 'headless-command', command: 'refresh_supervision', params: { remoteEndpointEnv: secondEnv } })
+              const attached = await controller.dispatch({
+                type: 'headless-command',
+                command: 'refresh_supervision',
+                params: { remoteEndpointEnv: secondEnv },
+              })
               assert.equal(attached.kind, 'accepted')
-              const owner = durable.app.state().supervisors.find((record) => record.remoteEndpointEnv === secondEnv)
+              const owner = durable.app
+                .state()
+                .supervisors.find((record) => record.remoteEndpointEnv === secondEnv)
               assert.ok(owner)
-              const secondWorker = durable.app.state().workers.find((worker) => worker.supervisorId === owner.id && worker.title === 'Surveyor')
+              const secondWorker = durable.app
+                .state()
+                .workers.find(
+                  (worker) => worker.supervisorId === owner.id && worker.title === 'Surveyor',
+                )
               assert.ok(secondWorker)
               await server.close()
-              const active = await controller.dispatch({ type: 'headless-command', command: 'refresh_supervision' })
-              assert.equal(active.kind, 'accepted', 'Automatic refresh must retain the explicitly selected second endpoint')
-              const observed = await controller.dispatch({ type: 'headless-command', command: 'refresh_supervision', params: { workerId: secondWorker.id } })
+              const active = await controller.dispatch({
+                type: 'headless-command',
+                command: 'refresh_supervision',
+                params: {},
+              })
+              assert.equal(
+                active.kind,
+                'accepted',
+                'Automatic refresh must retain the explicitly selected second endpoint',
+              )
+              const observed = await controller.dispatch({
+                type: 'headless-command',
+                command: 'refresh_supervision',
+                params: { workerId: secondWorker.id },
+              })
               assert.equal(observed.kind, 'accepted')
-              assert.match(String(durable.app.state().workers.find((worker) => worker.id === secondWorker.id)?.logTail), /Surveyor: actual output/u)
+              assert.match(
+                String(
+                  durable.app.state().workers.find((worker) => worker.id === secondWorker.id)
+                    ?.logTail,
+                ),
+                /Surveyor: actual output/u,
+              )
             } finally {
               await second.close()
             }
@@ -308,31 +382,63 @@ test('real Runtime workers cross authenticated HTTP into the conversation graph,
     )
     assert.equal(result.kind, 'winner', JSON.stringify(result))
     const emptyContext = createInMemoryRunContext()
-    const reset = await createSupervisor().run({
-      name: 'replacement-read-host',
-      async act(_, scope) {
-        const empty = await serveCoordinationMcp({ scope, blobs: emptyContext.blobs, authentication: true,
-          identity: { runId: 'remote-supervision-integration', actorId: 'replacement-reader' },
-          toolNames: ['observe_agent', 'read_journal'], makeWorkerAgent() { throw new Error('Read-only source') },
-        })
-        try {
-          process.env[secondEnv] = JSON.stringify(empty.readOnly)
-          const controller = createApplicationUiController(durable.app)
-          const refreshed = await controller.dispatch({ type: 'headless-command', command: 'refresh_supervision', params: { remoteEndpointEnv: secondEnv } })
-          assert.equal(refreshed.kind, 'accepted')
-          const owner = durable.app.state().supervisors.find((record) => record.remoteEndpointEnv === secondEnv)
-          assert.ok(owner)
-          const omitted = durable.app.state().workers.filter((worker) => worker.supervisorId === owner.id)
-          assert.equal(omitted.length, 2)
-          for (const worker of omitted) {
-            assert.equal(worker.status, 'unknown')
-            assert.equal(graphFor(durable.app.state()).find((node) => node.id === worker.id)?.status, 'unknown')
-            assert.equal(queryDetails(durable.app.state(), { entityType: 'worker', entityId: worker.id }).status, 'unknown')
+    const reset = await createSupervisor().run(
+      {
+        name: 'replacement-read-host',
+        async act(_, scope) {
+          const empty = await serveCoordinationMcp({
+            scope,
+            blobs: emptyContext.blobs,
+            authentication: true,
+            identity: { runId: 'remote-supervision-integration', actorId: 'replacement-reader' },
+            perWorker: { maxIterations: 1, maxTokens: 10 },
+            toolNames: ['observe_agent', 'read_journal'],
+            makeWorkerAgent() {
+              throw new Error('Read-only source')
+            },
+          })
+          try {
+            process.env[secondEnv] = JSON.stringify(empty.readOnly)
+            const controller = createApplicationUiController(durable.app)
+            const refreshed = await controller.dispatch({
+              type: 'headless-command',
+              command: 'refresh_supervision',
+              params: { remoteEndpointEnv: secondEnv },
+            })
+            assert.equal(refreshed.kind, 'accepted')
+            const owner = durable.app
+              .state()
+              .supervisors.find((record) => record.remoteEndpointEnv === secondEnv)
+            assert.ok(owner)
+            const omitted = durable.app
+              .state()
+              .workers.filter((worker) => worker.supervisorId === owner.id)
+            assert.equal(omitted.length, 2)
+            for (const worker of omitted) {
+              assert.equal(worker.status, 'unknown')
+              assert.equal(
+                graphFor(durable.app.state()).find((node) => node.id === worker.id)?.status,
+                'unknown',
+              )
+              assert.equal(
+                queryDetails(durable.app.state(), { entityType: 'worker', entityId: worker.id })
+                  .status,
+                'unknown',
+              )
+            }
+            return 'Omitted remote agents are unknown in both graph and details'
+          } finally {
+            await empty.close()
           }
-          return 'Omitted remote agents are unknown in both graph and details'
-        } finally { await empty.close() }
+        },
       },
-    }, {}, { ...emptyContext, budget: { maxIterations: 1, maxTokens: 10, deadlineMs: 5000 }, runId: 'remote-supervision-integration' })
+      {},
+      {
+        ...emptyContext,
+        budget: { maxIterations: 1, maxTokens: 10, deadlineMs: 5000 },
+        runId: 'remote-supervision-integration',
+      },
+    )
     assert.equal(reset.kind, 'winner', JSON.stringify(reset))
   } finally {
     allowTools()
