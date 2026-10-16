@@ -174,6 +174,7 @@ export class RemoteSupervisorWatcher {
             text: previous?.text ?? '',
             committedText: previous?.committedText ?? '',
             protectedPending: previous?.protectedPending ?? '',
+            ...(previous?.cursor === undefined ? {} : { cursor: previous.cursor }),
             status: `live events unavailable: ${events.reason}`,
             sanitizer:
               previous?.sanitizer ?? new IncrementalSecretTextSanitizer(Number.POSITIVE_INFINITY),
