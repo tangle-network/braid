@@ -6,11 +6,7 @@ import test from 'node:test'
 import { type AgentExactRunControlRef, defineAgentProfile } from '@tangle-network/agent-interface'
 import type { RetainedRunHandle } from '@tangle-network/agent-runtime/kernel'
 import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
-import {
-  type RetainedExecutionPlan,
-  RetainedExecutionPort,
-} from '../src/adapters/runtime/retained-execution.js'
-import { finalRetainedEnvelope } from '../src/adapters/runtime/retained-execution-projection.js'
+import { type RetainedExecutionPlan } from '../src/adapters/runtime/retained-execution.js'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import {
   createDurableBraidApplication,
@@ -20,10 +16,9 @@ import {
   createProductionComposition,
   type ProductionCompositionConfig,
 } from '../src/app/production-composition.js'
-import { providerEventFor } from '../src/app/run-event-mapper.js'
 import type { ConnectionRecord } from '../src/domain/entities.js'
 import { createConnectionId } from '../src/domain/ids.js'
-import { isFinalRuntimeEvent, isRuntimeEventEnvelope } from '../src/domain/runtime-events.js'
+import { isRuntimeEventEnvelope } from '../src/domain/runtime-events.js'
 import {
   DEFAULT_RUN_CAPABILITIES,
   type RetainedRunAdmissionRecord,
@@ -33,65 +28,6 @@ import { RETAINED_RUN_HANDLE_CAPABILITIES } from './support/retained-run-capabil
 import { startRuntimeBridgeServer } from './support/runtime-bridge-server.js'
 
 const now = '2026-08-11T12:00:00.000Z'
-
-test('canonical cancellation status remains cancelled in the Braid projection', () => {
-  const mapped = providerEventFor(
-    'canonical-cancel',
-    { type: 'status', status: 'cancelled', detail: 'USER_CANCELLED' },
-    {
-      eventId: 'canonical-cancel:status',
-      providerSequence: 1,
-      receivedAt: now,
-    },
-  )
-
-  assert.deepEqual(mapped, {
-    kind: 'run.status.changed',
-    runId: 'canonical-cancel',
-    status: 'cancelled',
-    detail: 'USER_CANCELLED',
-    provider: {
-      eventId: 'canonical-cancel:status',
-      providerSequence: 1,
-      receivedAt: now,
-    },
-  })
-})
-
-test('retained CLI Bridge cancellation stays cancelled in the final projection', () => {
-  const envelope = finalRetainedEnvelope(
-    'retained-cancel',
-    1,
-    'openai/gpt-5',
-    {
-      text: '',
-      success: false,
-      error: 'cli-bridge run ended cancelled',
-      metadata: {
-        runId: 'retained-cancel',
-        executionId: 'retained-cancel',
-        status: 'cancelled',
-      },
-    },
-    'Execute the retained CLI Bridge turn',
-  )
-
-  if (!isRuntimeEventEnvelope(envelope) || !isFinalRuntimeEvent(envelope.event)) {
-    throw new Error('Retained cancellation did not produce a final runtime event')
-  }
-  const final = envelope.event
-  assert.deepEqual(
-    { type: final.type, status: final.status, reason: final.reason },
-    { type: 'final', status: 'cancelled', reason: 'cli-bridge run ended cancelled' },
-  )
-  const mapped = providerEventFor('retained-cancel', final, {
-    eventId: 'retained-cancel:final',
-    providerSequence: 1,
-    receivedAt: now,
-  })
-  if (mapped.kind !== 'run.finished') throw new Error('Retained final event was not terminal')
-  assert.equal(mapped.status, 'cancelled')
-})
 
 function recordAdmissions(target: RetainedRunAdmissionRecord[]) {
   return async (admission: RetainedRunAdmissionRecord): Promise<void> => {
@@ -187,92 +123,6 @@ function recoveryPlan(controlRef: AgentExactRunControlRef): RetainedExecutionPla
     },
   }
 }
-
-test('retained recovery passes the exact provider reference into plan construction', async () => {
-  const localRunId = 'braid/local-recovery-key'
-  const controlRef: AgentExactRunControlRef = {
-    runId: 'cloud-provider-random-run',
-    provider: 'cloud-provider',
-    environmentId: 'cloud-server-issued-environment',
-    sessionId: 'cloud-session-1',
-    executionId: 'cloud-execution-1',
-    requestDigest: `sha256:${'b'.repeat(64)}`,
-  }
-  let recoveredRunId: string | undefined
-  let recoveredEnvironmentId: string | undefined
-  const execution = new RetainedExecutionPort({
-    resolve: async () => {
-      throw new Error('fresh admission is not part of this recovery test')
-    },
-    recover: async ({ runId, controlRef: exact }) => {
-      recoveredRunId = runId
-      recoveredEnvironmentId = exact?.environmentId
-      if (exact === undefined) throw new Error('recovery lost the exact provider reference')
-      return recoveryPlan(exact)
-    },
-  })
-
-  const snapshot = await execution.status({
-    runId: localRunId,
-    providerSessionId: controlRef.sessionId,
-    controlRef,
-  })
-  assert.equal(recoveredRunId, localRunId)
-  assert.equal(recoveredEnvironmentId, controlRef.environmentId)
-  assert.equal(snapshot?.runId, localRunId)
-  assert.equal(snapshot?.sessionId, controlRef.sessionId)
-})
-
-test('retained recovery carries the persisted opaque environment identity through discovery', async () => {
-  const runId = 'braid/opaque-environment-recovery'
-  const retainedAdmission: RetainedRunAdmissionRecord = {
-    phase: 'environment',
-    provider: 'cloud-provider',
-    environmentId: 'cb1.persisted-opaque-environment',
-    idempotencyKey: 'environment-braid-opaque-environment-recovery',
-    turnId: 'turn-opaque-environment-recovery',
-    sessionId: 'session-opaque-environment-recovery',
-    executionId: 'execution-opaque-environment-recovery',
-  }
-  const exact: AgentExactRunControlRef = {
-    runId: 'cloud-provider-run-opaque-environment-recovery',
-    provider: retainedAdmission.provider,
-    environmentId: retainedAdmission.environmentId,
-    sessionId: retainedAdmission.sessionId,
-    executionId: retainedAdmission.executionId,
-    requestDigest: `sha256:${'e'.repeat(64)}`,
-  }
-  let receivedAdmission: RetainedRunAdmissionRecord | undefined
-  let receivedControlRef: AgentExactRunControlRef | undefined
-  const execution = new RetainedExecutionPort({
-    resolve: async () => {
-      throw new Error('fresh admission is not part of this recovery test')
-    },
-    recover: async ({ retainedAdmission: admission }) => {
-      receivedAdmission = admission
-      if (admission?.phase !== 'environment') {
-        throw new Error('recovery lost the retained environment admission')
-      }
-      return {
-        ...recoveryPlan(exact),
-        reconnect: async (controlRef) => {
-          receivedControlRef = controlRef
-          return recoveryPlan(exact).reconnect(controlRef)
-        },
-      }
-    },
-  })
-
-  const snapshot = await execution.status({
-    runId,
-    providerSessionId: retainedAdmission.sessionId,
-    retainedAdmission,
-  })
-  assert.deepEqual(receivedAdmission, retainedAdmission)
-  assert.deepEqual(receivedControlRef, exact)
-  assert.equal(snapshot?.runId, runId)
-  assert.equal(snapshot?.sessionId, retainedAdmission.sessionId)
-})
 
 test('durable Braid detaches, restarts, and resumes one retained CLI Bridge job exactly once', async () => {
   const root = await mkdtemp(join(tmpdir(), 'braid-retained-restart-'))

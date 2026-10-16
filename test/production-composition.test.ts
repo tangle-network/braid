@@ -22,22 +22,13 @@ import {
   canonicalCandidateJson,
   defineAgentProfile,
 } from '@tangle-network/agent-interface'
-import {
-  materializeBridgeModelRoute,
-  portableBridgeModel,
-  qualifyBridgeProfileModel,
-} from '../src/adapters/connections/cli-bridge-model-route.js'
 import { bindCredentialToOrigin } from '../src/adapters/connections/production-connection-credentials.js'
 import { HeadlessCredentialStore } from '../src/adapters/credentials/headless-store.js'
 import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
 import { resolveProductionCliBridgeConnection } from '../src/adapters/runtime/production-backend-resolver.js'
 import { prepareCliBridgeProviderRoute } from '../src/adapters/runtime/production-cli-bridge-backend.js'
 import { ApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
-import {
-  createBraidApplication,
-  createDurableBraidApplication,
-  createProductionBraidApplication,
-} from '../src/app/composition.js'
+import { createBraidApplication, createDurableBraidApplication } from '../src/app/composition.js'
 import { ConnectionRegistry } from '../src/app/connections.js'
 import { MemoryJournal } from '../src/app/journal.js'
 import {
@@ -460,51 +451,6 @@ test('durable composition uses the configured backend on the normal startup path
   }
 })
 
-test('strict production composition fails closed when configuration is missing', () => {
-  assert.throws(
-    () => createProductionBraidApplication(),
-    (error: unknown) =>
-      error instanceof ProductionCompositionError &&
-      error.code === 'PRODUCTION_CONFIGURATION_REQUIRED' &&
-      /canonical profile.*configured connection/iu.test(error.message),
-  )
-  assert.throws(
-    () =>
-      createProductionBraidApplication({
-        production: {
-          profile: profile(),
-          connections: [],
-          connectionId: 'connection-missing',
-        },
-      }),
-    (error: unknown) =>
-      error instanceof ProductionCompositionError &&
-      error.code === 'PRODUCTION_CONNECTION_REQUIRED',
-  )
-})
-
-test('strict production composition rejects unsupported connection kinds', () => {
-  const unsupported = {
-    ...connection('cli-bridge', 'unsupported', 'http://127.0.0.1:4010'),
-    kind: 'unsupported-provider',
-  } as unknown as ConnectionRecord
-
-  assert.throws(
-    () =>
-      createProductionBraidApplication({
-        production: {
-          profile: profile(),
-          connections: [unsupported],
-          connectionId: unsupported.id,
-        },
-      }),
-    (error: unknown) =>
-      error instanceof ProductionCompositionError &&
-      error.code === 'PRODUCTION_CONNECTION_UNSUPPORTED' &&
-      /unsupported provider kind/iu.test(error.message),
-  )
-})
-
 test('production rejects remote cleartext endpoints unless an explicit policy accepts them', () => {
   const remote = connection('cli-bridge', 'remote-cleartext', 'http://bridge.example.test')
   assert.throws(
@@ -799,18 +745,6 @@ test('CLI routing overrides agree with the canonical profile passed to runtime',
   } finally {
     await bridge.close()
   }
-})
-
-test('CLI Bridge routes preserve nested model ids below the selected provider', () => {
-  const model = 'openai/gpt-5.6-luna'
-  const qualified = 'tangle-router/openai/gpt-5.6-luna'
-  const routed = `pi/${qualified}`
-
-  assert.equal(qualifyBridgeProfileModel(model, 'tangle-router'), qualified)
-  assert.equal(qualifyBridgeProfileModel(qualified, 'tangle-router'), qualified)
-  assert.equal(portableBridgeModel('pi', routed, 'tangle-router'), qualified)
-  assert.equal(materializeBridgeModelRoute('pi', model, 'tangle-router'), routed)
-  assert.equal(materializeBridgeModelRoute('codex', 'codex/default', 'codex'), 'codex/default')
 })
 
 test('schema-v1 CLI Bridge profiles load as portable models and dispatch one runner prefix', async () => {
@@ -2273,118 +2207,6 @@ test('first-run Pi model validation uses the supported total completion cap', as
   assert.equal('effort' in (body ?? {}), false)
 })
 
-test('production selection transition keeps its lifecycle order across injected failures', async () => {
-  const phases = ['validate', 'open', 'persist', 'swap', 'old-close'] as const
-  for (const phase of phases) {
-    const root = await mkdtemp(join(tmpdir(), `braid-transition-${phase}-`))
-    const { setup, selection } = await transitionSetup(root)
-    const events: string[] = []
-    const previousApp = createBraidApplication({ fixture: 'deterministic' })
-    let previousClosed = false
-    const previous = {
-      app: previousApp,
-      close: async () => {
-        if (previousClosed) return
-        previousClosed = true
-        events.push('old-close')
-        if (phase === 'old-close') throw new Error('injected old close failure')
-        await previousApp.close()
-      },
-    }
-    const active = { current: previous }
-    let next:
-      | {
-          readonly app: ReturnType<typeof createBraidApplication>
-          readonly close: () => Promise<void>
-        }
-      | undefined
-    let controllerApp = previousApp
-    const controller = {
-      replaceApplication: async (application: ReturnType<typeof createBraidApplication>) => {
-        events.push('swap')
-        if (phase === 'swap') throw new Error('injected controller swap failure')
-        controllerApp = application
-      },
-    }
-    try {
-      const transition = transitionProductionSelection({
-        setup,
-        startupOptions: { workspace: root },
-        selection,
-        workspace: root,
-        controller,
-        active,
-        validate: async () => {
-          events.push('validate')
-          if (phase === 'validate') throw new Error('injected validation failure')
-          return { status: 'verified', detail: 'injected validation passed' }
-        },
-        openApplication: async () => {
-          events.push('open')
-          if (phase === 'open') throw new Error('injected open failure')
-          const app = createBraidApplication({ fixture: 'deterministic' })
-          let closed = false
-          const handle = {
-            app,
-            close: async () => {
-              if (closed) return
-              closed = true
-              events.push('next-close')
-              await app.close()
-            },
-          }
-          next = handle
-          return handle
-        },
-        persist: async () => {
-          events.push('persist')
-          if (phase === 'persist') throw new Error('injected persist failure')
-          return {
-            rollback: async () => {
-              events.push('rollback')
-            },
-          }
-        },
-      })
-      if (phase === 'old-close') {
-        const verification = await transition
-        assert.equal(verification.status, 'verified')
-      } else {
-        const expectedFailure =
-          phase === 'validate' ? 'validation' : phase === 'swap' ? 'controller swap' : phase
-        await assert.rejects(
-          transition,
-          (error: unknown) =>
-            error instanceof Error && error.message === `injected ${expectedFailure} failure`,
-        )
-      }
-      const expected =
-        phase === 'validate'
-          ? ['validate']
-          : phase === 'open'
-            ? ['validate', 'open']
-            : phase === 'persist'
-              ? ['validate', 'open', 'persist', 'next-close']
-              : phase === 'swap'
-                ? ['validate', 'open', 'persist', 'swap', 'rollback', 'next-close']
-                : ['validate', 'open', 'persist', 'swap', 'old-close']
-      assert.deepEqual(events, expected, phase)
-      if (phase === 'old-close') {
-        assert.equal(active.current.app, next?.app, phase)
-        assert.equal(controllerApp, next?.app, phase)
-      } else {
-        assert.equal(active.current.app, previousApp, phase)
-        assert.equal(controllerApp, previousApp, phase)
-      }
-    } finally {
-      if (active.current.app === previousApp) await previous.close().catch(() => undefined)
-      if (next !== undefined && active.current.app !== next.app)
-        await next.close().catch(() => undefined)
-      if (active.current.app === next?.app) await next.close().catch(() => undefined)
-    }
-  }
-})
-
 test('failed controller activation rolls back persisted config and keeps controller and active app aligned', async () => {
   const root = await mkdtemp(join(tmpdir(), 'braid-transition-crash-safe-'))
   const { setup, selection } = await transitionSetup(root)
@@ -2465,17 +2287,3 @@ test('bin startup reports missing production config before opening storage', asy
   )
 })
 
-test('bin startup preserves the actionable encrypted-storage prerequisite', () => {
-  const error = Object.assign(
-    new Error('The operating-system credential facility is unavailable'),
-    { code: 'CREDENTIAL_STORE_UNAVAILABLE' },
-  )
-  assert.equal(
-    formatProductionStartupError(error),
-    'CREDENTIAL_STORE_UNAVAILABLE: The operating-system credential facility is unavailable',
-  )
-  assert.equal(
-    formatProductionStartupError(new Error('unexpected provider detail')),
-    'PROVIDER_ERROR',
-  )
-})

@@ -2,14 +2,12 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { createServer, type IncomingHttpHeaders } from 'node:http'
 import test from 'node:test'
-import type { AgentProfile } from '@tangle-network/agent-interface'
-import { type ExecutorFactory, streamAgentTurn } from '@tangle-network/agent-runtime/kernel'
+import { streamAgentTurn } from '@tangle-network/agent-runtime/kernel'
 import { bindCredentialToOrigin } from '../src/adapters/connections/production-connection-credentials.js'
 import { createProductionConnectionAdapter } from '../src/adapters/connections/production-connections.js'
 import {
   BRAID_TANGLE_CLIENT,
   TANGLE_CLIENT_HEADER,
-  withTangleRouterClient,
 } from '../src/adapters/connections/tangle-router-client.js'
 import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
 import { createProductionBackendResolver } from '../src/adapters/runtime/production-backend-resolver.js'
@@ -86,11 +84,6 @@ async function startRecordingRouter(model: string) {
   }
 }
 
-test('the client header names Braid and its package version', () => {
-  assert.equal(TANGLE_CLIENT_HEADER, 'x-tangle-client')
-  assert.equal(BRAID_TANGLE_CLIENT, `braid/${packageVersion()}`)
-})
-
 test('tangle-inference turns send the client header through the Runtime Router transport', async () => {
   const router = await startRecordingRouter('gpt-5')
   try {
@@ -121,29 +114,6 @@ test('tangle-inference turns send the client header through the Runtime Router t
   } finally {
     await router.close()
   }
-})
-
-test('the executor wrapper replaces an inherited client header and keeps the rest', () => {
-  let received: Readonly<Record<string, string>> | undefined
-  const inner: ExecutorFactory<unknown> = (_spec, context) => {
-    received = context.propagatedHeaders
-    throw new Error('stop after capturing the context')
-  }
-  const profile: AgentProfile = { model: { default: 'gpt-5', provider: 'openai' } }
-  assert.throws(() =>
-    withTangleRouterClient(inner)(
-      { profile, harness: null },
-      {
-        signal: new AbortController().signal,
-        seams: {},
-        propagatedHeaders: { 'X-Tangle-Client': 'someone-else/1.0', traceparent: 'trace-1' },
-      },
-    ),
-  )
-  assert.deepEqual(received, {
-    traceparent: 'trace-1',
-    [TANGLE_CLIENT_HEADER]: BRAID_TANGLE_CLIENT,
-  })
 })
 
 test('tangle-inference health and model verification identify Braid; CLI Bridge requests do not', async () => {

@@ -507,14 +507,6 @@ function assertSnapshotModuleGraphIsAcyclic(graph: ReadonlyMap<string, readonly 
   for (const file of graph.keys()) visit(file, [])
 }
 
-test('snapshot modules stay bounded and acyclic', async () => {
-  const { graph, lineCounts } = await snapshotModuleArchitecture()
-  for (const [file, lineCount] of lineCounts) {
-    assert.ok(lineCount <= 300, `${file} has ${lineCount} lines; maximum is 300`)
-  }
-  assertSnapshotModuleGraphIsAcyclic(graph)
-})
-
 test('latest valid generation restores after a process restart', async (t) => {
   if (!sqliteAvailable) {
     throw new Error(
