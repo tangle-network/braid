@@ -146,7 +146,8 @@ export class RemoteSupervisorWatcher {
           connection.streams.set(workerId, {
             text: previous?.text ?? '',
             status: `live events unavailable: ${events.reason}`,
-            sanitizer: previous?.sanitizer ?? new IncrementalSecretTextSanitizer(Number.POSITIVE_INFINITY),
+            sanitizer:
+              previous?.sanitizer ?? new IncrementalSecretTextSanitizer(Number.POSITIVE_INFINITY),
           })
         } else {
           const prefix = events.reset ? '[stream reset]\n' : (previous?.text ?? '')
@@ -158,8 +159,14 @@ export class RemoteSupervisorWatcher {
                 : `\n[event omitted: ${entry.omitted}]\n`,
             )
             .join('')
-          const sanitizer = events.reset || events.historyExpired ? new IncrementalSecretTextSanitizer(Number.POSITIVE_INFINITY) : previous?.sanitizer ?? new IncrementalSecretTextSanitizer(Number.POSITIVE_INFINITY)
-          const terminal = !['queued', 'acquiring', 'running'].includes(tree.nodes.find((node) => node.id === workerId)?.status ?? 'unknown')
+          const sanitizer =
+            events.reset || events.historyExpired
+              ? new IncrementalSecretTextSanitizer(Number.POSITIVE_INFINITY)
+              : (previous?.sanitizer ??
+                new IncrementalSecretTextSanitizer(Number.POSITIVE_INFINITY))
+          const terminal = !['queued', 'acquiring', 'running'].includes(
+            tree.nodes.find((node) => node.id === workerId)?.status ?? 'unknown',
+          )
           let text = `${prefix}${notice}${sanitizer.push(added)}${terminal ? sanitizer.finish() : ''}`
           for (const protectedValue of [spec.url, ...Object.values(spec.protectedHeaders)]) {
             text = text.split(protectedValue).join('[redacted credential]')

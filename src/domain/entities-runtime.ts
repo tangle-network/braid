@@ -145,7 +145,8 @@ export interface WorkerRecord {
     | 'unknown'
   readonly title?: string
   readonly runner?: string
-  readonly profileName?: string
+  /** Structural role established by the Runtime tree's parent edges. */
+  readonly role?: 'manager' | 'worker'
   readonly streamStatus?: string
   readonly spendUsd?: number
   readonly inputTokens?: number

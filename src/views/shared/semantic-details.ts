@@ -377,7 +377,7 @@ function dataFor(
         status: worker.status,
         ...(worker.title === undefined ? {} : { title: safe(worker.title) }),
         ...(worker.runner === undefined ? {} : { runner: safe(worker.runner) }),
-        ...(worker.profileName === undefined ? {} : { profile: safe(worker.profileName) }),
+        ...(worker.role === undefined ? {} : { role: worker.role }),
         ...(worker.streamStatus === undefined ? {} : { stream: safe(worker.streamStatus) }),
         ...(worker.spendUsd === undefined ? {} : { spendUsd: worker.spendUsd }),
         ...(worker.inputTokens === undefined ? {} : { inputTokens: worker.inputTokens }),

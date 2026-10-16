@@ -18,7 +18,8 @@ conversation cannot silently move to another.
 The existing `refresh_supervision` RPC accepts `remoteEndpointEnv` to attach the same source and
 `workerId` to select a projected agent. The graph reads the complete owned tree through
 `connectRemoteSupervisor`; selecting an agent reads only its normalized live executor events.
-Names/profile labels, statuses and parent identities come from Runtime. No harness output or
+Names, statuses and parent identities come from Runtime; parent edges establish structural
+manager/worker roles. Braid does not relabel a display name as an authored profile. No harness output or
 private supervisor file is parsed. Read-only remote capabilities never grant steer, cancel or attach.
 
 Remote live output is a bounded, process-local view, not durable transcript replay. Braid keeps

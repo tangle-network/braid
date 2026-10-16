@@ -145,14 +145,14 @@ function supervisorDetail(record: SupervisorRecord | undefined): EntityDetailVie
 
 function workerDetail(record: WorkerRecord | undefined): EntityDetailView | undefined {
   if (record === undefined) return undefined
-  if (record.profileName !== undefined) {
+  if (record.role !== undefined) {
     return {
       entityType: 'worker',
       entityId: String(record.id),
-      title: safe(record.title ?? record.profileName),
+      title: safe(record.title ?? record.runtimeId),
       status: record.status,
       lines: bounded([
-        `profile: ${safe(record.profileName)} · ${safe(record.runner ?? 'runner unknown')}`,
+        `${safe(record.title ?? record.runtimeId)} · ${record.role} · ${safe(record.runner ?? 'runner unknown')}`,
         `parent: ${safe(record.parentRuntimeRef ?? 'Runtime root')}`,
         safe(record.streamStatus ?? 'select this agent to read live events'),
         ...(record.logTail === undefined ? [] : record.logTail.split('\n').map(safe)),

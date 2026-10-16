@@ -18,6 +18,7 @@ import {
 
 function status(value: string): WorkerRecord['status'] {
   switch (value) {
+    case 'pending':
     case 'queued':
       return 'pending'
     case 'acquiring':
@@ -64,14 +65,13 @@ export async function commitRemoteSupervisorProjection(
     remoteEndpointEnv: input.remoteEndpointEnv,
     status:
       root === undefined ? (tree.inFlight > 0 ? 'running' : 'unknown') : rootStatus(root.status),
-    title: redactSensitiveText(root?.label ?? `Runtime ${tree.root}`),
-    workerCount: tree.nodes.filter((node) => node.id !== tree.root).length,
+    title: redactSensitiveText(`Runtime ${tree.root}`),
+    workerCount: tree.nodes.length,
     createdAt,
     updatedAt: at,
   }
   const byId = new Map(
     tree.nodes
-      .filter((node) => node.id !== tree.root)
       .map((node) => [
         node.id,
         createWorkerId(
@@ -82,6 +82,8 @@ export async function commitRemoteSupervisorProjection(
   if (new Set(tree.nodes.map((node) => node.id)).size !== tree.nodes.length)
     throw new Error('Runtime tree contains duplicate agent identities')
   const workers: WorkerRecord[] = []
+  const parents = new Set(tree.nodes.map((node) => node.parent))
+  const priorWorkers = new Map(state.workers.map((worker) => [worker.id, worker]))
   const graphNodes: GraphNodeRecord[] = [
     {
       ...graphNode({ kind: 'supervisor', id }, createdAt, supervisor.title),
@@ -99,10 +101,9 @@ export async function commitRemoteSupervisorProjection(
   for (const node of tree.nodes) {
     const workerId = byId.get(node.id)
     if (workerId === undefined) continue
-    const prior = state.workers.find((worker) => worker.id === workerId)
+    const prior = priorWorkers.get(workerId)
     const stream = streams.get(node.id)
-    const parent =
-      node.parent === undefined || node.parent === tree.root ? undefined : byId.get(node.parent)
+    const parent = node.parent === undefined ? undefined : byId.get(node.parent)
     const worker: WorkerRecord = {
       id: workerId,
       runtimeId: node.id,
@@ -110,7 +111,7 @@ export async function commitRemoteSupervisorProjection(
       ...(node.parent === undefined ? {} : { parentRuntimeRef: node.parent }),
       ...(parent === undefined ? {} : { parentWorkerId: parent }),
       title: redactSensitiveText(node.label),
-      profileName: redactSensitiveText(node.label),
+      role: parents.has(node.id) ? 'manager' : 'worker',
       runner: redactSensitiveText(node.runtime),
       status: status(node.status),
       streamStatus: stream?.status ?? 'select this agent to read its live events',
@@ -157,5 +158,5 @@ export async function commitRemoteSupervisorProjection(
 
 function rootStatus(value: string): SupervisorRecord['status'] {
   const observed = status(value)
-  return observed === 'pending' ? 'starting' : observed === 'waiting' ? 'running' : observed
+  return observed === 'pending' ? 'unknown' : observed === 'waiting' ? 'running' : observed
 }

@@ -68,8 +68,9 @@ export class GraphView extends EntityBrowser {
       this.#selectWaitingRun()
       return
     }
+    const previous = this.selectedId
     super.handleInput(data)
-    this.#onSelectWorker?.(
+    if (this.selectedId !== previous) this.#onSelectWorker?.(
       this.selectedId?.startsWith('worker:') === true
         ? this.selectedId.slice('worker:'.length)
         : undefined,

@@ -33,6 +33,7 @@ test('real Runtime workers cross authenticated HTTP into the conversation graph,
   }
   const envName = 'BRAID_REMOTE_SUPERVISION_INTEGRATION'
   const previousEnv = process.env[envName]
+  const runtimeContext = createInMemoryRunContext()
   let durable = await createDurableBraidApplication(options)
   let release = () => {}
   const released = new Promise<void>((resolve) => {
@@ -46,6 +47,7 @@ test('real Runtime workers cross authenticated HTTP into the conversation graph,
         async act(_, scope) {
           const server = await serveCoordinationMcp({
             scope,
+            blobs: runtimeContext.blobs,
             authentication: true,
             identity: { runId: 'remote-supervision-integration', actorId: 'manager' },
             perWorker: { maxIterations: 1, maxTokens: 10 },
@@ -128,7 +130,7 @@ test('real Runtime workers cross authenticated HTTP into the conversation graph,
             assert.equal(initial.kind, 'accepted')
             const workers = durable.app.state().workers
             assert.equal(workers.length, 2)
-            const selected = workers.find((worker) => worker.profileName === 'Surveyor')
+            const selected = workers.find((worker) => worker.title === 'Surveyor')
             assert.ok(selected)
             assert.equal(
               runtimeWorkerReference(
@@ -170,7 +172,7 @@ test('real Runtime workers cross authenticated HTTP into the conversation graph,
             assert.match(String(details.data.logTail), /Surveyor: actual output/u)
             assert.match(String(details.data.logTail), /write_file/u)
             assert.equal(
-              durable.app.state().workers.find((worker) => worker.profileName === 'Checker')
+              durable.app.state().workers.find((worker) => worker.title === 'Checker')
                 ?.logTail,
               undefined,
             )
@@ -227,7 +229,7 @@ test('real Runtime workers cross authenticated HTTP into the conversation graph,
       },
       {},
       {
-        ...createInMemoryRunContext(),
+        ...runtimeContext,
         budget: { maxIterations: 5, maxTokens: 100, deadlineMs: 25_000 },
         runId: 'remote-supervision-integration',
       },
