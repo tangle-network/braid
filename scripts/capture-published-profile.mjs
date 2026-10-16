@@ -10,9 +10,11 @@ import { castFor, createCapturedTerminal, pause } from './live-demo/terminal.mjs
 
 const root = resolve(process.env.BRAID_OPERATOR_PROOF_ROOT)
 const run = promisify(execFile)
-const workspace = join(root, 'workspace')
-await mkdir(join(workspace, '.braid'), { recursive: true })
+const firstRun = process.env.BRAID_OPERATOR_PROOF_FIRST_RUN === '1'
+await mkdir(root, { recursive: true })
 const capture = await mkdtemp(join(root, 'capture-'))
+const workspace = firstRun ? join(capture, 'workspace') : join(root, 'workspace')
+await mkdir(join(workspace, '.braid'), { recursive: true })
 const output = join(capture, 'evidence')
 await mkdir(output, { recursive: true })
 const key = join(root, 'database.key')
@@ -22,29 +24,30 @@ try {
   await writeFile(key, randomBytes(32), { mode: 0o600 })
 }
 const now = new Date().toISOString()
-await writeFile(
-  join(workspace, '.braid/config.json'),
-  JSON.stringify({
-    format: 'braid-startup-config',
-    schemaVersion: 2,
-    profile: { name: 'Unselected profile' },
-    databaseKeyFile: key,
-    connectionId: 'connection-discovery-operator',
-    connections: [
-      {
-        id: 'connection-discovery-operator',
-        kind: 'cli-bridge',
-        name: 'Discovery operator on GTR',
-        endpoint: process.env.BRAID_CLI_BRIDGE_ENDPOINT,
-        providerOptions: { transport: 'local' },
-        createdAt: now,
-        updatedAt: now,
-        lastHealth: { status: 'unknown' },
-      },
-    ],
-  }),
-  { mode: 0o600 },
-)
+if (!firstRun)
+  await writeFile(
+    join(workspace, '.braid/config.json'),
+    JSON.stringify({
+      format: 'braid-startup-config',
+      schemaVersion: 2,
+      profile: { name: 'Unselected profile' },
+      databaseKeyFile: key,
+      connectionId: 'connection-discovery-operator',
+      connections: [
+        {
+          id: 'connection-discovery-operator',
+          kind: 'cli-bridge',
+          name: 'Discovery operator on GTR',
+          endpoint: process.env.BRAID_CLI_BRIDGE_ENDPOINT,
+          providerOptions: { transport: 'local' },
+          createdAt: now,
+          updatedAt: now,
+          lastHealth: { status: 'unknown' },
+        },
+      ],
+    }),
+    { mode: 0o600 },
+  )
 
 const binary = process.env.BRAID_OPERATOR_BINARY ?? resolve('dist/bin/braid.js')
 const measurements = []
@@ -68,7 +71,7 @@ for (const [columns, rows] of [
       '--profile',
       'discovery-operator',
       '--connection',
-      'connection-discovery-operator',
+      firstRun ? 'connection-local-cli-bridge' : 'connection-discovery-operator',
       '--database-key-file',
       key,
       '--record-state',
@@ -77,12 +80,28 @@ for (const [columns, rows] of [
   })
   try {
     await terminal.waitForScreen(
-      (screen) => screen.includes('type / for commands'),
+      (screen) => screen.includes(firstRun ? 'choose an AgentProfile' : 'type / for commands'),
       'published profile selected',
       60_000,
     )
     await terminal.waitForStable()
-    assert.equal((await terminal.captureState()).view.profileName, 'discovery-operator')
+    if (firstRun) {
+      terminal.input('\r')
+      await terminal.waitForScreen(
+        (screen) => screen.includes('choose a connection'),
+        'explicit profile chosen',
+        10_000,
+      )
+      terminal.input('\r')
+      await terminal.waitForScreen(
+        (screen) => screen.includes('review and start'),
+        'review chosen profile',
+        10_000,
+      )
+      assert.match(terminal.snapshot().screen, /discovery-operator/u)
+    } else {
+      assert.equal((await terminal.captureState()).view.profileName, 'discovery-operator')
+    }
     await writeFile(join(output, `${size}.txt`), terminal.snapshot().screen)
     const frameCast = join(output, `${size}.cast`)
     await writeFile(
@@ -103,7 +122,7 @@ for (const [columns, rows] of [
       join(output, `${size}.png`),
     ])
     await rm(frameGif)
-    if (columns === 120) {
+    if (columns === 120 && !firstRun) {
       const cases = [
         ['routing', 'What is 17 times 23? Do not draft a play for this small question.'],
         [
@@ -189,6 +208,7 @@ console.log(
   JSON.stringify({
     root,
     capture,
+    firstRun,
     measurements: measurements.map(({ name, elapsedMs, run }) => ({
       name,
       elapsedMs,
