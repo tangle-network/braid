@@ -103,7 +103,7 @@ async function nextWithin<T>(
   if (arm.armed) return withinDeadline(pending, idleMs)
   let timer: ReturnType<typeof setTimeout> | undefined
   let settled = false
-  const deadline = arm.whenArmed.then(() => {
+  const deadline = arm.whenArmed.then<T | typeof STALLED>(() => {
     // The first event may finish this wait before its handler arms the stream.
     if (settled) return pending
     return new Promise<typeof STALLED>((resolve) => {
