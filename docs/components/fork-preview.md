@@ -150,13 +150,11 @@ Workspace data moves through the provider or Sandbox implementation, not through
 
 ## Proof
 
-`test/conversation-branch-effects.test.ts` covers branch, clone, workspace fork, cross-runner fork, changed-plan conflict, restart lookup, independent mutation, source preservation, cancellation, cleanup, confidential capability gates, canonical attestation verification, and request propagation.
-
-`test/rpc.test.ts` covers the headless confidential schema and rejects unknown request fields.
+`test/cli-bridge-context-transfer.test.ts` exercises context transfer through published Runtime/provider packages and a real HTTP server. The existing `test:rpc:packed:deterministic` command exercises the shipped headless binary; protected live checks own workspace creation, attestation, and cleanup proof.
 
 `test/profile-fork.test.ts` covers profile-changing forks: catalog resolution and refusal of unknown, untrusted, and unavailable references; digest binding and refusal of a changed profile file before transfer; the bound profile on the first and later turns; idempotent execution; restart, full journal replay, and encrypted SQLite reopen; legacy handoffs without a destination profile; headless `profileRef`; and keyboard accept, decline, and cancel at four terminal sizes.
 
-`test/tui-autocomplete.test.ts` and `test/tui-core-workflows.test.ts` cover the TUI command path and safe preview rendering.
+`test/tui.test.ts` retains the consolidated Pi keyboard workflow; `test/profile-fork.test.ts` includes the fork review path.
 
 The packed keyboard flow exercises the same panel with local fixtures; it is not live provider proof.
 

@@ -59,7 +59,7 @@ Legacy view context remains bounded by the existing twenty-thousand-message and 
 
 Provider lookups run before creation calls, so restart recovery does not repeat successful checkpoint, fork, or transfer effects.
 
-`test/conversation-branch-effects.test.ts` proves canonical handoff, restart replay, exact provider requests, destination isolation, cleanup, and unavailable capability behavior.
+`test/profile-fork.test.ts` checks profile-bound forks through real profile files, keyboard input, and encrypted SQLite reopen. `test/cli-bridge-context-transfer.test.ts` checks the published Runtime/provider context-transfer path over real HTTP. The protected live matrix owns provider workspace creation and cleanup proof.
 
 The unit, contract, and security suites cover reducer replay, durable operations, redaction, and public-surface boundaries.
 

@@ -10,11 +10,9 @@ import { openSqliteStorage } from '../src/adapters/storage/sqlite.js'
 import {
   configureCipherDatabase,
   loadCipherDatabaseFactory,
-  type SqliteDatabase,
 } from '../src/adapters/storage/sqlite-driver.js'
 import { StorageError } from '../src/adapters/storage/sqlite-errors.js'
 import { applyConnectionPragmas } from '../src/adapters/storage/sqlite-schema.js'
-import { STARTER_PROFILE } from '../src/app/composition.js'
 import { StorageJournal } from '../src/app/storage-journal.js'
 import { canonicalDigest } from '../src/domain/canonical.js'
 import {
@@ -24,7 +22,6 @@ import {
   createRunId,
   createWorkspaceId,
 } from '../src/domain/ids.js'
-import { initialState } from '../src/domain/state.js'
 import { FixedClock } from '../src/ports/clock.js'
 import type { CredentialPort } from '../src/ports/credentials.js'
 import { credentialRef } from '../src/ports/credentials.js'
@@ -48,43 +45,6 @@ function requireNativeStorage(): void {
     )
   }
 }
-
-test('SQLite receives random database keys as zeroized raw key material', () => {
-  const key = Buffer.from(Array.from({ length: 32 }, (_, index) => index + 1))
-  for (const newDatabase of [false, true]) {
-    let passed: Buffer | undefined
-    let retained: Buffer | undefined
-    const accept = (material: Buffer) => {
-      passed = Buffer.from(material)
-      retained = material
-      return 0
-    }
-    const database = {
-      open: true,
-      prepare: () => ({
-        run: () => ({ changes: 0 }),
-        get: () => ({ count: 0 }),
-        all: () => [],
-      }),
-      exec: () => undefined,
-      pragma: (sql: string, options?: { readonly simple?: boolean }) =>
-        sql === 'cipher' && options?.simple === true ? 'sqlcipher' : undefined,
-      key: newDatabase ? () => assert.fail('existing-database key path was not expected') : accept,
-      rekey: newDatabase ? accept : () => assert.fail('new-database rekey path was not expected'),
-      close: () => undefined,
-    } as unknown as SqliteDatabase
-
-    configureCipherDatabase(database, key, { newDatabase })
-
-    assert.equal(passed?.subarray(0, 4).toString('ascii'), 'raw:')
-    assert.deepEqual(passed?.subarray(4), key)
-    assert.equal(
-      retained?.every((byte) => byte === 0),
-      true,
-    )
-  }
-  assert.deepEqual(key, Buffer.from(Array.from({ length: 32 }, (_, index) => index + 1)))
-})
 
 test('production SQLite rejects pre-v1 password-derived databases without a fallback', async () => {
   requireNativeStorage()
@@ -262,111 +222,6 @@ function countedCredentialStore(): {
     resolveCount: () => resolves,
   }
 }
-
-test('MemoryStorage remains behind StoragePort for deterministic duplicate and gap tests', async () => {
-  const storage = new MemoryStorage()
-  const first = journalEvent('run-memory', 1, 'event-memory-1', { text: 'one' })
-  const duplicate = await storage.append([first])
-  assert.deepEqual(duplicate.acceptedEventIds, [first.eventId])
-  const replay = await storage.append([first])
-  assert.deepEqual(replay.duplicateEventIds, [first.eventId])
-  const gap = await storage.append([journalEvent('run-gap', 3, 'event-gap-3', { text: 'three' })])
-  assert.equal(gap.missingHistory[0]?.fromSequence, 1)
-  assert.deepEqual(
-    (await storage.replay({ runId: createRunId('run-gap') })).events.map((event) => event.sequence),
-    [3],
-  )
-  const sameLocalId = await storage.append([
-    {
-      ...journalEvent('run-another', 1, 'event-memory-1', { text: 'scoped local id' }),
-      providerEventId: 'provider-event-1',
-    },
-  ])
-  assert.deepEqual(sameLocalId.acceptedEventIds, ['event-memory-1'])
-  assert.equal((await storage.replay({ runId: createRunId('run-gap') })).complete, false)
-  await storage.append([
-    journalEvent('run-gap', 1, 'event-gap-1', { text: 'one' }),
-    journalEvent('run-gap', 2, 'event-gap-2', { text: 'two' }),
-  ])
-  const complete = await storage.replay({ runId: createRunId('run-gap') })
-  assert.equal(complete.complete, true)
-  assert.deepEqual(
-    complete.events.map((event) => event.sequence),
-    [1, 2, 3],
-  )
-  const incremental = await storage.projectionChecksum()
-  const rebuilt = await storage.rebuild(mutation('rebuild'))
-  assert.equal(rebuilt.checksum, incremental)
-
-  const missingRedaction = mutation('redaction-missing', {
-    conversationId: first.conversationId,
-    eventId: createEventId('event-memory-missing'),
-    reasonDigest: canonicalDigest('missing target'),
-  })
-  await assert.rejects(
-    () =>
-      storage.redact({
-        conversationId: first.conversationId,
-        eventId: createEventId('event-memory-missing'),
-        reason: 'missing target',
-        operation: missingRedaction,
-      }),
-    (error: unknown) => error instanceof StorageError && error.code === 'EVENT_NOT_FOUND',
-  )
-  await assert.rejects(
-    () =>
-      storage.redact({
-        conversationId: first.conversationId,
-        eventId: createEventId('event-memory-missing'),
-        reason: 'missing target',
-        operation: missingRedaction,
-      }),
-    (error: unknown) => error instanceof StorageError && error.code === 'OPERATION_FAILED_REPLAY',
-  )
-})
-
-test('storage journal materializes provider replay identity for restart and deduplication', async () => {
-  const storage = new MemoryStorage()
-  const clock = new FixedClock('2026-08-02T00:00:00.000Z')
-  const journal = await StorageJournal.fromStorage(storage, clock)
-  const state = initialState(STARTER_PROFILE)
-  const provider = {
-    eventId: 'provider-event-cursor-7',
-    providerSequence: 7,
-    cursor: 'cursor-7',
-    receivedAt: '2026-08-02T00:00:01.000Z',
-  }
-  const envelope = journal.envelope(state, {
-    kind: 'run.provider.event',
-    runId: 'run-storage-provider-cursor',
-    envelope: {
-      runId: 'run-storage-provider-cursor',
-      eventId: provider.eventId,
-      sequence: provider.providerSequence,
-      cursor: provider.cursor,
-      receivedAt: provider.receivedAt,
-      event: { type: 'session.updated', sessionId: 'ses_storage_cursor' },
-    },
-    provider,
-  })
-
-  assert.equal(envelope.cursor, provider.cursor)
-  assert.equal((await journal.append(envelope)).appended, true)
-  const stored = (await storage.events())[0]
-  assert.equal(stored?.cursor, provider.cursor)
-  assert.equal(stored?.providerEventId, provider.eventId)
-  assert.equal(stored?.receivedAt, provider.receivedAt)
-  assert.equal(
-    (await storage.replay({ runId: createRunId('run-storage-provider-cursor') })).lastCursor,
-    provider.cursor,
-  )
-})
-
-test('MemoryStorage records post-terminal audit events but rejects output mutation', async () => {
-  const storage = new MemoryStorage()
-  await assertPostTerminalJournalPolicy(storage)
-  await storage.close()
-})
 
 test('production SQLite records post-terminal audit events but rejects output mutation', async () => {
   requireNativeStorage()

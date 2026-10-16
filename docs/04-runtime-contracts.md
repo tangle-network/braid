@@ -243,7 +243,7 @@ cancel(request: {
 }>
 ```
 
-`test/run-admission-architecture.test.ts` uses the real Runtime Router executor and proves that its local abort remains unknown.
+`test/cli-bridge-profile-contract.test.ts` exercises cancellation across the real Runtime/HTTP boundary. The protected live bridge proof is the provider acknowledgement check; local stream abortion is not provider evidence.
 
 ### Live root handle
 

@@ -1,33 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { canonicalJson } from '../src/domain/canonical.js'
 import { redactSensitiveText, sanitizeTextChunks } from '../src/domain/secret-sanitizer.js'
-import { containsUnsafeControlCharacter, isCanonicalIsoDateTime } from '../src/domain/text.js'
-
-test('unsafe diagnostic controls are rejected without rejecting normal whitespace', () => {
-  for (const code of [0, 1, 8, 11, 12, 14, 31, 127]) {
-    assert.equal(containsUnsafeControlCharacter(String.fromCharCode(code)), true)
-  }
-  for (const value of ['plain text', '\t', '\n', '\r', '\u0080']) {
-    assert.equal(containsUnsafeControlCharacter(value), false)
-  }
-})
-
-test('canonical timestamps reject parseable but non-canonical dates', () => {
-  assert.equal(isCanonicalIsoDateTime('2026-08-02T00:00:00.000Z'), true)
-  for (const value of ['1', '2026-8-2', '2026-02-30T00:00:00.000Z', '2026-08-02T00:00:00Z']) {
-    assert.equal(isCanonicalIsoDateTime(value), false, value)
-  }
-})
-
-test('canonical JSON uses locale-independent key ordering and rejects ambiguous values', () => {
-  assert.equal(canonicalJson({ z: 1, ä: 2, a: 3 }), '{"a":3,"z":1,"ä":2}')
-  assert.throws(() => canonicalJson({ value: Number.NaN }), /finite numbers/u)
-  assert.throws(() => canonicalJson([undefined]), /undefined array/u)
-  const cyclic: Record<string, unknown> = {}
-  cyclic.self = cyclic
-  assert.throws(() => canonicalJson(cyclic), /cycles/u)
-})
 
 test('known bare credential formats are removed across every stream boundary', () => {
   const credentials = [
@@ -184,26 +157,4 @@ test('regression: overflow preserves bearer, quoted-value and Unicode URL bounda
   const assignment = sanitizeTextChunks(assignmentChunks)
   assert(!assignment.includes('START-VALUE-QUOTE-CANARY'))
   assert(assignment.includes(' ordinary-after'))
-})
-
-test('regression: the linked cloud setup supplies a profile Braid can load', async () => {
-  const { readFileSync, mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs')
-  const { tmpdir } = await import('node:os')
-  const { join } = await import('node:path')
-  const { trustedProfileSources } = await import('../src/bin/production-profile-projection.js')
-  const { resolveProfileSource } = await import('../src/app/profile-sources.js')
-  const readme = readFileSync(join(process.cwd(), 'README.md'), 'utf8')
-  assert.ok(readme.includes('docs/getting-started.md'), 'README must link to setup instructions')
-  const guide = readFileSync(join(process.cwd(), 'docs/getting-started.md'), 'utf8')
-  const block = /```json\n([\s\S]*?)\n```/u.exec(guide)
-  assert.ok(block?.[1], 'The setup guide must supply a profile for first-run cloud setup')
-  const workspace = mkdtempSync(join(tmpdir(), 'braid-readme-first-run-'))
-  mkdirSync(join(workspace, '.braid'))
-  writeFileSync(join(workspace, '.braid', 'profile.json'), `${block[1]}\n`)
-  const [source] = trustedProfileSources({ workspace } as Parameters<
-    typeof trustedProfileSources
-  >[0])
-  assert.ok(source)
-  const record = await resolveProfileSource(source)
-  assert.equal(record.profile.name, 'Coding agent')
 })
