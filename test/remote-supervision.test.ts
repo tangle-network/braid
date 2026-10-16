@@ -112,7 +112,7 @@ test('real Runtime workers cross authenticated HTTP into the conversation graph,
                   method: 'tools/call',
                   params: {
                     name: 'spawn_worker',
-                    arguments: { profile: { name }, task: `actual-${name}` },
+                      arguments: { profile: { name }, label: name, task: `actual-${name}` },
                   },
                 }),
               })
@@ -172,8 +172,7 @@ test('real Runtime workers cross authenticated HTTP into the conversation graph,
             assert.match(String(details.data.logTail), /Surveyor: actual output/u)
             assert.match(String(details.data.logTail), /write_file/u)
             assert.equal(
-              durable.app.state().workers.find((worker) => worker.title === 'Checker')
-                ?.logTail,
+              durable.app.state().workers.find((worker) => worker.title === 'Checker')?.logTail,
               undefined,
             )
             const before = String(details.data.logTail)

@@ -606,7 +606,13 @@ export function graphFor(
   const canonicalIncoming: Map<string, string> = new Map(
     state.graphEdges.map((edge) => [edge.destination, edge.kind]),
   )
+  const remoteSupervisors = new Set(state.supervisors.filter((record) => record.remoteEndpointEnv !== undefined).map((record) => record.id))
+  const remoteNodes = new Set([
+    ...[...remoteSupervisors].map((id) => `supervisor:${id}`),
+    ...state.workers.filter((record) => remoteSupervisors.has(record.supervisorId)).map((record) => `worker:${record.id}`),
+  ])
   return result.nodes.map((node) => {
+    const remote = remoteNodes.has(`${node.type}:${node.id}`)
     const run = node.type === 'run' ? runs.get(node.id) : undefined
     const canonicalNode = canonicalNodes.get(`${node.type}:${node.id}`)
     const edgeLabel =
@@ -623,8 +629,8 @@ export function graphFor(
       ...(edgeLabel === undefined ? {} : { edgeLabel }),
       ...(parentIds === undefined ? {} : { parentIds: Object.freeze([...parentIds].sort()) }),
       ...(node.runner === undefined ? {} : { runner: node.runner }),
-      ...(node.elapsedMs === undefined ? {} : { elapsedMs: node.elapsedMs }),
-      startedAt: node.createdAt,
+      ...(node.elapsedMs === undefined || remote ? {} : { elapsedMs: node.elapsedMs }),
+      ...(remote ? {} : { startedAt: node.createdAt }),
       ...(node.costUsd === undefined ? {} : { costUsd: node.costUsd }),
     }
   })

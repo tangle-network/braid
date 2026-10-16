@@ -70,11 +70,12 @@ export class GraphView extends EntityBrowser {
     }
     const previous = this.selectedId
     super.handleInput(data)
-    if (this.selectedId !== previous) this.#onSelectWorker?.(
-      this.selectedId?.startsWith('worker:') === true
-        ? this.selectedId.slice('worker:'.length)
-        : undefined,
-    )
+    if (this.selectedId !== previous)
+      this.#onSelectWorker?.(
+        this.selectedId?.startsWith('worker:') === true
+          ? this.selectedId.slice('worker:'.length)
+          : undefined,
+      )
   }
 
   #toggleSelected(): void {
@@ -143,6 +144,7 @@ export function graphDocument(
       : `${view.hiddenGraphNodeCount} older graph nodes omitted; use get_graph for complete history`
   const combinedNotice = [notice, hidden].filter((value): value is string => value !== undefined)
   const selectedNode = view.graph.find((node) => `${node.type}:${node.id}` === selectedId)
+  const selectedDetail = selectedId === undefined ? undefined : details.get(selectedId)
   const target =
     selectedNode === undefined
       ? executionTargetFor(view)
@@ -152,7 +154,7 @@ export function graphDocument(
   const graphQuery = view.graphQuery?.trim()
   return {
     title: 'conversation graph',
-    context: `${target.profileName} · ${target.runner} · ${target.model}`,
+    context: selectedDetail?.runtimeReadOnly === true ? 'Runtime observation · read-only' : `${target.profileName} · ${target.runner} · ${target.model}`,
     ...(combinedNotice.length === 0 ? {} : { notice: combinedNotice.join(' · ') }),
     filterHint: `${graphQuery ? `filter: ${graphQuery} · ` : ''}space collapse · w waiting`,
     emptyMessage: 'The first run creates the first graph node.',

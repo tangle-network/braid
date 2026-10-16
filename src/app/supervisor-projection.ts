@@ -478,6 +478,7 @@ export async function commitSupervisionRecords(
   projection: SupervisionRecords,
 ): Promise<void> {
   const state = host.currentState()
+  const commit = host.commitAndWait ?? host.commit
   const existingSupervisors = new Map(
     state.supervisors.map((record) => [String(record.id), record]),
   )
@@ -488,22 +489,22 @@ export async function commitSupervisionRecords(
   for (const supervisor of projection.supervisors) {
     const existing = existingSupervisors.get(String(supervisor.id))
     if (existing !== undefined && sameObservation(existing, supervisor)) continue
-    await host.commit({ kind: 'supervisor.upserted', supervisor })
+    await commit({ kind: 'supervisor.upserted', supervisor })
   }
   for (const worker of projection.workers) {
     const existing = existingWorkers.get(String(worker.id))
     if (existing !== undefined && sameObservation(existing, worker)) continue
-    await host.commit({ kind: 'worker.upserted', worker })
+    await commit({ kind: 'worker.upserted', worker })
   }
   for (const node of projection.graphNodes) {
     const existing = existingNodes.get(String(node.id))
     if (existing !== undefined && sameObservation(existing, node)) continue
-    await host.commit({ kind: 'graph.node.upserted', node })
+    await commit({ kind: 'graph.node.upserted', node })
   }
   for (const edge of projection.graphEdges) {
     const existing = existingEdges.get(String(edge.id))
     if (existing !== undefined && sameObservation(existing, edge)) continue
-    await host.commit({ kind: 'graph.edge.upserted', edge })
+    await commit({ kind: 'graph.edge.upserted', edge })
   }
 }
 

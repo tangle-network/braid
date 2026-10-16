@@ -428,6 +428,7 @@ export interface EntityDetailView {
   readonly title: string
   readonly status: string
   readonly lines: readonly string[]
+  readonly runtimeReadOnly?: true
   readonly analysisFindingCount?: number
   readonly analysisSupportedFindingCount?: number
   readonly analysisCitationSupport?: 'passed' | 'failed' | 'unavailable'

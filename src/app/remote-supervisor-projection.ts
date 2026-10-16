@@ -71,13 +71,12 @@ export async function commitRemoteSupervisorProjection(
     updatedAt: at,
   }
   const byId = new Map(
-    tree.nodes
-      .map((node) => [
-        node.id,
-        createWorkerId(
-          `worker-remote-${canonicalDigest({ supervisor: id, worker: node.id }).slice(0, 40)}`,
-        ),
-      ]),
+    tree.nodes.map((node) => [
+      node.id,
+      createWorkerId(
+        `worker-remote-${canonicalDigest({ supervisor: id, worker: node.id }).slice(0, 40)}`,
+      ),
+    ]),
   )
   if (new Set(tree.nodes.map((node) => node.id)).size !== tree.nodes.length)
     throw new Error('Runtime tree contains duplicate agent identities')

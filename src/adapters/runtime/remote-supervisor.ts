@@ -164,7 +164,7 @@ export class RemoteSupervisorWatcher {
               ? new IncrementalSecretTextSanitizer(Number.POSITIVE_INFINITY)
               : (previous?.sanitizer ??
                 new IncrementalSecretTextSanitizer(Number.POSITIVE_INFINITY))
-          const terminal = !['queued', 'acquiring', 'running'].includes(
+          const terminal = ['done', 'down', 'cancelled', 'completed', 'failed'].includes(
             tree.nodes.find((node) => node.id === workerId)?.status ?? 'unknown',
           )
           let text = `${prefix}${notice}${sanitizer.push(added)}${terminal ? sanitizer.finish() : ''}`

@@ -110,6 +110,7 @@ function supervisorDetail(record: SupervisorRecord | undefined): EntityDetailVie
   if (record === undefined) return undefined
   return {
     entityType: 'supervisor',
+    ...(record.remoteEndpointEnv === undefined ? {} : { runtimeReadOnly: true as const }),
     entityId: String(record.id),
     title: safe(record.title ?? `supervisor ${record.id}`),
     status: record.status,
@@ -148,6 +149,7 @@ function workerDetail(record: WorkerRecord | undefined): EntityDetailView | unde
   if (record.role !== undefined) {
     return {
       entityType: 'worker',
+      runtimeReadOnly: true,
       entityId: String(record.id),
       title: safe(record.title ?? record.runtimeId),
       status: record.status,
