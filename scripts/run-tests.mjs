@@ -122,6 +122,7 @@ if (nativeStorageRequired) {
 }
 
 const isolatedTestFiles = new Set([
+  'cli-bridge-retained-restart.test.js',
   'production-composition.test.js',
   'security.test.js',
   'storage-performance.test.js',
