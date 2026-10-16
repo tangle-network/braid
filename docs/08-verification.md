@@ -201,7 +201,7 @@ Its plain-mode workflow waits for observable startup, completion, unsupported-co
 
 W5 has stable package entry points for `test:unit`, `test:contract`, `test:coordination`, `test:rpc`, `test:virtual-terminal`, `test:pty`, `test:storage`, `test:crash`, `test:security`, `test:performance`, `test:live`, `test:install`, `test:capture`, and `check:release`.
 
-`test:storage` exercises the coordinator, the deterministic storage adapter, and the production SQLite adapter for atomic pending admission, serialized execution, duplicate reconciliation, conflict recording, encrypted payloads, WAL, foreign keys, replay cursors, missing history, projections, backups, approved-root and no-clobber enforcement, restore, retention, redaction, key destruction, migration interruption, lock handling, and commit failure.
+`test:storage` exercises the production SQLite adapter for atomic pending admission, serialized execution, duplicate reconciliation, conflict recording, encrypted payloads, WAL, foreign keys, replay cursors, missing history, projections, backups, approved-root and no-clobber enforcement, restore, retention, redaction, key destruction, migration interruption, lock handling, and commit failure.
 
 `test:crash` runs a compiled child process that is killed before and after every SQLite commit boundary and every backup, restore-manifest, copy, move, install, cleanup, and publication boundary, then reopens the database and checks integrity and durable outcome state.
 
@@ -215,13 +215,11 @@ W5 has stable package entry points for `test:unit`, `test:contract`, `test:coord
 
 `test:performance` records native SQLite append measurements at 10,000 and 100,000 events and verifies the resulting event count and integrity report.
 
-It also measures terminal projection with 10,000 and 100,000 saved runtime workers.
-
-The result reports changed-state and repeated-render distributions separately.
+The packed performance driver retains the terminal, Runtime, and process measurements.
 
 The native storage test commands fail with an explicit prerequisite when the exact encrypted SQLite package is absent; they never convert missing production coverage into a passing or silently skipped result.
 
-The reducer property test generates 1,000 histories and compares incremental reduction with full replay by canonical projection checksum.
+The seeded property check compares incremental reduction with replay, rejects duplicate conflicts and graph cycles, and checks Unicode and layout invariants. Production SQLite checks cover complete projection checksums after restart.
 
 The production adapter, not `MemoryStorage`, is the proof source for encryption, crash recovery, backup, restore, content-key destruction, and concurrent reader/writer behavior.
 
@@ -229,11 +227,11 @@ The production adapter, not `MemoryStorage`, is the proof source for encryption,
 
 | Requirement | Proof in this repository |
 | --- | --- |
-| `AR-03`–`AR-07`, `AR-10` | `test/domain-ids.test.ts`, `test/domain-reducer.test.ts`, `scripts/check-boundaries.mjs`, `scripts/check-dependencies.mjs`, `test/scripts.test.ts` |
+| `AR-03`–`AR-07`, `AR-10` | `test/storage.test.ts`, `test/storage-snapshots.test.ts`, `test/property.test.ts`, `scripts/check-boundaries.mjs`, and `scripts/check-dependencies.mjs` |
 | `PR-09` | Restarted SQLite projection checksum and `StorageJournal.fromStorage` replay in `test/storage.test.ts` |
 | `PC-08`–`PC-10` | `test/security.test.ts`, headless key validation, credential-port availability failure, and package metadata checks |
-| `PC-11`, `PC-12` | `test/connections.test.ts`, `test/connection-lifecycle.test.ts`, `test/production-connection-actions.test.ts`, `test/production-connection-setup.test.ts`, and `test/security.test.ts` cover health classes, secure creation, typed blockers, shared credentials, authoritative removal identity, serialized cleanup, resolver loss, keyring false-return, crash recovery, replay, and preserved history |
-| `CF-01`, `CF-08` | Branded graph identifiers, operation/effect records, duplicate-event and conflict tests in `test/domain-ids.test.ts`, `test/domain-reducer.test.ts`, and `test/coordination.test.ts` |
+| `PC-11`, `PC-12` | `test/connections.test.ts`, `test/production-connection-actions.test.ts`, `test/production-connection-setup.test.ts`, and `test/security.test.ts` cover health classes, secure creation, typed blockers, shared credentials, authoritative removal identity, serialized cleanup, resolver loss, keyring false-return, crash recovery, replay, and preserved history |
+| `CF-01`, `CF-08` | Production encrypted replay and conflict checks in `test/storage.test.ts`, and the two-process exactly-once race in `test/effect-admission.test.ts` |
 | `SE-01`, `SE-02`, `SE-06`, `SE-07` | Secret rejection, raw-byte canaries, wrong-key rejection, protected key-source tests, and dependency/license checks |
 | `ST-01`–`ST-10` | Production SQLite encryption, atomic commit, duplicate/gap/replay, forced-kill, migration, integrity, retention/redaction, provider-state non-guessing, and concurrent-writer tests |
 
@@ -245,7 +243,13 @@ Do not maintain tests of private helper choreography, source spelling, documenta
 
 `pnpm test -- --list` and scoped variants list source tests without installing dependencies or compiling the test tree.
 Normal execution still compiles the complete source and test tree before selecting the requested scope.
-The scoped runner owns its file inventory; the default command discovers every TypeScript test.
+The scoped runner owns its file inventory; the default command discovers every TypeScript test and runs the retained process and release-evidence JavaScript suites.
+
+Normal test runs print `BRAID_TEST_SUMMARY` with the source test-file catalog count, catalog lines, wall seconds (including compilation and cleanup), and pass/fail status. The catalog includes all `*.test.ts` and `*.test.mjs` files under `test/` and `scripts/`; a scoped run still reports the whole catalog. `--list` remains compilation-free.
+
+The legacy `test:unit` command includes focused persistence and package checks alongside the few retained adversarial units. `test:rpc` delegates to the existing packed-binary deterministic process proof.
+
+For a change, prefer strong integration checks across real boundaries and a live installed-product proof. Retain a unit only for a consequential failure that these cannot reasonably detect, with a stated reason in the pull request. Visible changes require a terminal recording of the real flow; the release capture commands retain their own reference-size requirements.
 
 Property checks generate event interleavings, branch operations, identifier values, Unicode content, dimensions, and replay failures.
 
@@ -293,15 +297,7 @@ They prove that `Up` and `Down` preserve stable selection, `Enter` and `Right` o
 
 They also prove that long details wrap before pagination and retain their final evidence token at 40 columns.
 
-A mounted terminal fixture opens `/activity`, observes a runtime child worker, rejects duplicate state from unchanged snapshots, and proves refresh stops after close.
-
-The fixture also proves that a late refresh cannot render after close or application stop.
-
-Runtime projection tests keep two runtime supervisors bound to two distinct Braid runs, even when snapshot order changes.
-
-Worker control tests use the public identifiers returned by Braid and assert the exact runtime references delivered to `agent-runtime`.
-
-When an active worker disappears, the fixture proves that its saved status changes to `unknown` without deleting its history.
+The consolidated `test/tui.test.ts` exercises the actual Pi terminal/root keyboard path. Production persistence checks retain native-child snapshots and migration. Real supervisor observation and controls belong to the protected `test:live:supervisor` proof; controller doubles do not establish them.
 
 ### Layer 6: real terminal process checks
 
@@ -334,8 +330,8 @@ that goal or establish a provider integration on its own.
 `scripts/live-required/provider-comparison.mjs` owns the comparison plan, per-attempt records,
 and deterministic scorecard. Existing producers use `captureComparisonAttempt` with their
 retained live proof. Each observed value names its exact field in that proof. The record embeds
-the sanitized proof and binds it with a SHA-256 digest. Unit-test fixtures prove the accounting
-contract only.
+the sanitized proof and binds it with a SHA-256 digest. Retained comparison records are
+historical evidence; helper mocks do not establish a provider integration.
 
 Freeze a `braid.provider-comparison.plan.v1` JSON file before the first measured provider call.
 It contains `id`, `createdAt`, `targetProvider`, `minimumSamples`, `cohort`, and `attempts`.
@@ -979,11 +975,11 @@ Implementation must provide the following stable scripts.
 | Check ID | Command | Scope |
 | --- | --- | --- |
 | `repository` | `pnpm check` | Format, lint, strict types, boundaries, dependency/license metadata, deterministic checks, and the release manifest check |
-| `unit` | `pnpm test:unit` | Unit and normal property tests |
+| `unit` | `pnpm test:unit` | Focused package/persistence checks and consequential stream-safety and seeded property checks |
 | `contract` | `pnpm test:contract` | Shared port and capability conformance |
 | `upstream` | `pnpm test:upstream` | Tagged owning-repository `UP-01` through `UP-14` checks and retained artifact digests |
 | `coordination` | `pnpm test:coordination` | Durable effect admission, digest conflict, and dispatch serialization |
-| `rpc` | `pnpm test:rpc` | JSONL protocol tests |
+| `rpc` | `pnpm test:rpc` | Existing packed-binary deterministic JSONL process proof |
 | `rpc-packed` | `pnpm test:rpc:packed` | Packed-binary JSONL protocol tests |
 | `virtual-terminal` | `pnpm test:virtual-terminal` | Cell, layout, Unicode, keyboard, and state snapshots |
 | `pty` | `pnpm test:pty` | Packed-binary real terminal keyboard and lifecycle tests |

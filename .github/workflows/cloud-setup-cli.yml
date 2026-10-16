@@ -7,7 +7,7 @@ on:
       - 'src/bin/**'
       - 'src/views/tui/**'
       - 'scripts/proof-cloud-setup-cli.mjs'
-      - 'test/configuration-credential-flow.test.ts'
+      - 'test/cloud-setup-user-path.test.ts'
       - '.github/workflows/cloud-setup-cli.yml'
 
 permissions:
