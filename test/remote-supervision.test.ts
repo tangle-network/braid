@@ -220,7 +220,8 @@ test('real Runtime workers cross authenticated HTTP into the conversation graph,
                 durable.app
                   .state()
                   .workers.find((worker) => worker.id === selected.id)
-                  ?.logTail?.toLowerCase().includes('[redacted')
+                  ?.logTail?.toLowerCase()
+                  .includes('[redacted')
               )
                 break
               await new Promise((resolve) => setTimeout(resolve, 10))

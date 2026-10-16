@@ -21,8 +21,13 @@ The existing `refresh_supervision` RPC accepts `remoteEndpointEnv` to attach the
 Names, statuses and parent identities come from Runtime; parent edges establish structural
 manager/worker roles. Braid does not relabel a display name as an authored profile. No harness output or
 private supervisor file is parsed. Read-only remote capabilities never grant steer, cancel or attach.
+The explicitly attached endpoint stays active for automatic refreshes; a selected agent always
+resolves its own endpoint and conversation. Agents omitted by a later complete tree remain in
+history with unknown status in both graph and details.
 
-Remote live output is a bounded, process-local view, not durable transcript replay. Braid keeps
+Remote live output is a bounded, process-local view, not durable transcript replay. Short partial
+text has a replaceable sanitized preview; protected values split across pages are withheld before
+preview or persistence. Braid keeps
 Runtime cursors in memory, reports stream reset, expired history and unavailable capture, and
 retains the last confirmed graph when the endpoint fails. Reopening uses the same environment
 reference, so rotation can replace the protected value without rewriting the journal.
