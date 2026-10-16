@@ -54,6 +54,11 @@ export async function dispatchCoreIntent(
       }
     }
     case 'open-surface':
+      if (intent.surface === 'graph' && intent.remoteEndpointEnv !== undefined) {
+        const workspace = context.app.state().workspace
+        if (workspace === null) throw new Error('Initialize a workspace before observing a remote Runtime tree')
+        await context.app.intelligence.supervisor.snapshot({ rootDir: workspace, remoteEndpointEnv: intent.remoteEndpointEnv })
+      }
       context.setSelectedSurface(
         intent.surface === 'settings' ? 'details' : intent.surface,
         intent.query,

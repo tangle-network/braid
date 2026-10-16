@@ -114,6 +114,7 @@ function supervisorDetail(record: SupervisorRecord | undefined): EntityDetailVie
     title: safe(record.title ?? `supervisor ${record.id}`),
     status: record.status,
     lines: [
+      ...(record.remoteEndpointEnv === undefined ? [] : [`Runtime tree · read-only`, `conversation: ${safe(record.conversationId ?? 'unbound')}`]),
       `id: ${safe(record.id)}`,
       `runtime id: ${safe(record.runtimeId)}`,
       `run: ${record.rootRunId === undefined ? 'unbound workspace activity' : safe(record.rootRunId)}`,
@@ -139,6 +140,18 @@ function supervisorDetail(record: SupervisorRecord | undefined): EntityDetailVie
 
 function workerDetail(record: WorkerRecord | undefined): EntityDetailView | undefined {
   if (record === undefined) return undefined
+  if (record.profileName !== undefined) {
+    return {
+      entityType: 'worker', entityId: String(record.id), title: safe(record.title ?? record.profileName), status: record.status,
+      lines: bounded([
+        `profile: ${safe(record.profileName)} · ${safe(record.runner ?? 'runner unknown')}`,
+        `parent: ${safe(record.parentRuntimeRef ?? 'Runtime root')}`,
+        safe(record.streamStatus ?? 'select this agent to read live events'),
+        ...(record.logTail === undefined ? [] : record.logTail.split('\n').map(safe)),
+        `Runtime id: ${safe(record.runtimeId)}`,
+      ]),
+    }
+  }
   const lines = [
     `id: ${safe(record.id)}`,
     `runtime id: ${safe(record.runtimeId)}`,

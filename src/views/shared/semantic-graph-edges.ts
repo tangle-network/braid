@@ -79,7 +79,8 @@ export function relationEdges(
     if (edge.kind === 'spawned' && destination.type === 'worker') {
       const worker = workersById.get(destination.id)
       if (worker !== undefined) {
-        if (worker.parentRuntimeRef !== undefined && worker.parentWorkerId === undefined) continue
+        const owner = state.supervisors.find((supervisor) => supervisor.id === worker.supervisorId)
+        if (worker.parentRuntimeRef !== undefined && worker.parentWorkerId === undefined && worker.parentRuntimeRef !== owner?.runtimeId) continue
         const expected =
           worker.parentWorkerId === undefined
             ? { type: 'supervisor', id: String(worker.supervisorId) }
@@ -221,6 +222,9 @@ export function relationEdges(
     }
   }
   for (const supervisor of state.supervisors) {
+    if (supervisor.conversationId !== undefined) {
+      add('attached', { type: 'conversation', id: supervisor.conversationId }, { type: 'supervisor', id: supervisor.id }, supervisor.createdAt)
+    }
     if (supervisor.rootRunId !== undefined) {
       add(
         'supervised_by',
@@ -231,7 +235,8 @@ export function relationEdges(
     }
   }
   for (const worker of state.workers) {
-    if (worker.parentRuntimeRef !== undefined && worker.parentWorkerId === undefined) continue
+    const owner = state.supervisors.find((supervisor) => supervisor.id === worker.supervisorId)
+    if (worker.parentRuntimeRef !== undefined && worker.parentWorkerId === undefined && worker.parentRuntimeRef !== owner?.runtimeId) continue
     add(
       'spawned',
       worker.parentWorkerId === undefined

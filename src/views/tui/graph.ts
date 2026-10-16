@@ -16,6 +16,7 @@ export interface GraphViewOptions {
   readonly onClose?: () => void
   readonly selectedId?: string
   readonly notice?: () => string | undefined
+  readonly onSelectWorker?: (workerId: string | undefined) => void
 }
 
 export class GraphView extends EntityBrowser {
@@ -23,6 +24,7 @@ export class GraphView extends EntityBrowser {
   readonly #view: () => BraidViewModel | undefined
   readonly #collapsed: Set<string>
   readonly #localNotice: { value: string | undefined }
+  readonly #onSelectWorker: GraphViewOptions['onSelectWorker']
 
   constructor(theme: BraidTheme, options: GraphViewOptions = {}) {
     let staticView: BraidViewModel | undefined
@@ -49,6 +51,7 @@ export class GraphView extends EntityBrowser {
     this.#view = currentView
     this.#collapsed = collapsed
     this.#localNotice = localNotice
+    this.#onSelectWorker = options.onSelectWorker
   }
 
   setView(view: BraidViewModel): void {
@@ -66,6 +69,7 @@ export class GraphView extends EntityBrowser {
       return
     }
     super.handleInput(data)
+    this.#onSelectWorker?.(this.selectedId?.startsWith('worker:') === true ? this.selectedId.slice('worker:'.length) : undefined)
   }
 
   #toggleSelected(): void {

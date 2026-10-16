@@ -66,7 +66,9 @@ const INTENTS_FOR: Readonly<Record<CommandName, CommandIntentFactory>> = {
   graph: (args) => ({
     type: 'open-surface',
     surface: 'graph',
-    ...(args.length === 0 ? {} : { query: args.join(' ') }),
+    ...(args[0] === '--remote-env'
+      ? { remoteEndpointEnv: args[1] ?? '' , ...(args.length > 2 ? { query: args.slice(2).join(' ') } : {}) }
+      : args.length === 0 ? {} : { query: args.join(' ') }),
   }),
   ask: runCommandIntent('ask'),
   analyze: runCommandIntent('analyze'),

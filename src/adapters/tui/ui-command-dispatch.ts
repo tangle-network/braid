@@ -1,5 +1,5 @@
 import { isRecoverableRun } from '../../domain/state.js'
-import { commandAvailability, isMutatingCommand } from '../../views/shared/command-registry.js'
+import { commandAvailability, commandIntent, isMutatingCommand } from '../../views/shared/command-registry.js'
 import type { BraidIntent, UiDispatchResult } from '../../views/shared/intents.js'
 import type { InteractionOutcome, InteractionView } from '../../views/shared/models.js'
 import { runIdForControl } from '../../views/shared/run-selection.js'
@@ -84,12 +84,13 @@ export async function dispatchCommandIntent(
     )
   }
   if (intent.command === 'graph' || intent.command === 'activity') {
+    const graph = intent.command === 'graph' ? commandIntent('graph', intent.args) : undefined
     return dispatchCoreIntent(
       {
         type: 'open-surface',
         surface: intent.command,
-        ...(intent.command === 'graph' && intent.args.length > 0
-          ? { query: intent.args.join(' ') }
+        ...(graph?.type === 'open-surface'
+          ? { ...(graph.query === undefined ? {} : { query: graph.query }), ...(graph.remoteEndpointEnv === undefined ? {} : { remoteEndpointEnv: graph.remoteEndpointEnv }) }
           : {}),
       },
       context,

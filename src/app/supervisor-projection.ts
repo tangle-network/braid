@@ -22,6 +22,8 @@ export interface SupervisorRunBinding {
 
 export interface SupervisorSnapshotRequest {
   readonly rootDir: string
+  readonly remoteEndpointEnv?: string
+  readonly workerId?: string
   /** Binds only named runtime supervisors. An omitted binding never implies ownership. */
   readonly bindings?: readonly SupervisorRunBinding[]
   readonly now?: string
@@ -40,6 +42,8 @@ export interface SupervisorProjection {
   readonly graphEdges: readonly GraphEdgeRecord[]
 }
 
+export type SupervisionRecords = Omit<SupervisorProjection, 'raw'>
+
 export interface RuntimeWorkerReference {
   readonly rootDir: string
   readonly runtimeSupervisorId: string
@@ -53,7 +57,7 @@ export function runtimeWorkerReference(
   workerId: string,
 ): RuntimeWorkerReference | undefined {
   const supervisor = state.supervisors.find((candidate) => String(candidate.id) === supervisorId)
-  if (supervisor === undefined || state.workspace !== supervisor.runtimeRoot) return undefined
+  if (supervisor === undefined || supervisor.remoteEndpointEnv !== undefined || state.workspace !== supervisor.runtimeRoot) return undefined
   const worker = state.workers.find(
     (candidate) => String(candidate.id) === workerId && candidate.supervisorId === supervisor.id,
   )
@@ -355,6 +359,7 @@ function reconcileSupervisors(
   const observedIds = new Set(output.map((record) => String(record.id)))
   for (const record of state.supervisors) {
     if (record.runtimeRoot !== input.rootDir || observedIds.has(String(record.id))) continue
+    if (record.remoteEndpointEnv !== undefined) { output.push(record); continue }
     output.push(
       record.status === 'starting' || record.status === 'running'
         ? { ...record, status: 'unknown', updatedAt: at }
@@ -440,20 +445,8 @@ export async function commitSupervisorProjection(
   const observed = projectSnapshot(input, raw)
   const at = snapshotTime(input, raw)
   const supervisors = reconcileSupervisors(state, input, observed.supervisors, at)
-  const workers = reconcileWorkers(state, supervisors, observed.workers, at)
+  const workers = reconcileWorkers(state, supervisors.filter((record) => record.remoteEndpointEnv === undefined), observed.workers, at)
   const graphNodes = reconciledGraphNodes(state, observed.graphNodes, supervisors, workers)
-  const existingSupervisors = new Map(
-    state.supervisors.map((record) => [String(record.id), record] as const),
-  )
-  const existingWorkers = new Map(
-    state.workers.map((record) => [String(record.id), record] as const),
-  )
-  const existingNodes = new Map(
-    state.graphNodes.map((record) => [String(record.id), record] as const),
-  )
-  const existingEdges = new Map(
-    state.graphEdges.map((record) => [String(record.id), record] as const),
-  )
   const projection = {
     raw,
     supervisors,
@@ -462,27 +455,38 @@ export async function commitSupervisorProjection(
     graphEdges: observed.graphEdges,
   }
 
-  for (const supervisor of supervisors) {
+  await commitSupervisionRecords(host, projection)
+  return projection
+}
+
+/** Both Runtime read surfaces persist through the same canonical entity and graph events. */
+export async function commitSupervisionRecords(host: AnalysisApplicationHost, projection: SupervisionRecords): Promise<void> {
+  const state = host.currentState()
+  const existingSupervisors = new Map(state.supervisors.map((record) => [String(record.id), record]))
+  const existingWorkers = new Map(state.workers.map((record) => [String(record.id), record]))
+  const existingNodes = new Map(state.graphNodes.map((record) => [String(record.id), record]))
+  const existingEdges = new Map(state.graphEdges.map((record) => [String(record.id), record]))
+
+  for (const supervisor of projection.supervisors) {
     const existing = existingSupervisors.get(String(supervisor.id))
     if (existing !== undefined && sameObservation(existing, supervisor)) continue
     await host.commit({ kind: 'supervisor.upserted', supervisor })
   }
-  for (const worker of workers) {
+  for (const worker of projection.workers) {
     const existing = existingWorkers.get(String(worker.id))
     if (existing !== undefined && sameObservation(existing, worker)) continue
     await host.commit({ kind: 'worker.upserted', worker })
   }
-  for (const node of graphNodes) {
+  for (const node of projection.graphNodes) {
     const existing = existingNodes.get(String(node.id))
     if (existing !== undefined && sameObservation(existing, node)) continue
     await host.commit({ kind: 'graph.node.upserted', node })
   }
-  for (const edge of observed.graphEdges) {
+  for (const edge of projection.graphEdges) {
     const existing = existingEdges.get(String(edge.id))
     if (existing !== undefined && sameObservation(existing, edge)) continue
     await host.commit({ kind: 'graph.edge.upserted', edge })
   }
-  return projection
 }
 
 function sameObservation(left: object, right: object): boolean {

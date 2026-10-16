@@ -157,6 +157,9 @@ export function isInScope(
     }
     case 'supervisor': {
       const supervisor = state.supervisors.find((candidate) => candidate.id === id)
+      if (supervisor?.conversationId !== undefined) {
+        return scope.branchId === undefined && (scope.conversationId === undefined || supervisor.conversationId === scope.conversationId)
+      }
       if (supervisor?.rootRunId === undefined) return false
       const run = state.runs.find((candidate) => candidate.id === supervisor.rootRunId)
       return (

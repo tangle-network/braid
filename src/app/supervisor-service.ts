@@ -10,13 +10,16 @@ import type {
   SupervisorWatchOptions,
   TopSnapshot,
 } from '../adapters/runtime/supervisor-watch.js'
+import type { RemoteSupervisorWatcher } from '../adapters/runtime/remote-supervisor.js'
 import type { AnalysisApplicationHost } from './analysis-types.js'
 import {
   commitSupervisorProjection,
   type SupervisorProjection,
   type SupervisorSnapshotRequest,
   type SupervisorWatchRequest,
+  type SupervisionRecords,
 } from './supervisor-projection.js'
+import { commitRemoteSupervisorProjection } from './remote-supervisor-projection.js'
 
 export class SupervisorService {
   readonly #host: AnalysisApplicationHost
@@ -25,6 +28,7 @@ export class SupervisorService {
   #watcherLoad: Promise<RuntimeSupervisorSnapshotPort> | undefined
   #controllerLoad: Promise<RuntimeSupervisorController> | undefined
   #projectionQueue: Promise<void> = Promise.resolve()
+  #remote: RemoteSupervisorWatcher | undefined
 
   constructor(
     host: AnalysisApplicationHost,
@@ -38,16 +42,47 @@ export class SupervisorService {
     this.#controller = options.controller
   }
 
-  async snapshot(input: SupervisorSnapshotRequest): Promise<SupervisorProjection> {
+  async snapshot(input: SupervisorSnapshotRequest): Promise<SupervisionRecords> {
+    const remote = this.#remoteEndpoint(input)
+    if (remote !== undefined) return this.#remoteSnapshot(input, remote)
     const watcher = await this.#loadWatcher()
     const raw = watcher.snapshot(input.rootDir)
     return this.#commit(input, raw)
   }
 
-  async reconnect(input: SupervisorSnapshotRequest): Promise<SupervisorProjection> {
+  async reconnect(input: SupervisorSnapshotRequest): Promise<SupervisionRecords> {
+    const remote = this.#remoteEndpoint(input)
+    if (remote !== undefined) return this.#remoteSnapshot(input, remote)
     const watcher = await this.#loadWatcher()
     const raw = watcher.reconnect(input.rootDir)
     return this.#commit(input, raw)
+  }
+
+  #remoteEndpoint(input: SupervisorSnapshotRequest): string | undefined {
+    const state = this.#host.currentState()
+    return input.remoteEndpointEnv ?? state.supervisors.find((record) =>
+      record.runtimeRoot === input.rootDir && record.conversationId === state.conversationId && record.remoteEndpointEnv !== undefined,
+    )?.remoteEndpointEnv
+  }
+
+  async #remoteSnapshot(input: SupervisorSnapshotRequest, remoteEndpointEnv: string): Promise<SupervisionRecords> {
+    const state = this.#host.currentState()
+    const conversationId = state.conversationId
+    if (conversationId === null) throw new Error('Open a conversation before reading a remote Runtime tree')
+    const selected = state.workers.find((worker) => String(worker.id) === input.workerId)
+    const owner = selected === undefined ? undefined : state.supervisors.find((record) => record.id === selected.supervisorId)
+    const workerId = owner?.remoteEndpointEnv === remoteEndpointEnv && owner.conversationId === conversationId ? selected?.runtimeId : undefined
+    const run = this.#projectionQueue.then(async () => {
+      if (this.#remote === undefined) {
+        const { RemoteSupervisorWatcher } = await import('../adapters/runtime/remote-supervisor.js')
+        this.#remote = new RemoteSupervisorWatcher()
+      }
+      const observation = await this.#remote.snapshot(remoteEndpointEnv, workerId)
+      if (this.#host.currentState().conversationId !== conversationId) throw new Error('The conversation changed during the remote read; open its graph again')
+      return commitRemoteSupervisorProjection(this.#host, { ...input, remoteEndpointEnv }, observation)
+    })
+    this.#projectionQueue = run.then(() => undefined, () => undefined)
+    return run
   }
 
   async *watch(input: SupervisorWatchRequest): AsyncGenerator<SupervisorProjection, void, void> {
