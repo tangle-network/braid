@@ -247,11 +247,12 @@ async function journalEvidence(config, { secrets, modelCredentials, canaries, ru
   process.chdir(config.workspace)
   let opened
   try {
-    const [startup, production, application, statePath] = await Promise.all([
+    const [startup, production, application, statePath, providerValues] = await Promise.all([
       dist('bin/runtime-startup-options.js'),
       dist('bin/production-startup.js'),
       dist('bin/production-application.js'),
       dist('bin/state-path.js'),
+      dist('domain/provider-values.js'),
     ])
     const { startupOptions } = startup.createRuntimeStartupOptions({}, config.workspace)
     const loaded = await production.loadProductionStartup(startupOptions)
@@ -273,7 +274,7 @@ async function journalEvidence(config, { secrets, modelCredentials, canaries, ru
     )?.providerOptions
     const run = state.runs.find(candidate => candidate.id === runId)
     return {
-      run: run ? { id: run.id, status: run.status, error: run.error ?? null, reason: run.terminalReason ?? null } : null,
+      run: run ? { id: run.id, status: run.status, error: run.error ?? null, reason: run.terminalReason ?? null, outcomeDetail: providerValues.runOutcomeDetail(run) ?? null } : null,
       source: 'restored-state',
       connectionRestored: stored !== undefined,
       grantedNamesKept: JSON.stringify(stored?.secrets ?? []) === JSON.stringify(secrets),
@@ -442,13 +443,19 @@ export async function runSeatsProof(environment = process.env) {
     result.journal = await journalEvidence(config, { secrets, modelCredentials, canaries, runId })
     if (result.journal.run === null) throw new Error('The encrypted journal did not restore the same run')
     Object.assign(result.run, result.journal.run)
+    const refused = record.events.findLast(event => event.kind === 'run.unknown' && event.payload?.runId === runId)?.payload?.error
+    if (refused && result.run.outcomeDetail !== refused)
+      throw new Error('The restored cause differs from the recorded provider refusal')
     const headless = await initializedSession(binary, config)
     try {
       const response = await rpcRequest(headless.session, 'get_details', { entityType: 'run', entityId: runId })
       const detail = response.result?.data
-      if (detail?.status !== result.run.status || (detail?.error ?? null) !== result.run.error || (detail?.terminalReason ?? null) !== result.run.reason)
+      if (detail?.status !== result.run.status || (detail?.error ?? null) !== result.run.error || (detail?.terminalReason ?? null) !== result.run.reason || (detail?.outcomeDetail ?? null) !== result.run.outcomeDetail)
         throw new Error('Headless details did not restore the same run outcome and cause')
-      result.headless = { runId, status: detail.status, causeMatchesJournal: true }
+      const restoredRun = headless.state.state.runs.find(candidate => candidate.id === runId)
+      if ((restoredRun?.outcomeDetail ?? null) !== result.run.outcomeDetail)
+        throw new Error('Headless full state did not preserve the recorded cause')
+      result.headless = { runId, status: detail.status, causeMatchesJournal: true, outcomeDetail: detail.outcomeDetail ?? null }
     } finally { await closeSession(headless.session) }
     cast = castFor(terminal, `Braid ${label}`, 'braid --inline')
     result.captures = []

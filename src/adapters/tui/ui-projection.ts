@@ -8,7 +8,7 @@ import { profileModelSettings } from '../../app/profile-model-settings.js'
 import { isSensitiveFieldName } from '../../domain/bounded-structured.js'
 import type { BraidEventEnvelope } from '../../domain/events.js'
 import { interactionRemainingMs } from '../../domain/interaction-timeout.js'
-import { hasProviderCause } from '../../domain/provider-values.js'
+import { runOutcomeDetail } from '../../domain/provider-values.js'
 import { activeRunForBranch, type BraidState, isActiveRunStatus } from '../../domain/state.js'
 import { environmentView } from '../../views/shared/environment-presentation.js'
 import type { UiEvent } from '../../views/shared/intents.js'
@@ -145,34 +145,6 @@ function partFor(
     : []
 }
 
-// A bare code, such as RUNTIME_FINAL_ERROR, names a failure without saying why.
-const BARE_CODE = /^[A-Z][A-Z0-9]*(?:[._:-][A-Z0-9]+)*$/u
-const NO_CAUSE = 'no cause was recorded'
-
-/**
- * Why a run failed or ended unverified, in the words Braid recorded for it.
- *
- * A run that recorded only a code names that code without claiming what the provider supplied.
- */
-export function runOutcomeDetail(run: BraidState['runs'][number]): string | undefined {
-  if (run.status === 'unknown') {
-    const unknown = run.activity.findLast(
-      (item) => item.type === 'lifecycle' && item.label === 'unknown',
-    )?.detail
-    const detail = [unknown, run.terminalReason, run.error].find(hasProviderCause)
-    if (detail !== undefined) return detail
-    const code = [unknown, run.error].find((value) => value !== undefined && BARE_CODE.test(value))
-    return code === undefined ? NO_CAUSE : `${NO_CAUSE} (${code})`
-  }
-  if (run.status !== 'failed' && run.status !== 'blocked' && run.status !== 'expired')
-    return undefined
-  const [first, second] = [run.error, run.terminalReason].filter(hasProviderCause)
-  if (first !== undefined) {
-    if (second === undefined || first.includes(second)) return first
-    return second.includes(first) ? second : `${first}; ${second}`
-  }
-  return run.error === undefined ? NO_CAUSE : `${NO_CAUSE} (${run.error})`
-}
 
 function messagesFor(
   state: BraidState,
@@ -208,6 +180,7 @@ function messagesFor(
 
 export function runViews(state: BraidState): RunView[] {
   return state.runs.slice(-MAX_VISIBLE_RUNS).map((run) => {
+    const outcomeDetail = runOutcomeDetail(run)
     const elapsed = completedRunDurationMs(run)
     const profile = run.receipt.requested.profile
     const modelSettings = profileModelSettings(profile)
@@ -225,6 +198,7 @@ export function runViews(state: BraidState): RunView[] {
       branchId: String(run.branchId),
       operationId: run.operationId,
       status: statusForRun(state, run),
+      ...(outcomeDetail === undefined ? {} : { outcomeDetail }),
       ...(profile.name === undefined ? {} : { profileName: sanitizeTerminalText(profile.name) }),
       profileDigest: sanitizeTerminalText(run.receipt.profileDigest),
       ...(model === undefined ? {} : { model: sanitizeTerminalText(model) }),
@@ -726,11 +700,13 @@ export function toHeadlessState(
     runs: state.runs.slice(-MAX_VISIBLE_RUNS).map((run) => {
       const replayCursor = replayCursorByRun.get(run.id)
       const durationMs = completedRunDurationMs(run)
+      const outcomeDetail = runOutcomeDetail(run)
       return {
         id: run.id,
         turnId: run.turnId,
         operationId: run.operationId,
         status: run.status,
+        ...(outcomeDetail === undefined ? {} : { outcomeDetail }),
         startedAt: run.startedAt,
         updatedAt: run.updatedAt,
         ...(run.terminalAt === undefined ? {} : { terminalAt: run.terminalAt }),

@@ -1,3 +1,4 @@
+import type { BraidRun } from './entities-messages.js'
 import { redactSensitiveText } from './secret-sanitizer.js'
 import { containsUnsafeControlCharacter } from './text.js'
 
@@ -123,3 +124,27 @@ export function safeProviderDiagnostic(value: unknown, fallback: string): string
   }
   return fallback
 }
+
+const NO_RECORDED_PROVIDER_CAUSE = 'no cause was recorded'
+
+/** The same recorded cause feeds transcript, full state and headless details. */
+export function runOutcomeDetail(run: Pick<BraidRun, 'status' | 'activity' | 'error' | 'terminalReason'>): string | undefined {
+  if (run.status === 'unknown') {
+    const unknown = run.activity.findLast(
+      (item) => item.type === 'lifecycle' && item.label === 'unknown',
+    )?.detail
+    const detail = [unknown, run.terminalReason, run.error].find(hasProviderCause)
+    if (detail !== undefined) return detail
+    const code = [unknown, run.error].find((value) => value !== undefined && BARE_FAILURE_CODE.test(value))
+    return code === undefined ? NO_RECORDED_PROVIDER_CAUSE : `${NO_RECORDED_PROVIDER_CAUSE} (${code})`
+  }
+  if (run.status !== 'failed' && run.status !== 'blocked' && run.status !== 'expired')
+    return undefined
+  const [first, second] = [run.error, run.terminalReason].filter(hasProviderCause)
+  if (first !== undefined) {
+    if (second === undefined || first.includes(second)) return first
+    return second.includes(first) ? second : `${first}; ${second}`
+  }
+  return run.error === undefined ? NO_RECORDED_PROVIDER_CAUSE : `${NO_RECORDED_PROVIDER_CAUSE} (${run.error})`
+}
+
