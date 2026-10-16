@@ -55,26 +55,6 @@ function finalEvent(text: string): RuntimeStreamEvent {
   }
 }
 
-function failedAsyncIterable<T>(error: unknown): AsyncIterable<T> {
-  return {
-    [Symbol.asyncIterator](): AsyncIterator<T> {
-      return {
-        next: async () => Promise.reject(error),
-      }
-    },
-  }
-}
-
-function emptyAsyncIterable<T>(): AsyncIterable<T> {
-  return {
-    [Symbol.asyncIterator](): AsyncIterator<T> {
-      return {
-        next: async () => ({ done: true, value: undefined }),
-      }
-    },
-  }
-}
-
 function appFor(execution: ExecutionPort, journal?: MemoryJournal): BraidApplication {
   const app = new BraidApplication({
     profile: DETERMINISTIC_PROFILE,
