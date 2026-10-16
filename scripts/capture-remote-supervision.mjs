@@ -201,22 +201,22 @@ export async function captureRemoteSupervision(endpointEnv) {
             tree.nodes.some((node) => screen().includes(node.label)),
           'remote tree',
         )
-        await sleep(400)
+        await sleep(1_200)
         await capture('tree')
         // Visit the group and every real agent through ordinary keyboard selection.
         input('\u001b[H')
         await sleep(200)
         for (let index = 0; index < tree.nodes.length + 2; index += 1) {
           input('\u001b[B')
-          await sleep(350)
+          await sleep(650)
         }
         input('\r')
-        await sleep(350)
+        await sleep(1_600)
         await capture('agent')
         await closeGraph()
         await command('/graph')
         await waitFor(() => screen().includes('conversation graph'), 'reopened graph')
-        await sleep(250)
+        await sleep(750)
         await closeGraph()
         await command('/quit')
         await Promise.race([

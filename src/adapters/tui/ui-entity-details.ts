@@ -155,6 +155,7 @@ function workerDetail(record: WorkerRecord | undefined): EntityDetailView | unde
       status: record.status,
       lines: bounded([
         `${safe(record.title ?? record.runtimeId)} · ${record.role} · ${safe(record.runner ?? 'runner unknown')}`,
+        `status: ${safe(record.status)}`,
         `parent: ${safe(record.parentRuntimeRef ?? 'Runtime root')}`,
         safe(record.streamStatus ?? 'select this agent to read live events'),
         ...(record.logTail === undefined ? [] : record.logTail.split('\n').map(safe)),
