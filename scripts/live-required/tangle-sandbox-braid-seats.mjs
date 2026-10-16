@@ -274,7 +274,7 @@ async function journalEvidence(config, { secrets, modelCredentials, canaries }) 
     return {
       source: 'restored-state',
       connectionRestored: stored !== undefined,
-      grantedNamesKept: JSON.stringify(stored?.secrets ?? null) === JSON.stringify(secrets),
+      grantedNamesKept: JSON.stringify(stored?.secrets ?? []) === JSON.stringify(secrets),
       seatReferenceKept:
         JSON.stringify(stored?.modelCredentials ?? null) ===
         JSON.stringify(modelCredentials ?? null),
@@ -351,7 +351,7 @@ export async function runSeatsProof(environment = process.env) {
   const providerOptions = {
     lifecycle: 'retained',
     idleTtlSeconds: 1_800,
-    secrets,
+    ...(secrets.length === 0 ? {} : { secrets }),
     ...(modelCredentials === undefined ? {} : { modelCredentials }),
   }
   const cleanupClient = new Sandbox({ baseUrl: sandbox.endpoint, apiKey: cleanupKey })
@@ -430,6 +430,7 @@ export async function runSeatsProof(environment = process.env) {
       model: finalRun.model ?? null,
       runner: finalRun.runner ?? null,
       error: finalRun.error === undefined ? null : safeMessage(finalRun.error, environment),
+      reason: finalRun.reason === undefined ? null : safeMessage(finalRun.reason, environment),
       sandboxId: controlRef?.environmentId ?? finalRun.environmentId ?? null,
       inputTokens: finalRun.inputTokens,
       outputTokens: finalRun.outputTokens,
