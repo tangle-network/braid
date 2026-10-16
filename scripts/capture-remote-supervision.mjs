@@ -152,6 +152,12 @@ export async function captureRemoteSupervision(endpointEnv) {
           await sleep(25)
         }
       }
+      const closeGraph = async () => {
+        input('\u001b')
+        await sleep(150)
+        if (screen().includes('conversation graph')) input('\u001b')
+        await waitFor(() => !screen().includes('conversation graph'), 'closed graph')
+      }
       const cast = (title, entries) =>
         [
           JSON.stringify({
@@ -187,25 +193,21 @@ export async function captureRemoteSupervision(endpointEnv) {
         )
         await sleep(400)
         await capture('tree')
-        // From the selected conversation branch, visit the Runtime group, then two real agents.
-        input('\u001b[B')
-        await sleep(250)
-        input('\u001b[B')
-        await sleep(400)
-        input('\u001b[B')
-        await sleep(700)
+        // Visit the group and every real agent through ordinary keyboard selection.
+        input('\u001b[H')
+        await sleep(200)
+        for (let index = 0; index < tree.nodes.length + 2; index += 1) {
+          input('\u001b[B')
+          await sleep(350)
+        }
         input('\r')
         await sleep(350)
         await capture('agent')
-        input('\u001b')
-        input('\u001b')
-        await sleep(200)
+        await closeGraph()
         input('/graph\r')
         await waitFor(() => screen().includes('conversation graph'), 'reopened graph')
         await sleep(250)
-        input('\u001b')
-        input('\u001b')
-        await sleep(100)
+        await closeGraph()
         input('/quit\r')
         await Promise.race([
           exited,
@@ -221,12 +223,7 @@ export async function captureRemoteSupervision(endpointEnv) {
           tree.nodes.map((node) => node.id).sort(),
           'Every actual Runtime agent must survive in the Braid graph',
         )
-        assert.ok(
-          recorded.state.workers.some(
-            (worker) => worker.streamStatus !== 'select this agent to read its live events',
-          ),
-          'Agent selection must read the actual Runtime event endpoint',
-        )
+        assert.ok(recorded.state.workers.every((worker) => worker.streamStatus !== 'select this agent to read its live events'), 'Every selected agent must be read through the actual Runtime event endpoint')
         assert.ok(
           recorded.state.supervisors.every(
             (supervisor) => supervisor.conversationId === recorded.state.conversationId,
