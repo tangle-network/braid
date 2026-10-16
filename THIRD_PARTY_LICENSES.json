@@ -64,7 +64,7 @@
     {
       "license": "MIT",
       "name": "@tangle-network/agent-eval",
-      "version": "0.213.0"
+      "version": "0.214.0"
     },
     {
       "license": "MIT",
@@ -84,7 +84,7 @@
     {
       "license": "MIT",
       "name": "@tangle-network/agent-knowledge",
-      "version": "22.0.1"
+      "version": "22.0.2"
     },
     {
       "license": "Unknown",
@@ -109,7 +109,7 @@
     {
       "license": "MIT",
       "name": "@tangle-network/agent-runtime",
-      "version": "0.319.8"
+      "version": "0.322.1"
     },
     {
       "license": "MIT",
