@@ -154,6 +154,11 @@ export async function captureRemoteSupervision(endpointEnv) {
           await sleep(25)
         }
       }
+      const command = async (value) => {
+        input(value)
+        await sleep(100)
+        input('\r')
+      }
       const closeGraph = async () => {
         input('\u001b')
         await sleep(150)
@@ -185,8 +190,8 @@ export async function captureRemoteSupervision(endpointEnv) {
         await writeRaster(`${prefix}.cast`, `${prefix}.png`, `${prefix}.gif`)
       }
       try {
-        await sleep(1_500)
-        input(`/graph --remote-env ${endpointEnv}\r`)
+        await waitFor(() => screen().includes('Runtime observer') && screen().includes('new message'), 'conversation shell')
+        await command(`/graph --remote-env ${endpointEnv}`)
         await waitFor(
           () =>
             screen().includes('conversation graph') &&
@@ -206,11 +211,11 @@ export async function captureRemoteSupervision(endpointEnv) {
         await sleep(350)
         await capture('agent')
         await closeGraph()
-        input('/graph\r')
+        await command('/graph')
         await waitFor(() => screen().includes('conversation graph'), 'reopened graph')
         await sleep(250)
         await closeGraph()
-        input('/quit\r')
+        await command('/quit')
         await Promise.race([
           exited,
           sleep(8_000).then(() => {
@@ -219,6 +224,7 @@ export async function captureRemoteSupervision(endpointEnv) {
         ])
         assert.equal(exit.exitCode, 0, safeEvidence(screen()))
         const recorded = JSON.parse(safeEvidence(await readFile(recordPath, 'utf8')))
+        assert.equal(recorded.state.runs.length, 0, 'Observation must send no provider turn')
         const workers = new Map()
         const supervisors = new Map()
         for (const event of recorded.events) {
@@ -238,7 +244,12 @@ export async function captureRemoteSupervision(endpointEnv) {
           tree.nodes.map((node) => node.id).sort(),
           'Every actual Runtime agent must survive in the Braid graph',
         )
-        assert.ok(observedWorkers.every((worker) => worker.streamStatus !== 'select this agent to read its live events'), 'Every selected agent must be read through the actual Runtime event endpoint')
+        assert.ok(
+          observedWorkers.every(
+            (worker) => worker.streamStatus !== 'select this agent to read its live events',
+          ),
+          'Every selected agent must be read through the actual Runtime event endpoint',
+        )
         assert.ok(
           [...supervisors.values()].every(
             (supervisor) => supervisor.conversationId === recorded.state.conversationId,
@@ -293,8 +304,14 @@ export async function captureRemoteSupervision(endpointEnv) {
           exit: exit.exitCode,
         })
       } catch (error) {
-        await writeFile(join(outputRoot, `${columns}x${rows}-failed-screen.txt`), safeEvidence(screen()))
-        await writeFile(join(outputRoot, `${columns}x${rows}-failed-flow.cast`), safeEvidence(cast('Uncut failed remote topology flow', events)))
+        await writeFile(
+          join(outputRoot, `${columns}x${rows}-failed-screen.txt`),
+          safeEvidence(screen()),
+        )
+        await writeFile(
+          join(outputRoot, `${columns}x${rows}-failed-flow.cast`),
+          safeEvidence(cast('Uncut failed remote topology flow', events)),
+        )
         throw error
       } finally {
         if (!exit) child.kill()
