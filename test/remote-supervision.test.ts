@@ -353,10 +353,14 @@ test('real Runtime workers cross authenticated HTTP into the conversation graph,
                 if (!(await scope.next())) break
               }
               const drained = await controller.dispatch({
-                type: 'headless-command', command: 'refresh_supervision', params: { workerId: secondWorker.id },
+                type: 'headless-command',
+                command: 'refresh_supervision',
+                params: { workerId: secondWorker.id },
               })
               assert.equal(drained.kind, 'accepted')
-              const completed = durable.app.state().workers.find((worker) => worker.id === secondWorker.id)
+              const completed = durable.app
+                .state()
+                .workers.find((worker) => worker.id === secondWorker.id)
               assert.equal(completed?.status, 'completed')
               assert.match(String(completed?.logTail), /Surveyor: actual output/u)
             } finally {

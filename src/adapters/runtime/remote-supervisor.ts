@@ -193,9 +193,11 @@ export class RemoteSupervisorWatcher {
               ? new IncrementalSecretTextSanitizer(Number.POSITIVE_INFINITY)
               : (previous?.sanitizer ??
                 new IncrementalSecretTextSanitizer(Number.POSITIVE_INFINITY))
-          const terminal = events.remaining === 0 && ['done', 'down', 'cancelled', 'completed', 'failed'].includes(
-            tree.nodes.find((node) => node.id === workerId)?.status ?? 'unknown',
-          )
+          const terminal =
+            events.remaining === 0 &&
+            ['done', 'down', 'cancelled', 'completed', 'failed'].includes(
+              tree.nodes.find((node) => node.id === workerId)?.status ?? 'unknown',
+            )
           const protectedChunk = protectChunk(
             `${events.reset ? '' : (previous?.protectedPending ?? '')}${added}`,
             [spec.url, ...Object.values(spec.protectedHeaders)],
