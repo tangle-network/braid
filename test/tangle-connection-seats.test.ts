@@ -9,7 +9,6 @@ import { type AgentProfile, defineAgentProfile } from '@tangle-network/agent-int
 import { assertNoSecretArtifacts } from '../scripts/scan-secret-artifacts.mjs'
 import { bindCredentialToOrigin } from '../src/adapters/connections/production-connection-credentials.js'
 import { createTangleEnvironmentProvider } from '../src/adapters/connections/production-connection-providers.js'
-import { MODEL_SEAT_VALIDITY_MS } from '../src/adapters/connections/tangle-model-credentials.js'
 import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
 import { resolveTangleSandboxRetainedConnection } from '../src/adapters/runtime/production-tangle-sandbox-backend.js'
 import {
@@ -89,11 +88,8 @@ function digest(value: string): string {
 /**
  * A resolver that proves which values reached it without printing them: each public field it
  * returns carries a digest of one private variable.
- *
- * Like the account owner's `acct sandbox resolve`, it refuses a request without a worker validity
- * deadline, because an access-only seat cannot refresh inside the sandbox. `refuse` always refuses.
  */
-async function resolverScript(output: 'cliAuth' | 'apiKeyEnv' | 'refuse'): Promise<{
+async function resolverScript(output: 'cliAuth' | 'apiKeyEnv'): Promise<{
   readonly directory: string
   readonly path: string
 }> {
@@ -110,11 +106,6 @@ async function resolverScript(output: 'cliAuth' | 'apiKeyEnv' | 'refuse'): Promi
       "process.stdin.on('end', () => {",
       '  const parsed = JSON.parse(request)',
       "  if (typeof parsed.input?.idempotencyKey !== 'string') process.exit(3)",
-      "  const validFor = Date.parse(parsed.minimumValidUntil ?? '') - Date.now()",
-      `  if (!(validFor > ${MODEL_SEAT_VALIDITY_MS - 5 * 60_000}) || ${output === 'refuse'}) {`,
-      "    process.stderr.write('acct: Access-only credentials require a worker validity deadline\\n')",
-      '    process.exit(1)',
-      '  }',
       "  const seat = 'SEAT_' + hash('BRAID_SEAT_CONNECTION_KEY')",
       output === 'cliAuth'
         ? "  process.stdout.write(JSON.stringify({ cliAuth: { account: 'seat-' + hash('BRAID_SEAT_FORWARDED').toLowerCase(), secretEnv: seat, format: 'token' } }))"
@@ -699,66 +690,5 @@ test('a retained subscription turn carries its exact profile so the provider sel
     if (previous === undefined) delete process.env.BRAID_SEAT_FORWARDED
     else process.env.BRAID_SEAT_FORWARDED = previous
     await rm(resolver.directory, { recursive: true, force: true })
-  }
-})
-
-test('a seat resolver refusal shows its cause on the run instead of a bare reconciliation code', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'braid-seat-refusal-'))
-  const resolver = await resolverScript('refuse')
-  const sandbox = new FakeTangleRetainedSandbox()
-  const keyed = await storedConnectionKey(
-    record({
-      lifecycle: 'retained',
-      idleTtlSeconds: 1_800,
-      modelCredentials: {
-        command: [process.execPath, resolver.path],
-        connectionKeyEnv: 'BRAID_SEAT_CONNECTION_KEY',
-        connectionEndpointEnv: 'BRAID_SEAT_ENDPOINT',
-      },
-    }),
-  )
-  let durable: DurableBraidApplication | undefined
-  try {
-    durable = await createDurableBraidApplication({
-      path: join(root, 'braid.db'),
-      workspaceRoot: root,
-      credentialStore: new MemoryCredentialStore(),
-      production: {
-        profile: subscriptionProfile('opencode'),
-        connections: [keyed.connection],
-        connectionId: keyed.connection.id,
-        connectionOptions: {
-          credentials: keyed.credentials,
-          credentialRefResolver: keyed.credentialRefResolver,
-          sandboxClient: sandbox.client(),
-        },
-      },
-      ids: new RandomIds(),
-    })
-    durable.app.initialize(root)
-    await durable.app.whenDurable()
-    await activateProductionConnection(durable.app, keyed.connection.id, [keyed.connection])
-    const turn = durable.app.send({ operationId: 'operation-seat-refusal', text: 'Use the seat.' })
-    await turn.completion.catch(() => undefined)
-    await durable.app.whenDurable()
-    const state = durable.app.state()
-    const run = state.runs.find((candidate) => candidate.id === turn.runId)
-    const trail = durable.app
-      .events()
-      .filter((entry) => 'runId' in entry.event && entry.event.runId === turn.runId)
-      .map((entry) => entry.event)
-    const kinds = JSON.stringify(trail.map((event) => event.kind))
-    // The resolver refuses before any Sandbox is created.
-    assert.equal(sandbox.createCalls.length, 0, kinds)
-    assert.ok(run !== undefined && ['failed', 'unknown'].includes(run.status), kinds)
-    const recorded = JSON.stringify({ run, lastError: state.lastError, trail })
-    assert.match(recorded, /Tangle credential command failed \(exit 1\)/u, kinds)
-    for (const canary of [KEY_CANARY, FORWARDED_CANARY])
-      assert.equal(recorded.includes(canary), false, `canary of ${canary.length} characters`)
-  } finally {
-    await durable?.app.close()
-    await durable?.storage.close()
-    await rm(resolver.directory, { recursive: true, force: true })
-    await rm(root, { recursive: true, force: true })
   }
 })

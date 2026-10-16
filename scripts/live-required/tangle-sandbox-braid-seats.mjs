@@ -572,16 +572,22 @@ export async function runSeatsProof(environment = process.env) {
       await config.cleanup().catch(() => undefined)
     }
     if (environment.BRAID_SEATS_RESOLVER_RECEIPT !== undefined) {
-      const bytes = await readFile(environment.BRAID_SEATS_RESOLVER_RECEIPT, 'utf8')
-      if (Buffer.byteLength(bytes) > 65536)
-        throw new Error('The resolver receipt exceeds its evidence bound')
-      const calls = bytes
-        .trim()
-        .split('\n')
-        .filter(Boolean)
-        .map((line) => JSON.parse(line))
-        .filter((call) => call.proofId === result.proofId)
-      result.seatResolver = { measured: calls.length > 0, calls }
+      try {
+        const bytes = await readFile(environment.BRAID_SEATS_RESOLVER_RECEIPT, 'utf8')
+        if (Buffer.byteLength(bytes) > 65536)
+          throw new Error('The resolver receipt exceeds its evidence bound')
+        const calls = bytes
+          .trim()
+          .split('\n')
+          .filter(Boolean)
+          .map((line) => JSON.parse(line))
+          .filter((call) => call.proofId === result.proofId)
+        result.seatResolver = { measured: calls.length > 0, calls }
+      } catch (error) {
+        const failure = safeMessage(error, environment)
+        result.seatResolver = { measured: false, failure }
+        result.failure ??= failure
+      }
     }
     result.finishedAt = new Date().toISOString()
   }
