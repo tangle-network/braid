@@ -7,7 +7,6 @@ import { API } from 'typescript/unstable/sync'
 const repositoryRoot = fileURLToPath(new URL('../', import.meta.url))
 const sourceRoot = join(repositoryRoot, 'src')
 const sourceExtensions = ['.ts', '.tsx', '.mts', '.cts']
-const dataExtensions = ['.json']
 const javascriptSpecifierExtensions = new Map([
   ['.js', sourceExtensions],
   ['.jsx', ['.tsx']],
@@ -25,7 +24,7 @@ async function sourceFiles(directory) {
   )
   return nested
     .flat()
-    .filter((path) => [...sourceExtensions, ...dataExtensions].includes(extname(path)))
+    .filter((path) => sourceExtensions.includes(extname(path)))
     .sort()
 }
 
@@ -40,7 +39,7 @@ function isRelativeSpecifier(specifier) {
 
 function candidatesFor(raw) {
   const extension = extname(raw)
-  if ([...sourceExtensions, ...dataExtensions].includes(extension)) return [raw]
+  if (sourceExtensions.includes(extension)) return [raw]
 
   const mappedExtensions =
     javascriptSpecifierExtensions.get(extension) ??
@@ -80,8 +79,6 @@ function graphFromFiles(files, root, specifiersForFile) {
   const modules = new Set(files)
   const graph = new Map(files.map((file) => [file, new Set()]))
   for (const file of files) {
-    // JSON is a dependency leaf: it can be imported but cannot import executable modules.
-    if (dataExtensions.includes(extname(file))) continue
     for (const specifier of specifiersForFile(file)) {
       const target = resolveSpecifier(file, specifier, modules, root)
       if (target) graph.get(file).add(target)
@@ -211,7 +208,6 @@ async function selfTestGraph() {
         import { value as commonjsSource } from './commonjs-source.js'
         import { value as esmSource } from './esm-source.js'
         import './side-effect.js'
-        import data from './data.json' with { type: 'json' }
         import type { TypeOnly } from './types.js'
         export { value as reexported } from './reexport.js'
         export type { ExportedType } from './export-type.js'
@@ -230,7 +226,6 @@ async function selfTestGraph() {
     [join(root, 'component.tsx'), "import './entry.js'\nexport const value = 1"],
     [join(root, 'commonjs-source.cts'), 'export const value = 1'],
     [join(root, 'esm-source.mts'), 'export const value = 1'],
-    [join(root, 'data.json'), '{}'],
     [join(root, 'side-effect.ts'), 'export const side = true'],
     [join(root, 'types.ts'), 'export type TypeOnly = string'],
     [join(root, 'reexport.ts'), 'export const value = 1'],
@@ -260,7 +255,6 @@ async function selfTestGraph() {
       graph,
       [
         `${entry}->${component}`,
-        `${entry}->${join(root, 'data.json')}`,
         `${entry}->${join(root, 'commonjs-source.cts')}`,
         `${entry}->${join(root, 'esm-source.mts')}`,
         `${entry}->${join(root, 'side-effect.ts')}`,

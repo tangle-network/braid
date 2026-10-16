@@ -1,8 +1,6 @@
 import type { ProfileSourceSpec } from '../app/profile-types.js'
 import { importProfileValue } from '../app/profiles.js'
-// Published from discovery-lab@de068d196aed580c05fe985f105768f61daa61e1.
-// The private source remains the owner; this package carries its immutable release snapshot.
-import discoveryOperator from '../profiles/discovery-operator.json' with { type: 'json' }
+import discoveryOperator from '../profiles/discovery-operator.js'
 
 const catalog: Readonly<Record<string, unknown>> = { 'discovery-operator': discoveryOperator }
 

@@ -242,15 +242,27 @@ export function projectSetupProfiles(
       (explicitRunner === undefined || record.profile.harness === explicitRunner)
     )
   })
+  const requestedSource =
+    options.profileReference === undefined ? undefined : trustedProfileSources(options)[0]
+  const explicitProfile =
+    requestedSource === undefined
+      ? undefined
+      : trusted.find(
+          (record) =>
+            record.source.kind === requestedSource.kind &&
+            record.source.reference === requestedSource.reference,
+        )
   const initialCandidate = matching[0]
   const initial =
+    explicitProfile ??
     (initialCandidate === undefined
       ? undefined
       : profiles.find(
           (record) =>
             record.profile.harness === initialCandidate.runner &&
             targetKey(record.profile) === initialCandidate.route,
-        )) ?? explicitProfileMatches[0]
+        )) ??
+    explicitProfileMatches[0]
   if (profiles.length === 0) {
     diagnostics.push(
       `No trusted AgentProfile or compatible advertised model was discovered at ${endpoint}; configure a profile or start a ready CLI Bridge backend`,

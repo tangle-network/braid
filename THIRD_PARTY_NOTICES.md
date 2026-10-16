@@ -2,7 +2,7 @@
 
 ## Published Discovery Operator
 
-`src/profiles/discovery-operator.json` is the project-owner-authorized release
+`src/profiles/discovery-operator.ts` is the project-owner-authorized release
 snapshot of `tangle-network/discovery-lab`, commit
 `de068d196aed580c05fe985f105768f61daa61e1`, path
 `profiles/operators/discovery-operator.json`. Discovery Lab remains its owner.
@@ -45,6 +45,7 @@ Before copied or substantially adapted code is committed, add one row below with
 
 | Braid path | Upstream source | Source commit | License | Adaptation |
 | --- | --- | --- | --- | --- |
+| `src/profiles/discovery-operator.ts` | [`tangle-network/discovery-lab`, `profiles/operators/discovery-operator.json`](https://github.com/tangle-network/discovery-lab/blob/de068d196aed580c05fe985f105768f61daa61e1/profiles/operators/discovery-operator.json) | `de068d196aed580c05fe985f105768f61daa61e1` | Project-owner-authorized distribution; mounted resources retain the licenses above | Canonical-value-preserving data export with a file-level source and authority header. |
 | `test/support/virtual-terminal.ts` | [`earendil-works/pi`, `packages/tui/test/virtual-terminal.ts`](https://github.com/earendil-works/pi/blob/a6f7317dfca61e357aee65faafe012a1be6c3734/packages/tui/test/virtual-terminal.ts) | `a6f7317dfca61e357aee65faafe012a1be6c3734` | MIT, Copyright (c) 2025 Mario Zechner | Changed imports to the published Pi TUI package, applied Braid formatting, and implemented the terminal status method required by Pi TUI 1.1.0 as a no-op in the headless test terminal; production code does not include this file. |
 | `src/views/tui/selector.ts` | [`earendil-works/pi`, `packages/tui/src/components/select-list.ts`](https://github.com/earendil-works/pi/blob/a6f7317dfca61e357aee65faafe012a1be6c3734/packages/tui/src/components/select-list.ts) | `a6f7317dfca61e357aee65faafe012a1be6c3734` | MIT, Copyright (c) 2025 Mario Zechner | Reuses Pi's pinned column-width and truncation calculations to mark description overflow while preserving the shared selector behavior. |
 | `scripts/live-bridge/windows-job-host-source.mjs` | [`dotnet/aspire`, `src/Aspire.Cli/Processes/WindowsConsoleProcessJob.cs` and `WindowsProcessInterop.cs`](https://github.com/dotnet/aspire/tree/be77aa36daf995fae0e72091141410c7082fcba3/src/Aspire.Cli/Processes) | `be77aa36daf995fae0e72091141410c7082fcba3` | MIT, Copyright (c) .NET Foundation and contributors | Adapted atomic Job Object attachment, kill-on-close containment, and active-process drain checks for Braid's Windows release proof. |
