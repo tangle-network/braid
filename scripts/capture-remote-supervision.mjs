@@ -190,7 +190,10 @@ export async function captureRemoteSupervision(endpointEnv) {
         await writeRaster(`${prefix}.cast`, `${prefix}.png`, `${prefix}.gif`)
       }
       try {
-        await waitFor(() => screen().includes('Runtime observer') && screen().includes('new message'), 'conversation shell')
+        await waitFor(
+          () => screen().includes('Runtime observer') && screen().includes('new message'),
+          'conversation shell',
+        )
         await command(`/graph --remote-env ${endpointEnv}`)
         await waitFor(
           () =>
@@ -239,6 +242,19 @@ export async function captureRemoteSupervision(endpointEnv) {
         }
         const observedWorkers = [...workers.values()]
         const actual = observedWorkers.map((worker) => worker.runtimeId).sort()
+        const graph = recorded.view.graph
+        const positions = new Map(graph.map((node, index) => [`${node.type}:${node.id}`, index]))
+        for (const worker of observedWorkers) {
+          const source = tree.nodes.find((node) => node.id === worker.runtimeId)
+          const visible = graph.find((node) => node.type === 'worker' && node.id === worker.id)
+          assert.ok(visible, 'Every remote agent must be in the normalized consumer view')
+          if (['pending', 'queued', 'acquiring', 'running'].includes(source.status)) {
+            assert.ok(!['complete', 'completed'].includes(visible.status), 'Unfinished agents must never look complete')
+          }
+          for (const parent of visible.parentIds ?? []) {
+            if (positions.has(parent)) assert.ok(positions.get(parent) < positions.get(`worker:${worker.id}`), 'A real parent must appear before its child')
+          }
+        }
         assert.deepEqual(
           actual,
           tree.nodes.map((node) => node.id).sort(),

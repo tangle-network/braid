@@ -13,6 +13,7 @@ import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { createDurableBraidApplication } from '../src/app/composition.js'
 import { runtimeWorkerReference } from '../src/app/supervisor-projection.js'
+import { graphFor } from '../src/adapters/tui/ui-projection.js'
 import { queryDetails } from '../src/views/shared/semantic-details.js'
 import { queryGraph } from '../src/views/shared/semantic-graph.js'
 
@@ -130,6 +131,13 @@ test('real Runtime workers cross authenticated HTTP into the conversation graph,
             assert.equal(initial.kind, 'accepted')
             const workers = durable.app.state().workers
             assert.equal(workers.length, 2)
+            const waiting = workers.find((worker) => worker.title === 'Checker')
+            assert.ok(waiting)
+            assert.equal(waiting.status, 'pending')
+            assert.equal(
+              graphFor(durable.app.state()).find((node) => node.id === waiting.id)?.status,
+              'pending',
+            )
             const selected = workers.find((worker) => worker.title === 'Surveyor')
             assert.ok(selected)
             assert.equal(
@@ -231,6 +239,7 @@ test('real Runtime workers cross authenticated HTTP into the conversation graph,
         ...runtimeContext,
         budget: { maxIterations: 5, maxTokens: 100, deadlineMs: 25_000 },
         runId: 'remote-supervision-integration',
+        workerSlots: 1,
       },
     )
     assert.equal(result.kind, 'winner', JSON.stringify(result))

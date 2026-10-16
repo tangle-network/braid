@@ -6,6 +6,7 @@ export type ViewStatus =
   | 'loading'
   | 'ready'
   | 'starting'
+  | 'pending'
   | 'streaming'
   | 'running'
   | 'waiting'

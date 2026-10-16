@@ -617,7 +617,7 @@ export function graphFor(
       .filter((record) => remoteSupervisors.has(record.supervisorId))
       .map((record) => `worker:${record.id}`),
   ])
-  return result.nodes.map((node) => {
+  const nodes: GraphNodeView[] = result.nodes.map((node) => {
     const remote = remoteNodes.has(`${node.type}:${node.id}`)
     const run = node.type === 'run' ? runs.get(node.id) : undefined
     const canonicalNode = canonicalNodes.get(`${node.type}:${node.id}`)
@@ -640,6 +640,40 @@ export function graphFor(
       ...(node.costUsd === undefined ? {} : { costUsd: node.costUsd }),
     }
   })
+  // The semantic query is chronological. A tree display must place a parent before its
+  // descendants even when a single remote snapshot gives every agent the same timestamp.
+  const byId = new Map(nodes.map((node) => [`${node.type}:${node.id}`, node]))
+  const children = new Map<string, GraphNodeView[]>()
+  const roots: GraphNodeView[] = []
+  for (const node of nodes) {
+    const parentId = node.parentIds?.find((id) => {
+      const parent = byId.get(id)
+      return parent !== undefined && parent.depth < node.depth
+    })
+    if (parentId === undefined) roots.push(node)
+    else {
+      const siblings = children.get(parentId) ?? []
+      siblings.push(node)
+      children.set(parentId, siblings)
+    }
+  }
+  const ordered: GraphNodeView[] = []
+  const seen = new Set<string>()
+  const pending = roots.reverse()
+  while (pending.length > 0) {
+    const node = pending.pop()
+    if (node === undefined) break
+    const id = `${node.type}:${node.id}`
+    if (seen.has(id)) continue
+    seen.add(id)
+    ordered.push(node)
+    pending.push(...(children.get(id) ?? []).toReversed())
+  }
+  // Retain every node if a malformed or partial graph has no usable hierarchy.
+  for (const node of nodes) {
+    if (!seen.has(`${node.type}:${node.id}`)) ordered.push(node)
+  }
+  return ordered
 }
 
 export function toHeadlessState(
