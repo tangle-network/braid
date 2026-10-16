@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { randomBytes } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -28,10 +28,12 @@ export async function captureRemoteSupervision(endpointEnv) {
   await reader.close()
   assert.ok(tree.nodes.length > 0, 'The real remote run must expose agents')
   const repository = new URL('../', import.meta.url).pathname
-  const outputRoot = join(
+  const outputBase = join(
     process.env.BRAID_RELEASE_ARTIFACT_ROOT ?? join(repository, 'artifacts/verification'),
     'remote-supervision',
   )
+  const generation = `${new Date().toISOString().replace(/[:.]/gu, '-')}-${randomUUID().slice(0, 8)}`
+  const outputRoot = join(outputBase, generation)
   await mkdir(outputRoot, { recursive: true })
   const packed = await installPackedBraid(repository)
   const forbidden = [endpoint.url, ...Object.values(endpoint.headers)]
@@ -217,15 +219,28 @@ export async function captureRemoteSupervision(endpointEnv) {
         ])
         assert.equal(exit.exitCode, 0, safeEvidence(screen()))
         const recorded = JSON.parse(safeEvidence(await readFile(recordPath, 'utf8')))
-        const actual = recorded.state.workers.map((worker) => worker.runtimeId).sort()
+        const workers = new Map()
+        const supervisors = new Map()
+        for (const event of recorded.events) {
+          if (event.kind === 'worker.upserted' && event.payload.value?.worker) {
+            const worker = event.payload.value.worker
+            workers.set(worker.id, worker)
+          }
+          if (event.kind === 'supervisor.upserted' && event.payload.value?.supervisor) {
+            const supervisor = event.payload.value.supervisor
+            supervisors.set(supervisor.id, supervisor)
+          }
+        }
+        const observedWorkers = [...workers.values()]
+        const actual = observedWorkers.map((worker) => worker.runtimeId).sort()
         assert.deepEqual(
           actual,
           tree.nodes.map((node) => node.id).sort(),
           'Every actual Runtime agent must survive in the Braid graph',
         )
-        assert.ok(recorded.state.workers.every((worker) => worker.streamStatus !== 'select this agent to read its live events'), 'Every selected agent must be read through the actual Runtime event endpoint')
+        assert.ok(observedWorkers.every((worker) => worker.streamStatus !== 'select this agent to read its live events'), 'Every selected agent must be read through the actual Runtime event endpoint')
         assert.ok(
-          recorded.state.supervisors.every(
+          [...supervisors.values()].every(
             (supervisor) => supervisor.conversationId === recorded.state.conversationId,
           ),
         )
@@ -272,7 +287,7 @@ export async function captureRemoteSupervision(endpointEnv) {
           columns,
           rows,
           agents: actual.length,
-          selectionReads: recorded.state.workers.filter(
+          selectionReads: observedWorkers.filter(
             (worker) => worker.streamStatus !== 'select this agent to read its live events',
           ).length,
           exit: exit.exitCode,
@@ -304,6 +319,7 @@ export async function captureRemoteSupervision(endpointEnv) {
         2,
       ) + '\n',
     )
+    await writeFile(join(outputBase, 'latest.json'), JSON.stringify({ generation }) + '\n')
     console.log(JSON.stringify({ remoteSupervisionCapture: results, outputRoot }))
   } finally {
     await packed.cleanup()
