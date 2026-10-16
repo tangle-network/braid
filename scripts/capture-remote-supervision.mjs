@@ -249,10 +249,17 @@ export async function captureRemoteSupervision(endpointEnv) {
           const visible = graph.find((node) => node.type === 'worker' && node.id === worker.id)
           assert.ok(visible, 'Every remote agent must be in the normalized consumer view')
           if (['pending', 'queued', 'acquiring', 'running'].includes(source.status)) {
-            assert.ok(!['complete', 'completed'].includes(visible.status), 'Unfinished agents must never look complete')
+            assert.ok(
+              !['complete', 'completed'].includes(visible.status),
+              'Unfinished agents must never look complete',
+            )
           }
           for (const parent of visible.parentIds ?? []) {
-            if (positions.has(parent)) assert.ok(positions.get(parent) < positions.get(`worker:${worker.id}`), 'A real parent must appear before its child')
+            if (positions.has(parent))
+              assert.ok(
+                positions.get(parent) < positions.get(`worker:${worker.id}`),
+                'A real parent must appear before its child',
+              )
           }
         }
         assert.deepEqual(
@@ -352,7 +359,7 @@ export async function captureRemoteSupervision(endpointEnv) {
         2,
       ) + '\n',
     )
-    await writeFile(join(outputBase, 'latest.json'), JSON.stringify({ generation }) + '\n')
+    await writeFile(join(outputBase, 'latest.json'), `${JSON.stringify({ generation })}\n`)
     console.log(JSON.stringify({ remoteSupervisionCapture: results, outputRoot }))
   } finally {
     await packed.cleanup()
