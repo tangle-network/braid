@@ -67,8 +67,13 @@ const INTENTS_FOR: Readonly<Record<CommandName, CommandIntentFactory>> = {
     type: 'open-surface',
     surface: 'graph',
     ...(args[0] === '--remote-env'
-      ? { remoteEndpointEnv: args[1] ?? '' , ...(args.length > 2 ? { query: args.slice(2).join(' ') } : {}) }
-      : args.length === 0 ? {} : { query: args.join(' ') }),
+      ? {
+          remoteEndpointEnv: args[1] ?? '',
+          ...(args.length > 2 ? { query: args.slice(2).join(' ') } : {}),
+        }
+      : args.length === 0
+        ? {}
+        : { query: args.join(' ') }),
   }),
   ask: runCommandIntent('ask'),
   analyze: runCommandIntent('analyze'),

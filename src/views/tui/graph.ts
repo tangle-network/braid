@@ -69,7 +69,11 @@ export class GraphView extends EntityBrowser {
       return
     }
     super.handleInput(data)
-    this.#onSelectWorker?.(this.selectedId?.startsWith('worker:') === true ? this.selectedId.slice('worker:'.length) : undefined)
+    this.#onSelectWorker?.(
+      this.selectedId?.startsWith('worker:') === true
+        ? this.selectedId.slice('worker:'.length)
+        : undefined,
+    )
   }
 
   #toggleSelected(): void {

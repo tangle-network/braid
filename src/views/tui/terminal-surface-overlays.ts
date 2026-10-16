@@ -504,7 +504,10 @@ export class TerminalSurfaceOverlays {
     if (this.#supervisionRefreshInFlightGeneration === generation) return
     this.#supervisionRefreshInFlightGeneration = generation
     try {
-      const result = await this.#options.controller.dispatch({ type: 'refresh-supervision', ...(this.#selectedWorkerId === undefined ? {} : { workerId: this.#selectedWorkerId }) })
+      const result = await this.#options.controller.dispatch({
+        type: 'refresh-supervision',
+        ...(this.#selectedWorkerId === undefined ? {} : { workerId: this.#selectedWorkerId }),
+      })
       if (generation !== this.#supervisionRefreshGeneration) return
       if (
         result.kind === 'accepted' &&

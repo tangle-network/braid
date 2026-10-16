@@ -57,7 +57,12 @@ export function runtimeWorkerReference(
   workerId: string,
 ): RuntimeWorkerReference | undefined {
   const supervisor = state.supervisors.find((candidate) => String(candidate.id) === supervisorId)
-  if (supervisor === undefined || supervisor.remoteEndpointEnv !== undefined || state.workspace !== supervisor.runtimeRoot) return undefined
+  if (
+    supervisor === undefined ||
+    supervisor.remoteEndpointEnv !== undefined ||
+    state.workspace !== supervisor.runtimeRoot
+  )
+    return undefined
   const worker = state.workers.find(
     (candidate) => String(candidate.id) === workerId && candidate.supervisorId === supervisor.id,
   )
@@ -359,7 +364,10 @@ function reconcileSupervisors(
   const observedIds = new Set(output.map((record) => String(record.id)))
   for (const record of state.supervisors) {
     if (record.runtimeRoot !== input.rootDir || observedIds.has(String(record.id))) continue
-    if (record.remoteEndpointEnv !== undefined) { output.push(record); continue }
+    if (record.remoteEndpointEnv !== undefined) {
+      output.push(record)
+      continue
+    }
     output.push(
       record.status === 'starting' || record.status === 'running'
         ? { ...record, status: 'unknown', updatedAt: at }
@@ -445,7 +453,12 @@ export async function commitSupervisorProjection(
   const observed = projectSnapshot(input, raw)
   const at = snapshotTime(input, raw)
   const supervisors = reconcileSupervisors(state, input, observed.supervisors, at)
-  const workers = reconcileWorkers(state, supervisors.filter((record) => record.remoteEndpointEnv === undefined), observed.workers, at)
+  const workers = reconcileWorkers(
+    state,
+    supervisors.filter((record) => record.remoteEndpointEnv === undefined),
+    observed.workers,
+    at,
+  )
   const graphNodes = reconciledGraphNodes(state, observed.graphNodes, supervisors, workers)
   const projection = {
     raw,
@@ -460,9 +473,14 @@ export async function commitSupervisorProjection(
 }
 
 /** Both Runtime read surfaces persist through the same canonical entity and graph events. */
-export async function commitSupervisionRecords(host: AnalysisApplicationHost, projection: SupervisionRecords): Promise<void> {
+export async function commitSupervisionRecords(
+  host: AnalysisApplicationHost,
+  projection: SupervisionRecords,
+): Promise<void> {
   const state = host.currentState()
-  const existingSupervisors = new Map(state.supervisors.map((record) => [String(record.id), record]))
+  const existingSupervisors = new Map(
+    state.supervisors.map((record) => [String(record.id), record]),
+  )
   const existingWorkers = new Map(state.workers.map((record) => [String(record.id), record]))
   const existingNodes = new Map(state.graphNodes.map((record) => [String(record.id), record]))
   const existingEdges = new Map(state.graphEdges.map((record) => [String(record.id), record]))

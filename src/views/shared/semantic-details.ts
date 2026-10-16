@@ -340,8 +340,12 @@ function dataFor(
         id: supervisor.id,
         runtimeId: supervisor.runtimeId,
         runtimeRoot: supervisor.runtimeRoot,
-        ...(supervisor.conversationId === undefined ? {} : { conversationId: supervisor.conversationId }),
-        ...(supervisor.remoteEndpointEnv === undefined ? {} : { remoteEndpointEnv: supervisor.remoteEndpointEnv, controls: 'read-only' }),
+        ...(supervisor.conversationId === undefined
+          ? {}
+          : { conversationId: supervisor.conversationId }),
+        ...(supervisor.remoteEndpointEnv === undefined
+          ? {}
+          : { remoteEndpointEnv: supervisor.remoteEndpointEnv, controls: 'read-only' }),
         ...(supervisor.rootRunId === undefined ? {} : { rootRunId: supervisor.rootRunId }),
         status: supervisor.status,
         ...(supervisor.title === undefined ? {} : { title: safe(supervisor.title) }),

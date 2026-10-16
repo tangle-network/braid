@@ -99,8 +99,14 @@ export function capabilityMap(
   capabilities['feedback.read'] = { available: true, source: 'application' }
   capabilities['details.read'] = { available: true, source: 'local' }
   const hasWorkspace = state.workspace !== null
-  const localSupervisors = new Set(state.supervisors.filter((record) => record.remoteEndpointEnv === undefined).map((record) => record.id))
-  const hasRunningWorker = state.workers.some((worker) => worker.status === 'running' && localSupervisors.has(worker.supervisorId))
+  const localSupervisors = new Set(
+    state.supervisors
+      .filter((record) => record.remoteEndpointEnv === undefined)
+      .map((record) => record.id),
+  )
+  const hasRunningWorker = state.workers.some(
+    (worker) => worker.status === 'running' && localSupervisors.has(worker.supervisorId),
+  )
   const hasRunningSupervisor = state.supervisors.some(
     (supervisor) => supervisor.status === 'running' && supervisor.remoteEndpointEnv === undefined,
   )
