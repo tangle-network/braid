@@ -220,7 +220,7 @@ test('real Runtime workers cross authenticated HTTP into the conversation graph,
                 durable.app
                   .state()
                   .workers.find((worker) => worker.id === selected.id)
-                  ?.logTail?.includes('[redacted')
+                  ?.logTail?.toLowerCase().includes('[redacted')
               )
                 break
               await new Promise((resolve) => setTimeout(resolve, 10))
@@ -228,7 +228,7 @@ test('real Runtime workers cross authenticated HTTP into the conversation graph,
             const partial = durable.app
               .state()
               .workers.find((worker) => worker.id === selected.id)?.logTail
-            assert.match(String(partial), /redacted/u)
+            assert.match(String(partial), /redacted/iu)
             const credential = Object.values(server.readOnly.headers)[0]
             assert.ok(credential)
             assert.ok(

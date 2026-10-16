@@ -181,7 +181,7 @@ export class SecretTextSanitizer {
     const visible =
       unsafe === undefined
         ? pending
-        : `${pending.slice(0, unsafe.start)}[redacted incomplete value]`
+        : `${pending.slice(0, unsafe.start)}${'boundary' in unsafe ? unsafe.boundary : ''}[redacted incomplete value]`
     return takeUtf8Prefix(
       redactStable(visible),
       Math.max(0, this.#maxOutputBytes - this.#outputBytes),
