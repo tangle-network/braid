@@ -35,8 +35,7 @@ if (!packages.has('@earendil-works/pi-tui')) {
 }
 
 const manifest = JSON.parse(readFileSync(new URL('package.json', root), 'utf8'))
-const runtimeContracts = readFileSync(new URL('docs/04-runtime-contracts.md', root), 'utf8')
-const documentedCohort = [
+const requiredCohort = [
   '@tangle-network/agent-interface',
   '@tangle-network/agent-runtime',
   '@tangle-network/agent-eval',
@@ -44,18 +43,12 @@ const documentedCohort = [
   '@tangle-network/agent-provider-tangle',
   '@tangle-network/sandbox',
 ]
-for (const name of documentedCohort) {
+for (const name of requiredCohort) {
   const expected = manifest.dependencies?.[name]
-  const row = runtimeContracts
-    .split('\n')
-    .find((line) => line.startsWith('|') && line.split('|')[1]?.includes(name))
-  const documented = row?.split('|')[2]?.trim().replaceAll('`', '')
   if (typeof expected !== 'string') {
     violations.push(`missing direct dependency ${name}`)
   } else if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(expected)) {
     violations.push(`${name} must use an exact version; found ${expected}`)
-  } else if (documented !== expected) {
-    violations.push(`${name} documentation is ${documented ?? 'missing'}; expected ${expected}`)
   }
 }
 
@@ -77,5 +70,5 @@ try {
 
 if (process.exitCode !== 1)
   process.stdout.write(
-    `Production dependency graph: ${packages.size} packages; documented cohort matches; Pi TUI present; no copied agent application; no high or critical audit finding\n`,
+    `Production dependency graph: ${packages.size} packages; required cohort uses exact manifest pins; Pi TUI present; no copied agent application; no high or critical audit finding\n`,
   )

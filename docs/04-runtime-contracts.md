@@ -10,26 +10,17 @@ When a current package blocks a real Braid flow, Braid records the unavailable a
 
 ## Evidence baseline
 
-The following published versions were resolved and their installed manifests and declarations inspected on 2026-10-14.
+Read Braid's exact direct versions from [package.json](../package.json), and physical resolutions and registry integrities from [pnpm-lock.yaml](../pnpm-lock.yaml). Read each installed package's peer and optional-peer ranges from its own manifest. The [dependency guard](../scripts/check-dependencies.mjs) enforces exact required direct pins and audits the production graph; `pnpm peers check` checks the installed cohort.
 
-| Package | Installed version | Braid boundary |
-| --- | ---: | --- |
-| [`@tangle-network/agent-interface`](https://github.com/tangle-network/agent-sdk/tree/main/packages/agent-interface) | `5.2.1` | Canonical profile, capabilities, environment, stream, portable context, selected-context transfer, native continuation, interaction, workspace snapshot, and explicitly based workspace contracts |
-| [`@tangle-network/agent-runtime`](https://github.com/tangle-network/agent-runtime) | `0.319.8` | Sole execution layer; exact executor, retained-run (including `contextTransferReceipt` attachment), interactive-run, environment-provider, profile materialization, and terminal-monitor exports |
-| [`@tangle-network/agent-eval`](https://github.com/tangle-network/agent-eval) | `0.213.0` | Run records, judges, trace analysts, comparisons, and feedback trajectories |
-| `@tangle-network/agent-provider-cli-bridge` | `2.0.0` | CLI Bridge environment adapter with retained sessions, live streaming, replay, retry-safe turns, exact native session close, durable interaction response, explicit cancel, and host cwd support |
-| `@tangle-network/agent-provider-tangle` | `4.0.0` | Tangle environment adapter with retained control, interaction response, workspace branching, interactive-agent operations, and stopped-environment recovery |
-| `@tangle-network/agent-provider-daytona` | `0.6.0` | Bundled registered-provider adapter; its exec-only contract refuses agent execution and context transfer |
-| `@tangle-network/sandbox` | `0.60.58` | Tangle cloud client used by the provider, including keyed checkpoint/fork and interactive-agent operations |
-
-Runtime declares peers `agent-eval >=0.213.0 <0.214.0`, `agent-interface ^5.2.1`, and `sandbox >=0.58.4 <0.61.0`.
-The Tangle provider requires Sandbox `>=0.60.27 <1.0.0` and depends on Interface `^5.0.0`.
-The CLI Bridge and Daytona providers also depend on Interface `^5.0.0`; Daytona's `@daytonaio/sdk` peer is optional and not installed.
-Sandbox still depends on Interface `^4.0.0`, so the lockfile carries that copy beside `5.2.1`.
-The exact installed cohort satisfies these ranges, and `pnpm peers check` reports no peer issues.
-The lockfile pins the registry integrity for every installed package.
-
-Sandbox publishes optional peers `@mastra/core ^1.36.0`, `@modelcontextprotocol/sdk ^1.30.0`, `ai ^6.0.175 || ^7.0.107`, `openai ^6.36.0`, and `viem ^2.0.0`.
+| Package | Braid boundary |
+| --- | --- |
+| [`@tangle-network/agent-interface`](https://github.com/tangle-network/agent-sdk/tree/main/packages/agent-interface) | Canonical profile, capabilities, environment, stream, portable context, selected-context transfer, native continuation, interaction, workspace snapshot, and explicitly based workspace contracts |
+| [`@tangle-network/agent-runtime`](https://github.com/tangle-network/agent-runtime) | Sole execution layer; exact executor, retained-run (including `contextTransferReceipt` attachment), interactive-run, environment-provider, profile materialization, and terminal-monitor exports |
+| [`@tangle-network/agent-eval`](https://github.com/tangle-network/agent-eval) | Run records, judges, trace analysts, comparisons, and feedback trajectories |
+| `@tangle-network/agent-provider-cli-bridge` | CLI Bridge environment adapter with retained sessions, live streaming, replay, retry-safe turns, exact native session close, durable interaction response, explicit cancel, and host cwd support |
+| `@tangle-network/agent-provider-tangle` | Tangle environment adapter with retained control, interaction response, workspace branching, interactive-agent operations, and stopped-environment recovery |
+| `@tangle-network/agent-provider-daytona` | Bundled registered-provider adapter; its exec-only contract refuses agent execution and context transfer |
+| `@tangle-network/sandbox` | Tangle cloud client used by the provider, including keyed checkpoint/fork and interactive-agent operations |
 
 Braid uses the public Interface subpaths for profile construction, snapshots, security, schema, harness capabilities, and interactions.
 Canonical digest and profile-diff helpers still come from the public root entry point.
