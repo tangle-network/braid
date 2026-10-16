@@ -88,3 +88,27 @@ cause of recovery.
 [original-timing cast](healthy-120x40-flow-uncut.cast) retain the real turn. The
 recording frames were inspected. Repeated progress remains the independent
 Braid/CLI Bridge follow-up described above.
+
+
+## Explicit first-run selection
+
+Normal gate `beelink2-6c213e12c7e75903daf9b49ce5e6e70b` passed on exact head
+`9d9056ae73186583877b40b8d000a2e6d0b1a0d5`, exit 0. The real installed package
+advanced through the keyboard wizard to review at all four required sizes with
+`discovery-operator` selected. It did not apply setup or make a model call. The
+four PNGs and recording frames were reviewed. The temporary bridge tunnel was
+removed by the command's exit trap.
+
+[First-run recording](first-run/operator-journey.gif),
+[original-timing cast](first-run/120x40-flow-uncut.cast), and
+[40x12](first-run/40x12.png), [80x24](first-run/80x24.png),
+[120x40](first-run/120x40.png), [200x60](first-run/200x60.png) captures.
+
+The preceding normal gate `beelink1-1cc7501c55577154584053d1809ff975` passed
+source checks, attribution, build, package and the real-bridge API comparison:
+the old installed baseline selected a generated default model, while the repair
+selected the explicitly named operator and preserved its canonical digest. That
+gate as a whole exited 1 because its capture command omitted the existing
+renderer directory from PATH. The separate passing gate above completes that
+proof without repeating the unchanged source checks. Queued Beelink1 capture
+jobs were canceled through the gate API before their commands ran.
