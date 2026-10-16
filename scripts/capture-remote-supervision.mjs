@@ -215,7 +215,7 @@ export async function captureRemoteSupervision(endpointEnv) {
             throw new Error('Packed Braid did not quit cleanly')
           }),
         ])
-        assert.equal(exit.exitCode, 0)
+        assert.equal(exit.exitCode, 0, safeEvidence(screen()))
         const recorded = JSON.parse(safeEvidence(await readFile(recordPath, 'utf8')))
         const actual = recorded.state.workers.map((worker) => worker.runtimeId).sort()
         assert.deepEqual(
@@ -277,6 +277,10 @@ export async function captureRemoteSupervision(endpointEnv) {
           ).length,
           exit: exit.exitCode,
         })
+      } catch (error) {
+        await writeFile(join(outputRoot, `${columns}x${rows}-failed-screen.txt`), safeEvidence(screen()))
+        await writeFile(join(outputRoot, `${columns}x${rows}-failed-flow.cast`), safeEvidence(cast('Uncut failed remote topology flow', events)))
+        throw error
       } finally {
         if (!exit) child.kill()
         emulator.dispose()
