@@ -19,18 +19,6 @@ const SETS = {
         'the provider closes a request it never made; the reducer refuses it and the status shows the latched storage failure',
     },
   },
-  'failure-cause': {
-    test: 'run-failure-cause.test.js',
-    env: 'BRAID_FAILURE_CAPTURE_ROOT',
-    execution: 'controlled provider in test/run-failure-cause.test.ts; not provider proof',
-    recording: 'unverified-cause',
-    flows: {
-      'failed-cause':
-        'a run fails with provider text that carries credentials; the transcript says why with the credentials redacted',
-      'unverified-cause':
-        'the model-seat resolver refuses before any Sandbox exists and recovery refuses too; the transcript says so instead of RUNTIME_RECONCILIATION_ERROR',
-    },
-  },
   'send-unavailable': {
     test: 'send-context-capability.test.js',
     env: 'BRAID_SEND_CAPTURE_ROOT',

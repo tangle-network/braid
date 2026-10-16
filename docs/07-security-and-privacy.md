@@ -119,7 +119,7 @@ Provider failure text, including final errors, terminal reasons, warnings, statu
 `providerCause` passes the whole text through the shared credential redactor first, then folds it to one line bounded by `MAX_PROVIDER_CAUSE_CHARACTERS` in `src/domain/provider-values.ts`, so a cut can never leave part of a credential.
 The stable code, such as `RUNTIME_FINAL_ERROR` or an HTTP class, stays in its own field; the cause is the run's `reason` or the unknown detail.
 Cause selection uses the same sanitized text for streamed finals and recovered snapshots, and applies the display length bound after selection. A blank, generic, code-only, or redaction-only reason cannot hide an available error cause; informative prose containing redaction markers remains useful.
-`test/run-failure-cause.test.ts` seeds credential-shaped provider text and finds none of it in state, the journal, headless output, or rendered frames.
+Qualify provider failure causes through the packed client with a real provider refusal and a succeeding subscription turn. The maintained seats producer scans the actual recorded state, restored journal and terminal recording before retaining evidence. Controlled provider fixtures are not integration evidence.
 
 ## Local state encryption
 

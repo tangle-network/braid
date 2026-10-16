@@ -44,7 +44,6 @@
     "capture:profile-fork": "pnpm run build && node scripts/capture-profile-fork.mjs",
     "capture:interaction-close": "node scripts/capture-terminal-flows.mjs interaction-close",
     "capture:send-unavailable": "node scripts/capture-terminal-flows.mjs send-unavailable",
-    "capture:failure-cause": "node scripts/capture-terminal-flows.mjs failure-cause",
     "capture:run-focus": "pnpm run build && pnpm exec tsc -p tsconfig.test.json --outDir .test-dist-run-focus && node scripts/capture-run-focus.mjs",
     "capture:stream-stall": "pnpm run build && pnpm exec tsc -p tsconfig.test.json --outDir .test-dist-stream-stall && node scripts/capture-stream-stall.mjs",
     "capture:workspace": "pnpm run build && node scripts/capture-workspace-request.mjs",
