@@ -33,9 +33,7 @@ Codex tool environment with `Failed to load CA certificates off thread: resource
 temporarily unavailable`. The direct SSH scorecard read succeeds. This records
 useful read-only recovery, not healthy CLI execution. The operator reported the
 infra cause separately, read bounded saved artifacts and the run page, retained
-conflicting outcome labels, and refused to turn unknown cash into zero. Host/tool
-environment diagnosis remains in progress. Native Traces conversion confirms the
-failed commands; native transcripts remain private.
+conflicting outcome labels, and refused to turn unknown cash into zero. Native Traces conversion confirms the failed commands; native transcripts remain private. The focused operator diagnosis matched a kernel PID-controller refusal to the failed native scope. The dedicated bridge now uses its existing finite scope-budget setting. No global host or TLS policy changed.
 
 Time to a complete spend card is unmeasured: this task requested intents, and
 checker proof, admission, preflight and prices remain pending. Operator 1.2 was not
@@ -65,3 +63,28 @@ Braid/CLI Bridge follow-ups: tool arguments are missing from normalized parts,
 relative file links render as text, and progress repeats while streaming. Compare
 one native multi-message turn against its normalized parts. These issues did not
 prevent completed turns or durable reopening.
+
+
+## Healthy reader observation
+
+The subsequent single observation passed in gate
+`beelink1-0522500a3a1f6b1a26da1d270dfd2367`, exit 0. Capture source was
+`d223e3a46f086264de7d796e52ff1e35295b7908`; the installed application remained
+`dbf862299b6485d9dd3c8baef8c0eda270e577d1` during this recording.
+
+The real Codex turn took 120.109 seconds in Braid and 124.123 seconds observed.
+Report, saved scorecard and saved receipt ran concurrently once and each exited 0.
+The run-page fetch also exited 0. The operator reported the newer passing recheck,
+older page timestamps, conflicting retained outcome labels, billed cash unknown
+and after-first-pass accounting nulls. Report output was truncated in transport;
+its check and settlement fields survived, and it was not retried.
+
+The native scope peak rose from 86 to 98 tasks, and PID-limit events remained zero
+under the configured finite budget. The peak is below the previous cap too, so
+this proves the current flow works without isolating the budget change as the sole
+cause of recovery.
+
+[Healthy-flow recording](healthy-operator-journey.gif) and
+[original-timing cast](healthy-120x40-flow-uncut.cast) retain the real turn. The
+recording frames were inspected. Repeated progress remains the independent
+Braid/CLI Bridge follow-up described above.
