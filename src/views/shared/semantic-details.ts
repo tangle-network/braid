@@ -143,7 +143,7 @@ function dataFor(
         turnId: run.turnId,
         operationId: run.operationId,
         status: run.status,
-        ...(outcomeDetail === undefined ? {} : { outcomeDetail }),
+        ...(outcomeDetail === undefined ? {} : { outcomeDetail: safe(outcomeDetail) }),
         inputTokens: run.inputTokens,
         outputTokens: run.outputTokens,
         tokenStatus:
