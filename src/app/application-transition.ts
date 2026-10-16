@@ -7,6 +7,7 @@ import {
   commitApplicationEventAsync,
 } from './application-support.js'
 import type { AppSubscriber } from './application-types.js'
+import { storageUnavailable } from './application-guards.js'
 import { AppError } from './errors.js'
 import type { RunLedger } from './run-ledger.js'
 
@@ -62,10 +63,7 @@ export function commitEventRecovery(host: TransitionHost, event: BraidEvent): vo
 
 function commitEventInternal(host: TransitionHost, event: BraidEvent, recovery: boolean): void {
   if (!recovery && host.storageFailure() !== undefined)
-    throw new AppError(
-      'STORAGE_FAILURE',
-      'Durable storage is unavailable; reopen Braid to continue',
-    )
+    throw storageUnavailable(host.storageFailure())
   if (host.asynchronous) {
     void commitEventAndWaitInternal(host, event, recovery).catch(() => undefined)
     return
