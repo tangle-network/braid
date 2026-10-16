@@ -606,10 +606,16 @@ export function graphFor(
   const canonicalIncoming: Map<string, string> = new Map(
     state.graphEdges.map((edge) => [edge.destination, edge.kind]),
   )
-  const remoteSupervisors = new Set(state.supervisors.filter((record) => record.remoteEndpointEnv !== undefined).map((record) => record.id))
+  const remoteSupervisors = new Set(
+    state.supervisors
+      .filter((record) => record.remoteEndpointEnv !== undefined)
+      .map((record) => record.id),
+  )
   const remoteNodes = new Set([
     ...[...remoteSupervisors].map((id) => `supervisor:${id}`),
-    ...state.workers.filter((record) => remoteSupervisors.has(record.supervisorId)).map((record) => `worker:${record.id}`),
+    ...state.workers
+      .filter((record) => remoteSupervisors.has(record.supervisorId))
+      .map((record) => `worker:${record.id}`),
   ])
   return result.nodes.map((node) => {
     const remote = remoteNodes.has(`${node.type}:${node.id}`)

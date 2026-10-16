@@ -112,7 +112,7 @@ test('real Runtime workers cross authenticated HTTP into the conversation graph,
                   method: 'tools/call',
                   params: {
                     name: 'spawn_worker',
-                      arguments: { profile: { name }, label: name, task: `actual-${name}` },
+                    arguments: { profile: { name }, label: name, task: `actual-${name}` },
                   },
                 }),
               })

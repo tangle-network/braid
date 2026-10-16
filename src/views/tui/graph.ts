@@ -154,7 +154,10 @@ export function graphDocument(
   const graphQuery = view.graphQuery?.trim()
   return {
     title: 'conversation graph',
-    context: selectedDetail?.runtimeReadOnly === true ? 'Runtime observation · read-only' : `${target.profileName} · ${target.runner} · ${target.model}`,
+    context:
+      selectedDetail?.runtimeReadOnly === true
+        ? 'Runtime observation · read-only'
+        : `${target.profileName} · ${target.runner} · ${target.model}`,
     ...(combinedNotice.length === 0 ? {} : { notice: combinedNotice.join(' · ') }),
     filterHint: `${graphQuery ? `filter: ${graphQuery} · ` : ''}space collapse · w waiting`,
     emptyMessage: 'The first run creates the first graph node.',
