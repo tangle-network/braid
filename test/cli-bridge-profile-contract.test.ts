@@ -312,4 +312,3 @@ test('production CLI Bridge cancellation keeps a Runtime provider error unknown'
     await bridge.close()
   }
 })
-

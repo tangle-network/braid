@@ -632,4 +632,3 @@ test('conversation deletion purges owned data and retains an honest tombstone', 
   assert.equal(JSON.stringify(state).includes('private target text'), false)
   assertBraidState(state)
 })
-

@@ -5,16 +5,13 @@ import { join } from 'node:path'
 import test from 'node:test'
 import {
   type AgentProfile,
-  type AgentProfileCapabilities,
   canonicalAgentProfileDigest,
   canonicalCandidateJson,
   defineAgentProfilePublicConfig,
   defineAgentProfileSecretRef,
 } from '@tangle-network/agent-interface'
-import type { AgentEnvironmentCapabilities } from '@tangle-network/agent-interface/environment-provider'
 import {
   AGENT_INTERFACE_PACKAGE_VERSION,
-  createProfileRecord,
   discoverProfiles,
   exportProfileFile,
   exportProfileJson,
@@ -25,47 +22,6 @@ import {
   saveProfileFile,
   validateProfileShape,
 } from '../src/app/profiles.js'
-
-const profileCapabilities: AgentProfileCapabilities = {
-  namedProfiles: true,
-  systemPrompt: { replace: true, append: true },
-  instructions: true,
-  tools: true,
-  permissions: true,
-  mcp: true,
-  subagents: true,
-  resources: {
-    files: true,
-    instructions: true,
-    tools: true,
-    skills: true,
-    agents: true,
-    commands: true,
-  },
-  hooks: true,
-  modes: true,
-  runtimeUpdate: true,
-  validation: true,
-  extensions: ['future.backend'],
-}
-
-const environmentCapabilities: AgentEnvironmentCapabilities = {
-  profile: profileCapabilities,
-  streaming: { live: true, replay: true, detach: true, turnIdempotency: true },
-  sessions: { continue: true, list: true, messages: true },
-  workspace: {
-    read: true,
-    write: true,
-    exec: true,
-    git: true,
-    upload: true,
-    download: true,
-  },
-  branching: { checkpoint: true, fork: true, retrySafe: true, lookup: true, cleanup: true },
-  placement: true,
-  usage: true,
-  confidential: false,
-}
 
 const fullProfile: AgentProfile = {
   name: 'reviewer',
@@ -170,29 +126,6 @@ const fullProfile: AgentProfile = {
       anotherValue: 'round-trip',
     },
   },
-}
-
-const localSecurity = {
-  allowLocalMcp: true,
-  allowHooks: true,
-  allowedMcpHosts: ['mcp.example.com'],
-}
-
-function source(
-  reference: string,
-  profile: AgentProfile = fullProfile,
-  kind: 'inline' | 'file' = 'inline',
-) {
-  return createProfileRecord(
-    {
-      kind,
-      reference,
-      label: reference,
-      writable: kind === 'file',
-      trusted: true,
-    },
-    profile,
-  )
 }
 
 test('the installed canonical profile schema round-trips every field and extensions', async () => {
@@ -329,4 +262,3 @@ test('profile files save atomically, verify bytes, reject races and symlinks, an
     await rm(root, { recursive: true, force: true })
   }
 })
-

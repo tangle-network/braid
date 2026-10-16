@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
 import { createServer, type IncomingHttpHeaders } from 'node:http'
 import test from 'node:test'
 import { streamAgentTurn } from '@tangle-network/agent-runtime/kernel'
@@ -18,14 +17,6 @@ import { DEFAULT_EVAL_MODEL, probeEvalRoute, readEvalRouteConfig } from '../src/
 import { credentialRef } from '../src/ports/credentials.js'
 
 const at = '2026-09-23T12:00:00.000Z'
-
-function packageVersion(): string {
-  const document = JSON.parse(
-    readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
-  ) as { readonly name: string; readonly version: string }
-  assert.equal(document.name, '@tangle-network/braid')
-  return document.version
-}
 
 function connection(kind: ConnectionKind, id: string, endpoint: string): ConnectionRecord {
   return {

@@ -3,10 +3,8 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { type AgentExactRunControlRef, defineAgentProfile } from '@tangle-network/agent-interface'
-import type { RetainedRunHandle } from '@tangle-network/agent-runtime/kernel'
+import { defineAgentProfile } from '@tangle-network/agent-interface'
 import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
-import { type RetainedExecutionPlan } from '../src/adapters/runtime/retained-execution.js'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import {
   createDurableBraidApplication,
@@ -19,12 +17,8 @@ import {
 import type { ConnectionRecord } from '../src/domain/entities.js'
 import { createConnectionId } from '../src/domain/ids.js'
 import { isRuntimeEventEnvelope } from '../src/domain/runtime-events.js'
-import {
-  DEFAULT_RUN_CAPABILITIES,
-  type RetainedRunAdmissionRecord,
-} from '../src/ports/execution.js'
+import { type RetainedRunAdmissionRecord } from '../src/ports/execution.js'
 import { RandomIds } from '../src/ports/ids.js'
-import { RETAINED_RUN_HANDLE_CAPABILITIES } from './support/retained-run-capabilities.js'
 import { startRuntimeBridgeServer } from './support/runtime-bridge-server.js'
 
 const now = '2026-08-11T12:00:00.000Z'
@@ -62,65 +56,6 @@ async function waitFor(predicate: () => boolean, timeoutMs = 2_000): Promise<voi
   while (!predicate()) {
     if (Date.now() >= deadline) throw new Error('Timed out waiting for retained CLI Bridge state')
     await new Promise((resolve) => setTimeout(resolve, 1))
-  }
-}
-
-function recoveryPlan(controlRef: AgentExactRunControlRef): RetainedExecutionPlan {
-  const handle: RetainedRunHandle = {
-    controlRef,
-    capabilities: RETAINED_RUN_HANDLE_CAPABILITIES,
-    async status() {
-      return {
-        runId: controlRef.runId,
-        controlRef,
-        status: 'running',
-        effect: 'unknown',
-        observedAt: now,
-      }
-    },
-    async *events() {},
-    async result() {
-      return { text: '', success: true }
-    },
-    async respondToInteraction() {
-      throw new Error('interaction is not part of this recovery test')
-    },
-    async contextBoundary() {
-      return null
-    },
-    beginNativeContinuation() {
-      throw new Error('native continuation is not part of this recovery test')
-    },
-    async continueNative() {
-      throw new Error('native continuation is not part of this recovery test')
-    },
-    async cancel() {
-      throw new Error('cancellation is not part of this recovery test')
-    },
-  }
-  return {
-    providerName: controlRef.provider,
-    environmentId: controlRef.environmentId,
-    providerSessionId: controlRef.sessionId,
-    model: 'cloud-model',
-    capabilities: DEFAULT_RUN_CAPABILITIES,
-    materializationReceipt: { environmentId: controlRef.environmentId },
-    start: async () => handle,
-    reconnect: async (requested) => {
-      assert.deepEqual(requested, controlRef)
-      return handle
-    },
-    discover: async () => controlRef,
-    observe: async () => undefined,
-    projectStatus: () => 'streaming',
-    isTerminalStatus: () => false,
-    projectResult: (result) => ({
-      text: result.text,
-      usage: { input: 0, output: 0 },
-    }),
-    projectFinal: () => {
-      throw new Error('final projection is not part of this recovery test')
-    },
   }
 }
 

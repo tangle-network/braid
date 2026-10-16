@@ -55,7 +55,9 @@ if (!args.includes('--list')) {
   const files = (
     await Promise.all(
       ['test', 'scripts'].map(async (directory) =>
-        (await readdir(resolve(repository, directory), { recursive: true }))
+        (
+          await readdir(resolve(repository, directory), { recursive: true })
+        )
           .filter((name) => /\.test\.(?:ts|mjs)$/u.test(name))
           .map((name) => resolve(repository, directory, name)),
       ),

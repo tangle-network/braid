@@ -2286,4 +2286,3 @@ test('bin startup reports missing production config before opening storage', asy
       /--config/iu.test(error.message),
   )
 })
-

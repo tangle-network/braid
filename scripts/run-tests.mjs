@@ -59,10 +59,7 @@ const scopeFiles = {
     'conversations.test.js',
     'nitro-confidential-attestation.test.js',
   ],
-  coordination: [
-    'cli-bridge-retained-restart.test.js',
-    'effect-admission.test.js',
-  ],
+  coordination: ['cli-bridge-retained-restart.test.js', 'effect-admission.test.js'],
   'virtual-terminal': ['tui.test.js'],
   storage: [
     'conversation-storage.test.js',

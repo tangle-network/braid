@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
 import { openSqliteStorage } from '../src/adapters/storage/sqlite.js'
@@ -457,54 +457,6 @@ function snapshotKeyRefs(database: SqliteDatabase): readonly string[] {
       .prepare('SELECT credential_ref FROM braid_state_snapshot_keys ORDER BY generation')
       .all() as readonly { readonly credential_ref?: unknown }[]
   ).flatMap((row) => (typeof row.credential_ref === 'string' ? [row.credential_ref] : []))
-}
-
-async function snapshotModuleArchitecture(): Promise<{
-  readonly graph: ReadonlyMap<string, readonly string[]>
-  readonly lineCounts: ReadonlyMap<string, number>
-}> {
-  const storageDirectory = join(process.cwd(), 'src/adapters/storage')
-  const storageFiles = (await readdir(storageDirectory))
-    .filter((name) => /^sqlite-state-snapshot.*\.ts$/u.test(name))
-    .map((name) => join(storageDirectory, name))
-  const files = [...storageFiles, join(process.cwd(), 'src/domain/materialized-state-snapshot.ts')]
-  const fileSet = new Set(files)
-  const graph = new Map<string, readonly string[]>()
-  const lineCounts = new Map<string, number>()
-  const importPattern = /(?:from\s+|import\s*)['"]([^'"]+)['"]/gu
-  for (const file of files) {
-    const source = await readFile(file, 'utf8')
-    const lines = source.split(/\r?\n/u)
-    lineCounts.set(
-      file,
-      source === '' ? 0 : source.endsWith('\n') ? lines.length - 1 : lines.length,
-    )
-    const dependencies: string[] = []
-    for (const match of source.matchAll(importPattern)) {
-      const specifier = match[1]
-      if (specifier === undefined || !specifier.startsWith('.')) continue
-      const dependency = resolve(dirname(file), specifier.replace(/\.js$/u, '.ts'))
-      if (fileSet.has(dependency)) dependencies.push(dependency)
-    }
-    graph.set(file, dependencies)
-  }
-  return { graph, lineCounts }
-}
-
-function assertSnapshotModuleGraphIsAcyclic(graph: ReadonlyMap<string, readonly string[]>): void {
-  const visiting = new Set<string>()
-  const visited = new Set<string>()
-  const visit = (file: string, path: readonly string[]): void => {
-    if (visiting.has(file)) {
-      throw new Error(`Snapshot module cycle: ${[...path, file].join(' -> ')}`)
-    }
-    if (visited.has(file)) return
-    visiting.add(file)
-    for (const dependency of graph.get(file) ?? []) visit(dependency, [...path, file])
-    visiting.delete(file)
-    visited.add(file)
-  }
-  for (const file of graph.keys()) visit(file, [])
 }
 
 test('latest valid generation restores after a process restart', async (t) => {
