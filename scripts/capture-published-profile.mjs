@@ -121,6 +121,10 @@ for (const [columns, rows] of [
           'Show the two existing unapproved intent files under intents/: queens21-shapes-rerun-20261015a and erdos-overlap-steering-20261015a. Read the current files, give a short review card for each, and name their remaining approval gates. Do not rewrite them, draft new intents, press, preflight, queue, resume or start research.',
         ]
       }
+      const requestedPrompt = process.env.BRAID_OPERATOR_PROOF_PROMPT
+      if (requestedPrompt !== undefined) {
+        cases.splice(0, cases.length, ['operator-task', requestedPrompt])
+      }
       for (const [name, prompt] of cases) {
         const before = await terminal.captureState()
         const known = new Set((before.state?.runs ?? []).map((run) => run.id))
