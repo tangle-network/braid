@@ -18,6 +18,13 @@ import {
 import { readFreshStateFrame, stateFrameVersion } from './interface-state-frame.mjs'
 import { installPackedBraid } from './packed-binary.mjs'
 
+if (process.argv.includes('--remote-env')) {
+  const index = process.argv.indexOf('--remote-env')
+  const { captureRemoteSupervision } = await import('./capture-remote-supervision.mjs')
+  await captureRemoteSupervision(process.argv[index + 1])
+  process.exit()
+}
+
 const run = promisify(execFile)
 const repository = new URL('../', import.meta.url).pathname
 const verificationRoot = process.env.BRAID_RELEASE_ARTIFACT_ROOT

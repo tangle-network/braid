@@ -90,6 +90,8 @@ export interface DetailsQueryResult {
 
 export function viewStatusForSemanticStatus(status: string): ViewStatus | 'complete' {
   switch (status) {
+    case 'pending':
+      return 'pending'
     case 'starting':
       return 'starting'
     case 'running':

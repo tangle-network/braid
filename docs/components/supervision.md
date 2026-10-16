@@ -8,6 +8,30 @@ The supervisor graph shows the runtime-owned tree of active supervisors and work
 
 Read the canonical runtime supervisor snapshot through the shared Runtime API.
 
+For a remote play, `/graph --remote-env NAME` attaches Runtime's protected read endpoint to the
+current conversation. `NAME` names a process environment variable containing the `readOnly`
+handle's JSON `{ "url": "...", "headers": { ... } }`, delivered by Runtime's `onReadReady`
+callback. Keep that handoff outside profiles, journals and recordings. Braid persists only the
+environment reference and the explicit conversation binding. A tree already attached to one
+conversation cannot silently move to another.
+
+The existing `refresh_supervision` RPC accepts `remoteEndpointEnv` to attach the same source and
+`workerId` to select a projected agent. The graph reads the complete owned tree through
+`connectRemoteSupervisor`; selecting an agent reads only its normalized live executor events.
+Names, statuses and parent identities come from Runtime; parent edges establish structural
+manager/worker roles. Braid does not relabel a display name as an authored profile. No harness output or
+private supervisor file is parsed. Read-only remote capabilities never grant steer, cancel or attach.
+The explicitly attached endpoint stays active for automatic refreshes; a selected agent always
+resolves its own endpoint and conversation. Agents omitted by a later complete tree remain in
+history with unknown status in both graph and details.
+
+Remote live output is a bounded, process-local view, not durable transcript replay. Short partial
+text has a replaceable sanitized preview; protected values split across pages are withheld before
+preview or persistence. Braid keeps
+Runtime cursors in memory, reports stream reset, expired history and unavailable capture, and
+retains the last confirmed graph when the endpoint fails. Reopening uses the same environment
+reference, so rotation can replace the protected value without rewriting the journal.
+
 The protected LIVE-11 command provisions one Runtime-owned supervisor when no external run is supplied.
 
 The Runtime provisioner creates the root, worker, acknowledger, and provider binding through its public APIs.

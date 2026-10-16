@@ -110,13 +110,24 @@ function supervisorDetail(record: SupervisorRecord | undefined): EntityDetailVie
   if (record === undefined) return undefined
   return {
     entityType: 'supervisor',
+    ...(record.remoteEndpointEnv === undefined ? {} : { runtimeReadOnly: true as const }),
     entityId: String(record.id),
     title: safe(record.title ?? `supervisor ${record.id}`),
     status: record.status,
     lines: [
+      ...(record.remoteEndpointEnv === undefined
+        ? []
+        : [
+            `Runtime tree · read-only`,
+            `conversation: ${safe(record.conversationId ?? 'unbound')}`,
+          ]),
       `id: ${safe(record.id)}`,
       `runtime id: ${safe(record.runtimeId)}`,
-      `run: ${record.rootRunId === undefined ? 'unbound workspace activity' : safe(record.rootRunId)}`,
+      ...(record.remoteEndpointEnv === undefined
+        ? [
+            `run: ${record.rootRunId === undefined ? 'unbound workspace activity' : safe(record.rootRunId)}`,
+          ]
+        : []),
       `status: ${safe(record.status)}`,
       ...(record.driverModel === undefined ? [] : [`driver model: ${safe(record.driverModel)}`]),
       ...(record.workerModel === undefined ? [] : [`worker model: ${safe(record.workerModel)}`]),
@@ -131,14 +142,31 @@ function supervisorDetail(record: SupervisorRecord | undefined): EntityDetailVie
         : [
             `driver usage: ${usageLine(record.driverUsage.inputTokens, record.driverUsage.outputTokens, record.driverUsage.spendUsd, record.driverUsage.completeness)}`,
           ]),
-      `started: ${safe(record.createdAt)}`,
-      `updated: ${safe(record.updatedAt)}`,
+      `${record.remoteEndpointEnv === undefined ? 'started' : 'first observed'}: ${safe(record.createdAt)}`,
+      `${record.remoteEndpointEnv === undefined ? 'updated' : 'last recorded change'}: ${safe(record.updatedAt)}`,
     ],
   }
 }
 
 function workerDetail(record: WorkerRecord | undefined): EntityDetailView | undefined {
   if (record === undefined) return undefined
+  if (record.role !== undefined) {
+    return {
+      entityType: 'worker',
+      runtimeReadOnly: true,
+      entityId: String(record.id),
+      title: safe(record.title ?? record.runtimeId),
+      status: record.status,
+      lines: bounded([
+        `${safe(record.title ?? record.runtimeId)} · ${record.role} · ${safe(record.runner ?? 'runner unknown')}`,
+        `status: ${safe(record.status)}`,
+        `parent: ${safe(record.parentRuntimeRef ?? 'Runtime root')}`,
+        safe(record.streamStatus ?? 'select this agent to read live events'),
+        ...(record.logTail === undefined ? [] : record.logTail.split('\n').map(safe)),
+        `Runtime id: ${safe(record.runtimeId)}`,
+      ]),
+    }
+  }
   const lines = [
     `id: ${safe(record.id)}`,
     `runtime id: ${safe(record.runtimeId)}`,

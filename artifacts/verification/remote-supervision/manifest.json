@@ -1,0 +1,81 @@
+{
+  "sourceCommit": "73e0b5206129fd426a57d50b51d137314569952b",
+  "tarballSha256": "beac20d254f23f53ea39ec8a13affb12a2e35f6d29505c0553620eef0a6e1d5d",
+  "remoteTree": {
+    "root": "proximity-gap-floor-20261011a",
+    "nodes": [
+      {
+        "id": "proximity-gap-floor-20261011a",
+        "label": "root",
+        "status": "pending",
+        "runtime": "tangle-sandbox",
+        "spawnedAt": 1791714730441
+      },
+      {
+        "id": "proximity-gap-floor-20261011a:s0",
+        "parent": "proximity-gap-floor-20261011a",
+        "label": "floor-literature",
+        "status": "done",
+        "runtime": "tangle-sandbox",
+        "spawnedAt": 1791715285945,
+        "settledAt": 1791742216586
+      },
+      {
+        "id": "proximity-gap-floor-20261011a:s1",
+        "parent": "proximity-gap-floor-20261011a",
+        "label": "floor-record-extender",
+        "status": "pending",
+        "runtime": "tangle-sandbox",
+        "spawnedAt": 1791715332861
+      },
+      {
+        "id": "proximity-gap-floor-20261011a:s2",
+        "parent": "proximity-gap-floor-20261011a",
+        "label": "floor-fresh-mca",
+        "status": "pending",
+        "runtime": "tangle-sandbox",
+        "spawnedAt": 1791715403870
+      },
+      {
+        "id": "proximity-gap-floor-20261011a:s3",
+        "parent": "proximity-gap-floor-20261011a",
+        "label": "floor-referee-order2",
+        "status": "pending",
+        "runtime": "driver",
+        "spawnedAt": 1791741206805
+      }
+    ],
+    "inFlight": 0
+  },
+  "results": [
+    {
+      "columns": 40,
+      "rows": 12,
+      "agents": 5,
+      "selectionReads": 5,
+      "exit": 0
+    },
+    {
+      "columns": 80,
+      "rows": 24,
+      "agents": 5,
+      "selectionReads": 5,
+      "exit": 0
+    },
+    {
+      "columns": 120,
+      "rows": 40,
+      "agents": 5,
+      "selectionReads": 5,
+      "exit": 0
+    },
+    {
+      "columns": 200,
+      "rows": 60,
+      "agents": 5,
+      "selectionReads": 5,
+      "exit": 0
+    }
+  ],
+  "scope": "Existing remote run through the published Runtime reader. Unavailable historical live events remain unavailable. No inference, play press, resume, worker spawn or provider turn is requested by Braid."
+}

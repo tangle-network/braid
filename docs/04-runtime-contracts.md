@@ -250,6 +250,14 @@ Raw `deliver` can support live steering only after a typed runtime adapter defin
 
 ### Runtime supervisor interface
 
+Remote supervision uses the published `/kernel` `connectRemoteSupervisor` reader. Runtime's
+coordination `readOnly` handle is passed through a protected environment reference selected with
+`/graph --remote-env NAME` or `refresh_supervision.remoteEndpointEnv`; its URL and headers are
+never persisted. One remote tree binds explicitly to one Braid conversation. The existing graph
+and worker details consume the tree and a selected agent's normalized executor event pages.
+Remote observation is read-only. Stream epochs, expired history, unavailable captures and failed
+reads remain explicit; a saved tail is not a complete durable transcript.
+
 The published runtime exports an experimental `@tangle-network/agent-runtime/tui` module and an `agent-runtime-top` binary.
 
 The module owns snapshot loading and presentation types for runtime supervisor state, including workers, spend, tokens, latency, and logs.

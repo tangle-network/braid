@@ -16,6 +16,7 @@ export interface GraphViewOptions {
   readonly onClose?: () => void
   readonly selectedId?: string
   readonly notice?: () => string | undefined
+  readonly onSelectWorker?: (workerId: string | undefined) => void
 }
 
 export class GraphView extends EntityBrowser {
@@ -23,6 +24,7 @@ export class GraphView extends EntityBrowser {
   readonly #view: () => BraidViewModel | undefined
   readonly #collapsed: Set<string>
   readonly #localNotice: { value: string | undefined }
+  readonly #onSelectWorker: GraphViewOptions['onSelectWorker']
 
   constructor(theme: BraidTheme, options: GraphViewOptions = {}) {
     let staticView: BraidViewModel | undefined
@@ -49,6 +51,7 @@ export class GraphView extends EntityBrowser {
     this.#view = currentView
     this.#collapsed = collapsed
     this.#localNotice = localNotice
+    this.#onSelectWorker = options.onSelectWorker
   }
 
   setView(view: BraidViewModel): void {
@@ -65,7 +68,14 @@ export class GraphView extends EntityBrowser {
       this.#selectWaitingRun()
       return
     }
+    const previous = this.selectedId
     super.handleInput(data)
+    if (this.selectedId !== previous)
+      this.#onSelectWorker?.(
+        this.selectedId?.startsWith('worker:') === true
+          ? this.selectedId.slice('worker:'.length)
+          : undefined,
+      )
   }
 
   #toggleSelected(): void {
@@ -134,6 +144,7 @@ export function graphDocument(
       : `${view.hiddenGraphNodeCount} older graph nodes omitted; use get_graph for complete history`
   const combinedNotice = [notice, hidden].filter((value): value is string => value !== undefined)
   const selectedNode = view.graph.find((node) => `${node.type}:${node.id}` === selectedId)
+  const selectedDetail = selectedId === undefined ? undefined : details.get(selectedId)
   const target =
     selectedNode === undefined
       ? executionTargetFor(view)
@@ -143,7 +154,10 @@ export function graphDocument(
   const graphQuery = view.graphQuery?.trim()
   return {
     title: 'conversation graph',
-    context: `${target.profileName} · ${target.runner} · ${target.model}`,
+    context:
+      selectedDetail?.runtimeReadOnly === true
+        ? 'Runtime observation · read-only'
+        : `${target.profileName} · ${target.runner} · ${target.model}`,
     ...(combinedNotice.length === 0 ? {} : { notice: combinedNotice.join(' · ') }),
     filterHint: `${graphQuery ? `filter: ${graphQuery} · ` : ''}space collapse · w waiting`,
     emptyMessage: 'The first run creates the first graph node.',

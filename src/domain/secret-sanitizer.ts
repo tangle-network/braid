@@ -170,6 +170,24 @@ export class SecretTextSanitizer {
     return redacted
   }
 
+  /** A replaceable, sanitized preview; incomplete credentials never become committed text. */
+  preview(additional = ''): string {
+    if (this.#pendingSecret !== undefined) return ''
+    const pending = this.#pending + this.#terminal.preview(additional)
+    const secret = incompleteSecret(pending, 'x')
+    const bare = incompleteBareCredential(pending, 'x')
+    const url = incompleteUrlAtBoundary(pending, 'x')
+    const unsafe = secret ?? bare ?? url
+    const visible =
+      unsafe === undefined
+        ? pending
+        : `${pending.slice(0, unsafe.start)}${'boundary' in unsafe ? unsafe.boundary : ''}[redacted incomplete value]`
+    return takeUtf8Prefix(
+      redactStable(visible),
+      Math.max(0, this.#maxOutputBytes - this.#outputBytes),
+    )
+  }
+
   finish(): string {
     this.#pending += this.#terminal.finish()
     const result = this.#drain(true)
@@ -359,6 +377,11 @@ export class IncrementalSecretTextSanitizer {
     const complete = this.#pending.slice(0, lineEnd + 1)
     this.#pending = this.#pending.slice(lineEnd + 1)
     return this.#lines.flushLines(complete)
+  }
+
+  /** Pending text can be replaced on the next frame without prematurely ending the stream. */
+  preview(): string {
+    return this.#lines.preview(this.#pending)
   }
 
   finish(): string {

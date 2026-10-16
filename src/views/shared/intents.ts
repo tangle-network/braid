@@ -78,11 +78,12 @@ export type BraidIntent =
       readonly operationId?: string
       readonly params: Readonly<Record<string, unknown>>
     }
-  | { readonly type: 'refresh-supervision' }
+  | { readonly type: 'refresh-supervision'; readonly workerId?: string }
   | {
       readonly type: 'open-surface'
       readonly surface: 'activity' | 'graph' | 'details' | 'fork' | 'help' | 'settings'
       readonly query?: string
+      readonly remoteEndpointEnv?: string
     }
   | { readonly type: 'resize'; readonly columns: number; readonly rows: number }
   | {

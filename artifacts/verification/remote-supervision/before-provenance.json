@@ -1,0 +1,5 @@
+{
+  "source": "e50195431de09ba8757f7c93d7c69d2da8e01897",
+  "tarballSha256": "e5a3d2b66a2d064b0ce832772eac8e2f751c4d4bc12168e858ec357783d1f20b",
+  "description": "Actual packed Braid terminal, offline shell only, no fake worker or provider result"
+}

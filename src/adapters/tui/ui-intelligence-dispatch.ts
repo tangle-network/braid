@@ -259,6 +259,7 @@ function supervisorData(
 async function dispatchSupervisorQuery(
   command: 'snapshot' | 'reconnect',
   context: IntelligenceDispatchContext,
+  params: Readonly<Record<string, unknown>> = {},
 ): Promise<UiDispatchResult> {
   const root = supervisorRoot(context.app.state())
   if (root === undefined) {
@@ -267,11 +268,18 @@ async function dispatchSupervisorQuery(
   try {
     const hadSavedSupervision =
       context.app.state().supervisors.length > 0 || context.app.state().workers.length > 0
+    const request = {
+      ...root,
+      ...(typeof params.remoteEndpointEnv === 'string'
+        ? { remoteEndpointEnv: params.remoteEndpointEnv }
+        : {}),
+      ...(typeof params.workerId === 'string' ? { workerId: params.workerId } : {}),
+    }
     const projection =
       command === 'snapshot'
-        ? await context.app.intelligence.supervisor.snapshot(root)
-        : await context.app.intelligence.supervisor.reconnect(root)
-    if (projection.raw.supervisors.length === 0 && hadSavedSupervision) {
+        ? await context.app.intelligence.supervisor.snapshot(request)
+        : await context.app.intelligence.supervisor.reconnect(request)
+    if (projection.supervisors.length === 0 && hadSavedSupervision) {
       return unavailable('The runtime returned no supervisor snapshot for this workspace')
     }
     return accepted(context.app, supervisorData(projection))
@@ -287,7 +295,12 @@ function runtimeSupervisorReference(
   supervisorId: string,
 ): { readonly rootDir: string; readonly runtimeSupervisorId: string } | undefined {
   const supervisor = state.supervisors.find((candidate) => String(candidate.id) === supervisorId)
-  if (supervisor === undefined || state.workspace !== supervisor.runtimeRoot) return undefined
+  if (
+    supervisor === undefined ||
+    supervisor.remoteEndpointEnv !== undefined ||
+    state.workspace !== supervisor.runtimeRoot
+  )
+    return undefined
   return { rootDir: supervisor.runtimeRoot, runtimeSupervisorId: supervisor.runtimeId }
 }
 
@@ -412,7 +425,11 @@ export async function dispatchIntelligenceIntent(
   context: IntelligenceDispatchContext,
 ): Promise<UiDispatchResult | undefined> {
   if (intent.type === 'refresh-supervision') {
-    return dispatchSupervisorQuery('snapshot', context)
+    return dispatchSupervisorQuery(
+      'snapshot',
+      context,
+      intent.workerId === undefined ? {} : { workerId: intent.workerId },
+    )
   }
   if (requiresOperationId(intent)) {
     const command =
@@ -611,7 +628,7 @@ export async function dispatchIntelligenceIntent(
       return undefined
     }
     case 'refresh_supervision':
-      return dispatchSupervisorQuery('snapshot', context)
+      return dispatchSupervisorQuery('snapshot', context, intent.params)
     case 'steer_worker':
     case 'cancel_worker':
       return dispatchSupervisorWorker(intent.command, context, intent.params, intent.operationId)

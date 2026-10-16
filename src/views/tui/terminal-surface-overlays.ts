@@ -50,6 +50,7 @@ export class TerminalSurfaceOverlays {
   #supervisionRefreshGeneration = 0
   #supervisionRefreshInFlightGeneration: number | undefined
   #supervisionStatus: string | undefined
+  #selectedWorkerId: string | undefined
   #disposed = false
 
   constructor(options: TerminalSurfaceOverlayOptions) {
@@ -150,12 +151,17 @@ export class TerminalSurfaceOverlays {
     if (surface === 'activity') {
       panel = this.#activityPanel('all')
     } else if (surface === 'graph') {
+      this.#selectedWorkerId = undefined
       panel = new GraphView(this.#options.theme, {
         view: () => this.#options.controller.view(),
         rows: this.#options.rows,
         onClose: () => this.#options.modals.closeTop(),
         selectedId: `branch:${view.branch}`,
         notice: () => this.#supervisionStatus,
+        onSelectWorker: (workerId) => {
+          this.#selectedWorkerId = workerId
+          void this.#refreshSupervision(this.#supervisionRefreshGeneration)
+        },
       })
     } else if (surface === 'details') {
       const details = new DetailsViewPanel(this.#options.theme)
@@ -498,7 +504,10 @@ export class TerminalSurfaceOverlays {
     if (this.#supervisionRefreshInFlightGeneration === generation) return
     this.#supervisionRefreshInFlightGeneration = generation
     try {
-      const result = await this.#options.controller.dispatch({ type: 'refresh-supervision' })
+      const result = await this.#options.controller.dispatch({
+        type: 'refresh-supervision',
+        ...(this.#selectedWorkerId === undefined ? {} : { workerId: this.#selectedWorkerId }),
+      })
       if (generation !== this.#supervisionRefreshGeneration) return
       if (
         result.kind === 'accepted' &&

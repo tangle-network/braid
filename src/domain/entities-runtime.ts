@@ -11,6 +11,7 @@ import type {
   BranchId,
   CheckpointId,
   ConnectionId,
+  ConversationId,
   Digest,
   DraftId,
   EnvironmentId,
@@ -110,6 +111,10 @@ export interface SupervisorRecord {
   readonly runtimeRoot: string
   /** Present only when Braid has an explicit runtime-supervisor to run binding. */
   readonly rootRunId?: RunId
+  /** Explicit conversation binding for a remote read-only Runtime tree. */
+  readonly conversationId?: ConversationId
+  /** Environment reference only; the endpoint and protected headers remain process-local. */
+  readonly remoteEndpointEnv?: string
   readonly status: 'starting' | 'running' | 'completed' | 'failed' | 'cancelled' | 'unknown'
   readonly title?: string
   readonly driverModel?: string
@@ -140,6 +145,9 @@ export interface WorkerRecord {
     | 'unknown'
   readonly title?: string
   readonly runner?: string
+  /** Structural role established by the Runtime tree's parent edges. */
+  readonly role?: 'manager' | 'worker'
+  readonly streamStatus?: string
   readonly spendUsd?: number
   readonly inputTokens?: number
   readonly outputTokens?: number
