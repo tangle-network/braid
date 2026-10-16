@@ -36,6 +36,10 @@ test('real Runtime workers cross authenticated HTTP into the conversation graph,
   const previousEnv = process.env[envName]
   const runtimeContext = createInMemoryRunContext()
   let durable = await createDurableBraidApplication(options)
+  let allowTools = () => {}
+  const toolsAllowed = new Promise<void>((resolve) => {
+    allowTools = resolve
+  })
   let release = () => {}
   const released = new Promise<void>((resolve) => {
     release = resolve
@@ -76,6 +80,7 @@ test('real Runtime workers cross authenticated HTTP into the conversation graph,
                           text: `${profile.name}: actual output`,
                         },
                       }
+                      await toolsAllowed
                       yield {
                         kind: 'progress' as const,
                         progress: { kind: 'tool_call' as const, toolName: 'write_file' },
@@ -178,12 +183,24 @@ test('real Runtime workers cross authenticated HTTP into the conversation graph,
               entityId: selected.id,
             })
             assert.match(String(details.data.logTail), /Surveyor: actual output/u)
-            assert.match(String(details.data.logTail), /write_file/u)
+            assert.doesNotMatch(String(details.data.logTail), /write_file/u)
+            assert.equal(selected.status, 'running')
+            allowTools()
+            for (let attempt = 0; attempt < 30; attempt += 1) {
+              await controller.dispatch({
+                type: 'headless-command',
+                command: 'refresh_supervision',
+                params: { workerId: selected.id },
+              })
+              if (durable.app.state().workers.find((worker) => worker.id === selected.id)?.logTail?.includes('write_file')) break
+              await new Promise((resolve) => setTimeout(resolve, 10))
+            }
+            assert.match(String(durable.app.state().workers.find((worker) => worker.id === selected.id)?.logTail), /write_file/u)
             assert.equal(
               durable.app.state().workers.find((worker) => worker.title === 'Checker')?.logTail,
               undefined,
             )
-            const before = String(details.data.logTail)
+            const before = String(durable.app.state().workers.find((worker) => worker.id === selected.id)?.logTail)
             await controller.dispatch({
               type: 'headless-command',
               command: 'refresh_supervision',
@@ -229,6 +246,7 @@ test('real Runtime workers cross authenticated HTTP into the conversation graph,
               assert.equal(await readFile(join(root, name), 'utf8'), `actual-${name}`)
             return 'real network, files, stream cursor, and encrypted restart passed'
           } finally {
+            allowTools()
             release()
             await server.close()
           }
@@ -244,6 +262,7 @@ test('real Runtime workers cross authenticated HTTP into the conversation graph,
     )
     assert.equal(result.kind, 'winner', JSON.stringify(result))
   } finally {
+    allowTools()
     release()
     await durable.storage.close()
     if (previousEnv === undefined) delete process.env[envName]
