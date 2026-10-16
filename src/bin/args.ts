@@ -47,7 +47,7 @@ Options:
   --high-contrast              Use high-contrast semantic colors
   --reduced-motion             Replace motion with stable status text
   --conversation <id>         Open a conversation by id
-  --profile <path>             Select a canonical profile file for the run
+  --profile <name|path>        Select a published profile or canonical profile file
   --connection <id>            Select a connection for the run
   --runner <name>              Set a run-level runner preference
   --model <name>               Set a run-level model preference

@@ -111,3 +111,16 @@ They remain useful historical CLI evidence, but they do not establish the correc
 - Root owns source and publishing surfaces; this isolated GTR worktree is on `docs/braid034-release-progress-20260930`, based on exact `main` candidate `88a0fcf`. Git identity remains the existing `drewstone329@gmail.com`; `gh-drew api user --jq .login` returned `drewstone`.
 - The maintained release record and exact candidate media are being packaged into one evidence PR after independent review. Before push, fetch `origin/main`, verify `git merge-tree --write-tree origin/main HEAD`, run normal hooks, refresh PR comments/reviews/threads, and merge normally.
 - Release publication and registry proof remain pending until the provider owner, retained trace path, bounded inference spend, and Sandbox cleanup authorization are established for the exact candidate.
+
+## October 15 operator release, current work
+
+This dated entry supersedes the September candidate selection and pending-authorization status above. Historical receipts remain evidence for their original inputs only.
+
+- Owner: this operator task, Braid PR https://github.com/tangle-network/braid/pull/152. The branch is draft while its final real CLI Bridge catalog and first-run keyboard gate runs on Beelink1. No local Mac install, build or test is permitted.
+- Discovery Lab Operator 1.3 and its read-only observation repair merged as `2ab59cb0fa2755a251d628a74e6a495adf5b4118` and `0b69d6814bf0e2c44b30381749f66735aa432eed`. The latter is deployed. Full post-merge suites passed on Beelinks.
+- Operator 1.3 uses the existing immutable package profile catalog, pinned mounted skills and Lab learning ledger. Two intents are retained without approval or press.
+- Read-only concurrent report, saved scorecard and saved receipt succeeded through the real installed candidate and Codex CLI Bridge. Gate `beelink1-0522500a3a1f6b1a26da1d270dfd2367` exited 0. Evidence and limits are in `artifacts/verification/published-profile/README.md`.
+- The lead appended release authorization to the task brief at 2026-10-15T23:25Z: proceed through Release with `publish=false` for the merged exact main commit, then one bounded protected Release Live Evidence run for that commit and candidate run ID. The protected environment secret changed after the historical failed runs. Do not read or edit its value. If live evidence fails, inspect the redacted failed step, do not retry unchanged input, and retain its cause.
+- PR #151 is independently owned. Include it if merged before the release commit is selected. Its open files were read and are untouched by #152.
+- No official workflow has been dispatched by this task yet. Select fresh main only after #152 merges; retain candidate/live/publication run IDs, terminal results, archive identity and installed registry proof here as they become available. Publication remains governed by the existing release workflow, including protected live evidence and cleanup.
+- The task hard stop is six hours from its start, approximately 2026-10-16T03:58Z. The task waiter stops at 03:50Z to leave time for a checked report. No plays may be pressed.

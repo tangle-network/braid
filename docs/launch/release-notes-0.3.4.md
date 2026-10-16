@@ -1,5 +1,24 @@
 # Braid 0.3.4 release notes
 
+## Discovery Operator
+
+- Select the published Operator 1.3 with `braid --profile discovery-operator`.
+  A repository clone is no longer needed. Select a configured connection with
+  `--connection <id>` or the existing connection picker.
+- The package bundles the validated profile from a pinned Lab revision. Selection
+  works offline, without access to the private source repository. Local profile
+  files remain supported.
+- Operator 1.3 drafts and gates plays, observes live run records, checks placement
+  and seat room, and proposes settled-play learning through reviewed Lab PRs.
+  Approval must name the exact play id and commit. Its prompt is not a host
+  command permission boundary.
+
+## Admission and interactions
+
+- The stall watchdog starts when a run is admitted and responds to provider activity.
+- Concurrent interactions retain their target and close after a confirmed answer.
+- Send availability follows the active connection's capabilities.
+
 ## Cloud setup
 
 - Set a cloud workspace's repository, Git ref, starting directory, and file lifetime in Setup.

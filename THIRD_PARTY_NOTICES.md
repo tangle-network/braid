@@ -1,5 +1,28 @@
 # Third-party notices
 
+## Published Discovery Operator
+
+`src/profiles/discovery-operator.ts` is the project-owner-authorized release
+snapshot of `tangle-network/discovery-lab`, commit
+`de068d196aed580c05fe985f105768f61daa61e1`, path
+`profiles/operators/discovery-operator.json`. Discovery Lab remains its owner.
+The project owner authorized this profile's distribution as part of Braid's
+profile catalog.
+
+The snapshot carries these resources byte for byte. Their hashes are recorded in
+`extensions.discovery-operator.resourceProvenance` in the profile.
+
+| Resource | Owner and source path | Source commit | License |
+| --- | --- | --- | --- |
+| `profile-authoring` | `tangle-network/agent-runtime`, `skills/profile-authoring/SKILL.md` | `b95a36ae1e3f697fc439b9911f5611490c907511` | MIT, as declared by the owner's package manifest |
+| `inspect-agent-traces` | `tangle-network/traces`, `skills/inspect-agent-traces/SKILL.md` | `60956cefd01f41f6aaae5968ef4f7d40eeb3f9a6` | MIT, Copyright (c) 2026 Tangle Network |
+| `operator-learning` | `tangle-network/discovery-lab`, `profiles/operators/learning.md` | `f0b0aec701e042db79fa6bb2743294099f7f3a52` | Project-owner-authorized distribution |
+
+Braid's distributed `LICENSE` retains the MIT permission notice and the same
+Tangle Network copyright notice.
+
+## Other sources
+
 Braid contains a test-only adaptation from Pi and a Windows release-proof process-control adaptation from Microsoft Aspire.
 
 The implementation is expected to depend on and adapt behavior from the following MIT-licensed projects.
@@ -22,6 +45,7 @@ Before copied or substantially adapted code is committed, add one row below with
 
 | Braid path | Upstream source | Source commit | License | Adaptation |
 | --- | --- | --- | --- | --- |
+| `src/profiles/discovery-operator.ts` | [`tangle-network/discovery-lab`, `profiles/operators/discovery-operator.json`](https://github.com/tangle-network/discovery-lab/blob/de068d196aed580c05fe985f105768f61daa61e1/profiles/operators/discovery-operator.json) | `de068d196aed580c05fe985f105768f61daa61e1` | Project-owner-authorized distribution; mounted resources retain the licenses above | Canonical-value-preserving data export with a file-level source and authority header. |
 | `test/support/virtual-terminal.ts` | [`earendil-works/pi`, `packages/tui/test/virtual-terminal.ts`](https://github.com/earendil-works/pi/blob/a6f7317dfca61e357aee65faafe012a1be6c3734/packages/tui/test/virtual-terminal.ts) | `a6f7317dfca61e357aee65faafe012a1be6c3734` | MIT, Copyright (c) 2025 Mario Zechner | Changed imports to the published Pi TUI package, applied Braid formatting, and implemented the terminal status method required by Pi TUI 1.1.0 as a no-op in the headless test terminal; production code does not include this file. |
 | `src/views/tui/selector.ts` | [`earendil-works/pi`, `packages/tui/src/components/select-list.ts`](https://github.com/earendil-works/pi/blob/a6f7317dfca61e357aee65faafe012a1be6c3734/packages/tui/src/components/select-list.ts) | `a6f7317dfca61e357aee65faafe012a1be6c3734` | MIT, Copyright (c) 2025 Mario Zechner | Reuses Pi's pinned column-width and truncation calculations to mark description overflow while preserving the shared selector behavior. |
 | `scripts/live-bridge/windows-job-host-source.mjs` | [`dotnet/aspire`, `src/Aspire.Cli/Processes/WindowsConsoleProcessJob.cs` and `WindowsProcessInterop.cs`](https://github.com/dotnet/aspire/tree/be77aa36daf995fae0e72091141410c7082fcba3/src/Aspire.Cli/Processes) | `be77aa36daf995fae0e72091141410c7082fcba3` | MIT, Copyright (c) .NET Foundation and contributors | Adapted atomic Job Object attachment, kill-on-close containment, and active-process drain checks for Braid's Windows release proof. |

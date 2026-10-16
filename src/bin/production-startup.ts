@@ -13,6 +13,7 @@ import {
   importProfileValue,
   ProfilePersistenceError,
   readProfileFile,
+  resolveProfileSource,
   validateProfileShape,
 } from '../app/profiles.js'
 import { snapshotWorkspaceRequest, type WorkspaceRequest } from '../app/workspace-request.js'
@@ -23,6 +24,7 @@ import { defaultProductionCredentialRefResolver } from './production-credential-
 import { productionConfigPath, resolveProductionDatabaseKeyFile } from './production-key-path.js'
 import { recoverPendingProductionCredential } from './production-setup-credentials.js'
 import type { ProductionStartupLoadOptions } from './production-setup-types.js'
+import { publishedProfileSource } from './published-profile.js'
 
 export type { ProductionStartupLoadOptions } from './production-setup-types.js'
 
@@ -57,7 +59,7 @@ const STARTUP_ERROR_MESSAGES: Readonly<Record<ProductionStartupErrorCode, string
   PRODUCTION_DATABASE_KEY_INVALID:
     'The database key file must be a protected mode-0600 regular file outside the agent workspace; relative paths resolve beside the Braid config file',
   PRODUCTION_PROFILE_REQUIRED:
-    'Production configuration must select a canonical profile or pass --profile <path>',
+    'Production configuration must select a canonical profile or pass --profile <name|path>',
   PRODUCTION_PROFILE_NOT_FOUND: 'The selected canonical profile file was not found',
   PRODUCTION_PROFILE_INVALID: 'The selected canonical profile is invalid',
   PRODUCTION_CONNECTION_REQUIRED: 'Production configuration must select an exact connection id',
@@ -292,9 +294,14 @@ function readConfig(path: string): ProductionStartupDocument {
   return parseConfig(bytes, path)
 }
 
-function profileFromValue(value: unknown, referenceRoot: string): Readonly<AgentProfile> {
+async function profileFromValue(
+  value: unknown,
+  referenceRoot: string,
+): Promise<Readonly<AgentProfile>> {
   try {
     if (typeof value === 'string') {
+      const published = publishedProfileSource(value)
+      if (published !== undefined) return (await resolveProfileSource(published)).profile
       const profilePath = resolve(referenceRoot, value)
       try {
         return readProfileFile(profilePath).imported.profile
@@ -392,12 +399,12 @@ export async function loadProductionStartup(
   if (profileValue === undefined) {
     throw new ProductionStartupError(
       'PRODUCTION_PROFILE_REQUIRED',
-      'Production configuration must select a canonical profile or --profile <path>',
+      'Production configuration must select a canonical profile or --profile <name|path>',
     )
   }
   const profileRoot =
     options.profileReference === undefined ? dirname(configPath) : options.workspace
-  const loadedProfile = profileFromValue(profileValue, profileRoot)
+  const loadedProfile = await profileFromValue(profileValue, profileRoot)
   const connections = connectionRecords(document.connections)
   const selectedConnectionId =
     options.connectionId ??
