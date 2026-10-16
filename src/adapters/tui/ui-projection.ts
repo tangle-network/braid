@@ -145,7 +145,6 @@ function partFor(
     : []
 }
 
-
 function messagesFor(
   state: BraidState,
   options: { readonly completeText?: boolean } = {},
@@ -198,7 +197,9 @@ export function runViews(state: BraidState): RunView[] {
       branchId: String(run.branchId),
       operationId: run.operationId,
       status: statusForRun(state, run),
-      ...(outcomeDetail === undefined ? {} : { outcomeDetail: sanitizeTerminalText(outcomeDetail) }),
+      ...(outcomeDetail === undefined
+        ? {}
+        : { outcomeDetail: sanitizeTerminalText(outcomeDetail) }),
       ...(profile.name === undefined ? {} : { profileName: sanitizeTerminalText(profile.name) }),
       profileDigest: sanitizeTerminalText(run.receipt.profileDigest),
       ...(model === undefined ? {} : { model: sanitizeTerminalText(model) }),
@@ -706,7 +707,9 @@ export function toHeadlessState(
         turnId: run.turnId,
         operationId: run.operationId,
         status: run.status,
-        ...(outcomeDetail === undefined ? {} : { outcomeDetail: sanitizeTerminalText(outcomeDetail) }),
+        ...(outcomeDetail === undefined
+          ? {}
+          : { outcomeDetail: sanitizeTerminalText(outcomeDetail) }),
         startedAt: run.startedAt,
         updatedAt: run.updatedAt,
         ...(run.terminalAt === undefined ? {} : { terminalAt: run.terminalAt }),

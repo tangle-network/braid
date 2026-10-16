@@ -128,15 +128,21 @@ export function safeProviderDiagnostic(value: unknown, fallback: string): string
 const NO_RECORDED_PROVIDER_CAUSE = 'no cause was recorded'
 
 /** The same recorded cause feeds transcript, full state and headless details. */
-export function runOutcomeDetail(run: Pick<BraidRun, 'status' | 'activity' | 'error' | 'terminalReason'>): string | undefined {
+export function runOutcomeDetail(
+  run: Pick<BraidRun, 'status' | 'activity' | 'error' | 'terminalReason'>,
+): string | undefined {
   if (run.status === 'unknown') {
     const unknown = run.activity.findLast(
       (item) => item.type === 'lifecycle' && item.label === 'unknown',
     )?.detail
     const detail = [unknown, run.terminalReason, run.error].find(hasProviderCause)
     if (detail !== undefined) return detail
-    const code = [unknown, run.error].find((value) => value !== undefined && BARE_FAILURE_CODE.test(value))
-    return code === undefined ? NO_RECORDED_PROVIDER_CAUSE : `${NO_RECORDED_PROVIDER_CAUSE} (${code})`
+    const code = [unknown, run.error].find(
+      (value) => value !== undefined && BARE_FAILURE_CODE.test(value),
+    )
+    return code === undefined
+      ? NO_RECORDED_PROVIDER_CAUSE
+      : `${NO_RECORDED_PROVIDER_CAUSE} (${code})`
   }
   if (run.status !== 'failed' && run.status !== 'blocked' && run.status !== 'expired')
     return undefined
@@ -145,6 +151,7 @@ export function runOutcomeDetail(run: Pick<BraidRun, 'status' | 'activity' | 'er
     if (second === undefined || first.includes(second)) return first
     return second.includes(first) ? second : `${first}; ${second}`
   }
-  return run.error === undefined ? NO_RECORDED_PROVIDER_CAUSE : `${NO_RECORDED_PROVIDER_CAUSE} (${run.error})`
+  return run.error === undefined
+    ? NO_RECORDED_PROVIDER_CAUSE
+    : `${NO_RECORDED_PROVIDER_CAUSE} (${run.error})`
 }
-

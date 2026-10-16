@@ -11,11 +11,16 @@ import { Sandbox } from '@tangle-network/sandbox'
 import { castFor, createCapturedTerminal, pause, typeText } from '../live-demo/terminal.mjs'
 import { scanSecretArtifacts } from '../scan-secret-artifacts.mjs'
 import { safeJson, safeMessage } from './contracts.mjs'
-import { closeSession, configEvidence, initializedSession, prepareProductionWorkspace, resolveBinary, rpcRequest } from './headless.mjs'
-import { sandboxConfiguration, transcriptSurfaceReady } from './tangle-sandbox-braid-multirun.mjs'
 import {
-  cleanupOwnedRetainedResources,
-} from './tangle-sandbox-braid-stress.mjs'
+  closeSession,
+  configEvidence,
+  initializedSession,
+  prepareProductionWorkspace,
+  resolveBinary,
+  rpcRequest,
+} from './headless.mjs'
+import { sandboxConfiguration, transcriptSurfaceReady } from './tangle-sandbox-braid-multirun.mjs'
+import { cleanupOwnedRetainedResources } from './tangle-sandbox-braid-stress.mjs'
 
 const scriptPath = fileURLToPath(import.meta.url)
 const repository = resolve(dirname(scriptPath), '../..')
@@ -272,14 +277,24 @@ async function journalEvidence(config, { secrets, modelCredentials, canaries, ru
     const stored = state.connections.find(
       (connection) => connection.id === config.connection.id,
     )?.providerOptions
-    const run = state.runs.find(candidate => candidate.id === runId)
+    const run = state.runs.find((candidate) => candidate.id === runId)
     return {
-      run: run ? { id: run.id, status: run.status, error: run.error ?? null, reason: run.terminalReason ?? null, outcomeDetail: providerValues.runOutcomeDetail(run) ?? null } : null,
+      run: run
+        ? {
+            id: run.id,
+            status: run.status,
+            error: run.error ?? null,
+            reason: run.terminalReason ?? null,
+            outcomeDetail: providerValues.runOutcomeDetail(run) ?? null,
+          }
+        : null,
       source: 'restored-state',
       connectionRestored: stored !== undefined,
       grantedNamesKept: JSON.stringify(stored?.secrets ?? []) === JSON.stringify(secrets),
-      seatReferenceKept:
-        isDeepStrictEqual(stored?.modelCredentials ?? null, modelCredentials ?? null),
+      seatReferenceKept: isDeepStrictEqual(
+        stored?.modelCredentials ?? null,
+        modelCredentials ?? null,
+      ),
       canaryMatches: canaries.filter((canary) => serialized.includes(canary)).length,
     }
   } finally {
@@ -441,22 +456,40 @@ export async function runSeatsProof(environment = process.env) {
     Object.assign(result, seatsEvidence(record, runId, marker))
     result.modelTurnReached = finalRun.status === 'completed' && result.modelTurnReached
     result.journal = await journalEvidence(config, { secrets, modelCredentials, canaries, runId })
-    if (result.journal.run === null) throw new Error('The encrypted journal did not restore the same run')
+    if (result.journal.run === null)
+      throw new Error('The encrypted journal did not restore the same run')
     Object.assign(result.run, result.journal.run)
-    const refused = record.events.findLast(event => event.kind === 'run.unknown' && event.payload?.runId === runId)?.payload?.error
+    const refused = record.events.findLast(
+      (event) => event.kind === 'run.unknown' && event.payload?.runId === runId,
+    )?.payload?.error
     if (refused && result.run.outcomeDetail !== refused)
       throw new Error('The restored cause differs from the recorded provider refusal')
     const headless = await initializedSession(binary, config)
     try {
-      const response = await rpcRequest(headless.session, 'get_details', { entityType: 'run', entityId: runId })
+      const response = await rpcRequest(headless.session, 'get_details', {
+        entityType: 'run',
+        entityId: runId,
+      })
       const detail = response.result?.data
-      if (detail?.status !== result.run.status || (detail?.error ?? null) !== result.run.error || (detail?.terminalReason ?? null) !== result.run.reason || (detail?.outcomeDetail ?? null) !== result.run.outcomeDetail)
+      if (
+        detail?.status !== result.run.status ||
+        (detail?.error ?? null) !== result.run.error ||
+        (detail?.terminalReason ?? null) !== result.run.reason ||
+        (detail?.outcomeDetail ?? null) !== result.run.outcomeDetail
+      )
         throw new Error('Headless details did not restore the same run outcome and cause')
-      const restoredRun = headless.state.state.runs.find(candidate => candidate.id === runId)
+      const restoredRun = headless.state.state.runs.find((candidate) => candidate.id === runId)
       if ((restoredRun?.outcomeDetail ?? null) !== result.run.outcomeDetail)
         throw new Error('Headless full state did not preserve the recorded cause')
-      result.headless = { runId, status: detail.status, causeMatchesJournal: true, outcomeDetail: detail.outcomeDetail ?? null }
-    } finally { await closeSession(headless.session) }
+      result.headless = {
+        runId,
+        status: detail.status,
+        causeMatchesJournal: true,
+        outcomeDetail: detail.outcomeDetail ?? null,
+      }
+    } finally {
+      await closeSession(headless.session)
+    }
     cast = castFor(terminal, `Braid ${label}`, 'braid --inline')
     result.captures = []
     for (const [columns, rows] of [
@@ -517,9 +550,13 @@ export async function runSeatsProof(environment = process.env) {
     result.sandboxId = observed.controlRef?.environmentId ?? null
     result.interactions = observed.interactions
     try {
-      result.cleanup = observed.runId !== undefined || observed.controlRef !== undefined
-        ? await cleanupOwnedRetainedResources(cleanupClient, { controlRef: observed.controlRef, firstRunId: observed.runId })
-        : { skipped: 'no run was admitted' }
+      result.cleanup =
+        observed.runId !== undefined || observed.controlRef !== undefined
+          ? await cleanupOwnedRetainedResources(cleanupClient, {
+              controlRef: observed.controlRef,
+              firstRunId: observed.runId,
+            })
+          : { skipped: 'no run was admitted' }
     } catch (error) {
       result.cleanup = { failed: safeMessage(error, environment) }
     }
@@ -536,9 +573,14 @@ export async function runSeatsProof(environment = process.env) {
     }
     if (environment.BRAID_SEATS_RESOLVER_RECEIPT !== undefined) {
       const bytes = await readFile(environment.BRAID_SEATS_RESOLVER_RECEIPT, 'utf8')
-      if (Buffer.byteLength(bytes) > 65536) throw new Error('The resolver receipt exceeds its evidence bound')
-      const calls = bytes.trim().split('\n').filter(Boolean).map(line => JSON.parse(line))
-        .filter(call => call.proofId === result.proofId)
+      if (Buffer.byteLength(bytes) > 65536)
+        throw new Error('The resolver receipt exceeds its evidence bound')
+      const calls = bytes
+        .trim()
+        .split('\n')
+        .filter(Boolean)
+        .map((line) => JSON.parse(line))
+        .filter((call) => call.proofId === result.proofId)
       result.seatResolver = { measured: calls.length > 0, calls }
     }
     result.finishedAt = new Date().toISOString()

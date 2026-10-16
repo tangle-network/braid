@@ -1,6 +1,6 @@
 import type { AnalysisFinding, AnalysisModelCallRecord } from '../../domain/entities.js'
-import type { BraidState } from '../../domain/state.js'
 import { runOutcomeDetail } from '../../domain/provider-values.js'
+import type { BraidState } from '../../domain/state.js'
 import { analysisModelCallLine, analysisModelCallView } from './analysis-model-call-presentation.js'
 import { environmentView } from './environment-presentation.js'
 import { sanitizeTerminalText, sanitizeTitle } from './sanitize.js'
