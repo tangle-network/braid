@@ -332,6 +332,19 @@ export async function reevaluateSeatsReceipt(receiptPath, recordPath) {
   return updated
 }
 
+async function readResolverEvidence(path, proofId) {
+  const bytes = await readFile(path, 'utf8')
+  if (Buffer.byteLength(bytes) > 65536)
+    throw new Error('The resolver receipt exceeds its evidence bound')
+  const calls = bytes
+    .trim()
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => JSON.parse(line))
+    .filter((call) => call.proofId === proofId)
+  return { measured: calls.length > 0, calls }
+}
+
 export async function runSeatsProof(environment = process.env) {
   const label = environment.BRAID_SEATS_LABEL ?? `run-${Date.now()}`
   if (!/^[a-z0-9-]{1,64}$/u.test(label)) throw new Error('BRAID_SEATS_LABEL must be a short slug')
@@ -573,16 +586,10 @@ export async function runSeatsProof(environment = process.env) {
     }
     if (environment.BRAID_SEATS_RESOLVER_RECEIPT !== undefined) {
       try {
-        const bytes = await readFile(environment.BRAID_SEATS_RESOLVER_RECEIPT, 'utf8')
-        if (Buffer.byteLength(bytes) > 65536)
-          throw new Error('The resolver receipt exceeds its evidence bound')
-        const calls = bytes
-          .trim()
-          .split('\n')
-          .filter(Boolean)
-          .map((line) => JSON.parse(line))
-          .filter((call) => call.proofId === result.proofId)
-        result.seatResolver = { measured: calls.length > 0, calls }
+        result.seatResolver = await readResolverEvidence(
+          environment.BRAID_SEATS_RESOLVER_RECEIPT,
+          result.proofId,
+        )
       } catch (error) {
         const failure = safeMessage(error, environment)
         result.seatResolver = { measured: false, failure }
