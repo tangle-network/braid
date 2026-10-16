@@ -1,0 +1,47 @@
+{
+  "runId": "proximity-gap-floor-20261011a",
+  "source": "existing settled Discovery run, read only through Runtime loadSpawnForest and serveCoordinationMcp",
+  "runtime": "0.322.1",
+  "forestSha256": "740dea6c0cd50dff829357222c0854c36883158a67b9c700c1b5f985d5ae6fec",
+  "agentCount": 5,
+  "inDoubt": 3,
+  "missingTrees": 0,
+  "playsPressed": 0,
+  "paidCalls": 0,
+  "agents": [
+    {
+      "id": "proximity-gap-floor-20261011a",
+      "label": "root",
+      "status": "pending",
+      "runtime": "tangle-sandbox"
+    },
+    {
+      "id": "proximity-gap-floor-20261011a:s0",
+      "parent": "proximity-gap-floor-20261011a",
+      "label": "floor-literature",
+      "status": "done",
+      "runtime": "tangle-sandbox"
+    },
+    {
+      "id": "proximity-gap-floor-20261011a:s1",
+      "parent": "proximity-gap-floor-20261011a",
+      "label": "floor-record-extender",
+      "status": "pending",
+      "runtime": "tangle-sandbox"
+    },
+    {
+      "id": "proximity-gap-floor-20261011a:s2",
+      "parent": "proximity-gap-floor-20261011a",
+      "label": "floor-fresh-mca",
+      "status": "pending",
+      "runtime": "tangle-sandbox"
+    },
+    {
+      "id": "proximity-gap-floor-20261011a:s3",
+      "parent": "proximity-gap-floor-20261011a",
+      "label": "floor-referee-order2",
+      "status": "pending",
+      "runtime": "driver"
+    }
+  ]
+}
