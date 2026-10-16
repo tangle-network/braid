@@ -148,17 +148,11 @@ The compatibility alias adds no second source of truth because normalization der
 
 ## Tests
 
-`test/application.test.ts` proves concurrent branch streaming, same-branch queue ordering, focus switching, background interaction responses, background cancellation, disconnect replay, and duplicate provider events.
+`test/storage-snapshots.test.ts` checks legacy active-run migration, invalid-reference quarantine, restart restoration, and duplicate conflict behavior.
 
-`test/storage-snapshots.test.ts` proves legacy active-run migration, invalid-reference quarantine, restart restoration, and duplicate conflict behavior.
+`test/tui.test.ts` exercises focused cancellation and conversation navigation through the Pi keyboard path. `test/cli-bridge-retained-restart.test.ts` exercises retained replay across the real HTTP and persistence boundaries.
 
-`test/storage-journal-routing.test.ts` proves late background events remain in their run conversation after focus changes.
-
-`test/cli-startup.test.ts` proves repeated signal captures retain the newest frame during active streaming.
-
-`test/w8-runs.test.ts` retains single-run replay, cursor, cancellation, and queue coverage against the same ports.
-
-The unit and storage scopes run the new cases through the production application core and journal interfaces.
+The protected `LIVE-07` multirun proof runs independent cloud conversations, switches focus, cancels the selected run, restarts, and confirms exact cleanup. The existing `capture:run-focus` command retains the deterministic terminal recording.
 
 ## Non-goals
 

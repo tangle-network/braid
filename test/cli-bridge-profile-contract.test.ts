@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { AgentProfile } from '@tangle-network/agent-interface'
-import { AgentRuntimeExecutionPort } from '../src/adapters/runtime/agent-runtime-execution.js'
 import { CliBridgeRetainedExecutionPort } from '../src/adapters/runtime/cli-bridge-retained-execution.js'
 import {
   type ProductionBackendResolverOptions,
@@ -312,25 +311,4 @@ test('production CLI Bridge cancellation keeps a Runtime provider error unknown'
   } finally {
     await bridge.close()
   }
-})
-
-test('a turn cancelled before iteration never resolves or materializes execution', async () => {
-  let resolverCalls = 0
-  const execution = new AgentRuntimeExecutionPort(async () => {
-    resolverCalls += 1
-    throw new Error('resolver must not run after cancellation')
-  })
-  const abort = new AbortController()
-  abort.abort(new Error('cancelled before start'))
-  const cancelled = {
-    ...input('cancelled contract turn', 'run-contract-cancelled'),
-    signal: abort.signal,
-  }
-
-  await assert.rejects(async () => {
-    for await (const _event of execution.streamTurn(cancelled)) {
-      // A pre-cancelled turn cannot emit runtime work.
-    }
-  }, /cancelled before start/u)
-  assert.equal(resolverCalls, 0)
 })

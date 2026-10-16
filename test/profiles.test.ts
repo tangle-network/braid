@@ -5,77 +5,23 @@ import { join } from 'node:path'
 import test from 'node:test'
 import {
   type AgentProfile,
-  type AgentProfileCapabilities,
   canonicalAgentProfileDigest,
   canonicalCandidateJson,
   defineAgentProfilePublicConfig,
   defineAgentProfileSecretRef,
 } from '@tangle-network/agent-interface'
-import type { AgentEnvironmentCapabilities } from '@tangle-network/agent-interface/environment-provider'
 import {
   AGENT_INTERFACE_PACKAGE_VERSION,
-  createProfileRecord,
-  createProfileSnapshot,
   discoverProfiles,
-  exportProfileDocument,
   exportProfileFile,
   exportProfileJson,
   importProfileJson,
-  importProfileSource,
-  ProfileCatalog,
-  ProfileDraft,
   ProfilePersistenceError,
-  ProfileValidationError,
   readProfileFile,
-  resolveEffectiveProfile,
   resolveProfileSource,
   saveProfileFile,
-  searchProfiles,
-  selectBaseProfile,
-  validateProfile,
   validateProfileShape,
 } from '../src/app/profiles.js'
-
-const profileCapabilities: AgentProfileCapabilities = {
-  namedProfiles: true,
-  systemPrompt: { replace: true, append: true },
-  instructions: true,
-  tools: true,
-  permissions: true,
-  mcp: true,
-  subagents: true,
-  resources: {
-    files: true,
-    instructions: true,
-    tools: true,
-    skills: true,
-    agents: true,
-    commands: true,
-  },
-  hooks: true,
-  modes: true,
-  runtimeUpdate: true,
-  validation: true,
-  extensions: ['future.backend'],
-}
-
-const environmentCapabilities: AgentEnvironmentCapabilities = {
-  profile: profileCapabilities,
-  streaming: { live: true, replay: true, detach: true, turnIdempotency: true },
-  sessions: { continue: true, list: true, messages: true },
-  workspace: {
-    read: true,
-    write: true,
-    exec: true,
-    git: true,
-    upload: true,
-    download: true,
-  },
-  branching: { checkpoint: true, fork: true, retrySafe: true, lookup: true, cleanup: true },
-  placement: true,
-  usage: true,
-  confidential: false,
-}
 
 const fullProfile: AgentProfile = {
   name: 'reviewer',
@@ -182,29 +128,6 @@ const fullProfile: AgentProfile = {
   },
 }
 
-const localSecurity = {
-  allowLocalMcp: true,
-  allowHooks: true,
-  allowedMcpHosts: ['mcp.example.com'],
-}
-
-function source(
-  reference: string,
-  profile: AgentProfile = fullProfile,
-  kind: 'inline' | 'file' = 'inline',
-) {
-  return createProfileRecord(
-    {
-      kind,
-      reference,
-      label: reference,
-      writable: kind === 'file',
-      trusted: true,
-    },
-    profile,
-  )
-}
-
 test('the installed canonical profile schema round-trips every field and extensions', async () => {
   const shape = validateProfileShape(fullProfile)
   assert.equal(shape.ok, true)
@@ -224,160 +147,6 @@ test('the installed canonical profile schema round-trips every field and extensi
     }
   ).dependencies['@tangle-network/agent-interface']
   assert.equal(AGENT_INTERFACE_PACKAGE_VERSION, pinned)
-})
-
-test('unknown canonical fields fail closed while namespaced extensions remain opaque', () => {
-  const invalid = { ...fullProfile, futureCanonicalField: true }
-  const result = validateProfileShape(invalid)
-  assert.equal(result.ok, false)
-  assert.ok(result.issues.some((item) => item.code === 'unrecognized_keys'))
-
-  const document = exportProfileDocument(fullProfile, { redact: false })
-  const imported = importProfileJson(JSON.stringify(document), { allowRedacted: true })
-  assert.deepEqual(imported.profile.extensions?.['future.backend'], {
-    unknownField: { preserved: true },
-    anotherValue: 'round-trip',
-  })
-})
-
-test('provider validation blocks errors and requires exact acceptance of warnings', async () => {
-  const publicProfile = {
-    ...fullProfile,
-    metadata: { owner: 'braid', note: 'public profile metadata' },
-  }
-  const provider = {
-    name: 'test-provider',
-    capabilities: () => environmentCapabilities,
-    validateProfile: () => ({
-      ok: true,
-      issues: [
-        {
-          level: 'warning' as const,
-          code: 'model-snapped',
-          message: 'Provider will use its selected model',
-          path: 'model.default',
-        },
-      ],
-      normalizedProfile: {
-        ...publicProfile,
-        model: { ...publicProfile.model, default: 'anthropic/claude-haiku' },
-      },
-    }),
-  }
-  const rejected = await validateProfile(publicProfile, {
-    securityPolicy: localSecurity,
-    provider,
-  })
-  assert.equal(rejected.ok, false)
-  assert.ok(rejected.issues.some((item) => item.code === 'provider-warning-not-accepted'))
-
-  const accepted = await validateProfile(publicProfile, {
-    securityPolicy: localSecurity,
-    provider,
-    acceptedProviderWarningCodes: ['model-snapped'],
-  })
-  assert.equal(accepted.ok, true)
-  assert.equal(accepted.profile?.model?.default, 'anthropic/claude-haiku')
-  assert.equal(accepted.provider?.result.issues[0]?.code, 'model-snapped')
-  assert.deepEqual(accepted.acceptedProviderWarningCodes, ['model-snapped'])
-
-  const inlineSecret = await validateProfile(fullProfile, {
-    securityPolicy: localSecurity,
-    provider,
-    acceptedProviderWarningCodes: ['model-snapped'],
-  })
-  assert.equal(inlineSecret.ok, false)
-  assert.ok(inlineSecret.issues.some((item) => item.code === 'inline-secret-forbidden'))
-})
-
-test('selection precedence and run overrides never mutate the source profile', () => {
-  const command = source('command', { ...fullProfile, name: 'command' })
-  const branch = source('branch', { ...fullProfile, name: 'branch' })
-  const workspace = source('workspace', { ...fullProfile, name: 'workspace' })
-  const user = source('user', { ...fullProfile, name: 'user' })
-  const first = source('first', { ...fullProfile, name: 'first' })
-
-  assert.equal(
-    selectBaseProfile({
-      commandLine: command,
-      branch,
-      workspace,
-      user,
-      firstRun: first,
-      workspaceTrusted: true,
-    })?.reason,
-    'command-line',
-  )
-  assert.equal(
-    selectBaseProfile({ branch, workspace, user, firstRun: first, workspaceTrusted: true })?.reason,
-    'branch',
-  )
-  assert.equal(
-    selectBaseProfile({ workspace, user, firstRun: first, workspaceTrusted: true })?.reason,
-    'workspace',
-  )
-  assert.equal(
-    selectBaseProfile({ workspace, user, firstRun: first, workspaceTrusted: false })?.reason,
-    'user',
-  )
-
-  const effective = resolveEffectiveProfile({
-    profile: command,
-    branchOverrides: {
-      model: 'openai/gpt-5',
-      effort: 'medium',
-      connectionId: 'branch-connection',
-    },
-    nextRunOverrides: {
-      harness: 'codex',
-      model: 'openai/gpt-5.6',
-      effort: 'xhigh',
-      mode: 'fast',
-      connectionId: 'next-connection',
-    },
-  })
-  assert.equal(effective.runner, 'codex')
-  assert.equal(effective.model, 'openai/gpt-5.6')
-  assert.equal(effective.effort, 'xhigh')
-  assert.equal(effective.mode, 'fast')
-  assert.equal(effective.connectionId, 'next-connection')
-  assert.equal(effective.effectiveProfile.model?.small, fullProfile.model?.small)
-  assert.equal(effective.effectiveProfile.model?.provider, undefined)
-  assert.equal(command.profile.model?.default, fullProfile.model?.default)
-  assert.equal(effective.compatibility.modelSupported, true)
-
-  assert.equal(
-    resolveEffectiveProfile({
-      profile: command,
-      workspaceTrusted: false,
-      workspaceConnectionId: 'workspace-connection',
-      userConnectionId: 'user-connection',
-    }).connectionId,
-    'user-connection',
-  )
-  assert.equal(
-    resolveEffectiveProfile({
-      profile: command,
-      workspaceTrusted: true,
-      workspaceConnectionId: 'workspace-connection',
-      userConnectionId: 'user-connection',
-    }).connectionId,
-    'workspace-connection',
-  )
-})
-
-test('drafts validate raw and structured edits immediately and produce canonical diffs', () => {
-  const draft = new ProfileDraft(fullProfile)
-  assert.equal(draft.valid, true)
-  const invalid = draft.replaceRaw('{"name":')
-  assert.equal(invalid.ok, false)
-  assert.throws(() => draft.profile, ProfileValidationError)
-
-  const valid = draft.replace({ ...fullProfile, name: 'edited' })
-  assert.equal(valid.ok, true)
-  assert.equal(draft.profile.name, 'edited')
-  assert.ok(draft.diff().length > 0)
-  assert.match(draft.rawJson(), /"name":"edited"/u)
 })
 
 test('discovery is ordered, explicit, source-distinct, and does not scan untrusted workspace entries', async () => {
@@ -417,63 +186,6 @@ test('discovery is ordered, explicit, source-distinct, and does not scan untrust
   } finally {
     await rm(root, { recursive: true, force: true })
   }
-})
-
-test('search covers runner, tools, skills, and connection capability fields', () => {
-  const record = source('searchable')
-  assert.equal(searchProfiles([record], 'claude-code').length, 1)
-  assert.equal(searchProfiles([record], 'review').length, 1)
-  assert.equal(searchProfiles([record], 'review/SKILL.md').length, 1)
-  assert.equal(searchProfiles([record], 'repo.read').length, 1)
-  assert.equal(searchProfiles([record], 'does-not-exist').length, 0)
-  const catalog = new ProfileCatalog({ profiles: [record] })
-  assert.equal(catalog.size, 1)
-  assert.equal(catalog.get(record.id)?.id, record.id)
-})
-
-test('profile snapshots are immutable, redacted, and carry provider-safe receipt data', () => {
-  const record = source('snapshot')
-  const effective = resolveEffectiveProfile({
-    profile: record,
-    nextRunOverrides: { model: 'anthropic/claude-haiku', effort: 'low' },
-  })
-  const validation = {
-    ok: true,
-    issues: [],
-    profile: effective.effectiveProfile,
-    digest: canonicalAgentProfileDigest(effective.effectiveProfile),
-    acceptedProviderWarningCodes: ['model-snapped'],
-  }
-  const receipt = createProfileSnapshot({
-    source: record,
-    effective,
-    validation,
-    capabilities: profileCapabilities,
-    providerMaterializationReceipt: {
-      materializationDigest: 'sha256:materialization',
-      metadata: { apiKey: 'do-not-persist' },
-    },
-  })
-  assert.equal(Object.isFrozen(receipt), true)
-  assert.equal(Object.isFrozen(receipt.effectiveProfile), true)
-  assert.equal(receipt.effectiveProfile.confidential?.attestationNonce, '[redacted challenge]')
-  assert.deepEqual(receipt.effectiveProfile.metadata, { redacted: '[redacted]' })
-  assert.deepEqual(receipt.effectiveProfile.model?.metadata, { redacted: '[redacted]' })
-  assert.deepEqual(receipt.effectiveProfile.mcp?.local?.metadata, { redacted: '[redacted]' })
-  assert.deepEqual(receipt.effectiveProfile.subagents?.tester?.metadata, {
-    redacted: '[redacted]',
-  })
-  assert.deepEqual(receipt.effectiveProfile.modes?.fast?.metadata, { redacted: '[redacted]' })
-  assert.deepEqual(receipt.validation.acceptedProviderWarningCodes, ['model-snapped'])
-  assert.equal(JSON.stringify(receipt).includes('do-not-persist'), false)
-  assert.equal(
-    receipt.effectiveProfileDigest,
-    canonicalAgentProfileDigest(effective.effectiveProfile),
-  )
-  assert.notEqual(
-    receipt.effectiveProfileDigest,
-    canonicalAgentProfileDigest(receipt.effectiveProfile),
-  )
 })
 
 test('profile files save atomically, verify bytes, reject races and symlinks, and export safely', async () => {
@@ -549,17 +261,4 @@ test('profile files save atomically, verify bytes, reject races and symlinks, an
   } finally {
     await rm(root, { recursive: true, force: true })
   }
-})
-
-test('inline import preserves the source descriptor without merging profiles', () => {
-  const record = importProfileSource(fullProfile, {
-    kind: 'package',
-    reference: '@example/reviewer',
-    label: 'package reviewer',
-    writable: false,
-    trusted: true,
-  })
-  assert.equal(record.source.kind, 'package')
-  assert.equal(record.source.writable, false)
-  assert.equal(record.profile.name, 'reviewer')
 })

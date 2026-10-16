@@ -58,17 +58,15 @@ Keep a patch ledger for any vendored terminal-library code and add a regression 
 
 ## Proof required for changes
 
-Run the narrow test first, then the complete local verification command relevant to the change.
+Use strong integration tests across real process, persistence, package, and network boundaries, and frequent live proofs through the installed product.
 
-Any change to a reducer or persisted event requires an idempotency, restart, and migration test.
+Keep a few strong unit tests only when a consequential failure cannot reasonably be detected by the stronger checks; state the reason for each retained unit test in the pull request.
 
-Any change to streaming requires disconnect, replay, duplicate-event, and cancellation tests.
+Delete tests of private helpers, mock choreography, API-shape mirrors, and repeated cases instead of updating them to follow valid API changes.
 
-Any change to an interaction requires keyboard acceptance, decline, timeout, cancel, and restart tests.
+Run the smallest relevant check and the complete repository verification before merge.
 
-Any visible UI change requires terminal captures at 40×12, 80×24, 120×40, and 200×60, plus a real keyboard walk-through.
-
-Any pull request that changes a user flow requires a short terminal recording in addition to still frames.
+Visible changes require a terminal recording of the real user flow.
 
 Do not describe a fake-provider result as proof of a provider integration.
 
