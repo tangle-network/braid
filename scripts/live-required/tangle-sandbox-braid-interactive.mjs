@@ -51,6 +51,7 @@ import {
   providerWorkspaceReadbackEvidence,
   publicAccountIdentityEvidence,
   sandboxWorkspaceRelativePath,
+  sessionWorkspaceFilePath,
   singleRunSpendDisclosure,
   telemetryDisclosure,
   usage,
@@ -323,11 +324,12 @@ export async function waitForProviderReadback(
     { deadline },
   )
   const relativePath = sandboxWorkspaceRelativePath(path)
+  const filePath = await sessionWorkspaceFilePath(box, controlRef, relativePath)
   const observation = await waitForProviderObservation(
     `${label} provider readback`,
     async () => {
       try {
-        const value = await box.read(relativePath)
+        const value = await box.read(filePath)
         return value === expectedValue
           ? { environmentId: box.id, path: relativePath, value }
           : undefined

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { createHash, randomBytes } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { dirname, resolve } from 'node:path'
+import { dirname, posix, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   NetworkError,
@@ -141,6 +141,30 @@ export function sandboxWorkspaceRelativePath(path) {
     throw new Error('Sandbox workspace path must be a contained relative path')
   }
   return normalized
+}
+
+/**
+ * The absolute path of a workspace file as the session's shell sees it.
+ *
+ * A relative Sandbox file read or write resolves from the sandbox home (`/home/agent`), while the
+ * session works in the requested workspace: the repository checkout below it (`/home/agent/braid`
+ * for the Braid repository). Proof files the agent reads or writes must use the session's path.
+ */
+export async function sessionWorkspaceFilePath(box, controlRef, path) {
+  const relativePath = sandboxWorkspaceRelativePath(path)
+  const observed = await box.exec(
+    'pwd',
+    controlRef?.sessionId === undefined ? undefined : { sessionId: controlRef.sessionId },
+  )
+  const cwd = typeof observed?.stdout === 'string' ? observed.stdout.trim() : ''
+  const exitCode = observed?.exitCode ?? observed?.code
+  if (exitCode !== 0 || !cwd.startsWith('/') || /[\r\n\0]/u.test(cwd)) {
+    throw new MissingIntegrationError(
+      'Could not observe the session workspace for a Sandbox file path',
+      { environmentId: box?.id },
+    )
+  }
+  return posix.join(cwd, relativePath)
 }
 
 function sha256(value) {
@@ -395,7 +419,7 @@ export async function readRetainedWorkspaceFile(
   const relativePath = sandboxWorkspaceRelativePath(path)
   let value
   try {
-    value = await box.read(relativePath)
+    value = await box.read(await sessionWorkspaceFilePath(box, controlRef, relativePath))
   } catch (error) {
     if (allowMissing && isMissingWorkspaceFileError(error)) return undefined
     throw error
@@ -439,8 +463,9 @@ async function prepareContinuityChallenge(client, controlRef, coordinates) {
   const bytes = `${challenge}\n`
   const path = continuityChallengePath(coordinates)
   const responsePath = continuityResponsePath(coordinates)
-  await box.write(sandboxWorkspaceRelativePath(path), bytes)
-  const readBack = await box.read(sandboxWorkspaceRelativePath(path))
+  const filePath = await sessionWorkspaceFilePath(box, controlRef, path)
+  await box.write(filePath, bytes)
+  const readBack = await box.read(filePath)
   assert.equal(readBack, bytes, 'continuity challenge did not persist before the follow-up')
   return {
     path,
@@ -508,8 +533,10 @@ async function verifyRetainedWorkspace(
   const markerPath = workspaceMarkerPath(coordinates)
   const expectedMarker = `${coordinates.marker}\n`
   const [readValue, continuityResponse] = await Promise.all([
-    box.read(sandboxWorkspaceRelativePath(markerPath)),
-    box.read(sandboxWorkspaceRelativePath(continuity.responsePath)),
+    sessionWorkspaceFilePath(box, controlRef, markerPath).then((filePath) => box.read(filePath)),
+    sessionWorkspaceFilePath(box, controlRef, continuity.responsePath).then((filePath) =>
+      box.read(filePath),
+    ),
   ])
   const git = await box.exec(
     `set -eu; test "$(cat -- ${shellQuote(markerPath)})" = ${shellQuote(coordinates.marker)}; test "$(cat -- ${shellQuote(continuity.responsePath)})" = ${shellQuote(continuity.expectedDigest)}; test "$(git -C . rev-parse --is-inside-work-tree)" = true; git -C . status --short --untracked-files=no`,
