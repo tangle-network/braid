@@ -366,6 +366,7 @@ export async function runSeatsProof(environment = process.env) {
     grantedNames: secrets,
     seatReference: modelCredentials ?? null,
   }
+  childEnvironment.BRAID_SEATS_PROOF_ID = result.proofId
   let config
   let terminal
   let cast
@@ -525,6 +526,13 @@ export async function runSeatsProof(environment = process.env) {
         cast: canaries.filter((canary) => cast?.includes(canary)).length,
       }
       await config.cleanup().catch(() => undefined)
+    }
+    if (environment.BRAID_SEATS_RESOLVER_RECEIPT !== undefined) {
+      const bytes = await readFile(environment.BRAID_SEATS_RESOLVER_RECEIPT, 'utf8')
+      if (Buffer.byteLength(bytes) > 65536) throw new Error('The resolver receipt exceeds its evidence bound')
+      const calls = bytes.trim().split('\n').filter(Boolean).map(line => JSON.parse(line))
+        .filter(call => call.proofId === result.proofId)
+      result.seatResolver = { measured: calls.length > 0, calls }
     }
     result.finishedAt = new Date().toISOString()
   }
