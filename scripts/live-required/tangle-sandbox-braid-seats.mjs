@@ -2,6 +2,7 @@
 // optional model seat by its connection. It records the run, the tool trace fidelity, the advertised
 // interaction kinds, and a canary scan, then deletes the exact sandbox it created.
 import { randomUUID } from 'node:crypto'
+import { isDeepStrictEqual } from 'node:util'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -10,11 +11,10 @@ import { Sandbox } from '@tangle-network/sandbox'
 import { castFor, createCapturedTerminal, pause, typeText } from '../live-demo/terminal.mjs'
 import { scanSecretArtifacts } from '../scan-secret-artifacts.mjs'
 import { safeJson, safeMessage } from './contracts.mjs'
-import { configEvidence, prepareProductionWorkspace, resolveBinary } from './headless.mjs'
+import { closeSession, configEvidence, initializedSession, prepareProductionWorkspace, resolveBinary, rpcRequest } from './headless.mjs'
 import { sandboxConfiguration, transcriptSurfaceReady } from './tangle-sandbox-braid-multirun.mjs'
 import {
-  cleanupRetainedResourceByControlRef,
-  cleanupRetainedResourceByRunId,
+  cleanupOwnedRetainedResources,
 } from './tangle-sandbox-braid-stress.mjs'
 
 const scriptPath = fileURLToPath(import.meta.url)
@@ -239,7 +239,7 @@ async function writePrivate(path, content) {
  * The saved connection must keep its granted names and seat reference, and no event may hold a
  * canary value.
  */
-async function journalEvidence(config, { secrets, modelCredentials, canaries }) {
+async function journalEvidence(config, { secrets, modelCredentials, canaries, runId }) {
   const previousDirectory = process.cwd()
   const previousEnvironment = { ...process.env }
   const dist = (path) => import(pathToFileURL(join(repository, 'dist', path)).href)
@@ -271,13 +271,14 @@ async function journalEvidence(config, { secrets, modelCredentials, canaries }) 
     const stored = state.connections.find(
       (connection) => connection.id === config.connection.id,
     )?.providerOptions
+    const run = state.runs.find(candidate => candidate.id === runId)
     return {
+      run: run ? { id: run.id, status: run.status, error: run.error ?? null, reason: run.terminalReason ?? null } : null,
       source: 'restored-state',
       connectionRestored: stored !== undefined,
       grantedNamesKept: JSON.stringify(stored?.secrets ?? []) === JSON.stringify(secrets),
       seatReferenceKept:
-        JSON.stringify(stored?.modelCredentials ?? null) ===
-        JSON.stringify(modelCredentials ?? null),
+        isDeepStrictEqual(stored?.modelCredentials ?? null, modelCredentials ?? null),
       canaryMatches: canaries.filter((canary) => serialized.includes(canary)).length,
     }
   } finally {
@@ -437,7 +438,17 @@ export async function runSeatsProof(environment = process.env) {
     }
     Object.assign(result, seatsEvidence(record, runId, marker))
     result.modelTurnReached = finalRun.status === 'completed' && result.modelTurnReached
-    result.journal = await journalEvidence(config, { secrets, modelCredentials, canaries })
+    result.journal = await journalEvidence(config, { secrets, modelCredentials, canaries, runId })
+    if (result.journal.run === null) throw new Error('The encrypted journal did not restore the same run')
+    Object.assign(result.run, result.journal.run)
+    const headless = await initializedSession(binary, config)
+    try {
+      const response = await rpcRequest(headless.session, 'get_details', { entityType: 'run', entityId: runId })
+      const detail = response.result?.data
+      if (detail?.status !== result.run.status || (detail?.error ?? null) !== result.run.error || (detail?.terminalReason ?? null) !== result.run.reason)
+        throw new Error('Headless details did not restore the same run outcome and cause')
+      result.headless = { runId, status: detail.status, causeMatchesJournal: true }
+    } finally { await closeSession(headless.session) }
     cast = castFor(terminal, `Braid ${label}`, 'braid --inline')
     result.captures = []
     for (const [columns, rows] of [
@@ -498,12 +509,9 @@ export async function runSeatsProof(environment = process.env) {
     result.sandboxId = observed.controlRef?.environmentId ?? null
     result.interactions = observed.interactions
     try {
-      result.cleanup =
-        observed.controlRef !== undefined
-          ? await cleanupRetainedResourceByControlRef(cleanupClient, observed.controlRef)
-          : observed.runId !== undefined
-            ? await cleanupRetainedResourceByRunId(cleanupClient, observed.runId)
-            : { skipped: 'no run was admitted' }
+      result.cleanup = observed.runId !== undefined || observed.controlRef !== undefined
+        ? await cleanupOwnedRetainedResources(cleanupClient, { controlRef: observed.controlRef, firstRunId: observed.runId })
+        : { skipped: 'no run was admitted' }
     } catch (error) {
       result.cleanup = { failed: safeMessage(error, environment) }
     }
@@ -540,6 +548,11 @@ if (process.argv[1] === scriptPath) {
   const passed =
     result.failure === undefined &&
     result.modelTurnReached === true &&
+    result.markerReturned === true &&
+    result.bashOk === true &&
+    result.journal?.seatReferenceKept === true &&
+    result.headless?.causeMatchesJournal === true &&
+    result.cleanup?.confirmed === true &&
     result.canaryScan?.root?.length === 0 &&
     result.canaryScan?.cast === 0 &&
     (result.journal?.canaryMatches ?? 0) === 0
