@@ -1,5 +1,21 @@
 # Braid
 
+Select the published Discovery Operator without cloning a repository:
+
+```sh
+npm install -g @tangle-network/braid
+braid --profile discovery-operator --connection connection-local-cli-bridge
+```
+
+The existing connection picker configures CLI Bridge or Tangle Sandbox. `--connection`
+selects its configured id. The operator needs `disco` read access, `gh-drew`, and a
+subscription seat on the execution host. The published name selects the immutable Lab profile snapshot bundled in the package
+and validates it with the canonical profile importer. Selection works offline;
+local profile paths remain supported.
+Play approval names the exact play id and commit. A status question authorizes
+observation only. The operator's approval rule is an instruction, not a host command
+permission boundary.
+
 **One terminal for coding agents, conversation branches, and reviews of finished runs.**
 
 Use Pi, Codex, or OpenCode through the same interface, on your machine or in a Tangle cloud sandbox.
