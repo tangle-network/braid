@@ -124,7 +124,9 @@ function supervisorDetail(record: SupervisorRecord | undefined): EntityDetailVie
       `id: ${safe(record.id)}`,
       `runtime id: ${safe(record.runtimeId)}`,
       ...(record.remoteEndpointEnv === undefined
-        ? [`run: ${record.rootRunId === undefined ? 'unbound workspace activity' : safe(record.rootRunId)}`]
+        ? [
+            `run: ${record.rootRunId === undefined ? 'unbound workspace activity' : safe(record.rootRunId)}`,
+          ]
         : []),
       `status: ${safe(record.status)}`,
       ...(record.driverModel === undefined ? [] : [`driver model: ${safe(record.driverModel)}`]),

@@ -206,6 +206,7 @@ export async function captureRemoteSupervision(endpointEnv) {
         input('\u001b[H')
         await sleep(150)
         input('\u001b[B')
+        await sleep(100)
         input('\u001b[B')
         await sleep(300)
         await capture('source')
