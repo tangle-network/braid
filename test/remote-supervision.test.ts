@@ -11,9 +11,9 @@ import {
 } from '@tangle-network/agent-runtime/kernel'
 import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
+import { graphFor } from '../src/adapters/tui/ui-projection.js'
 import { createDurableBraidApplication } from '../src/app/composition.js'
 import { runtimeWorkerReference } from '../src/app/supervisor-projection.js'
-import { graphFor } from '../src/adapters/tui/ui-projection.js'
 import { queryDetails } from '../src/views/shared/semantic-details.js'
 import { queryGraph } from '../src/views/shared/semantic-graph.js'
 
