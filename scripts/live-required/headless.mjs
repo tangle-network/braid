@@ -551,6 +551,10 @@ export async function runHeadlessTurn({ binary, config, marker, prompt, fixture 
         typeof run?.model === 'string' && run.model.length > 0
           ? `model=${JSON.stringify(safeMessage(run.model, config.environment))}`
           : undefined,
+        // The stable code alone left two protected failures without a cause; the reason names it.
+        typeof run?.terminalReason === 'string' && run.terminalReason.length > 0
+          ? `reason=${JSON.stringify(safeMessage(run.terminalReason, config.environment))}`
+          : undefined,
       ].filter(Boolean)
       throw new Error(
         `turn ${response.runId} ended with status ${run?.status ?? 'missing'}${diagnostics.length === 0 ? '' : `; ${diagnostics.join('; ')}`}`,
