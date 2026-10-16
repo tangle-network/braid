@@ -20,6 +20,8 @@ export interface RemoteSupervisorObservation {
 interface StreamState extends RemoteAgentStream {
   readonly cursor?: { readonly epoch: string; readonly next: number }
   readonly sanitizer: IncrementalSecretTextSanitizer
+  readonly committedText: string
+  readonly protectedPending: string
 }
 
 const MAX_STREAM_CHARACTERS = 24_000
@@ -58,6 +60,26 @@ function eventText(value: unknown): string {
     default:
       return '\n[unrecognized Runtime event]\n'
   }
+}
+
+/** Withhold a capability split across event pages before either committed or preview text. */
+function protectChunk(input: string, values: readonly string[]): { text: string; pending: string } {
+  let text = input
+  for (const value of values) text = text.split(value).join('[redacted credential]')
+  let held = 0
+  for (const value of values) {
+    for (let length = Math.min(value.length - 1, text.length); length > held; length -= 1) {
+      if (text.endsWith(value.slice(0, length))) {
+        held = length
+        break
+      }
+    }
+  }
+  return { text: held === 0 ? text : text.slice(0, -held), pending: held === 0 ? '' : text.slice(-held) }
+}
+
+function bounded(text: string): string {
+  return text.length > MAX_STREAM_CHARACTERS ? `[earlier display text omitted]\n${text.slice(-MAX_STREAM_CHARACTERS)}` : text
 }
 
 function endpoint(name: string): {
@@ -145,12 +167,14 @@ export class RemoteSupervisorWatcher {
         if (events.status === 'unavailable') {
           connection.streams.set(workerId, {
             text: previous?.text ?? '',
+            committedText: previous?.committedText ?? '',
+            protectedPending: previous?.protectedPending ?? '',
             status: `live events unavailable: ${events.reason}`,
             sanitizer:
               previous?.sanitizer ?? new IncrementalSecretTextSanitizer(Number.POSITIVE_INFINITY),
           })
         } else {
-          const prefix = events.reset ? '[stream reset]\n' : (previous?.text ?? '')
+          const prefix = events.reset ? '[stream reset]\n' : (previous?.committedText ?? '')
           const notice = events.historyExpired ? '[earlier live events expired]\n' : ''
           const added = events.entries
             .map((entry) =>
@@ -167,7 +191,12 @@ export class RemoteSupervisorWatcher {
           const terminal = ['done', 'down', 'cancelled', 'completed', 'failed'].includes(
             tree.nodes.find((node) => node.id === workerId)?.status ?? 'unknown',
           )
-          let text = `${prefix}${notice}${sanitizer.push(added)}${terminal ? sanitizer.finish() : ''}`
+          const protectedChunk = protectChunk(
+            `${events.reset ? '' : (previous?.protectedPending ?? '')}${added}`,
+            [spec.url, ...Object.values(spec.protectedHeaders)],
+          )
+          const committedText = bounded(`${prefix}${notice}${sanitizer.push(protectedChunk.text)}${terminal ? sanitizer.finish() : ''}`)
+          let text = `${committedText}${terminal ? '' : sanitizer.preview()}${terminal && protectedChunk.pending.length > 0 ? '\n[withheld incomplete protected value]' : ''}`
           for (const protectedValue of [spec.url, ...Object.values(spec.protectedHeaders)]) {
             text = text.split(protectedValue).join('[redacted credential]')
           }
@@ -175,10 +204,9 @@ export class RemoteSupervisorWatcher {
           connection.streams.set(workerId, {
             sanitizer,
             cursor: events.cursor,
-            text:
-              text.length > MAX_STREAM_CHARACTERS
-                ? `[earlier display text omitted]\n${text.slice(-MAX_STREAM_CHARACTERS)}`
-                : text,
+            committedText,
+            protectedPending: terminal ? '' : protectedChunk.pending,
+            text: bounded(text),
             status: events.remaining > 0 ? 'live events catching up' : 'live events connected',
           })
         }

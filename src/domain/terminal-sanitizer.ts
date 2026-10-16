@@ -49,6 +49,15 @@ export class TerminalControlSanitizer {
     return output
   }
 
+  /** Inspect additional text with the current control state without advancing it. */
+  preview(input: string): string {
+    const copy = new TerminalControlSanitizer()
+    copy.#state = this.#state
+    copy.#controlBytes = this.#controlBytes
+    copy.#controlOverflowed = this.#controlOverflowed
+    return copy.push(input)
+  }
+
   finish(): string {
     this.#state = 'normal'
     this.#controlBytes = 0

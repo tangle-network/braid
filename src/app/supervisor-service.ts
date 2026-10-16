@@ -29,6 +29,7 @@ export class SupervisorService {
   #controllerLoad: Promise<RuntimeSupervisorController> | undefined
   #projectionQueue: Promise<void> = Promise.resolve()
   #remote: RemoteSupervisorWatcher | undefined
+  #activeRemote: { readonly rootDir: string; readonly conversationId: string; readonly endpointEnv: string } | undefined
 
   constructor(
     host: AnalysisApplicationHost,
@@ -60,8 +61,14 @@ export class SupervisorService {
 
   #remoteEndpoint(input: SupervisorSnapshotRequest): string | undefined {
     const state = this.#host.currentState()
+    const selected = state.workers.find((worker) => String(worker.id) === input.workerId)
+    const owner = selected === undefined ? undefined : state.supervisors.find((record) => record.id === selected.supervisorId)
+    const selectedEndpoint = owner?.conversationId === state.conversationId && owner?.runtimeRoot === input.rootDir ? owner.remoteEndpointEnv : undefined
+    const active = this.#activeRemote
     return (
       input.remoteEndpointEnv ??
+      selectedEndpoint ??
+      (active?.rootDir === input.rootDir && active.conversationId === state.conversationId ? active.endpointEnv : undefined) ??
       state.supervisors.find(
         (record) =>
           record.runtimeRoot === input.rootDir &&
@@ -96,11 +103,13 @@ export class SupervisorService {
       const observation = await this.#remote.snapshot(remoteEndpointEnv, workerId)
       if (this.#host.currentState().conversationId !== conversationId)
         throw new Error('The conversation changed during the remote read; open its graph again')
-      return commitRemoteSupervisorProjection(
+      const projection = await commitRemoteSupervisorProjection(
         this.#host,
         { ...input, remoteEndpointEnv },
         observation,
       )
+      this.#activeRemote = { rootDir: input.rootDir, conversationId, endpointEnv: remoteEndpointEnv }
+      return projection
     })
     this.#projectionQueue = run.then(
       () => undefined,

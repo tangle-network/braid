@@ -149,6 +149,10 @@ export async function commitRemoteSupervisorProjection(
       streamStatus: 'agent absent from the latest Runtime tree',
       updatedAt: at,
     })
+    graphNodes.push({
+      ...graphNode({ kind: 'worker', id: prior.id }, prior.createdAt, prior.title),
+      status: 'unknown',
+    })
   }
   const projection = { supervisors: [supervisor], workers, graphNodes, graphEdges }
   await commitSupervisionRecords(host, projection)
