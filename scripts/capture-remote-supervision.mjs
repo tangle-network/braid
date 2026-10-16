@@ -203,6 +203,12 @@ export async function captureRemoteSupervision(endpointEnv) {
         )
         await sleep(1_200)
         await capture('tree')
+        input('\u001b[H')
+        await sleep(150)
+        input('\u001b[B')
+        input('\u001b[B')
+        await sleep(300)
+        await capture('source')
         // Visit the group and every real agent through ordinary keyboard selection.
         input('\u001b[H')
         await sleep(200)
