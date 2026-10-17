@@ -1221,7 +1221,9 @@ export async function finalizeInteractiveProof({
   if (runtime !== undefined && processExited && !processGroupExited) {
     const survivors = JSON.stringify(runtime.processCleanup?.survivors ?? [])
     errors.push(
-      new Error(`PTY process group did not exit; workspace cleanup was refused; members ${survivors}`),
+      new Error(
+        `PTY process group did not exit; workspace cleanup was refused; members ${survivors}`,
+      ),
     )
   }
 
