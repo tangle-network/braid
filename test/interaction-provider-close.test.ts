@@ -673,6 +673,7 @@ async function backgroundPermissionFlow(
   const created = opened.app
   app = created
   created.initialize(opened.workspace)
+  await created.whenDurable()
   const terminal = new RecordingTerminal(120, 40)
   let operation = 0
   const view = new BraidTerminalApp({
@@ -686,7 +687,7 @@ async function backgroundPermissionFlow(
   try {
     terminal.sendInput('branch A prompt')
     terminal.sendInput('\r')
-    await waitUntil(() => created.state().runs.length === 1, 'run A')
+    await waitUntil(() => created.state().runs.length === 1, 'run A', 10_000)
     terminal.sendInput('/new Second conversation')
     terminal.sendInput('\r')
     await waitUntil(() => created.state().conversations.length === 2, 'conversation B')
