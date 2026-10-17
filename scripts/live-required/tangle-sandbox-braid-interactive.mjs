@@ -1445,7 +1445,10 @@ async function runProof({
       throw new Error('LIVE-08 installed another tarball than the release candidate')
     config = await prepareProductionWorkspace({
       repository: targetRepository,
-      environment: withoutEnvironment(configurationEnvironment(environment), SECRET_ENVIRONMENT_NAMES),
+      environment: withoutEnvironment(
+        configurationEnvironment(environment),
+        SECRET_ENVIRONMENT_NAMES,
+      ),
       kind: values.kind,
       endpoint: values.endpoint,
       model: values.model,

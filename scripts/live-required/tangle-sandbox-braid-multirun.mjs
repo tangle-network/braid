@@ -799,7 +799,10 @@ export async function runProof({
     config = await phase('workspace.prepare', () =>
       prepareProductionWorkspace({
         repository: targetRepository,
-        environment: withoutEnvironment(configurationEnvironment(environment), SECRET_ENVIRONMENT_NAMES),
+        environment: withoutEnvironment(
+          configurationEnvironment(environment),
+          SECRET_ENVIRONMENT_NAMES,
+        ),
         kind: values.kind,
         endpoint: values.endpoint,
         model: values.model,
