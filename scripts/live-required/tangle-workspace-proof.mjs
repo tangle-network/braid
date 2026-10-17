@@ -20,6 +20,7 @@ import {
   proofInvocation,
   proofReceipt,
   protectedUnavailable,
+  safeMessage,
   scalarMeasurement,
 } from './contracts.mjs'
 import { configEvidence, prepareProductionWorkspace } from './headless.mjs'
@@ -833,7 +834,12 @@ async function sendSource(app, proofId, onIdentity = () => {}, explainFailure = 
   })
 }
 
-async function readWorkspace(adapters, environmentId, path, label) {
+/**
+ * The agent writes relative to its session's workspace (the repository root, see
+ * workspace-request.mjs), so a read of what it wrote passes that session; without one the provider
+ * resolves the path from its own default root, and LIVE-09 at 95d6e72 failed "File not found".
+ */
+async function readWorkspace(adapters, environmentId, path, label, sessionId) {
   const environment = await adapters.freshEnvironment(environmentId)
   if (environment === null)
     throw new Error(`${label} provider environment ${environmentId} is missing`)
@@ -842,7 +848,13 @@ async function readWorkspace(adapters, environmentId, path, label) {
       'PROTECTED_WORKSPACE_READ_UNAVAILABLE',
       `Tangle Sandbox did not expose workspace read for ${label}`,
     )
-  const content = await environment.read(path)
+  let content
+  try {
+    content = await environment.read(path, sessionId === undefined ? undefined : { sessionId })
+  } catch (error) {
+    const where = sessionId === undefined ? 'the provider root' : 'the agent session'
+    throw new Error(`${label} read of ${path} from ${where} failed: ${safeMessage(error)}`)
+  }
   return Object.freeze({ content, digest: sha256(content) })
 }
 
@@ -1332,6 +1344,7 @@ async function runWorkspaceProof({
   let destination
   let destinationProviderId
   let sourceBefore
+  let sourceSession
   let destinationAfterMutation
   let sourceAfterCleanup
   let branchOperationId
@@ -1407,7 +1420,14 @@ async function runWorkspaceProof({
         'LIVE-10 received conflicting provider and source confidential capabilities',
       )
     }
-    sourceBefore = await readWorkspace(adapters, source.providerId, source.path, 'source')
+    sourceSession = source.run.controlRef?.sessionId
+    sourceBefore = await readWorkspace(
+      adapters,
+      source.providerId,
+      source.path,
+      'source',
+      sourceSession,
+    )
     assertCondition(
       sourceBefore.content.trim() === source.marker,
       'Source workspace marker was not materialized exactly',
@@ -1615,6 +1635,7 @@ async function runWorkspaceProof({
         source.providerId,
         source.path,
         'source',
+        sourceSession,
       )
       assertCondition(
         sourceAfterMutation.content === sourceBefore.content,
@@ -1728,6 +1749,7 @@ async function runWorkspaceProof({
         source.providerId,
         source.path,
         'source',
+        sourceSession,
       )
       assertCondition(
         sourceAfterCleanup.digest === sourceBefore.digest,
