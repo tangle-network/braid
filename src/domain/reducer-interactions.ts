@@ -44,6 +44,7 @@ export function reduceInteractionEvent(
   state: BraidState,
   event: InteractionEvent,
   base: ReducerBase,
+  journaledAt: string,
 ): BraidState {
   switch (event.kind) {
     case 'run.interaction': {
@@ -72,6 +73,7 @@ export function reduceInteractionEvent(
         responseBinding: event.responseBinding,
         runId: event.runId,
         source,
+        receivedAt: event.provider?.receivedAt ?? journaledAt,
         status: 'pending',
       }
       const interactions = [...run.interactions, interaction]

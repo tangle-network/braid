@@ -1,20 +1,22 @@
 import assert from 'node:assert/strict'
 import { createHash, randomUUID } from 'node:crypto'
+import { join, posix } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import {
   AgentExactRunControlRefSchema,
   validateInteractionAnswer,
 } from '@tangle-network/agent-interface'
 
 import { sleep } from '../live-bridge/process.mjs'
-import { countProtectedWork, redactString } from '../proof-tools.mjs'
 import {
-  requestBase,
   interactionFromResponse,
+  requestBase,
   responseForRequest,
   runFromState,
   stateForRequest,
   stateForRun,
 } from '../live-bridge/protocol.mjs'
+import { countProtectedWork, redactString } from '../proof-tools.mjs'
 
 const TERMINAL_STATUSES = new Set([
   'completed',
@@ -49,7 +51,7 @@ export class MissingIntegrationError extends Error {
   }
 }
 
-function record(value) {
+export function record(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value : undefined
 }
 
@@ -184,6 +186,40 @@ function proofRequestDigest(request) {
   return createHash('sha256').update(JSON.stringify(request)).digest('hex')
 }
 
+const APPROVING_OPTION = /^(allow|approve|accept|once|yes)/iu
+
+/**
+ * Build the approval a user types into a multi-field permission form: each select takes its first
+ * approving option, booleans are true, and an optional text field stays empty. Secret fields and
+ * unknown shapes are refused, so the proof never answers something it cannot read.
+ */
+/**
+ * The first line of every live proof prompt. Without a stated purpose a model refused the multirun
+ * steps at 951c529 as "the hallmarks of a prompt-injection" (an opaque marker in a hidden directory,
+ * a long sleep), so each prompt says what the test is before giving its steps.
+ */
+export const RELEASE_TEST_PURPOSE =
+  "This turn is part of Braid's live release test, run by the person operating this terminal in a disposable Tangle Sandbox checkout; .braid-live is the scratch directory the test uses for its marker files."
+
+export function permissionFormAnswer(interaction) {
+  const spec = interaction?.answerSpec
+  if (interaction?.kind !== 'permission' || interaction.secret === true) return undefined
+  if (spec?.kind !== 'form') return undefined
+  const data = {}
+  for (const field of spec.fields) {
+    if (field.type === 'select') {
+      const option =
+        field.options?.find((candidate) => APPROVING_OPTION.test(candidate.value)) ??
+        field.options?.find((candidate) => APPROVING_OPTION.test(candidate.label))
+      if (option === undefined) return undefined
+      data[field.name] = [option.value]
+    } else if (field.type === 'boolean') data[field.name] = true
+    else if (field.type === 'text' && field.required !== true) continue
+    else return undefined
+  }
+  return data
+}
+
 /** Keep permission evidence independently of a long tail of process-liveness events. */
 export function proofInteractionTimeline(responses, runId) {
   return responses
@@ -257,23 +293,39 @@ function proofPermissionResponse(request, policy) {
   }
   const fields = request.answerSpec?.fields
   const grant = fields?.find((field) => field.name === 'grant')
+  const refusal = {
+    interactionId: request.id,
+    requestKind: request.kind,
+    requestSha256: proofRequestDigest(request),
+    ...proofPermissionPreview(request),
+    ...(subject?.type === 'tool' ? { toolName: subject.toolName } : {}),
+  }
   if (
     request.kind !== 'permission' ||
-    !allowed ||
     grant?.type !== 'select' ||
-    !grant.options?.some((option) => option.value === 'allow_once') ||
-    (request.allowedOutcomes !== undefined && !request.allowedOutcomes.includes('accepted')) ||
     fields.some((field) => field.type === 'secret' || (field.name !== 'grant' && field.required))
   ) {
     throw new MissingIntegrationError(
       'The proof received an interaction outside its authorized workspace operations',
-      {
-        interactionId: request.id,
-        requestKind: request.kind,
-        requestSha256: proofRequestDigest(request),
-        ...proofPermissionPreview(request),
-        ...(subject?.type === 'tool' ? { toolName: subject.toolName } : {}),
-      },
+      refusal,
+    )
+  }
+  // A tool request outside the proof's operations is declined, as its user would: the action never
+  // runs (so it cannot read the continuity challenge), the model can continue with the authorized
+  // steps, and the exact outcome checks still judge the run. LIVE-07 at a1c209a aborted on one.
+  if (
+    !allowed &&
+    (request.allowedOutcomes === undefined || request.allowedOutcomes.includes('declined'))
+  )
+    return { id: request.id, outcome: 'declined', declined: refusal }
+  if (
+    !allowed ||
+    !grant.options?.some((option) => option.value === 'allow_once') ||
+    (request.allowedOutcomes !== undefined && !request.allowedOutcomes.includes('accepted'))
+  ) {
+    throw new MissingIntegrationError(
+      'The proof received an interaction outside its authorized workspace operations',
+      refusal,
     )
   }
   const response = { id: request.id, outcome: 'accepted', data: { grant: ['allow_once'] } }
@@ -345,7 +397,7 @@ async function answerProofPermissions(session, runId, policy, deadline) {
             item.request?.id === interactionId && ['pending', 'responding'].includes(item.status),
         )
     if (!pending) continue
-    const response = proofPermissionResponse(request, policy)
+    const { declined, ...response } = proofPermissionResponse(request, policy)
     const operationId = `op-live-permission-${proofRequestDigest({ proofId: policy.proofId, runId, interactionId })}`
     const receipt = recorded ?? {
       runId,
@@ -354,6 +406,7 @@ async function answerProofPermissions(session, runId, policy, deadline) {
       operationId,
       request: structuredClone(request),
       response,
+      ...(declined === undefined ? {} : { declined }),
       pendingStateObserved: true,
       outcome: 'pending',
     }
@@ -430,6 +483,21 @@ export function workspaceToolEvents(observation) {
   )
 }
 
+/** The newest status detail or unknown reason Braid emitted for one run, redacted and bounded. */
+function lastRunStatusDetail(responses, runId) {
+  for (let index = responses.length - 1; index >= 0; index -= 1) {
+    const response = responses[index]
+    if (response?.type !== 'event' || eventRunId(response) !== runId) continue
+    const kind = response.event?.kind
+    if (kind !== 'run.unknown' && kind !== 'run.status.changed') continue
+    const payload = response.event?.payload ?? {}
+    const value = payload.value ?? payload
+    const detail = value.reason ?? value.detail ?? value.error
+    if (typeof detail === 'string' && detail.length > 0) return redactString(detail).slice(0, 300)
+  }
+  return undefined
+}
+
 function throwIfRunTerminated(responses, runId, pendingProof) {
   for (let index = responses.length - 1; index >= 0; index -= 1) {
     const response = responses[index]
@@ -438,9 +506,30 @@ function throwIfRunTerminated(responses, runId, pendingProof) {
     const status = terminalStatus(run)
     if (!status) continue
     const runError = typeof run.error === 'string' && run.error.length > 0 ? run.error : undefined
+    // Braid's own reason for the terminal status: LIVE-07 at f56d481 saw a run turn unknown with no
+    // error and no Sandbox created, and the failure said nothing more.
+    const reason =
+      typeof run.terminalReason === 'string' && run.terminalReason.length > 0
+        ? run.terminalReason
+        : undefined
+    const lastDetail = lastRunStatusDetail(responses, runId)
+    const context = [
+      runError === undefined ? undefined : `with ${runError}`,
+      reason === undefined ? undefined : `reason ${reason}`,
+      lastDetail === undefined ? undefined : `last status "${lastDetail}"`,
+    ]
+      .filter((part) => part !== undefined)
+      .join('; ')
     throw new MissingIntegrationError(
-      `Braid run ${runId} became ${status}${runError === undefined ? '' : ` with ${runError}`} before ${pendingProof}`,
-      { runId, status, ...(runError === undefined ? {} : { runError }), required: pendingProof },
+      `Braid run ${runId} became ${status}${context.length === 0 ? '' : ` (${context})`} before ${pendingProof}`,
+      {
+        runId,
+        status,
+        ...(runError === undefined ? {} : { runError }),
+        ...(reason === undefined ? {} : { terminalReason: reason }),
+        ...(lastDetail === undefined ? {} : { lastStatusDetail: lastDetail }),
+        required: pendingProof,
+      },
     )
   }
 }
@@ -993,15 +1082,55 @@ export function numericDelta(after, before, field) {
   return typeof left === 'number' && typeof right === 'number' ? left - right : null
 }
 
+// Sandbox usage counts compute minutes and GPU work for the current UTC day (`UsageInfo.periodStart`).
+const DAILY_USAGE_FIELDS = new Set(['computeMinutes', 'gpuSeconds', 'gpuCostUsd'])
+
+function usagePeriod(value) {
+  if (value?.periodStart === undefined || value.periodStart === null) return undefined
+  const time = new Date(value.periodStart).getTime()
+  return Number.isFinite(time) ? new Date(time).toISOString() : undefined
+}
+
+/**
+ * Account usage change between two observations. Across a daily reset the daily counters restart,
+ * so their difference measures nothing: they are unknown and the delta names both periods.
+ */
 export function resourceDelta(after, before) {
   const fields = ['activeSandboxes', 'totalSandboxes', 'computeMinutes', 'gpuSeconds', 'gpuCostUsd']
+  const beforePeriod = usagePeriod(before)
+  const afterPeriod = usagePeriod(after)
+  const periodChanged =
+    beforePeriod !== undefined && afterPeriod !== undefined && beforePeriod !== afterPeriod
   const delta = Object.fromEntries(
-    fields.map((field) => [field, numericDelta(after, before, field)]),
+    fields.map((field) => [
+      field,
+      periodChanged && DAILY_USAGE_FIELDS.has(field) ? null : numericDelta(after, before, field),
+    ]),
   )
   return {
     ...delta,
     unknownFields: fields.filter((field) => delta[field] === null),
+    ...(periodChanged ? { periodChanged: { before: beforePeriod, after: afterPeriod } } : {}),
   }
+}
+
+const USAGE_PERIOD_MARGIN_MS = 15 * 60_000
+
+/**
+ * Start a measured cohort only when its usage observations share one daily period. A LIVE-07
+ * cohort started at 23:56 UTC once read the next day's counters after cleanup, so its compute
+ * delta was unmeasurable; inside the margin before 00:00 UTC the cohort waits for the reset.
+ */
+export async function awaitUsagePeriodRoom(now = Date.now()) {
+  const today = new Date(now)
+  const reset = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() + 1)
+  if (reset - now >= USAGE_PERIOD_MARGIN_MS) return 0
+  const waitMs = reset - now + 5_000
+  process.stderr.write(
+    `Waiting ${Math.ceil(waitMs / 1_000)} s for the Sandbox usage period to reset at ${new Date(reset).toISOString()}\n`,
+  )
+  await new Promise((resolveWait) => setTimeout(resolveWait, waitMs))
+  return waitMs
 }
 
 export function proofCoordinates() {
@@ -1055,4 +1184,121 @@ function errorFingerprint(error, depth = 0) {
 
 export function terminalStatus(run) {
   return run && TERMINAL_STATUSES.has(run.status) ? run.status : undefined
+}
+
+// Helpers shared by the live-required Sandbox proofs. Each proof imports them from here instead of keeping a copy.
+
+/**
+ * Why a run that should have completed did not, in Braid's own words (`runOutcomeDetail`), so the
+ * failed proof names its cause. A reconnected LIVE-07 run once ended unknown with no detail, which
+ * left a status read past its deadline indistinguishable from a provider that lost the run.
+ */
+export async function runOutcomeSuffix(repository, run) {
+  if (run === undefined || run === null || run.status === 'completed') return ''
+  try {
+    const owner = pathToFileURL(join(repository, 'dist/domain/provider-values.js')).href
+    const { runOutcomeDetail } = await import(owner)
+    const detail = runOutcomeDetail({
+      status: run.status,
+      activity: Array.isArray(run.activity) ? run.activity : [],
+      error: run.error,
+      terminalReason: run.terminalReason,
+    })
+    return detail === undefined ? '' : `: ${redactString(detail)}`
+  } catch (error) {
+    return ` (outcome detail unavailable: ${redactString(String(error?.message ?? error))})`
+  }
+}
+
+export function argument(name, argv = process.argv) {
+  const index = argv.indexOf(`--${name}`)
+  return index >= 0 && index + 1 < argv.length ? argv[index + 1] : undefined
+}
+
+export function positiveEnvironment(environment, name, fallback) {
+  const value = Number(environment[name])
+  return Number.isFinite(value) && value > 0 ? value : fallback
+}
+
+export function boundedInteger(value, fallback, maximum, label) {
+  const parsed = value === undefined ? fallback : Number(value)
+  if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > maximum) {
+    throw new Error(`${label} must be an integer from 1 through ${maximum}`)
+  }
+  return parsed
+}
+
+export function percentile(sorted, ratio) {
+  if (sorted.length === 0) return null
+  return sorted[Math.max(0, Math.ceil(sorted.length * ratio) - 1)]
+}
+
+export function shellQuote(value) {
+  return `'${String(value).replaceAll("'", "'\\''")}'`
+}
+
+/** The Sandbox credential Braid installs: `TANGLE_API_KEY` when no Braid-specific credential is set. */
+export function configurationEnvironment(environment) {
+  if (
+    !environment.BRAID_TANGLE_SANDBOX_CREDENTIAL_REF &&
+    !environment.BRAID_TANGLE_SANDBOX_AUTH &&
+    !environment.BRAID_TANGLE_SANDBOX_API_KEY &&
+    !environment.BRAID_TANGLE_SANDBOX_BEARER &&
+    environment.TANGLE_API_KEY
+  ) {
+    return { ...environment, BRAID_TANGLE_SANDBOX_API_KEY: environment.TANGLE_API_KEY }
+  }
+  return environment
+}
+
+/** A child process environment without the named credentials. */
+export function withoutEnvironment(environment, names) {
+  const child = { ...environment }
+  for (const name of names) delete child[name]
+  return child
+}
+
+export function sandboxWorkspaceRelativePath(path) {
+  const normalized = path.startsWith('./') ? path.slice(2) : path
+  const segments = normalized.split('/')
+  if (
+    normalized.length === 0 ||
+    path.startsWith('/') ||
+    path.includes('\\') ||
+    segments.some((segment) => segment.length === 0 || segment === '.' || segment === '..')
+  ) {
+    throw new Error('Sandbox workspace path must be a contained relative path')
+  }
+  return normalized
+}
+
+/**
+ * The absolute path of a workspace file as the session's shell sees it.
+ *
+ * A relative Sandbox file read or write resolves from the sandbox home (`/home/agent`), while the
+ * session works in the requested workspace: the repository checkout below it (`/home/agent/braid`
+ * for the Braid repository). Proof files the agent reads or writes must use the session's path.
+ */
+export async function sessionWorkspaceFilePath(box, controlRef, path) {
+  const relativePath = sandboxWorkspaceRelativePath(path)
+  const observed = await box.exec(
+    'pwd',
+    controlRef?.sessionId === undefined ? undefined : { sessionId: controlRef.sessionId },
+  )
+  const cwd = typeof observed?.stdout === 'string' ? observed.stdout.trim() : ''
+  const exitCode = observed?.exitCode ?? observed?.code
+  if (exitCode !== 0 || !cwd.startsWith('/') || /[\r\n\0]/u.test(cwd)) {
+    throw new MissingIntegrationError(
+      'Could not observe the session workspace for a Sandbox file path',
+      { environmentId: box?.id },
+    )
+  }
+  return posix.join(cwd, relativePath)
+}
+
+export function isMissingWorkspaceFileError(error) {
+  const status = error?.status ?? error?.statusCode
+  if (status === 404 || status === '404') return true
+  if (error?.code === 'NOT_FOUND' || error?.name === 'NotFoundError') return true
+  return /\b(?:enoent|no such file|file not found)\b/iu.test(error?.message ?? '')
 }

@@ -13,6 +13,7 @@ import type {
   StoredJournalEvent,
   WorkspaceId,
 } from '../../ports/storage.js'
+import { canAppendAfterTerminal } from '../../ports/storage.js'
 import { assertPersistablePayload, encryptPayload, payloadChecksum } from './sqlite-crypto.js'
 import type { SqliteValue } from './sqlite-driver.js'
 import { StorageError } from './sqlite-errors.js'
@@ -21,7 +22,7 @@ import { classifySqliteError } from './sqlite-paths.js'
 import { asNumber, asString, missingFromCursor, now } from './sqlite-rows.js'
 import type { PreparedStateSnapshot } from './sqlite-state-snapshot-types.js'
 import type { CursorRow, SqliteEventRow } from './sqlite-types.js'
-import { assertJournalEventInput, canAppendAfterTerminal } from './storage-validation.js'
+import { assertJournalEventInput } from './storage-validation.js'
 
 export abstract class SqliteJournalStorage extends SqliteLifecycleStorage {
   async append(events: readonly JournalEvent[]): Promise<AppendResult> {

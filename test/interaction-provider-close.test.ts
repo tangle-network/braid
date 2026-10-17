@@ -27,13 +27,13 @@ import {
 } from '../src/app/interaction-request.js'
 import { MemoryJournal } from '../src/app/journal.js'
 import type { BraidRuntimeEvent, RuntimeEventEnvelope } from '../src/domain/runtime-events.js'
-import { FixedClock } from '../src/ports/clock.js'
+import { FixedClock, SystemClock } from '../src/ports/clock.js'
 import { DEFAULT_RUN_CAPABILITIES, type ExecutionPort } from '../src/ports/execution.js'
 import { SequenceIds } from '../src/ports/ids.js'
 import { BraidTerminalApp } from '../src/views/tui/terminal-app.js'
 import { createBraidTheme } from '../src/views/tui/theme.js'
-import { interactionResponseRunCapabilities } from './support/run-capabilities.js'
 import { RecordingTerminal } from './support/recording-terminal.js'
+import { interactionResponseRunCapabilities } from './support/run-capabilities.js'
 import type { VirtualTerminal } from './support/virtual-terminal.js'
 
 const NOW = '2026-10-15T00:00:00.000Z'
@@ -626,3 +626,191 @@ for (const [columns, rows] of SIZES) {
     }
   })
 }
+
+/**
+ * LIVE-07 multirun at 48da449: run A's opencode permission opened while branch B's prompt was being
+ * typed in a second conversation, took the rest of that prompt, and expired. The next permission
+ * arrived 5m22s into the run with a 5m window and no provider occurredAt, so Braid counted its window
+ * from the run start, refused the typed answer as expired, and run A waited it out too.
+ */
+async function backgroundPermissionFlow(
+  open: (execution: ExecutionPort) => Promise<{ app: BraidApplication; workspace: string }>,
+) {
+  let app: BraidApplication | undefined
+  const first = permissionForm('interaction-background-first')
+  // A window shorter than the time since the run started, as the live 5m window was.
+  const second = permissionForm('interaction-background-second', 3_000)
+  let raiseFirst = () => {}
+  const firstRaised = new Promise<void>((resolve) => {
+    raiseFirst = resolve
+  })
+  // Braid rebinds each request to its own interaction id, so the requests are found by arrival order.
+  const status = (index: number) => app?.state().runs[0]?.interactions[index]?.status
+  const responses: InteractionResponse[] = []
+  const bound = (request: InteractionRequest, runId: string) =>
+    rebindInteractionRequest(request, { ...request.binding, runId, executionId: runId })
+  const execution: ExecutionPort = {
+    capabilities: () => interactionResponseRunCapabilities(),
+    async *streamTurn(input): AsyncIterable<BraidRuntimeEvent> {
+      await firstRaised
+      yield { type: 'interaction', request: bound(first, input.runId) }
+      await new Promise((resolve) => setTimeout(resolve, 3_500))
+      yield { type: 'interaction.cancel', id: first.id, reason: 'timeout' }
+      yield { type: 'interaction', request: bound(second, input.runId) }
+      await waitUntil(
+        () => !['pending', 'responding', undefined].includes(status(1)) || input.signal.aborted,
+        'a recorded response to the second permission',
+        5_000,
+      )
+      if (input.signal.aborted) return
+      yield { type: 'interaction.cancel', id: second.id, reason: 'resolved' }
+      yield finalEvent(input.runId)
+    },
+    respondInteraction: async (input) => {
+      responses.push(input.command.response)
+      return { operationId: input.command.operationId, outcome: 'accepted' as const }
+    },
+  }
+  const opened = await open(execution)
+  const created = opened.app
+  app = created
+  created.initialize(opened.workspace)
+  await created.whenDurable()
+  const terminal = new RecordingTerminal(120, 40)
+  const controller = createApplicationUiController(created)
+  let operation = 0
+  const view = new BraidTerminalApp({
+    controller,
+    tui: new TuiMainScreen(terminal),
+    theme: createBraidTheme(false),
+    workspace: opened.workspace,
+    nextOperationId: () => `operation-background-permission-${++operation}`,
+  })
+  const done = view.start()
+  try {
+    terminal.sendInput('branch A prompt')
+    terminal.sendInput('\r')
+    await waitUntil(() => created.state().runs.length === 1, 'run A', 10_000)
+    terminal.sendInput('/new Second conversation')
+    terminal.sendInput('\r')
+    await waitUntil(() => created.state().conversations.length === 2, 'conversation B')
+    const prompt = 'Use the current working directory. Write exactly MARKER_B to marker.txt.'
+    terminal.sendInput(prompt.slice(0, 30))
+    await terminal.waitForRender()
+    raiseFirst()
+    await waitUntil(() => status(0) === 'pending', 'the first permission')
+    await waitUntil(
+      () => terminal.getViewport().join('\n').includes(first.title),
+      'the first permission form',
+    )
+    // The rest of branch B's prompt and its Enter land in the open form, as they did live.
+    terminal.sendInput(prompt.slice(30))
+    terminal.sendInput('\r')
+    await waitUntil(() => status(1) === 'pending', 'the second permission', 10_000)
+    // A run awaiting a permission reads as waiting, not unknown: the work strip and run views fell
+    // through to unknown for running, waiting and prepared runs, as LIVE-07 at 29a4bf4 showed.
+    await waitUntil(() => created.state().runs[0]?.status === 'waiting', 'the waiting run')
+    assert.equal(
+      controller.view().runs.find((run) => run.id === created.state().runs[0]?.id)?.status,
+      'waiting',
+    )
+    await waitUntil(
+      () => terminal.getViewport().join('\n').includes(second.title),
+      'the second permission form',
+    )
+    await terminal.waitForRender()
+    terminal.sendInput('{"grant":["allow_once"]}')
+    terminal.sendInput('\r')
+    await waitUntil(() => responses.length === 1, 'the typed answer at the provider', 5_000).catch(
+      (error: unknown) => {
+        const run = created.state().runs[0]
+        const detail = JSON.stringify({
+          startedAt: run?.startedAt,
+          interactions: run?.interactions.map((item) => ({
+            status: item.status,
+            source: item.source,
+            receivedAt: item.receivedAt,
+            timeoutMs: item.request.timeoutMs,
+          })),
+          screen: terminal.getViewport().join('\n').replace(/\s+/gu, ' ').slice(0, 1_500),
+        })
+        throw new Error(`${String(error)} ${detail}`)
+      },
+    )
+    assert.deepEqual(
+      responses.map(({ id: _id, ...response }) => response),
+      [{ outcome: 'accepted', data: { grant: ['allow_once'] } }],
+    )
+    await waitUntil(
+      () => TERMINAL_RUN_STATUSES.has(created.state().runs[0]?.status ?? ''),
+      'a terminal run',
+    )
+    assert.equal(created.state().runs[0]?.status, 'completed')
+    assert.equal(created.storageFailure(), undefined)
+    const receivedAt = created.state().runs[0]?.interactions.map((item) => item.receivedAt) ?? []
+    assert.equal(receivedAt.length, 2)
+    for (const value of receivedAt)
+      assert.ok(value !== undefined && Number.isFinite(Date.parse(value)))
+    return receivedAt
+  } finally {
+    raiseFirst()
+    view.stop()
+    await done
+    await created.close()
+  }
+}
+
+test('a background run permission answered through its typed form reaches the provider', async () => {
+  await backgroundPermissionFlow(async (execution) => ({
+    // The response window is measured on the wall clock, as in production.
+    app: createBraidApplication({ fixture: 'deterministic', execution, clock: new SystemClock() }),
+    workspace: '/workspace',
+  }))
+})
+
+test('a background run permission answer reaches the provider through the durable journal', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-background-permission-'))
+  const workspace = join(root, 'workspace')
+  const keyPath = join(root, 'database.key')
+  const credentialStore = new MemoryCredentialStore()
+  const open = (execution: ExecutionPort) =>
+    createDurableBraidApplication({
+      path: join(root, 'braid.sqlite'),
+      storageRoot: root,
+      workspaceRoot: workspace,
+      databaseKeySource: { type: 'file' as const, path: keyPath, workspaceRoot: workspace },
+      credentialStore,
+      profile: DETERMINISTIC_PROFILE,
+      ids: new SequenceIds(),
+      execution,
+    })
+  try {
+    await mkdir(workspace)
+    await writeFile(keyPath, randomBytes(32), { mode: 0o600 })
+    let first: Awaited<ReturnType<typeof open>> | undefined
+    let recorded: readonly (string | undefined)[]
+    try {
+      recorded = await backgroundPermissionFlow(async (execution) => {
+        first = await open(execution)
+        return { app: first.app, workspace }
+      })
+    } finally {
+      await first?.storage.close()
+    }
+    // Replay rebuilds each window start from the journaled provider receipt time.
+    const reopened = await open({ async *streamTurn(): AsyncIterable<BraidRuntimeEvent> {} })
+    try {
+      reopened.app.initialize(workspace)
+      await reopened.app.whenDurable()
+      assert.equal(reopened.app.storageFailure(), undefined)
+      assert.deepEqual(
+        reopened.app.state().runs[0]?.interactions.map((item) => item.receivedAt),
+        recorded,
+      )
+    } finally {
+      await reopened.storage.close()
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})

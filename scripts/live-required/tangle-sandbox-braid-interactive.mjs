@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
@@ -50,13 +51,21 @@ import {
   closeBraidWithProof,
   providerWorkspaceReadbackEvidence,
   publicAccountIdentityEvidence,
-  sandboxWorkspaceRelativePath,
-  sessionWorkspaceFilePath,
   singleRunSpendDisclosure,
   telemetryDisclosure,
   usage,
 } from './tangle-sandbox-braid-stress.mjs'
-import { MissingIntegrationError, resourceDelta } from './tangle-sandbox-braid-stress-support.mjs'
+import {
+  argument,
+  configurationEnvironment,
+  isMissingWorkspaceFileError,
+  MissingIntegrationError,
+  positiveEnvironment,
+  resourceDelta,
+  sandboxWorkspaceRelativePath,
+  sessionWorkspaceFilePath,
+  withoutEnvironment,
+} from './tangle-sandbox-braid-stress-support.mjs'
 import { assertSameInteractiveRef } from './tangle-sandbox-interactive-continuity.mjs'
 import {
   createTerminalOutputTracker,
@@ -128,35 +137,6 @@ const SECRET_ENVIRONMENT_NAMES = [
   'BRAID_TANGLE_SANDBOX_CLEANUP_API_KEY',
   'TANGLE_API_KEY',
 ]
-
-function argument(name, argv = process.argv) {
-  const index = argv.indexOf(`--${name}`)
-  return index >= 0 && index + 1 < argv.length ? argv[index + 1] : undefined
-}
-
-function positiveEnvironment(environment, name, fallback) {
-  const value = Number(environment[name])
-  return Number.isFinite(value) && value > 0 ? value : fallback
-}
-
-function configurationEnvironment(environment) {
-  if (
-    !environment.BRAID_TANGLE_SANDBOX_CREDENTIAL_REF &&
-    !environment.BRAID_TANGLE_SANDBOX_AUTH &&
-    !environment.BRAID_TANGLE_SANDBOX_API_KEY &&
-    !environment.BRAID_TANGLE_SANDBOX_BEARER &&
-    environment.TANGLE_API_KEY
-  ) {
-    return { ...environment, BRAID_TANGLE_SANDBOX_API_KEY: environment.TANGLE_API_KEY }
-  }
-  return environment
-}
-
-function sanitizedEnvironment(environment) {
-  const child = { ...environment }
-  for (const name of SECRET_ENVIRONMENT_NAMES) delete child[name]
-  return child
-}
 
 export function sandboxConfiguration(environment) {
   return {
@@ -334,15 +314,7 @@ export async function waitForProviderReadback(
           ? { environmentId: box.id, path: relativePath, value }
           : undefined
       } catch (error) {
-        const status = error?.status ?? error?.statusCode
-        if (
-          status === 404 ||
-          status === '404' ||
-          error?.code === 'NOT_FOUND' ||
-          error?.name === 'NotFoundError' ||
-          /\b(?:enoent|no such file|file not found)\b/iu.test(error?.message ?? '')
-        )
-          return undefined
+        if (isMissingWorkspaceFileError(error)) return undefined
         throw error
       }
     },
@@ -632,6 +604,28 @@ async function waitFor(label, predicate, timeoutMs) {
   }
 }
 
+/** One process group's members for evidence: pid, age and a redacted, bounded command line. */
+function processGroupMembers(processGroupId) {
+  try {
+    const listing = execFileSync('ps', ['-eo', 'pid=,pgid=,etime=,args='], {
+      encoding: 'utf8',
+      timeout: 5_000,
+    })
+    return listing
+      .split('\n')
+      .map((line) => line.trim().split(/\s+/u))
+      .filter(([, pgid]) => Number(pgid) === processGroupId)
+      .slice(0, 16)
+      .map(([pid, , etime, ...args]) => ({
+        pid: Number(pid),
+        etime,
+        command: safeMessage(args.join(' ')).slice(0, 200),
+      }))
+  } catch {
+    return []
+  }
+}
+
 function createPty(binary, config, statePath, exitTimeoutMs) {
   const terminal = new xterm.Terminal({ cols: 120, rows: 36, allowProposedApi: true })
   const environment = processTreeEnvironment({
@@ -653,8 +647,22 @@ function createPty(binary, config, statePath, exitTimeoutMs) {
   let exitResult
   let processCleanup
   const outputTracker = createTerminalOutputTracker()
+  // Braid exits first. A group member still present after the wait (slow teardown on a loaded
+  // host) is named and terminated, so cleanup stays exact instead of refusing; LIVE-08 at 23330bc
+  // refused cleanup on one. Only a member that outlives SIGKILL still fails the proof.
   const waitForProcessCleanup = async () => {
-    processCleanup ??= await waitForTreeGone(child, exitTimeoutMs)
+    if (processCleanup !== undefined) return processCleanup
+    const waited = await waitForTreeGone(child, exitTimeoutMs)
+    if (!waited.supported || waited.gone) {
+      processCleanup = waited
+      return processCleanup
+    }
+    const survivors = processGroupMembers(child.pid)
+    const termination = await terminateTrackedProcessTree(child, {
+      termTimeoutMs: Math.min(1_000, exitTimeoutMs),
+      killTimeoutMs: exitTimeoutMs,
+    })
+    processCleanup = { ...termination.tree, survivors }
     return processCleanup
   }
   child.onData((chunk) => {
@@ -1211,7 +1219,12 @@ export async function finalizeInteractiveProof({
     errors.push(new Error('PTY process did not exit; workspace cleanup was refused'))
   }
   if (runtime !== undefined && processExited && !processGroupExited) {
-    errors.push(new Error('PTY process group did not exit; workspace cleanup was refused'))
+    const survivors = JSON.stringify(runtime.processCleanup?.survivors ?? [])
+    errors.push(
+      new Error(
+        `PTY process group did not exit; workspace cleanup was refused; members ${survivors}`,
+      ),
+    )
   }
 
   let resolvedIdentity = identity
@@ -1474,7 +1487,10 @@ async function runProof({
       throw new Error('LIVE-08 installed another tarball than the release candidate')
     config = await prepareProductionWorkspace({
       repository: targetRepository,
-      environment: sanitizedEnvironment(configurationEnvironment(environment)),
+      environment: withoutEnvironment(
+        configurationEnvironment(environment),
+        SECRET_ENVIRONMENT_NAMES,
+      ),
       kind: values.kind,
       endpoint: values.endpoint,
       model: values.model,

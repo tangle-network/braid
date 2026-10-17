@@ -7,7 +7,7 @@ import { selectedRunConfiguration } from '../../app/effective-run-configuration.
 import { profileModelSettings } from '../../app/profile-model-settings.js'
 import { isSensitiveFieldName } from '../../domain/bounded-structured.js'
 import type { BraidEventEnvelope } from '../../domain/events.js'
-import { interactionRemainingMs } from '../../domain/interaction-timeout.js'
+import { interactionRemainingMs, interactionRequestedAt } from '../../domain/interaction-timeout.js'
 import { runOutcomeDetail } from '../../domain/provider-values.js'
 import { activeRunForBranch, type BraidState, isActiveRunStatus } from '../../domain/state.js'
 import { environmentView } from '../../views/shared/environment-presentation.js'
@@ -67,9 +67,12 @@ export function statusFor(state: BraidState): ViewStatus {
     case 'aborted':
       return 'cancelled'
     case 'blocked':
+    case 'waiting':
       return 'waiting'
+    case 'prepared':
     case 'starting':
       return 'starting'
+    case 'running':
     case 'streaming':
       return 'running'
     case 'reconnecting':
@@ -102,9 +105,12 @@ function viewStatusForRun(status: BraidState['runs'][number]['status']): ViewSta
     case 'aborted':
       return 'cancelled'
     case 'blocked':
+    case 'waiting':
       return 'waiting'
+    case 'prepared':
     case 'starting':
       return 'starting'
+    case 'running':
     case 'streaming':
       return 'running'
     case 'reconnecting':
@@ -359,7 +365,7 @@ export function interactionViews(state: BraidState, now = Date.now()): Interacti
       const requesterRunner = run.receipt.requested.runner ?? run.receipt.requested.profile.harness
       const remainingMs = interactionRemainingMs(
         request.timeoutMs,
-        item.source.occurredAt,
+        interactionRequestedAt(item),
         run.startedAt,
         now,
       )

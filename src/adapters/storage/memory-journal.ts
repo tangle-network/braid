@@ -10,6 +10,7 @@ import type {
   StoredJournalEvent,
   WorkspaceId,
 } from '../../ports/storage.js'
+import { canAppendAfterTerminal } from '../../ports/storage.js'
 import {
   clone,
   type MemoryCursor,
@@ -20,7 +21,7 @@ import {
 } from './memory-base.js'
 import { assertPersistablePayload, payloadChecksum } from './sqlite-crypto.js'
 import { StorageError } from './sqlite-errors.js'
-import { assertJournalEventInput, canAppendAfterTerminal } from './storage-validation.js'
+import { assertJournalEventInput } from './storage-validation.js'
 
 export class MemoryJournalStorage extends MemoryStorageBase {
   async append(events: readonly JournalEvent[]): Promise<AppendResult> {

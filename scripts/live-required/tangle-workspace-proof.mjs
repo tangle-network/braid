@@ -20,10 +20,17 @@ import {
   proofInvocation,
   proofReceipt,
   protectedUnavailable,
+  safeMessage,
   scalarMeasurement,
 } from './contracts.mjs'
 import { configEvidence, prepareProductionWorkspace } from './headless.mjs'
 import { DEFAULT_TANGLE_ROUTER_MODEL } from './model-defaults.mjs'
+import {
+  configurationEnvironment,
+  permissionFormAnswer,
+  RELEASE_TEST_PURPOSE,
+  shellQuote,
+} from './tangle-sandbox-braid-stress-support.mjs'
 import { workspaceRequestFor } from './workspace-request.mjs'
 
 const DEFAULT_REPOSITORY = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
@@ -59,19 +66,6 @@ function optionalConfidentialTrustPolicy(environment, confidential) {
     (name) => environment[name] !== undefined,
   )
   return configured ? parseConfidentialTrustPolicy(environment) : undefined
-}
-
-function configurationEnvironment(environment) {
-  if (
-    !environment.BRAID_TANGLE_SANDBOX_CREDENTIAL_REF &&
-    !environment.BRAID_TANGLE_SANDBOX_AUTH &&
-    !environment.BRAID_TANGLE_SANDBOX_API_KEY &&
-    !environment.BRAID_TANGLE_SANDBOX_BEARER &&
-    environment.TANGLE_API_KEY
-  ) {
-    return { ...environment, BRAID_TANGLE_SANDBOX_API_KEY: environment.TANGLE_API_KEY }
-  }
-  return environment
 }
 
 export function sandboxConfiguration(environment) {
@@ -184,10 +178,6 @@ export function parseConfidentialTrustPolicy(environment) {
     }),
     selectedPolicyId,
   })
-}
-
-function shellQuote(value) {
-  return `'${String(value).replaceAll("'", "'\\''")}'`
 }
 
 function sha256(value) {
@@ -645,14 +635,72 @@ function markerPath(proofId) {
   return `.braid-live/${proofId}/workspace-marker.txt`
 }
 
+function sourceCommands(marker, path) {
+  return [
+    `mkdir -p ${shellQuote(dirname(path))}`,
+    `printf '%s\\n' ${shellQuote(marker)} > ${shellQuote(path)}`,
+    `cat ${shellQuote(path)}`,
+  ]
+}
+
 function sourcePrompt(marker, path) {
   return [
+    RELEASE_TEST_PURPOSE,
     'Use the current Tangle Sandbox working directory for every command in this turn.',
-    `Run mkdir -p ${shellQuote(dirname(path))}.`,
-    `Run printf '%s\\n' ${shellQuote(marker)} > ${shellQuote(path)}.`,
-    `Run cat ${shellQuote(path)} and verify the content is exactly ${shellQuote(marker)}.`,
-    `Reply with exactly ${marker}.`,
-  ].join(' ')
+    'Run these exact shell commands as three separate tool calls, in order. Do not combine or alter them:',
+    ...sourceCommands(marker, path).map(
+      (command, index) => `${index + 1}.\n\`\`\`sh\n${command}\n\`\`\``,
+    ),
+    `Verify the cat output is exactly ${shellQuote(marker)}, then reply with exactly ${marker}.`,
+  ].join('\n\n')
+}
+
+/**
+ * Answer the source run's tool permissions as the person who typed its prompt would: allow each
+ * once. LIVE-09 at 38a0c8e waited out an unanswered bash permission ("Agent is awaiting a response");
+ * an exact-command allow-list then refused a model variation at de48b9e. The fork's own file checks
+ * judge the result, so the proof refuses only what it cannot answer: other kinds or secret fields.
+ */
+function answerSourcePermissions(app, runId) {
+  let stopped = false
+  const answered = new Set()
+  const loop = (async () => {
+    while (!stopped) {
+      const run = app.state().runs.find((candidate) => candidate.id === runId)
+      for (const interaction of run?.interactions ?? []) {
+        const interactionId = interaction.request.id
+        if (interaction.status !== 'pending' || answered.has(interactionId)) continue
+        answered.add(interactionId)
+        // The stored request carries only its fields; the form check reads them as the terminal does.
+        const { kind, answerSpec } = interaction.request
+        const data = permissionFormAnswer({
+          kind,
+          answerSpec: { kind: 'form', fields: answerSpec.fields },
+        })
+        if (data === undefined) {
+          const tool = interaction.request.subject?.toolName
+          throw new Error(
+            `LIVE-09 cannot answer a ${interaction.request.kind} request${tool ? ` for ${tool}` : ''}`,
+          )
+        }
+        const digest = createHash('sha256').update(`${runId}\0${interactionId}`).digest('hex')
+        await app.respondInteraction({
+          operationId: `op-live-09-permission-${digest.slice(0, 32)}`,
+          runId,
+          interactionId,
+          response: { id: interactionId, outcome: 'accepted', data },
+        })
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+  })()
+  return {
+    failure: loop.then(() => new Promise(() => {})),
+    stop: async () => {
+      stopped = true
+      await loop.catch(() => undefined)
+    },
+  }
 }
 
 // `unknown` is excluded: later provider evidence can still correct it, so settling keeps polling.
@@ -758,14 +806,19 @@ async function sendSource(app, proofId, onIdentity = () => {}, explainFailure = 
       }),
     )
   }
+  const permissions = answerSourcePermissions(app, receipt.runId)
   let terminal
   try {
     await receipt.admissionReady
     captureIdentity()
-    terminal = await settledSourceState(app, receipt.runId, await receipt.completion)
+    // A refused permission rejects at once instead of leaving the run waiting for an answer.
+    const completion = await Promise.race([receipt.completion, permissions.failure])
+    terminal = await settledSourceState(app, receipt.runId, completion)
   } catch (error) {
     captureIdentity()
     throw error
+  } finally {
+    await permissions.stop()
   }
   // The control reference usually lands after admission; capture it before judging the run so
   // the caller can still destroy the exact source environment when the run did not complete.
@@ -783,7 +836,12 @@ async function sendSource(app, proofId, onIdentity = () => {}, explainFailure = 
   })
 }
 
-async function readWorkspace(adapters, environmentId, path, label) {
+/**
+ * The agent writes relative to its session's workspace (the repository root, see
+ * workspace-request.mjs), so a read of what it wrote passes that session; without one the provider
+ * resolves the path from its own default root, and LIVE-09 at 95d6e72 failed "File not found".
+ */
+async function readWorkspace(adapters, environmentId, path, label, sessionId) {
   const environment = await adapters.freshEnvironment(environmentId)
   if (environment === null)
     throw new Error(`${label} provider environment ${environmentId} is missing`)
@@ -792,7 +850,13 @@ async function readWorkspace(adapters, environmentId, path, label) {
       'PROTECTED_WORKSPACE_READ_UNAVAILABLE',
       `Tangle Sandbox did not expose workspace read for ${label}`,
     )
-  const content = await environment.read(path)
+  let content
+  try {
+    content = await environment.read(path, sessionId === undefined ? undefined : { sessionId })
+  } catch (error) {
+    const where = sessionId === undefined ? 'the provider root' : 'the agent session'
+    throw new Error(`${label} read of ${path} from ${where} failed: ${safeMessage(error)}`)
+  }
   return Object.freeze({ content, digest: sha256(content) })
 }
 
@@ -1282,6 +1346,7 @@ async function runWorkspaceProof({
   let destination
   let destinationProviderId
   let sourceBefore
+  let sourceSession
   let destinationAfterMutation
   let sourceAfterCleanup
   let branchOperationId
@@ -1357,7 +1422,14 @@ async function runWorkspaceProof({
         'LIVE-10 received conflicting provider and source confidential capabilities',
       )
     }
-    sourceBefore = await readWorkspace(adapters, source.providerId, source.path, 'source')
+    sourceSession = source.run.controlRef?.sessionId
+    sourceBefore = await readWorkspace(
+      adapters,
+      source.providerId,
+      source.path,
+      'source',
+      sourceSession,
+    )
     assertCondition(
       sourceBefore.content.trim() === source.marker,
       'Source workspace marker was not materialized exactly',
@@ -1565,6 +1637,7 @@ async function runWorkspaceProof({
         source.providerId,
         source.path,
         'source',
+        sourceSession,
       )
       assertCondition(
         sourceAfterMutation.content === sourceBefore.content,
@@ -1678,6 +1751,7 @@ async function runWorkspaceProof({
         source.providerId,
         source.path,
         'source',
+        sourceSession,
       )
       assertCondition(
         sourceAfterCleanup.digest === sourceBefore.digest,

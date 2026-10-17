@@ -13,6 +13,7 @@ import {
 } from '../src/adapters/storage/sqlite-driver.js'
 import { StorageError } from '../src/adapters/storage/sqlite-errors.js'
 import { applyConnectionPragmas } from '../src/adapters/storage/sqlite-schema.js'
+import { createBraidApplication } from '../src/app/composition.js'
 import { StorageJournal } from '../src/app/storage-journal.js'
 import { canonicalDigest } from '../src/domain/canonical.js'
 import {
@@ -229,6 +230,78 @@ test('production SQLite records post-terminal audit events but rejects output mu
   const storage = await openFileStorage(root)
   await assertPostTerminalJournalPolicy(storage)
   await storage.close()
+})
+
+test('a durable terminal event declines racing run output without latching storage, across restart', async () => {
+  requireNativeStorage()
+  const root = await mkdtemp(join(tmpdir(), 'braid-storage-terminal-race-'))
+  const clock = new FixedClock('2026-10-16T00:00:00.000Z')
+  const open = async () =>
+    createBraidApplication({
+      fixture: 'deterministic',
+      journal: await StorageJournal.fromStorage(await openFileStorage(root), clock),
+    })
+  // LIVE-07: a cancellation's outcome and the provider stream's own end raced; storage refused the
+  // second terminal write and the refused write latched the application read-only until restart.
+  // Each late event arrives at the next expected sequence, so the second outcome is mapped to
+  // `run.finished` and reaches the journal's decline check instead of the sequence-gap path.
+  const late = async (app: Awaited<ReturnType<typeof open>>, runId: string, suffix: string) => {
+    const run = app.state().runs.find((candidate) => candidate.id === runId)
+    assert.ok(run)
+    const sequence = run.lastProviderSequence + 1
+    for (const [index, event] of [
+      { type: 'text_delta', text: 'late output' },
+      {
+        type: 'final',
+        task: { id: runId, intent: 'late outcome' },
+        status: 'cancelled',
+        reason: 'cancellation settled after the stream ended',
+        timestamp: '2026-10-16T00:00:01.000Z',
+      },
+    ].entries()) {
+      const result = await app.ingestRuntimeEvent({
+        runId,
+        eventId: `late-${suffix}-${index}`,
+        sequence,
+        receivedAt: '2026-10-16T00:00:01.000Z',
+        event: event as never,
+      })
+      assert.deepEqual(result, { accepted: true, duplicate: false })
+      assert.equal(
+        app.state().runs.find((candidate) => candidate.id === runId)?.lastProviderSequence,
+        sequence - 1,
+      )
+    }
+  }
+
+  let app = await open()
+  app.initialize('/workspace')
+  await app.whenDurable()
+  await app.send({ operationId: 'operation-terminal-race', text: 'finish' }).completion
+  const runId = app.state().runs[0]?.id
+  assert.ok(runId)
+  assert.equal(app.state().runs[0]?.status, 'completed')
+  await late(app, runId, 'first')
+  await late(app, runId, 'first')
+  await app.whenDurable()
+  assert.equal(app.storageFailure(), undefined)
+  assert.equal(app.state().runs[0]?.status, 'completed')
+  await app.close()
+
+  app = await open()
+  assert.equal(app.state().runs[0]?.status, 'completed')
+  await late(app, runId, 'restarted')
+  await app.whenDurable()
+  assert.equal(app.storageFailure(), undefined)
+  await app.close()
+  const storage = await openFileStorage(root)
+  const events = await storage.events({ runId: createRunId(runId) })
+  await storage.close()
+  assert.deepEqual(
+    events.filter((event) => event.terminal === true).map((event) => event.kind),
+    ['run.finished'],
+  )
+  assert.equal(JSON.stringify(events.map((event) => event.payload)).includes('late output'), false)
 })
 
 test('production SQLite bulk reads resolve one content key per conversation', async () => {

@@ -118,7 +118,13 @@ function withSavedWorkspace(
     return selection
   const bytes = readNoFollow(configPath, 2 * 1024 * 1024)
   if (bytes === undefined) return selection
-  const document: unknown = JSON.parse(bytes.toString('utf8'))
+  let document: unknown
+  try {
+    document = JSON.parse(bytes.toString('utf8'))
+  } catch {
+    // The parser's message quotes the file's text; name the file's problem instead.
+    throw new Error('The saved production configuration is not valid JSON')
+  }
   if (document === null || typeof document !== 'object' || Array.isArray(document)) {
     throw new Error('The saved production configuration must be an object')
   }
