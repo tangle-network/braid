@@ -475,6 +475,21 @@ export function workspaceToolEvents(observation) {
   )
 }
 
+/** The newest status detail or unknown reason Braid emitted for one run, redacted and bounded. */
+function lastRunStatusDetail(responses, runId) {
+  for (let index = responses.length - 1; index >= 0; index -= 1) {
+    const response = responses[index]
+    if (response?.type !== 'event' || eventRunId(response) !== runId) continue
+    const kind = response.event?.kind
+    if (kind !== 'run.unknown' && kind !== 'run.status.changed') continue
+    const payload = response.event?.payload ?? {}
+    const value = payload.value ?? payload
+    const detail = value.reason ?? value.detail ?? value.error
+    if (typeof detail === 'string' && detail.length > 0) return redactString(detail).slice(0, 300)
+  }
+  return undefined
+}
+
 function throwIfRunTerminated(responses, runId, pendingProof) {
   for (let index = responses.length - 1; index >= 0; index -= 1) {
     const response = responses[index]
@@ -483,9 +498,30 @@ function throwIfRunTerminated(responses, runId, pendingProof) {
     const status = terminalStatus(run)
     if (!status) continue
     const runError = typeof run.error === 'string' && run.error.length > 0 ? run.error : undefined
+    // Braid's own reason for the terminal status: LIVE-07 at f56d481 saw a run turn unknown with no
+    // error and no Sandbox created, and the failure said nothing more.
+    const reason =
+      typeof run.terminalReason === 'string' && run.terminalReason.length > 0
+        ? run.terminalReason
+        : undefined
+    const lastDetail = lastRunStatusDetail(responses, runId)
+    const context = [
+      runError === undefined ? undefined : `with ${runError}`,
+      reason === undefined ? undefined : `reason ${reason}`,
+      lastDetail === undefined ? undefined : `last status "${lastDetail}"`,
+    ]
+      .filter((part) => part !== undefined)
+      .join('; ')
     throw new MissingIntegrationError(
-      `Braid run ${runId} became ${status}${runError === undefined ? '' : ` with ${runError}`} before ${pendingProof}`,
-      { runId, status, ...(runError === undefined ? {} : { runError }), required: pendingProof },
+      `Braid run ${runId} became ${status}${context.length === 0 ? '' : ` (${context})`} before ${pendingProof}`,
+      {
+        runId,
+        status,
+        ...(runError === undefined ? {} : { runError }),
+        ...(reason === undefined ? {} : { terminalReason: reason }),
+        ...(lastDetail === undefined ? {} : { lastStatusDetail: lastDetail }),
+        required: pendingProof,
+      },
     )
   }
 }
