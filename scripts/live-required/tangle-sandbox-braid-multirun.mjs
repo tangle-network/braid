@@ -15,8 +15,13 @@ import {
   trackProcessTree,
   waitForTreeGone,
 } from '../live-bridge/process-tree.mjs'
-import { pause } from '../live-demo/terminal.mjs'
-import { countProtectedWork, observeOwnedSandbox, protectedSpan } from '../proof-tools.mjs'
+import { pause, typeText } from '../live-demo/terminal.mjs'
+import {
+  countProtectedWork,
+  observeOwnedSandbox,
+  protectedSpan,
+  redactString,
+} from '../proof-tools.mjs'
 import { liveEvidenceBindingFromEnvironment } from '../release/live-evidence-binding.mjs'
 import { connectionConfiguration } from './configuration.mjs'
 import { safeJson, safeMessage } from './contracts.mjs'
@@ -35,6 +40,7 @@ import { workspaceRequestFor } from './workspace-request.mjs'
 import {
   argument,
   configurationEnvironment,
+  permissionFormAnswer,
   positiveEnvironment,
   withoutEnvironment,
 } from './tangle-sandbox-braid-stress-support.mjs'
@@ -264,6 +270,9 @@ function createTerminal(
     },
     screen: () => screenFrom(terminal),
     snapshot: () => ({ screen: screenFrom(terminal), outputBytes: Buffer.byteLength(output) }),
+    /** Receipts for the permissions this terminal answered, in order. */
+    permissions: [],
+    waitForStable,
     captureState,
     close,
     dispose,
@@ -331,6 +340,7 @@ const ACTIVITY_DOWN = '\u001b[B'
 const ACTIVITY_UP = '\u001b[A'
 
 async function focusRunFromActivityBrowser(runtime, runId, direction, label, timeoutMs) {
+  await settlePermissions(runtime, timeoutMs)
   runtime.input('\u001bOQ')
   await waitFor(`${label} activity browser`, () => /activity/iu.test(runtime.screen()), timeoutMs)
   runtime.input('\t')
@@ -348,11 +358,60 @@ async function focusRunFromActivityBrowser(runtime, runId, direction, label, tim
   return frame
 }
 
-async function typeAndSubmit(runtime, value) {
-  for (const character of value) {
-    runtime.input(character)
-    await pause(2)
+/**
+ * Answer each permission a run raises through its terminal form, the way a user answers it, and
+ * keep a receipt. A model may ask for a command the prompt did not name (LIVE-07: an exploratory
+ * `ls` in branch A). The open form takes the composer, so an unanswered one swallowed branch B's
+ * prompt and branch A waited out the permission.
+ */
+async function answerPendingPermissions(runtime, frame, timeoutMs) {
+  const refused = runtime.permissions.find((receipt) => !receipt.answered)
+  if (refused !== undefined) throw new Error(`The proof cannot answer a ${refused.kind} request`)
+  let answered = false
+  // The form on screen is the head of the queue; answer in queue order so receipts match it.
+  const queue = [...(frame?.view?.interactions ?? [])].sort(
+    (left, right) => (left.queuePosition ?? 0) - (right.queuePosition ?? 0),
+  )
+  for (const interaction of queue) {
+    const { interactionId } = interaction
+    if (runtime.permissions.some((receipt) => receipt.interactionId === interactionId)) continue
+    const answer = permissionFormAnswer(interaction)
+    const command = interaction.request?.subject?.input?.command
+    runtime.permissions.push({
+      runId: interaction.runId,
+      interactionId,
+      kind: interaction.kind,
+      subject: interaction.subject?.title ?? null,
+      ...(typeof command === 'string'
+        ? { commandPreview: redactString(command).slice(0, 240) }
+        : {}),
+      answered: answer !== undefined,
+    })
+    if (answer === undefined)
+      throw new Error(`The proof cannot answer a ${interaction.kind} request`)
+    await runtime.waitForStable(1_000).catch(() => undefined)
+    await typeText(runtime, JSON.stringify(answer), 2)
+    runtime.input('\r')
+    await waitFor(
+      'permission answer',
+      async () =>
+        !(await runtime.captureState(timeoutMs)).view?.interactions?.some(
+          (candidate) => candidate.interactionId === interactionId,
+        ),
+      timeoutMs,
+    )
+    answered = true
   }
+  return answered
+}
+
+async function settlePermissions(runtime, timeoutMs) {
+  await answerPendingPermissions(runtime, await runtime.captureState(timeoutMs), timeoutMs)
+}
+
+async function typeAndSubmit(runtime, value, timeoutMs) {
+  await settlePermissions(runtime, timeoutMs)
+  await typeText(runtime, value, 2)
   runtime.input('\r')
 }
 
@@ -361,6 +420,7 @@ async function waitForFrame(runtime, label, predicate, timeoutMs) {
     label,
     async () => {
       const frame = await runtime.captureState(timeoutMs)
+      if (await answerPendingPermissions(runtime, frame, timeoutMs)) return undefined
       return predicate(frame) ? frame : undefined
     },
     timeoutMs,
@@ -824,7 +884,7 @@ export async function runProof({
     const firstBranch = firstFrame.state.branchId
     await phase('branch-a.send', async () => {
       proofWindow?.assertAdmission()
-      await typeAndSubmit(runtime, promptFor(markerA, holdSeconds))
+      await typeAndSubmit(runtime, promptFor(markerA, holdSeconds), timeoutMs)
       firstFrame = await waitForFrame(
         runtime,
         'branch A admission',
@@ -863,7 +923,7 @@ export async function runProof({
       assertUniqueEventIds(firstFrame, runAId, 'branch A stream')
     })
     await phase('conversation-b.create', async () => {
-      await typeAndSubmit(runtime, `/new ${markerB} conversation`)
+      await typeAndSubmit(runtime, `/new ${markerB} conversation`, timeoutMs)
       secondFrame = await waitForFrame(
         runtime,
         'conversation B creation',
@@ -882,7 +942,7 @@ export async function runProof({
     assert.notEqual(secondBranch, firstBranch, 'independent conversations reused the branch id')
     await phase('branch-b.send', async () => {
       proofWindow?.assertAdmission()
-      await typeAndSubmit(runtime, promptFor(markerB, holdSeconds))
+      await typeAndSubmit(runtime, promptFor(markerB, holdSeconds), timeoutMs)
       secondFrame = await waitForFrame(
         runtime,
         'branch B admission',
@@ -934,6 +994,7 @@ export async function runProof({
     const focusedBefore = secondFrame.view.focusedRunId
     assert.equal(focusedBefore, runBId, 'newly admitted branch B was not foreground')
     await phase('focus-a', async () => {
+      await settlePermissions(runtime, timeoutMs)
       runtime.input('\u001bOQ')
       await waitFor('activity browser', () => /activity/iu.test(runtime.screen()), timeoutMs)
       runtime.input('\t')
@@ -954,6 +1015,7 @@ export async function runProof({
     })
     terminalEvidence.focusA = runtime.snapshot()
     await phase('focus-b', async () => {
+      await settlePermissions(runtime, timeoutMs)
       runtime.input('\u001bOQ')
       await waitFor('activity browser again', () => /activity/iu.test(runtime.screen()), timeoutMs)
       runtime.input('\t')
@@ -972,6 +1034,7 @@ export async function runProof({
     })
     terminalEvidence.focusB = runtime.snapshot()
     await phase('cancel-b.dispatch', async () => {
+      await settlePermissions(runtime, timeoutMs)
       await sendCancellationAfterActivityBrowserDismissal(runtime, 'branch B', timeoutMs)
       cancelDispatchFrame = await waitForFrame(
         runtime,
@@ -1318,6 +1381,7 @@ export async function runProof({
       columns: DEFAULT_COLUMNS,
       rows: DEFAULT_ROWS,
       phases: terminalEvidence,
+      permissions: [...(runtime?.permissions ?? []), ...(restarted?.permissions ?? [])],
     },
     identifiers,
     timings,

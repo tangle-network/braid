@@ -185,6 +185,32 @@ function proofRequestDigest(request) {
   return createHash('sha256').update(JSON.stringify(request)).digest('hex')
 }
 
+const APPROVING_OPTION = /^(allow|approve|accept|once|yes)/iu
+
+/**
+ * Build the approval a user types into a multi-field permission form: each select takes its first
+ * approving option, booleans are true, and an optional text field stays empty. Secret fields and
+ * unknown shapes are refused, so the proof never answers something it cannot read.
+ */
+export function permissionFormAnswer(interaction) {
+  const spec = interaction?.answerSpec
+  if (interaction?.kind !== 'permission' || interaction.secret === true) return undefined
+  if (spec?.kind !== 'form') return undefined
+  const data = {}
+  for (const field of spec.fields) {
+    if (field.type === 'select') {
+      const option =
+        field.options?.find((candidate) => APPROVING_OPTION.test(candidate.value)) ??
+        field.options?.find((candidate) => APPROVING_OPTION.test(candidate.label))
+      if (option === undefined) return undefined
+      data[field.name] = [option.value]
+    } else if (field.type === 'boolean') data[field.name] = true
+    else if (field.type === 'text' && field.required !== true) continue
+    else return undefined
+  }
+  return data
+}
+
 /** Keep permission evidence independently of a long tail of process-liveness events. */
 export function proofInteractionTimeline(responses, runId) {
   return responses
