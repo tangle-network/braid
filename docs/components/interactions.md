@@ -63,6 +63,10 @@ Answering a background request carries its explicit run identifier.
 
 Duplicate provider events do not create a second modal.
 
+A request never takes focus from a composer that holds an unsent draft or was typed into within the last 1.5 seconds.
+It waits in the status line as `<kind> waiting · alt+p` and opens on Alt+P, or by itself once the composer is empty and idle.
+A request that arrives while the composer is empty and idle opens at once.
+
 ## Failure and safety
 
 Timeout, provider cancellation, user cancellation, stale response, declined response, and accepted response remain distinct outcomes.

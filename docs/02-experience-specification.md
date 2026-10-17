@@ -363,6 +363,8 @@ Overlays are coordinated by one modal controller so an interaction cannot appear
 
 Foreground interactions preempt non-destructive selectors after preserving their query and selection.
 
+An interaction never preempts the composer while it holds an unsent draft or was typed into within the last 1.5 seconds; the status line shows it waiting until Alt+P opens it or the composer goes idle and empty.
+
 No overlay can trap focus or leave the composer receiving hidden keystrokes.
 
 ## Profile and run configuration

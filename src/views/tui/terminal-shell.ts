@@ -24,6 +24,7 @@ export class BraidShell extends Container {
   #modalVisible = false
   #quitArmed = false
   #composerMode: ComposerMode = 'queue'
+  #deferredInteraction: string | undefined
 
   constructor(
     tui: TUI,
@@ -56,6 +57,11 @@ export class BraidShell extends Container {
     this.#refreshChrome()
   }
 
+  setDeferredInteraction(notice: string | undefined): void {
+    this.#deferredInteraction = notice
+    this.#refreshChrome()
+  }
+
   setModalVisible(visible: boolean): void {
     this.#modalVisible = visible
     this.invalidate()
@@ -66,13 +72,7 @@ export class BraidShell extends Container {
     this.#quitArmed = quitArmed
     this.#transcript.setView(view)
     this.#composer.setView(view)
-    this.#chrome.setState({
-      view,
-      quitArmed,
-      activityVisible: false,
-      navigationHint: this.#transcript.navigationHint(),
-      composerMode: this.#composerMode,
-    })
+    this.#refreshChrome()
     this.#composer.editor.disableSubmit = false
     this.#composer.editor.borderColor =
       view.status === 'running' ? this.#theme.warning : this.#theme.accent
@@ -139,6 +139,9 @@ export class BraidShell extends Container {
       activityVisible: false,
       navigationHint: this.#transcript.navigationHint(),
       composerMode: this.#composerMode,
+      ...(this.#deferredInteraction === undefined
+        ? {}
+        : { deferredInteraction: this.#deferredInteraction }),
     })
     this.invalidate()
   }

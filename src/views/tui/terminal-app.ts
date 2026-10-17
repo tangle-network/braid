@@ -58,6 +58,7 @@ export class BraidTerminalApp {
   readonly #unsubscribe: () => void
   #removeInputListener: (() => void) | undefined
   #stopped = false
+  #lastComposerEditAt = 0
   #started = false
   #suspended = false
   #openConfigurationOnStart = false
@@ -125,6 +126,7 @@ export class BraidTerminalApp {
       () => options.tui.terminal.rows,
       (text) => this.#submit(text),
       (text) => {
+        if (text.length > 0) this.#lastComposerEditAt = Date.now()
         autocomplete.inputChanged()
         this.#drafts.changed(text)
       },
@@ -167,6 +169,11 @@ export class BraidTerminalApp {
       isStopped: () => this.#stopped,
       requestRender: () => this.#tui.requestRender(),
       rows: () => this.#tui.terminal.rows,
+      composerBusy: () => this.#composerBusy(),
+      setDeferred: (notice) => {
+        this.#shell.setDeferredInteraction(notice)
+        this.#tui.requestRender()
+      },
       openAutomation: (input) => this.#overlays.openAutomation(input),
     })
     this.#input = new TerminalInputController({
@@ -180,6 +187,7 @@ export class BraidTerminalApp {
       nextOperationId: this.#nextOperationId,
       dispatch: (intent) => this.#dispatch(intent),
       interactionOpen: () => this.#interactions.isOpen,
+      openDeferredInteraction: () => this.#interactions.openDeferred(),
       stop: () => this.stop(),
       stateChanged: () => this.#render(this.#controller.view()),
     })
@@ -277,7 +285,16 @@ export class BraidTerminalApp {
     this.#tui.requestRender()
   }
 
+  /** A focused composer with an unsent draft, or one typed into within the last 1.5 s. */
+  #composerBusy(): boolean {
+    const editor = this.#shell.editor
+    if (!editor.focused) return false
+    return editor.getText().length > 0 || Date.now() - this.#lastComposerEditAt < 1_500
+  }
+
   #submit(rawText: string): void {
+    // A sent message is not a draft in progress, so an interaction may take focus at once.
+    this.#lastComposerEditAt = 0
     this.#commands.submit(rawText)
   }
 

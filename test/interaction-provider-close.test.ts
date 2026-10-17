@@ -38,6 +38,7 @@ import type { VirtualTerminal } from './support/virtual-terminal.js'
 
 const NOW = '2026-10-15T00:00:00.000Z'
 const ALT_2 = '\u001b2'
+const ALT_P = '\u001bp'
 const DOWN = '\u001b[B'
 const ESCAPE = '\u001b'
 const SIZES = [
@@ -629,12 +630,15 @@ for (const [columns, rows] of SIZES) {
 
 /**
  * LIVE-07 multirun at 48da449: run A's opencode permission opened while branch B's prompt was being
- * typed in a second conversation, took the rest of that prompt, and expired. The next permission
+ * typed in a second conversation, took 547 of its 870 characters, and expired. The next permission
  * arrived 5m22s into the run with a 5m window and no provider occurredAt, so Braid counted its window
  * from the run start, refused the typed answer as expired, and run A waited it out too.
+ * Now both permissions wait in the status line while B's draft is unsent, and open only on alt+p.
  */
 async function backgroundPermissionFlow(
   open: (execution: ExecutionPort) => Promise<{ app: BraidApplication; workspace: string }>,
+  size: readonly [columns: number, rows: number] = [120, 40],
+  capture?: string,
 ) {
   let app: BraidApplication | undefined
   const first = permissionForm('interaction-background-first')
@@ -676,7 +680,7 @@ async function backgroundPermissionFlow(
   app = created
   created.initialize(opened.workspace)
   await created.whenDurable()
-  const terminal = new RecordingTerminal(120, 40)
+  const terminal = new RecordingTerminal(size[0], size[1])
   const controller = createApplicationUiController(created)
   let operation = 0
   const view = new BraidTerminalApp({
@@ -699,14 +703,27 @@ async function backgroundPermissionFlow(
     await terminal.waitForRender()
     raiseFirst()
     await waitUntil(() => status(0) === 'pending', 'the first permission')
+    const notice = 'permission waiting · alt+p'
     await waitUntil(
-      () => terminal.getViewport().join('\n').includes(first.title),
-      'the first permission form',
+      () => terminal.getViewport().join('\n').includes(notice),
+      'the waiting permission notice',
     )
-    // The rest of branch B's prompt and its Enter land in the open form, as they did live.
+    // The rest of branch B's prompt stays in B's composer instead of landing in a form.
     terminal.sendInput(prompt.slice(30))
-    terminal.sendInput('\r')
+    await terminal.waitForRender()
+    assert.equal(view.editor.getText(), prompt)
     await waitUntil(() => status(1) === 'pending', 'the second permission', 10_000)
+    await waitUntil(
+      () => terminal.getViewport().join('\n').includes(notice),
+      'the second waiting permission notice',
+    )
+    assert.equal(view.editor.getText(), prompt)
+    if (capture !== undefined)
+      await writeCapture(
+        terminal,
+        `${capture}-pending`,
+        "A background run's permission waits in the status line while conversation B's draft stays intact",
+      )
     // A run awaiting a permission reads as waiting, not unknown: the work strip and run views fell
     // through to unknown for running, waiting and prepared runs, as LIVE-07 at 29a4bf4 showed.
     await waitUntil(() => created.state().runs[0]?.status === 'waiting', 'the waiting run')
@@ -714,6 +731,7 @@ async function backgroundPermissionFlow(
       controller.view().runs.find((run) => run.id === created.state().runs[0]?.id)?.status,
       'waiting',
     )
+    terminal.sendInput(ALT_P)
     await waitUntil(
       () => terminal.getViewport().join('\n').includes(second.title),
       'the second permission form',
@@ -747,6 +765,16 @@ async function backgroundPermissionFlow(
     )
     assert.equal(created.state().runs[0]?.status, 'completed')
     assert.equal(created.storageFailure(), undefined)
+    // Only the explicit alt+p opened a form, and closing it handed B's draft back unchanged.
+    assert.equal(view.editor.getText(), prompt)
+    await terminal.waitForRender()
+    assert.doesNotMatch(terminal.getViewport().join('\n'), /permission waiting/u)
+    if (capture !== undefined)
+      await writeCapture(
+        terminal,
+        `${capture}-answered`,
+        'The permission opened on alt+p, was answered, and conversation B keeps its unsent draft',
+      )
     const receivedAt = created.state().runs[0]?.interactions.map((item) => item.receivedAt) ?? []
     assert.equal(receivedAt.length, 2)
     for (const value of receivedAt)
@@ -760,13 +788,19 @@ async function backgroundPermissionFlow(
   }
 }
 
-test('a background run permission answered through its typed form reaches the provider', async () => {
-  await backgroundPermissionFlow(async (execution) => ({
-    // The response window is measured on the wall clock, as in production.
-    app: createBraidApplication({ fixture: 'deterministic', execution, clock: new SystemClock() }),
-    workspace: '/workspace',
-  }))
-})
+for (const [columns, rows] of SIZES) {
+  test(`a background run permission waits for alt+p and keeps the unsent draft at ${columns}x${rows}`, async () => {
+    await backgroundPermissionFlow(
+      async (execution) => ({
+        // The response window is measured on the wall clock, as in production.
+        app: createBraidApplication({ fixture: 'deterministic', execution, clock: new SystemClock() }),
+        workspace: '/workspace',
+      }),
+      [columns, rows],
+      `${columns}x${rows}-background-permission`,
+    )
+  })
+}
 
 test('a background run permission answer reaches the provider through the durable journal', async () => {
   const root = await mkdtemp(join(tmpdir(), 'braid-background-permission-'))
