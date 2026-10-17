@@ -508,10 +508,30 @@ function isActive(status) {
   return !TERMINAL_STATUSES.has(status)
 }
 
+/**
+ * One provider event legitimately backs a row in several activity families (its `event:` row, an
+ * `activity:` row, an answered permission's `interaction:` row), so a duplicate is the same source
+ * event twice within one family or one message part list.
+ */
+function eventKeysForRun(frame, runId) {
+  const activityKeys = (frame?.view?.activity ?? [])
+    .filter((item) => item.runId === runId && typeof item.sourceEventId === 'string')
+    .map((item) => `${String(item.id).split(':')[0]}:${item.sourceEventId}`)
+  const partKeys = (frame?.view?.messages ?? [])
+    .filter((message) => message.runId === runId)
+    .flatMap((message) => message.parts ?? [])
+    .map((part) => part.sourceEventId)
+    .filter((value) => typeof value === 'string')
+    .map((value) => `part:${value}`)
+  return [...activityKeys, ...partKeys]
+}
+
 function assertUniqueEventIds(frame, runId, phase) {
   const ids = eventIdsForRun(frame, runId)
   assert.ok(ids.length > 0, `${phase} did not expose provider event identities for ${runId}`)
-  assert.equal(ids.length, new Set(ids).size, `${phase} duplicated provider events for ${runId}`)
+  const keys = eventKeysForRun(frame, runId)
+  const repeated = keys.filter((key, index) => keys.indexOf(key) !== index)
+  assert.deepEqual(repeated, [], `${phase} duplicated provider events for ${runId}`)
   return [...new Set(ids)]
 }
 
@@ -1413,8 +1433,8 @@ export async function runProof({
         restartedFrame === undefined
           ? false
           : [...runIds].every((runId) => {
-              const events = eventIdsForRun(restartedFrame, runId)
-              return events.length === new Set(events).size
+              const keys = eventKeysForRun(restartedFrame, runId)
+              return keys.length === new Set(keys).size
             }),
       eventSetsStable:
         finalFrame !== undefined &&
