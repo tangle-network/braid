@@ -632,7 +632,9 @@ for (const [columns, rows] of SIZES) {
  * typed in a second conversation, took the rest of that prompt, and expired. The next permission's
  * typed answer closed its form but never reached the provider, so run A waited it out too.
  */
-test('a background run permission answered through its typed form reaches the provider', async () => {
+async function backgroundPermissionFlow(
+  open: (execution: ExecutionPort) => Promise<{ app: BraidApplication; workspace: string }>,
+) {
   let app: BraidApplication | undefined
   const first = permissionForm('interaction-background-first')
   const second = permissionForm('interaction-background-second')
@@ -667,16 +669,17 @@ test('a background run permission answered through its typed form reaches the pr
       return { operationId: input.command.operationId, outcome: 'accepted' as const }
     },
   }
-  const created = createBraidApplication({ fixture: 'deterministic', execution })
+  const opened = await open(execution)
+  const created = opened.app
   app = created
-  created.initialize('/workspace')
+  created.initialize(opened.workspace)
   const terminal = new RecordingTerminal(120, 40)
   let operation = 0
   const view = new BraidTerminalApp({
     controller: createApplicationUiController(created),
     tui: new TuiMainScreen(terminal),
     theme: createBraidTheme(false),
-    workspace: '/workspace',
+    workspace: opened.workspace,
     nextOperationId: () => `operation-background-permission-${++operation}`,
   })
   const done = view.start()
@@ -723,5 +726,39 @@ test('a background run permission answered through its typed form reaches the pr
     view.stop()
     await done
     await created.close()
+  }
+}
+
+test('a background run permission answered through its typed form reaches the provider', async () => {
+  await backgroundPermissionFlow(async (execution) => ({
+    app: createBraidApplication({ fixture: 'deterministic', execution }),
+    workspace: '/workspace',
+  }))
+})
+
+test('a background run permission answer reaches the provider through the durable journal', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-background-permission-'))
+  const workspace = join(root, 'workspace')
+  const keyPath = join(root, 'database.key')
+  try {
+    await mkdir(workspace)
+    await writeFile(keyPath, randomBytes(32), { mode: 0o600 })
+    await backgroundPermissionFlow(async (execution) => ({
+      app: (
+        await createDurableBraidApplication({
+          path: join(root, 'braid.sqlite'),
+          storageRoot: root,
+          workspaceRoot: workspace,
+          databaseKeySource: { type: 'file' as const, path: keyPath, workspaceRoot: workspace },
+          credentialStore: new MemoryCredentialStore(),
+          profile: DETERMINISTIC_PROFILE,
+          ids: new SequenceIds(),
+          execution,
+        })
+      ).app,
+      workspace,
+    }))
+  } finally {
+    await rm(root, { recursive: true, force: true })
   }
 })
