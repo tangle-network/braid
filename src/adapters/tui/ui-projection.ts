@@ -67,9 +67,12 @@ export function statusFor(state: BraidState): ViewStatus {
     case 'aborted':
       return 'cancelled'
     case 'blocked':
+    case 'waiting':
       return 'waiting'
+    case 'prepared':
     case 'starting':
       return 'starting'
+    case 'running':
     case 'streaming':
       return 'running'
     case 'reconnecting':
@@ -102,9 +105,12 @@ function viewStatusForRun(status: BraidState['runs'][number]['status']): ViewSta
     case 'aborted':
       return 'cancelled'
     case 'blocked':
+    case 'waiting':
       return 'waiting'
+    case 'prepared':
     case 'starting':
       return 'starting'
+    case 'running':
     case 'streaming':
       return 'running'
     case 'reconnecting':

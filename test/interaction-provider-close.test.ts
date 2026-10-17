@@ -32,8 +32,8 @@ import { DEFAULT_RUN_CAPABILITIES, type ExecutionPort } from '../src/ports/execu
 import { SequenceIds } from '../src/ports/ids.js'
 import { BraidTerminalApp } from '../src/views/tui/terminal-app.js'
 import { createBraidTheme } from '../src/views/tui/theme.js'
-import { interactionResponseRunCapabilities } from './support/run-capabilities.js'
 import { RecordingTerminal } from './support/recording-terminal.js'
+import { interactionResponseRunCapabilities } from './support/run-capabilities.js'
 import type { VirtualTerminal } from './support/virtual-terminal.js'
 
 const NOW = '2026-10-15T00:00:00.000Z'
@@ -677,9 +677,10 @@ async function backgroundPermissionFlow(
   created.initialize(opened.workspace)
   await created.whenDurable()
   const terminal = new RecordingTerminal(120, 40)
+  const controller = createApplicationUiController(created)
   let operation = 0
   const view = new BraidTerminalApp({
-    controller: createApplicationUiController(created),
+    controller,
     tui: new TuiMainScreen(terminal),
     theme: createBraidTheme(false),
     workspace: opened.workspace,
@@ -706,6 +707,13 @@ async function backgroundPermissionFlow(
     terminal.sendInput(prompt.slice(30))
     terminal.sendInput('\r')
     await waitUntil(() => status(1) === 'pending', 'the second permission', 10_000)
+    // A run awaiting a permission reads as waiting, not unknown: the work strip and run views fell
+    // through to unknown for running, waiting and prepared runs, as LIVE-07 at 29a4bf4 showed.
+    await waitUntil(() => created.state().runs[0]?.status === 'waiting', 'the waiting run')
+    assert.equal(
+      controller.view().runs.find((run) => run.id === created.state().runs[0]?.id)?.status,
+      'waiting',
+    )
     await waitUntil(
       () => terminal.getViewport().join('\n').includes(second.title),
       'the second permission form',
