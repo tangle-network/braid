@@ -629,15 +629,17 @@ for (const [columns, rows] of SIZES) {
 
 /**
  * LIVE-07 multirun at 48da449: run A's opencode permission opened while branch B's prompt was being
- * typed in a second conversation, took the rest of that prompt, and expired. The next permission's
- * typed answer closed its form but never reached the provider, so run A waited it out too.
+ * typed in a second conversation, took the rest of that prompt, and expired. The next permission
+ * arrived 5m22s into the run with a 5m window and no provider occurredAt, so Braid counted its window
+ * from the run start, refused the typed answer as expired, and run A waited it out too.
  */
 async function backgroundPermissionFlow(
   open: (execution: ExecutionPort) => Promise<{ app: BraidApplication; workspace: string }>,
 ) {
   let app: BraidApplication | undefined
   const first = permissionForm('interaction-background-first')
-  const second = permissionForm('interaction-background-second')
+  // A window shorter than the time since the run started, as the live 5m window was.
+  const second = permissionForm('interaction-background-second', 3_000)
   let raiseFirst = () => {}
   const firstRaised = new Promise<void>((resolve) => {
     raiseFirst = resolve
@@ -652,7 +654,7 @@ async function backgroundPermissionFlow(
     async *streamTurn(input): AsyncIterable<BraidRuntimeEvent> {
       await firstRaised
       yield { type: 'interaction', request: bound(first, input.runId) }
-      await new Promise((resolve) => setTimeout(resolve, 300))
+      await new Promise((resolve) => setTimeout(resolve, 3_500))
       yield { type: 'interaction.cancel', id: first.id, reason: 'timeout' }
       yield { type: 'interaction', request: bound(second, input.runId) }
       await waitUntil(
@@ -703,7 +705,7 @@ async function backgroundPermissionFlow(
     // The rest of branch B's prompt and its Enter land in the open form, as they did live.
     terminal.sendInput(prompt.slice(30))
     terminal.sendInput('\r')
-    await waitUntil(() => status(1) === 'pending', 'the second permission')
+    await waitUntil(() => status(1) === 'pending', 'the second permission', 10_000)
     await waitUntil(
       () => terminal.getViewport().join('\n').includes(second.title),
       'the second permission form',
