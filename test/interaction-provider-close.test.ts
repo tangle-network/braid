@@ -27,7 +27,7 @@ import {
 } from '../src/app/interaction-request.js'
 import { MemoryJournal } from '../src/app/journal.js'
 import type { BraidRuntimeEvent, RuntimeEventEnvelope } from '../src/domain/runtime-events.js'
-import { FixedClock } from '../src/ports/clock.js'
+import { FixedClock, SystemClock } from '../src/ports/clock.js'
 import { DEFAULT_RUN_CAPABILITIES, type ExecutionPort } from '../src/ports/execution.js'
 import { SequenceIds } from '../src/ports/ids.js'
 import { BraidTerminalApp } from '../src/views/tui/terminal-app.js'
@@ -754,7 +754,8 @@ async function backgroundPermissionFlow(
 
 test('a background run permission answered through its typed form reaches the provider', async () => {
   await backgroundPermissionFlow(async (execution) => ({
-    app: createBraidApplication({ fixture: 'deterministic', execution }),
+    // The response window is measured on the wall clock, as in production.
+    app: createBraidApplication({ fixture: 'deterministic', execution, clock: new SystemClock() }),
     workspace: '/workspace',
   }))
 })
