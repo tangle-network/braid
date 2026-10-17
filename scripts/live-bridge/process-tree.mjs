@@ -172,8 +172,10 @@ let ownInitialEnvironment
 
 // Between fork and exec a child still shows this process's initial environment block, and it may
 // not have left this process's group yet. A missing marker means "not exec'd yet" only while the
-// two blocks are identical; once the child has exec'd, the marker must be there. An exiting
-// process refuses the read (EACCES), which leaves ownership undecided until it is gone.
+// two blocks are identical; once the child has exec'd, the marker must be there. Two kernel
+// windows read as neither: midway through exec the new image has no environment yet (0 bytes),
+// and an exiting process refuses the read (EACCES). Both leave ownership undecided until the
+// process has finished exec or is gone.
 function readRootOwnership(pid, token) {
   let environment
   try {
@@ -183,6 +185,7 @@ function readRootOwnership(pid, token) {
       return undefined
     throw error
   }
+  if (environment.length === 0) return undefined
   if (environment.toString('utf8').split('\0').includes(`${processTreeToken}=${token}`))
     return 'marked'
   ownInitialEnvironment ??= readFileSync(procFile('self', 'environ'))
