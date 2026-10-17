@@ -8,6 +8,7 @@ import {
   proofInvocation,
   proofReceipt,
   safeJson,
+  safeMessage,
   scalarMeasurement,
 } from './contracts.mjs'
 import {
@@ -146,6 +147,11 @@ export function sandboxSoakDiagnostic(cohort) {
             : soakFailureCategory(failure, fingerprint),
         failureHttpStatus: fingerprint.httpStatus,
         failureCode: fingerprint.code,
+        // The failure's own words, redacted and bounded: a category alone left LIVE-07 failures without a cause.
+        failureMessage:
+          failure === undefined || failure === null
+            ? null
+            : String(safeMessage(failure?.message ?? failure)).slice(0, 400),
         lastCompletedPhase: phases.lastCompletedPhase,
         failedPhase: phases.failedPhase,
         ...proofRunFailure(failure),
