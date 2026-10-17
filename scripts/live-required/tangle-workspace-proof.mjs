@@ -25,12 +25,13 @@ import {
 } from './contracts.mjs'
 import { configEvidence, prepareProductionWorkspace } from './headless.mjs'
 import { DEFAULT_TANGLE_ROUTER_MODEL } from './model-defaults.mjs'
-import { workspaceRequestFor } from './workspace-request.mjs'
 import {
   configurationEnvironment,
   permissionFormAnswer,
+  RELEASE_TEST_PURPOSE,
   shellQuote,
 } from './tangle-sandbox-braid-stress-support.mjs'
+import { workspaceRequestFor } from './workspace-request.mjs'
 
 const DEFAULT_REPOSITORY = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const DEFAULT_ENDPOINT = 'https://sandbox.tangle.tools'
@@ -644,6 +645,7 @@ function sourceCommands(marker, path) {
 
 function sourcePrompt(marker, path) {
   return [
+    RELEASE_TEST_PURPOSE,
     'Use the current Tangle Sandbox working directory for every command in this turn.',
     'Run these exact shell commands as three separate tool calls, in order. Do not combine or alter them:',
     ...sourceCommands(marker, path).map(

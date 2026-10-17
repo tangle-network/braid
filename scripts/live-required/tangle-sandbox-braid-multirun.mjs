@@ -35,15 +35,16 @@ import {
   readRetainedWorkspaceFile,
   retainedBox,
 } from './tangle-sandbox-braid-stress.mjs'
-import { createTerminalOutputTracker, waitForTerminalQuiescence } from './terminal-quiescence.mjs'
-import { workspaceRequestFor } from './workspace-request.mjs'
 import {
   argument,
   configurationEnvironment,
   permissionFormAnswer,
   positiveEnvironment,
+  RELEASE_TEST_PURPOSE,
   withoutEnvironment,
 } from './tangle-sandbox-braid-stress-support.mjs'
+import { createTerminalOutputTracker, waitForTerminalQuiescence } from './terminal-quiescence.mjs'
+import { workspaceRequestFor } from './workspace-request.mjs'
 
 const scriptPath = fileURLToPath(import.meta.url)
 const repository = resolve(dirname(scriptPath), '../..')
@@ -105,12 +106,14 @@ function markerPathFor(marker) {
 
 export function promptFor(marker, holdSeconds) {
   return [
+    RELEASE_TEST_PURPOSE,
+    'It checks that two conversations can run at the same time and keep separate results.',
     'Use the current Tangle Sandbox working directory for every command in this turn.',
     `Write exactly ${marker} followed by a newline to ${markerPathFor(marker)}.`,
     `Read ${markerPathFor(marker)} and report the result before sleep as contents=${marker} on one line. Do not print the file contents as a bare line or code block.`,
     'Run git -C . rev-parse --is-inside-work-tree and print its result.',
-    `Run sleep ${holdSeconds} before the final response so another branch can stream concurrently.`,
-    `After sleep, reply with exactly ${marker}.`,
+    `Run sleep ${holdSeconds} before the final response, so the test can observe this run and the other conversation's run active at the same time.`,
+    `After sleep, reply with exactly ${marker} on its own line.`,
   ].join(' ')
 }
 

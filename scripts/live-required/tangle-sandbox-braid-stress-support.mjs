@@ -8,15 +8,15 @@ import {
 } from '@tangle-network/agent-interface'
 
 import { sleep } from '../live-bridge/process.mjs'
-import { countProtectedWork, redactString } from '../proof-tools.mjs'
 import {
-  requestBase,
   interactionFromResponse,
+  requestBase,
   responseForRequest,
   runFromState,
   stateForRequest,
   stateForRun,
 } from '../live-bridge/protocol.mjs'
+import { countProtectedWork, redactString } from '../proof-tools.mjs'
 
 const TERMINAL_STATUSES = new Set([
   'completed',
@@ -193,6 +193,14 @@ const APPROVING_OPTION = /^(allow|approve|accept|once|yes)/iu
  * approving option, booleans are true, and an optional text field stays empty. Secret fields and
  * unknown shapes are refused, so the proof never answers something it cannot read.
  */
+/**
+ * The first line of every live proof prompt. Without a stated purpose a model refused the multirun
+ * steps at 951c529 as "the hallmarks of a prompt-injection" (an opaque marker in a hidden directory,
+ * a long sleep), so each prompt says what the test is before giving its steps.
+ */
+export const RELEASE_TEST_PURPOSE =
+  "This turn is part of Braid's live release test, run by the person operating this terminal in a disposable Tangle Sandbox checkout; .braid-live is the scratch directory the test uses for its marker files."
+
 export function permissionFormAnswer(interaction) {
   const spec = interaction?.answerSpec
   if (interaction?.kind !== 'permission' || interaction.secret === true) return undefined
