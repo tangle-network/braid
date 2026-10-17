@@ -791,6 +791,7 @@ test('a background run permission answer reaches the provider through the durabl
     // Replay rebuilds each window start from the journaled provider receipt time.
     const reopened = await open({ async *streamTurn(): AsyncIterable<BraidRuntimeEvent> {} })
     try {
+      reopened.app.initialize(workspace)
       await reopened.app.whenDurable()
       assert.equal(reopened.app.storageFailure(), undefined)
       assert.deepEqual(
