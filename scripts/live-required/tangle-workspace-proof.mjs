@@ -25,7 +25,11 @@ import {
 import { configEvidence, prepareProductionWorkspace } from './headless.mjs'
 import { DEFAULT_TANGLE_ROUTER_MODEL } from './model-defaults.mjs'
 import { workspaceRequestFor } from './workspace-request.mjs'
-import { configurationEnvironment, shellQuote } from './tangle-sandbox-braid-stress-support.mjs'
+import {
+  configurationEnvironment,
+  proofPermissionResponse,
+  shellQuote,
+} from './tangle-sandbox-braid-stress-support.mjs'
 
 const DEFAULT_REPOSITORY = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const DEFAULT_ENDPOINT = 'https://sandbox.tangle.tools'
@@ -629,14 +633,58 @@ function markerPath(proofId) {
   return `.braid-live/${proofId}/workspace-marker.txt`
 }
 
+function sourceCommands(marker, path) {
+  return [
+    `mkdir -p ${shellQuote(dirname(path))}`,
+    `printf '%s\\n' ${shellQuote(marker)} > ${shellQuote(path)}`,
+    `cat ${shellQuote(path)}`,
+  ]
+}
+
 function sourcePrompt(marker, path) {
   return [
     'Use the current Tangle Sandbox working directory for every command in this turn.',
-    `Run mkdir -p ${shellQuote(dirname(path))}.`,
-    `Run printf '%s\\n' ${shellQuote(marker)} > ${shellQuote(path)}.`,
-    `Run cat ${shellQuote(path)} and verify the content is exactly ${shellQuote(marker)}.`,
-    `Reply with exactly ${marker}.`,
-  ].join(' ')
+    'Run these exact shell commands as three separate tool calls, in order. Do not combine or alter them:',
+    ...sourceCommands(marker, path).map(
+      (command, index) => `${index + 1}.\n\`\`\`sh\n${command}\n\`\`\``,
+    ),
+    `Verify the cat output is exactly ${shellQuote(marker)}, then reply with exactly ${marker}.`,
+  ].join('\n\n')
+}
+
+/**
+ * Answer the source run's permissions as the person who typed its prompt would: allow once each
+ * exact command the prompt names (or a read of its marker file) and refuse anything else. LIVE-09
+ * at 38a0c8e waited out an unanswered bash permission and failed "Agent is awaiting a response".
+ */
+function answerSourcePermissions(app, runId, policy) {
+  let stopped = false
+  const answered = new Set()
+  const loop = (async () => {
+    while (!stopped) {
+      const run = app.state().runs.find((candidate) => candidate.id === runId)
+      for (const interaction of run?.interactions ?? []) {
+        const interactionId = interaction.request.id
+        if (interaction.status !== 'pending' || answered.has(interactionId)) continue
+        answered.add(interactionId)
+        const digest = createHash('sha256').update(`${runId}\0${interactionId}`).digest('hex')
+        await app.respondInteraction({
+          operationId: `op-live-09-permission-${digest.slice(0, 32)}`,
+          runId,
+          interactionId,
+          response: proofPermissionResponse(interaction.request, policy),
+        })
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+  })()
+  return {
+    failure: loop.then(() => new Promise(() => {})),
+    stop: async () => {
+      stopped = true
+      await loop.catch(() => undefined)
+    },
+  }
 }
 
 // `unknown` is excluded: later provider evidence can still correct it, so settling keeps polling.
@@ -742,14 +790,24 @@ async function sendSource(app, proofId, onIdentity = () => {}, explainFailure = 
       }),
     )
   }
+  const permissions = answerSourcePermissions(app, receipt.runId, {
+    proofId,
+    commands: sourceCommands(marker, path),
+    readPaths: [path],
+    receipts: [],
+  })
   let terminal
   try {
     await receipt.admissionReady
     captureIdentity()
-    terminal = await settledSourceState(app, receipt.runId, await receipt.completion)
+    // A refused permission rejects at once instead of leaving the run waiting for an answer.
+    const completion = await Promise.race([receipt.completion, permissions.failure])
+    terminal = await settledSourceState(app, receipt.runId, completion)
   } catch (error) {
     captureIdentity()
     throw error
+  } finally {
+    await permissions.stop()
   }
   // The control reference usually lands after admission; capture it before judging the run so
   // the caller can still destroy the exact source environment when the run did not complete.
