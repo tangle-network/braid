@@ -54,6 +54,9 @@ importers:
       '@biomejs/biome':
         specifier: 2.5.15
         version: 2.5.15
+      '@tangle-network/agent-interface-current':
+        specifier: npm:@tangle-network/agent-interface@5.7.0
+        version: '@tangle-network/agent-interface@5.7.0'
       '@types/node':
         specifier: 26.6.4
         version: 26.6.4
@@ -564,6 +567,9 @@ packages:
 
   '@tangle-network/agent-interface@5.2.1':
     resolution: {integrity: sha512-JSMUrb+lGD/1aoBMK24bi88HtZkM4Wd2HpVfpNwjTLUDwAoHxV4nYSp7WCne8biFphIEsD7nE5+0APOfx1oauw==}
+
+  '@tangle-network/agent-interface@5.7.0':
+    resolution: {integrity: sha512-3EfyerzPylg7p8levrtSVgc7HU80VqGKsmKMr0hXmqBK7hu3bDrb8p9eabZzQMPkJHFM/HK1doGlxYOUrjcN1w==}
 
   '@tangle-network/agent-knowledge@22.0.2':
     resolution: {integrity: sha512-wLsiSc70k89uI3/qOoHIGNqi0vX5sjJdm+w2o21XnRtx+aBvr2T9bvUNaiI/YF+aDjzZiZkA6TkGR9f1U7lzIw==}
@@ -1277,6 +1283,12 @@ snapshots:
       zod: 4.6.5
 
   '@tangle-network/agent-interface@5.2.1':
+    dependencies:
+      '@noble/hashes': 2.4.0
+      spdx-expression-parse: 5.0.0
+      zod: 4.6.5
+
+  '@tangle-network/agent-interface@5.7.0':
     dependencies:
       '@noble/hashes': 2.4.0
       spdx-expression-parse: 5.0.0

@@ -125,6 +125,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
+    "@tangle-network/agent-interface-current": "npm:@tangle-network/agent-interface@5.7.0",
     "@types/node": "26.6.4",
     "@xterm/headless": "6.0.0",
     "esbuild": "0.28.2",
