@@ -4,18 +4,21 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import { TuiMainScreen } from '@earendil-works/pi-tui'
+import { VirtualTerminal } from '../.test-dist-run-focus/test/support/virtual-terminal.js'
 import { MemoryCredentialStore } from '../dist/adapters/credentials/memory.js'
 import { createApplicationUiController } from '../dist/adapters/tui/application-ui-controller.js'
+import { MAX_VISIBLE_RUNS } from '../dist/adapters/tui/ui-projection.js'
 import { createDurableBraidApplication, DETERMINISTIC_PROFILE } from '../dist/app/composition.js'
 import { SequenceIds } from '../dist/ports/ids.js'
 import { BraidTerminalApp } from '../dist/views/tui/terminal-app.js'
 import { createBraidTheme } from '../dist/views/tui/theme.js'
-import { VirtualTerminal } from '../.test-dist-run-focus/test/support/virtual-terminal.js'
 import { captureProvenance, writeCastGif, writeRaster } from './capture-visual-support.mjs'
 
 const repository = new URL('../', import.meta.url).pathname
 const outputRoot = join(repository, 'artifacts', 'verification', 'run-focus')
 const rawRoot = join(outputRoot, 'raw')
+// Two runs together report more rows than the activity projection keeps.
+const TOOL_CALLS_PER_RUN = Math.ceil(MAX_VISIBLE_RUNS / 2) + 10
 const sizes = [
   [40, 12],
   [80, 24],
@@ -128,6 +131,14 @@ async function capture(columns, rows) {
       ids: new SequenceIds(),
       execution: {
         async *streamTurn(input) {
+          for (let call = 1; call <= TOOL_CALLS_PER_RUN; call += 1) {
+            yield {
+              type: 'tool_call',
+              toolName: 'read',
+              toolCallId: `${input.runId}-call-${call}`,
+              args: {},
+            }
+          }
           yield {
             type: 'final',
             status: 'completed',
@@ -190,6 +201,8 @@ async function capture(columns, rows) {
     assert.match(terminal.getViewport().join('\n'), /activity/u)
     terminal.sendInput('\t')
     await terminal.waitForRender()
+    const runsList = terminal.getViewport().join('\n')
+    assert.match(runsList, /runs · 2/u)
     terminal.sendInput('\u001b[B')
     terminal.sendInput('\r')
     await waitFor(() => restored.state().focusedRunId === alpha.runId, 'alpha run focus')
@@ -213,6 +226,7 @@ async function capture(columns, rows) {
     await restored.whenDurable()
     return {
       terminal,
+      runsList,
       screen,
       cast: castFor(terminal, terminal.events, 'Focus completed Alpha run from Beta conversation'),
     }
@@ -237,17 +251,16 @@ for (const [columns, rows] of sizes) {
   const name = `${columns}x${rows}`
   const frame = await capture(columns, rows)
   const textPath = join(outputRoot, `${name}.txt`)
+  const runsPath = join(outputRoot, `${name}-runs.txt`)
   const castPath = join(rawRoot, `${name}.cast`)
   const pngPath = join(outputRoot, `${name}.png`)
   await writeFile(textPath, `${frame.screen}\n`)
+  await writeFile(runsPath, `${frame.runsList}\n`)
   await writeFile(castPath, frame.cast)
   await writeRaster(castPath, pngPath, join(rawRoot, `${name}.gif`))
-  artifacts.push({
-    path: relative(outputRoot, textPath),
-    sha256: await sha256(textPath),
-    columns,
-    rows,
-  })
+  for (const path of [textPath, runsPath]) {
+    artifacts.push({ path: relative(outputRoot, path), sha256: await sha256(path), columns, rows })
+  }
   artifacts.push({
     path: relative(outputRoot, pngPath),
     sha256: await sha256(pngPath),
@@ -275,6 +288,7 @@ await writeFile(
       execution: 'local deterministic fixture; not provider integration proof',
       storage: 'encrypted SQLite, closed and reopened before keyboard navigation',
       keyboard: 'F2, Tab, Down, Enter, Escape to select completed Alpha from Beta',
+      activity: `${TOOL_CALLS_PER_RUN} tool calls per run, beyond the ${MAX_VISIBLE_RUNS}-row activity window`,
       provenance: await captureProvenance(),
       artifacts,
     },
