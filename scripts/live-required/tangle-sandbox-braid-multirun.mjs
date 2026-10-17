@@ -526,12 +526,19 @@ function eventKeysForRun(frame, runId) {
   return [...activityKeys, ...partKeys]
 }
 
+function repeatedEventKeys(frame, runId) {
+  const keys = eventKeysForRun(frame, runId)
+  return keys.filter((key, index) => keys.indexOf(key) !== index)
+}
+
 function assertUniqueEventIds(frame, runId, phase) {
   const ids = eventIdsForRun(frame, runId)
   assert.ok(ids.length > 0, `${phase} did not expose provider event identities for ${runId}`)
-  const keys = eventKeysForRun(frame, runId)
-  const repeated = keys.filter((key, index) => keys.indexOf(key) !== index)
-  assert.deepEqual(repeated, [], `${phase} duplicated provider events for ${runId}`)
+  assert.deepEqual(
+    repeatedEventKeys(frame, runId),
+    [],
+    `${phase} duplicated provider events for ${runId}`,
+  )
   return [...new Set(ids)]
 }
 
@@ -1376,7 +1383,7 @@ export async function runProof({
         cursor: viewRun?.cursor ?? null,
         contentBytes: viewRun?.contentBytes ?? null,
         eventCount: events.length,
-        eventIdsUnique: events.length === new Set(events).size,
+        eventIdsUnique: frame === undefined || repeatedEventKeys(frame, runId).length === 0,
         identifiers: controlRef === undefined ? [] : identifiersForControl(controlRef),
       }
     }),
@@ -1432,10 +1439,7 @@ export async function runProof({
       noDuplicateEventIds:
         restartedFrame === undefined
           ? false
-          : [...runIds].every((runId) => {
-              const keys = eventKeysForRun(restartedFrame, runId)
-              return keys.length === new Set(keys).size
-            }),
+          : [...runIds].every((runId) => repeatedEventKeys(restartedFrame, runId).length === 0),
       eventSetsStable:
         finalFrame !== undefined &&
         restartedFrame !== undefined &&
