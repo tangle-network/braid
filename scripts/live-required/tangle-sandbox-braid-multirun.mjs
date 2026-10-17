@@ -365,7 +365,7 @@ async function focusRunFromActivityBrowser(runtime, runId, direction, label, tim
  * prompt and branch A waited out the permission.
  */
 async function answerPendingPermissions(runtime, frame, timeoutMs) {
-  const refused = runtime.permissions.find((receipt) => !receipt.answered)
+  const refused = runtime.permissions.find((receipt) => !receipt.answerable)
   if (refused !== undefined) throw new Error(`The proof cannot answer a ${refused.kind} request`)
   // Keys typed while the activity browser is open go to the browser; answer once it closes.
   if (activityBrowserOpen(runtime.screen())) return false
@@ -379,7 +379,8 @@ async function answerPendingPermissions(runtime, frame, timeoutMs) {
     if (runtime.permissions.some((receipt) => receipt.interactionId === interactionId)) continue
     const answer = permissionFormAnswer(interaction)
     const command = interaction.request?.subject?.input?.command
-    runtime.permissions.push({
+    // `accepted` turns true only once the form leaves the queue after the typed answer.
+    const receipt = {
       runId: interaction.runId,
       interactionId,
       kind: interaction.kind,
@@ -387,8 +388,10 @@ async function answerPendingPermissions(runtime, frame, timeoutMs) {
       ...(typeof command === 'string'
         ? { commandPreview: redactString(command).slice(0, 240) }
         : {}),
-      answered: answer !== undefined,
-    })
+      answerable: answer !== undefined,
+      accepted: false,
+    }
+    runtime.permissions.push(receipt)
     if (answer === undefined)
       throw new Error(`The proof cannot answer a ${interaction.kind} request`)
     await runtime.waitForStable(1_000).catch(() => undefined)
@@ -402,6 +405,7 @@ async function answerPendingPermissions(runtime, frame, timeoutMs) {
         ),
       timeoutMs,
     )
+    receipt.accepted = true
     answered = true
   }
   return answered

@@ -36,6 +36,7 @@ import {
   isMissingWorkspaceFileError,
   latestCursorFromResponses,
   MissingIntegrationError,
+  positiveEnvironment,
   proofCoordinates,
   proofInteractionTimeline,
   resourceDelta,
@@ -73,11 +74,6 @@ const SECRET_ENVIRONMENT_NAMES = [
   'BRAID_TANGLE_SANDBOX_CLEANUP_API_KEY',
   'TANGLE_API_KEY',
 ]
-
-function numberEnvironment(environment, name, fallback) {
-  const value = Number(environment[name])
-  return Number.isFinite(value) && value > 0 ? value : fallback
-}
 
 function sandboxClient(values) {
   // Direct verification must use the value installed under this proof's
@@ -1423,17 +1419,17 @@ export async function runBraidSandboxStress({
   const baseCoordinates = proofCoordinates()
   const coordinates = baseCoordinates
   const ids = operationIds(coordinates.proofId)
-  const holdMs = numberEnvironment(
+  const holdMs = positiveEnvironment(
     environment,
     'BRAID_TANGLE_SANDBOX_STRESS_HOLD_MS',
     DEFAULT_HOLD_MS,
   )
-  const timeoutMs = numberEnvironment(
+  const timeoutMs = positiveEnvironment(
     environment,
     'BRAID_LIVE_REQUIRED_TIMEOUT_MS',
     DEFAULT_TIMEOUT_MS,
   )
-  const idleTtlSeconds = numberEnvironment(
+  const idleTtlSeconds = positiveEnvironment(
     environment,
     'BRAID_TANGLE_SANDBOX_IDLE_TTL_SECONDS',
     DEFAULT_IDLE_TTL_SECONDS,

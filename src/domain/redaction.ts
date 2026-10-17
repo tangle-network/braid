@@ -101,10 +101,18 @@ function publicModelMetadata(value: unknown): Readonly<Record<string, unknown>> 
  *
  * A typed error leads with its code. Collapsing every message that was not a bare code to
  * `PROVIDER_ERROR` hid causes: LIVE-07's exit printed only `PROVIDER_ERROR` for a latched storage
- * failure whose message named the run and the refused write.
+ * failure whose message named the run and the refused write. A `SyntaxError` keeps only its code:
+ * `JSON.parse` quotes the rejected source text, which may hold an unrecognized secret.
  */
 export function redactProviderError(error: unknown): string {
-  const message = error instanceof Error ? error.message : typeof error === 'string' ? error : ''
+  const message =
+    error instanceof SyntaxError
+      ? ''
+      : error instanceof Error
+        ? error.message
+        : typeof error === 'string'
+          ? error
+          : ''
   const code =
     error instanceof Error ? safeDiagnostic((error as { readonly code?: unknown }).code, '') : ''
   const cause = providerCause(message)

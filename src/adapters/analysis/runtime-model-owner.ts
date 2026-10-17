@@ -551,7 +551,7 @@ function summaryFailure(summary: RuntimeCallSummary): string {
 }
 
 function publicError(value: unknown): string {
-  return redactProviderError(value instanceof Error ? value.message : String(value))
+  return redactProviderError(value instanceof Error ? value : String(value))
 }
 
 function analystCallProfile(

@@ -119,8 +119,10 @@ Provider failure text, including final errors, terminal reasons, warnings, statu
 `providerCause` passes the whole text through the shared credential redactor first, then folds it to one line bounded by `MAX_PROVIDER_CAUSE_CHARACTERS` in `src/domain/provider-values.ts`, so a cut can never leave part of a credential.
 The stable code, such as `RUNTIME_FINAL_ERROR` or an HTTP class, stays in its own field; the cause is the run's `reason` or the unknown detail.
 Cause selection uses the same sanitized text for streamed finals and recovered snapshots, and applies the display length bound after selection. A blank, generic, code-only, or redaction-only reason cannot hide an available error cause, and when the reason and the error text each say something the other does not, both are kept; informative prose containing redaction markers remains useful.
-An upstream HTTP status is read from Runtime's typed failure detail, not parsed from its message.
-Startup and exit errors follow the same rule: the error's code, then its own words through the same redactor, never a bare `PROVIDER_ERROR` that hides the cause.
+An upstream HTTP status is read from Runtime's typed failure detail, not parsed from its message; a streamed backend error keeps that status class and then the provider's own words.
+Startup errors, exit errors, the latched storage failure and analysis model-call failures in execution evidence follow the same rule: the error's code, then its own words through `providerCause`, never a bare `PROVIDER_ERROR` that hides the cause.
+A `SyntaxError` keeps only its code, because `JSON.parse` quotes the rejected source text, which can hold a secret the redactor does not recognize.
+A diagnostic code field, such as a warning code, carries only a typed provider code; any other value, including one the redactor would change, becomes the field's fallback code.
 Qualify provider failure causes through the packed client with a real provider refusal and a succeeding subscription turn. The maintained seats producer scans the actual recorded state, restored journal and terminal recording before retaining evidence. Controlled provider fixtures are not integration evidence.
 
 ## Local state encryption

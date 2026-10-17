@@ -1,5 +1,5 @@
 import { type OperationId, parseOperationId } from '../domain/ids.js'
-import { redactSensitiveText } from '../domain/redaction.js'
+import { providerCause } from '../domain/provider-values.js'
 import type { ExecutionPort } from '../ports/execution.js'
 import { AppError } from './errors.js'
 
@@ -20,13 +20,10 @@ export function assertWritable(failure: unknown): void {
  * undiagnosable, so the cause travels with the code, redacted and bounded.
  */
 export function storageUnavailable(failure: unknown): AppError {
-  const cause =
-    failure instanceof Error ? failure.message : typeof failure === 'string' ? failure : undefined
-  const detail =
-    cause === undefined ? '' : redactSensitiveText(cause).replace(/\s+/gu, ' ').trim().slice(0, 240)
+  const detail = providerCause(failure instanceof Error ? failure.message : failure)
   return new AppError(
     'STORAGE_FAILURE',
-    `Durable storage is unavailable${detail === '' ? '' : ` (${detail})`}; reopen Braid to continue`,
+    `Durable storage is unavailable${detail === undefined ? '' : ` (${detail})`}; reopen Braid to continue`,
   )
 }
 

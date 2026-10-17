@@ -243,6 +243,8 @@ test('a durable terminal event declines racing run output without latching stora
     })
   // LIVE-07: a cancellation's outcome and the provider stream's own end raced; storage refused the
   // second terminal write and the refused write latched the application read-only until restart.
+  // Each late event arrives at the next expected sequence, so the second outcome is mapped to
+  // `run.finished` and reaches the journal's decline check instead of the sequence-gap path.
   const late = async (app: Awaited<ReturnType<typeof open>>, runId: string, suffix: string) => {
     const run = app.state().runs.find((candidate) => candidate.id === runId)
     assert.ok(run)
@@ -252,19 +254,24 @@ test('a durable terminal event declines racing run output without latching stora
       {
         type: 'final',
         task: { id: runId, intent: 'late outcome' },
-        status: 'failed',
-        reason: 'late provider failure',
-        error: { kind: 'backend', message: 'late provider failure' },
+        status: 'cancelled',
+        reason: 'cancellation settled after the stream ended',
         timestamp: '2026-10-16T00:00:01.000Z',
       },
-    ].entries())
-      await app.ingestRuntimeEvent({
+    ].entries()) {
+      const result = await app.ingestRuntimeEvent({
         runId,
         eventId: `late-${suffix}-${index}`,
-        sequence: sequence + index,
+        sequence,
         receivedAt: '2026-10-16T00:00:01.000Z',
         event: event as never,
       })
+      assert.deepEqual(result, { accepted: true, duplicate: false })
+      assert.equal(
+        app.state().runs.find((candidate) => candidate.id === runId)?.lastProviderSequence,
+        sequence - 1,
+      )
+    }
   }
 
   let app = await open()

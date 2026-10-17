@@ -431,12 +431,7 @@ export function providerEventFor(
       return {
         kind: 'run.error',
         runId,
-        message:
-          (event.error === undefined
-            ? providerHttpFailureDiagnostic(event.message)
-            : runtimeFailureCode(event.error, '')) ||
-          providerCause(event.message) ||
-          'RUNTIME_BACKEND_ERROR',
+        message: backendFailureMessage(event.message, event.error),
         recoverable: event.recoverable,
         provider,
       }
@@ -544,6 +539,22 @@ export function providerEventFor(
         provider,
       }
   }
+}
+
+/**
+ * A backend error's stable code and its cause in one line.
+ *
+ * Runtime's typed HTTP status gives the class; the provider's own words follow it unless the
+ * message already produced that code, so a status cannot hide the error that explains it.
+ */
+function backendFailureMessage(
+  message: string | undefined,
+  detail: { readonly status?: unknown; readonly message?: unknown } | undefined,
+): string {
+  const parsed = providerHttpFailureDiagnostic(message)
+  const code = detail === undefined ? parsed : runtimeFailureCode(detail, '') || undefined
+  if (code === undefined) return providerCause(message) ?? 'RUNTIME_BACKEND_ERROR'
+  return parsed === undefined ? (providerFailureReason(code, message) ?? code) : code
 }
 
 /**

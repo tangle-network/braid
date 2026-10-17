@@ -834,7 +834,12 @@ function cohortUsage(attempts) {
 function cohortAccountFailures(usage) {
   const failures = []
   if (!usage.complete) {
-    failures.push('cohort account usage delta was unavailable or unknown')
+    const period = usage.delta.periodChanged
+    failures.push(
+      period === undefined
+        ? 'cohort account usage delta was unavailable or unknown'
+        : `cohort account usage delta spans the daily usage reset (${period.before} to ${period.after})`,
+    )
     return failures
   }
   for (const field of ACCOUNT_USAGE_FIELDS) {
