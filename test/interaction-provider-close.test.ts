@@ -764,13 +764,14 @@ test('a background run permission answer reaches the provider through the durabl
   const root = await mkdtemp(join(tmpdir(), 'braid-background-permission-'))
   const workspace = join(root, 'workspace')
   const keyPath = join(root, 'database.key')
+  const credentialStore = new MemoryCredentialStore()
   const open = (execution: ExecutionPort) =>
     createDurableBraidApplication({
       path: join(root, 'braid.sqlite'),
       storageRoot: root,
       workspaceRoot: workspace,
       databaseKeySource: { type: 'file' as const, path: keyPath, workspaceRoot: workspace },
-      credentialStore: new MemoryCredentialStore(),
+      credentialStore,
       profile: DETERMINISTIC_PROFILE,
       ids: new SequenceIds(),
       execution,
