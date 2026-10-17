@@ -610,6 +610,10 @@ The cohort also reports observed tokens, costs, active-resource deltas, and expl
 
 The command fails when a cloud identity repeats, an account changes, evidence is missing, or one owned resource remains.
 
+The protected command also requires the cohort's account-wide active Sandbox count to return to its value before the canary.
+
+That count includes every workload on the execution account, so `LIVE-07` needs an account that nothing else uses during the proof; a failure names the delta and both counts.
+
 The multirun proof creates two independent conversations, streams both retained runs concurrently, and switches focus to each run.
 
 It closes the activity browser before sending cancellation to the selected run.

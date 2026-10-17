@@ -15,8 +15,13 @@ import {
   trackProcessTree,
   waitForTreeGone,
 } from '../live-bridge/process-tree.mjs'
-import { pause } from '../live-demo/terminal.mjs'
-import { countProtectedWork, observeOwnedSandbox, protectedSpan } from '../proof-tools.mjs'
+import { pause, typeText } from '../live-demo/terminal.mjs'
+import {
+  countProtectedWork,
+  observeOwnedSandbox,
+  protectedSpan,
+  redactString,
+} from '../proof-tools.mjs'
 import { liveEvidenceBindingFromEnvironment } from '../release/live-evidence-binding.mjs'
 import { connectionConfiguration } from './configuration.mjs'
 import { safeJson, safeMessage } from './contracts.mjs'
@@ -30,6 +35,14 @@ import {
   readRetainedWorkspaceFile,
   retainedBox,
 } from './tangle-sandbox-braid-stress.mjs'
+import {
+  argument,
+  configurationEnvironment,
+  permissionFormAnswer,
+  positiveEnvironment,
+  RELEASE_TEST_PURPOSE,
+  withoutEnvironment,
+} from './tangle-sandbox-braid-stress-support.mjs'
 import { createTerminalOutputTracker, waitForTerminalQuiescence } from './terminal-quiescence.mjs'
 import { workspaceRequestFor } from './workspace-request.mjs'
 
@@ -63,35 +76,6 @@ const SECRET_ENVIRONMENT_NAMES = [
   'TANGLE_API_KEY',
 ]
 
-function argument(name, argv = process.argv) {
-  const index = argv.indexOf(`--${name}`)
-  return index >= 0 && index + 1 < argv.length ? argv[index + 1] : undefined
-}
-
-function positiveEnvironment(environment, name, fallback) {
-  const value = Number(environment[name])
-  return Number.isFinite(value) && value > 0 ? value : fallback
-}
-
-function configurationEnvironment(environment) {
-  if (
-    !environment.BRAID_TANGLE_SANDBOX_CREDENTIAL_REF &&
-    !environment.BRAID_TANGLE_SANDBOX_AUTH &&
-    !environment.BRAID_TANGLE_SANDBOX_API_KEY &&
-    !environment.BRAID_TANGLE_SANDBOX_BEARER &&
-    environment.TANGLE_API_KEY
-  ) {
-    return { ...environment, BRAID_TANGLE_SANDBOX_API_KEY: environment.TANGLE_API_KEY }
-  }
-  return environment
-}
-
-function sanitizedEnvironment(environment) {
-  const child = { ...environment }
-  for (const name of SECRET_ENVIRONMENT_NAMES) delete child[name]
-  return child
-}
-
 export function sandboxConfiguration(environment) {
   return connectionConfiguration(configurationEnvironment(environment), {
     prefix: 'BRAID_TANGLE_SANDBOX',
@@ -122,12 +106,14 @@ function markerPathFor(marker) {
 
 export function promptFor(marker, holdSeconds) {
   return [
+    RELEASE_TEST_PURPOSE,
+    'It checks that two conversations can run at the same time and keep separate results.',
     'Use the current Tangle Sandbox working directory for every command in this turn.',
     `Write exactly ${marker} followed by a newline to ${markerPathFor(marker)}.`,
     `Read ${markerPathFor(marker)} and report the result before sleep as contents=${marker} on one line. Do not print the file contents as a bare line or code block.`,
     'Run git -C . rev-parse --is-inside-work-tree and print its result.',
-    `Run sleep ${holdSeconds} before the final response so another branch can stream concurrently.`,
-    `After sleep, reply with exactly ${marker}.`,
+    `Run sleep ${holdSeconds} before the final response, so the test can observe this run and the other conversation's run active at the same time.`,
+    `After sleep, reply with exactly ${marker} on its own line.`,
   ].join(' ')
 }
 
@@ -287,6 +273,9 @@ function createTerminal(
     },
     screen: () => screenFrom(terminal),
     snapshot: () => ({ screen: screenFrom(terminal), outputBytes: Buffer.byteLength(output) }),
+    /** Receipts for the permissions this terminal answered, in order. */
+    permissions: [],
+    waitForStable,
     captureState,
     close,
     dispose,
@@ -304,6 +293,9 @@ export function terminalFailureEvidence(runtime) {
   }
 }
 
+/** A proof failure that more polling cannot change; waitFor rethrows it at once. */
+class ProofRefusal extends Error {}
+
 async function waitFor(label, predicate, timeoutMs) {
   const deadline = performance.now() + timeoutMs
   let lastError
@@ -313,6 +305,7 @@ async function waitFor(label, predicate, timeoutMs) {
       const value = await predicate()
       if (value) return value
     } catch (error) {
+      if (error instanceof ProofRefusal) throw error
       lastError = error
     }
     if (performance.now() >= deadline) {
@@ -353,9 +346,33 @@ export async function sendCancellationAfterActivityBrowserDismissal(runtime, lab
 const ACTIVITY_DOWN = '\u001b[B'
 const ACTIVITY_UP = '\u001b[A'
 
-async function focusRunFromActivityBrowser(runtime, runId, direction, label, timeoutMs) {
+/**
+ * Open the activity browser as a user does, answering a permission form that opens over the
+ * terminal first and pressing F2 again once it is gone: at 59aff2c a form appeared just after F2,
+ * took the key, and the browser wait sat behind it for 300s.
+ */
+async function openActivityBrowser(runtime, label, timeoutMs) {
+  await settlePermissions(runtime, timeoutMs)
   runtime.input('\u001bOQ')
-  await waitFor(`${label} activity browser`, () => /activity/iu.test(runtime.screen()), timeoutMs)
+  let pressedAt = performance.now()
+  await waitFor(
+    `${label} activity browser`,
+    async () => {
+      if (/activity/iu.test(runtime.screen())) return true
+      const frame = await runtime.captureState(timeoutMs)
+      const answered = await answerPendingPermissions(runtime, frame, timeoutMs)
+      if (answered || performance.now() - pressedAt > 3_000) {
+        runtime.input('\u001bOQ')
+        pressedAt = performance.now()
+      }
+      return false
+    },
+    timeoutMs,
+  )
+}
+
+async function focusRunFromActivityBrowser(runtime, runId, direction, label, timeoutMs) {
+  await openActivityBrowser(runtime, label, timeoutMs)
   runtime.input('\t')
   await pause(100)
   runtime.input(direction)
@@ -371,11 +388,104 @@ async function focusRunFromActivityBrowser(runtime, runId, direction, label, tim
   return frame
 }
 
-async function typeAndSubmit(runtime, value) {
-  for (const character of value) {
-    runtime.input(character)
-    await pause(2)
+/**
+ * Answer each permission a run raises through its terminal form, the way a user answers it, and
+ * keep a receipt. A model may ask for a command the prompt did not name (LIVE-07: an exploratory
+ * `ls` in branch A). The open form takes the composer, so an unanswered one swallowed branch B's
+ * prompt and branch A waited out the permission.
+ */
+async function answerPendingPermissions(runtime, frame, timeoutMs) {
+  const refused = runtime.permissions.find((receipt) => !receipt.answerable)
+  if (refused !== undefined)
+    throw new ProofRefusal(`The proof cannot answer a ${refused.kind} request`)
+  // Keys typed while the activity browser is open go to the browser; answer once it closes.
+  if (activityBrowserOpen(runtime.screen())) return false
+  let answered = false
+  // The form on screen is the head of the queue; answer in queue order so receipts match it.
+  const queue = [...(frame?.view?.interactions ?? [])].sort(
+    (left, right) => (left.queuePosition ?? 0) - (right.queuePosition ?? 0),
+  )
+  for (const interaction of queue) {
+    const { interactionId } = interaction
+    if (runtime.permissions.some((receipt) => receipt.interactionId === interactionId)) continue
+    const answer = permissionFormAnswer(interaction)
+    const command = interaction.request?.subject?.input?.command
+    // `accepted` turns true only once the form leaves the queue after the typed answer.
+    const receipt = {
+      runId: interaction.runId,
+      interactionId,
+      kind: interaction.kind,
+      subject: interaction.subject?.title ?? null,
+      ...(typeof command === 'string'
+        ? { commandPreview: redactString(command).slice(0, 240) }
+        : {}),
+      answerable: answer !== undefined,
+      accepted: false,
+    }
+    runtime.permissions.push(receipt)
+    if (answer === undefined)
+      throw new ProofRefusal(`The proof cannot answer a ${interaction.kind} request`)
+    await runtime.waitForStable(1_000).catch(() => undefined)
+    // Clear anything a racing prompt left in the form, then enter the answer in one paste.
+    const clear = `${CURSOR_LINE_END}${DELETE_TO_LINE_START}`
+    runtime.input(`${clear}${bracketedPaste(JSON.stringify(answer))}\r`)
+    // The form closes before Braid journals the response, and it also leaves the queue when the
+    // request expires: wait for the journal to settle it, and accept only a recorded response.
+    const outcome = await waitFor(
+      'permission answer',
+      async () => {
+        const settled = permissionOutcome(await runtime.captureState(timeoutMs), interactionId)
+        return settled === 'unsettled' ? undefined : settled
+      },
+      timeoutMs,
+    )
+    if (outcome !== 'responded')
+      throw new ProofRefusal(`Braid did not accept the typed permission answer (${outcome})`)
+    receipt.accepted = true
+    answered = true
   }
+  return answered
+}
+
+/** How Braid's journal settled one permission: a recorded response, a cancellation, or neither. */
+export function permissionOutcome(frame, interactionId) {
+  let outcome = 'unsettled'
+  for (const event of frame?.events ?? []) {
+    const payload = event?.payload ?? {}
+    const id = payload.interactionId ?? payload.value?.interactionId ?? payload.interaction?.id
+    if (id !== interactionId) continue
+    if (['run.interaction.response.requested', 'run.interaction.responded'].includes(event.kind))
+      return 'responded'
+    if (event.kind === 'run.interaction.cancelled')
+      outcome = `cancelled: ${payload.interaction?.reason ?? 'unknown reason'}`
+  }
+  return outcome
+}
+
+async function settlePermissions(runtime, timeoutMs) {
+  await answerPendingPermissions(runtime, await runtime.captureState(timeoutMs), timeoutMs)
+}
+
+const CURSOR_LINE_END = '\u0005'
+const DELETE_TO_LINE_START = '\u0015'
+
+function bracketedPaste(value) {
+  return `\u001b[200~${value}\u001b[201~`
+}
+
+/**
+ * Send a prompt the way a user pastes it: one input event, so a permission form that opens while it
+ * arrives cannot take its tail (LIVE-07 at 48da449 lost 547 of 870 typed characters to a form).
+ */
+async function pasteAndSubmit(runtime, value, timeoutMs) {
+  await settlePermissions(runtime, timeoutMs)
+  // The paste and its Enter share one write, so no form can open between them.
+  runtime.input(`${bracketedPaste(value)}\r`)
+}
+
+async function typeAndSubmit(runtime, value, timeoutMs) {
+  await settlePermissions(runtime, timeoutMs)
+  await typeText(runtime, value, 2)
   runtime.input('\r')
 }
 
@@ -384,6 +494,7 @@ async function waitForFrame(runtime, label, predicate, timeoutMs) {
     label,
     async () => {
       const frame = await runtime.captureState(timeoutMs)
+      if (await answerPendingPermissions(runtime, frame, timeoutMs)) return undefined
       return predicate(frame) ? frame : undefined
     },
     timeoutMs,
@@ -423,10 +534,37 @@ function isActive(status) {
   return !TERMINAL_STATUSES.has(status)
 }
 
+/**
+ * One provider event legitimately backs a row in several activity families (its `event:` row, an
+ * `activity:` row, an answered permission's `interaction:` row), so a duplicate is the same source
+ * event twice within one family or one message part list.
+ */
+function eventKeysForRun(frame, runId) {
+  const activityKeys = (frame?.view?.activity ?? [])
+    .filter((item) => item.runId === runId && typeof item.sourceEventId === 'string')
+    .map((item) => `${String(item.id).split(':')[0]}:${item.sourceEventId}`)
+  const partKeys = (frame?.view?.messages ?? [])
+    .filter((message) => message.runId === runId)
+    .flatMap((message) => message.parts ?? [])
+    .map((part) => part.sourceEventId)
+    .filter((value) => typeof value === 'string')
+    .map((value) => `part:${value}`)
+  return [...activityKeys, ...partKeys]
+}
+
+function repeatedEventKeys(frame, runId) {
+  const keys = eventKeysForRun(frame, runId)
+  return keys.filter((key, index) => keys.indexOf(key) !== index)
+}
+
 function assertUniqueEventIds(frame, runId, phase) {
   const ids = eventIdsForRun(frame, runId)
   assert.ok(ids.length > 0, `${phase} did not expose provider event identities for ${runId}`)
-  assert.equal(ids.length, new Set(ids).size, `${phase} duplicated provider events for ${runId}`)
+  assert.deepEqual(
+    repeatedEventKeys(frame, runId),
+    [],
+    `${phase} duplicated provider events for ${runId}`,
+  )
   return [...new Set(ids)]
 }
 
@@ -822,7 +960,10 @@ export async function runProof({
     config = await phase('workspace.prepare', () =>
       prepareProductionWorkspace({
         repository: targetRepository,
-        environment: sanitizedEnvironment(configurationEnvironment(environment)),
+        environment: withoutEnvironment(
+          configurationEnvironment(environment),
+          SECRET_ENVIRONMENT_NAMES,
+        ),
         kind: values.kind,
         endpoint: values.endpoint,
         model: values.model,
@@ -844,7 +985,7 @@ export async function runProof({
     const firstBranch = firstFrame.state.branchId
     await phase('branch-a.send', async () => {
       proofWindow?.assertAdmission()
-      await typeAndSubmit(runtime, promptFor(markerA, holdSeconds))
+      await pasteAndSubmit(runtime, promptFor(markerA, holdSeconds), timeoutMs)
       firstFrame = await waitForFrame(
         runtime,
         'branch A admission',
@@ -883,7 +1024,7 @@ export async function runProof({
       assertUniqueEventIds(firstFrame, runAId, 'branch A stream')
     })
     await phase('conversation-b.create', async () => {
-      await typeAndSubmit(runtime, `/new ${markerB} conversation`)
+      await typeAndSubmit(runtime, `/new ${markerB} conversation`, timeoutMs)
       secondFrame = await waitForFrame(
         runtime,
         'conversation B creation',
@@ -902,7 +1043,7 @@ export async function runProof({
     assert.notEqual(secondBranch, firstBranch, 'independent conversations reused the branch id')
     await phase('branch-b.send', async () => {
       proofWindow?.assertAdmission()
-      await typeAndSubmit(runtime, promptFor(markerB, holdSeconds))
+      await pasteAndSubmit(runtime, promptFor(markerB, holdSeconds), timeoutMs)
       secondFrame = await waitForFrame(
         runtime,
         'branch B admission',
@@ -954,8 +1095,7 @@ export async function runProof({
     const focusedBefore = secondFrame.view.focusedRunId
     assert.equal(focusedBefore, runBId, 'newly admitted branch B was not foreground')
     await phase('focus-a', async () => {
-      runtime.input('\u001bOQ')
-      await waitFor('activity browser', () => /activity/iu.test(runtime.screen()), timeoutMs)
+      await openActivityBrowser(runtime, 'focus branch A', timeoutMs)
       runtime.input('\t')
       await pause(100)
       runtime.input('\u001b[B')
@@ -974,8 +1114,7 @@ export async function runProof({
     })
     terminalEvidence.focusA = runtime.snapshot()
     await phase('focus-b', async () => {
-      runtime.input('\u001bOQ')
-      await waitFor('activity browser again', () => /activity/iu.test(runtime.screen()), timeoutMs)
+      await openActivityBrowser(runtime, 'focus branch B', timeoutMs)
       runtime.input('\t')
       await pause(100)
       runtime.input('\u001b[A')
@@ -992,6 +1131,7 @@ export async function runProof({
     })
     terminalEvidence.focusB = runtime.snapshot()
     await phase('cancel-b.dispatch', async () => {
+      await settlePermissions(runtime, timeoutMs)
       await sendCancellationAfterActivityBrowserDismissal(runtime, 'branch B', timeoutMs)
       cancelDispatchFrame = await waitForFrame(
         runtime,
@@ -1265,7 +1405,7 @@ export async function runProof({
         cursor: viewRun?.cursor ?? null,
         contentBytes: viewRun?.contentBytes ?? null,
         eventCount: events.length,
-        eventIdsUnique: events.length === new Set(events).size,
+        eventIdsUnique: frame === undefined || repeatedEventKeys(frame, runId).length === 0,
         identifiers: controlRef === undefined ? [] : identifiersForControl(controlRef),
       }
     }),
@@ -1321,10 +1461,7 @@ export async function runProof({
       noDuplicateEventIds:
         restartedFrame === undefined
           ? false
-          : [...runIds].every((runId) => {
-              const events = eventIdsForRun(restartedFrame, runId)
-              return events.length === new Set(events).size
-            }),
+          : [...runIds].every((runId) => repeatedEventKeys(restartedFrame, runId).length === 0),
       eventSetsStable:
         finalFrame !== undefined &&
         restartedFrame !== undefined &&
@@ -1338,6 +1475,7 @@ export async function runProof({
       columns: DEFAULT_COLUMNS,
       rows: DEFAULT_ROWS,
       phases: terminalEvidence,
+      permissions: [...(runtime?.permissions ?? []), ...(restarted?.permissions ?? [])],
     },
     identifiers,
     timings,

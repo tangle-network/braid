@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { createHash, randomBytes } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { dirname, posix, resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   NetworkError,
@@ -22,6 +22,7 @@ import {
   resolveBinary,
 } from './headless.mjs'
 import {
+  argument,
   assertEnvironmentIdentity,
   assertExclusiveResume,
   assertNonTerminalRun,
@@ -30,20 +31,29 @@ import {
   assertSameCloudSession,
   assertSameControlRef,
   assertUniqueVisibleEvents,
+  configurationEnvironment,
   errorDetails,
+  isMissingWorkspaceFileError,
   latestCursorFromResponses,
   MissingIntegrationError,
+  positiveEnvironment,
   proofCoordinates,
   proofInteractionTimeline,
+  RELEASE_TEST_PURPOSE,
   resourceDelta,
   rpcRoundTrip,
   runObservations,
+  runOutcomeSuffix,
+  sandboxWorkspaceRelativePath,
+  sessionWorkspaceFilePath,
+  shellQuote,
   stateRoundTrip,
   terminalStatus,
   waitForControlIdentity,
   waitForRequestState,
   waitForTerminal,
   waitForWorkspaceToolEvents,
+  withoutEnvironment,
   workspaceToolEvents,
 } from './tangle-sandbox-braid-stress-support.mjs'
 import { workspaceRequestFor } from './workspace-request.mjs'
@@ -65,35 +75,6 @@ const SECRET_ENVIRONMENT_NAMES = [
   'BRAID_TANGLE_SANDBOX_CLEANUP_API_KEY',
   'TANGLE_API_KEY',
 ]
-
-function argument(name, argv = process.argv) {
-  const index = argv.indexOf(`--${name}`)
-  return index >= 0 && index + 1 < argv.length ? argv[index + 1] : undefined
-}
-
-function numberEnvironment(environment, name, fallback) {
-  const value = Number(environment[name])
-  return Number.isFinite(value) && value > 0 ? value : fallback
-}
-
-function sanitizedEnvironment(environment) {
-  const child = { ...environment }
-  for (const name of SECRET_ENVIRONMENT_NAMES) delete child[name]
-  return child
-}
-
-function configurationEnvironment(environment) {
-  if (
-    !environment.BRAID_TANGLE_SANDBOX_CREDENTIAL_REF &&
-    !environment.BRAID_TANGLE_SANDBOX_AUTH &&
-    !environment.BRAID_TANGLE_SANDBOX_API_KEY &&
-    !environment.BRAID_TANGLE_SANDBOX_BEARER &&
-    environment.TANGLE_API_KEY
-  ) {
-    return { ...environment, BRAID_TANGLE_SANDBOX_API_KEY: environment.TANGLE_API_KEY }
-  }
-  return environment
-}
 
 function sandboxClient(values) {
   // Direct verification must use the value installed under this proof's
@@ -127,44 +108,6 @@ function continuityChallengePath(coordinates) {
 
 function continuityResponsePath(coordinates) {
   return `.braid-live/${coordinates.proofId}/continuity-response.txt`
-}
-
-export function sandboxWorkspaceRelativePath(path) {
-  const normalized = path.startsWith('./') ? path.slice(2) : path
-  const segments = normalized.split('/')
-  if (
-    normalized.length === 0 ||
-    path.startsWith('/') ||
-    path.includes('\\') ||
-    segments.some((segment) => segment.length === 0 || segment === '.' || segment === '..')
-  ) {
-    throw new Error('Sandbox workspace path must be a contained relative path')
-  }
-  return normalized
-}
-
-/**
- * The absolute path of a workspace file as the session's shell sees it.
- *
- * A relative Sandbox file read or write resolves from the sandbox home (`/home/agent`), while the
- * session works in the requested workspace: the repository checkout below it (`/home/agent/braid`
- * for the Braid repository). Proof files the agent reads or writes must use the session's path.
- */
-export async function sessionWorkspaceFilePath(box, controlRef, path) {
-  const relativePath = sandboxWorkspaceRelativePath(path)
-  const observed = await box.exec(
-    'pwd',
-    controlRef?.sessionId === undefined ? undefined : { sessionId: controlRef.sessionId },
-  )
-  const cwd = typeof observed?.stdout === 'string' ? observed.stdout.trim() : ''
-  const exitCode = observed?.exitCode ?? observed?.code
-  if (exitCode !== 0 || !cwd.startsWith('/') || /[\r\n\0]/u.test(cwd)) {
-    throw new MissingIntegrationError(
-      'Could not observe the session workspace for a Sandbox file path',
-      { environmentId: box?.id },
-    )
-  }
-  return posix.join(cwd, relativePath)
 }
 
 function sha256(value) {
@@ -345,10 +288,6 @@ export function continuityDigestMatches(value, expectedDigest) {
   return value === expectedDigest || value === `${expectedDigest}\n`
 }
 
-function shellQuote(value) {
-  return `'${String(value).replaceAll("'", "'\\''")}'`
-}
-
 function proofPrompts(coordinates, holdMs) {
   const path = workspaceMarkerPath(coordinates)
   const challengePath = continuityChallengePath(coordinates)
@@ -369,18 +308,21 @@ function proofPrompts(coordinates, holdMs) {
     commands,
     readPaths: { first: [path], followUp: [responsePath], cancel: [path] },
     first: [
+      RELEASE_TEST_PURPOSE,
       'Use the current Tangle Sandbox working directory for every command in this turn.',
       'Run these exact shell commands as three separate tool calls, in order. Do not combine or alter them:',
       ...commands.first.map((command, index) => `${index + 1}.\n\`\`\`sh\n${command}\n\`\`\``),
       `Reply with exactly ${coordinates.marker}.`,
     ].join('\n\n'),
     followUp: [
+      RELEASE_TEST_PURPOSE,
       'Use the existing Tangle Sandbox workspace.',
       `Perform exactly these two actions, in order, with no other command or file change: run this one shell command once: ${commands.followUp[0]}; then use the read tool to read ${responsePath} once.`,
       `Do not read, write, truncate, rename, or delete ${challengePath}; do not run the shell command again.`,
       'Reply with only the lowercase 64-character digest from the response file.',
     ].join(' '),
     cancel: [
+      RELEASE_TEST_PURPOSE,
       'Keep working in the same Tangle Sandbox workspace.',
       'Run these exact shell commands as separate tool calls, in order. Do not combine or alter them:',
       ...commands.cancel.map((command, index) => `${index + 1}.\n\`\`\`sh\n${command}\n\`\`\``),
@@ -425,13 +367,6 @@ export async function readRetainedWorkspaceFile(
     throw error
   }
   return { environmentId: box.id, path: relativePath, value }
-}
-
-function isMissingWorkspaceFileError(error) {
-  const status = error?.status ?? error?.statusCode
-  if (status === 404 || status === '404') return true
-  if (error?.code === 'NOT_FOUND' || error?.name === 'NotFoundError') return true
-  return /\b(?:enoent|no such file|file not found)\b/iu.test(error?.message ?? '')
 }
 
 export function providerWorkspaceReadbackEvidence(
@@ -1488,17 +1423,17 @@ export async function runBraidSandboxStress({
   const baseCoordinates = proofCoordinates()
   const coordinates = baseCoordinates
   const ids = operationIds(coordinates.proofId)
-  const holdMs = numberEnvironment(
+  const holdMs = positiveEnvironment(
     environment,
     'BRAID_TANGLE_SANDBOX_STRESS_HOLD_MS',
     DEFAULT_HOLD_MS,
   )
-  const timeoutMs = numberEnvironment(
+  const timeoutMs = positiveEnvironment(
     environment,
     'BRAID_LIVE_REQUIRED_TIMEOUT_MS',
     DEFAULT_TIMEOUT_MS,
   )
-  const idleTtlSeconds = numberEnvironment(
+  const idleTtlSeconds = positiveEnvironment(
     environment,
     'BRAID_TANGLE_SANDBOX_IDLE_TTL_SECONDS',
     DEFAULT_IDLE_TTL_SECONDS,
@@ -1619,7 +1554,7 @@ export async function runBraidSandboxStress({
     config = await phase('workspace', () =>
       prepareProductionWorkspace({
         repository: suppliedRepository,
-        environment: sanitizedEnvironment(environment),
+        environment: withoutEnvironment(environment, SECRET_ENVIRONMENT_NAMES),
         ...values,
         workspaceRequest: workspaceRequestFor(environment),
         providerOptions: { lifecycle: RETAINED_LIFECYCLE, idleTtlSeconds },
@@ -1758,10 +1693,11 @@ export async function runBraidSandboxStress({
       ),
     )
     const freshRun = freshTerminal.run
+    const freshOutcome = await runOutcomeSuffix(suppliedRepository, freshRun)
     assert.equal(
       freshRun?.status,
       'completed',
-      `reconnected run ended ${freshRun?.status ?? 'missing'}`,
+      `reconnected run ended ${freshRun?.status ?? 'missing'}${freshOutcome}`,
     )
     assert.equal(
       hasSingleMarkerLine(
@@ -1822,7 +1758,12 @@ export async function runBraidSandboxStress({
     const followUpTerminal = await phase('followUp.waitTerminal', () =>
       waitForTerminal(freshSession, followUpRunId, timeoutMs, permissionPolicy('followUp')),
     )
-    assert.equal(followUpTerminal.run?.status, 'completed')
+    const followUpOutcome = await runOutcomeSuffix(suppliedRepository, followUpTerminal.run)
+    assert.equal(
+      followUpTerminal.run?.status,
+      'completed',
+      `follow-up run ended ${followUpTerminal.run?.status ?? 'missing'}${followUpOutcome}`,
+    )
     assert.equal(
       hasSingleMarkerLine(
         assistantMarker(followUpTerminal.response.state, followUpRunId),

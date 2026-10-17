@@ -326,6 +326,8 @@ If storage fails, ingestion stops, the cursor does not advance, and the interfac
 
 An event duplicate is acknowledged by its existing unique key and produces no second reducer transition.
 
+A run's first durable terminal event closes its output. A later output event or a second outcome for that run, such as a provider's own end racing a confirmed cancellation, is declined before it is reduced, with the same post-terminal rule storage enforces (`canAppendAfterTerminal` in `src/ports/storage.ts`); it is not a storage failure.
+
 A sequence gap pauses reduction for that run and requests replay from the last committed cursor.
 
 If the provider cannot fill the gap, the run becomes incomplete with an explicit missing range and the transcript is never presented as complete.

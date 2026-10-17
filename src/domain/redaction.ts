@@ -10,7 +10,7 @@ import {
 import type { AnalysisRecord } from './entities.js'
 import { isEventId, isMessageId, isMessagePartId } from './ids.js'
 import { persistedContextTransferEventRequest } from './portable-context-persistence.js'
-import { safeProviderDiagnostic } from './provider-values.js'
+import { providerCause, safeDiagnostic } from './provider-values.js'
 
 export const MAX_PROFILE_BYTES = 16 * 1024 * 1024
 export const MAX_CONVERSATION_IMPORT_EVENT_BYTES = 4 * 1024 * 1024
@@ -96,9 +96,28 @@ function publicModelMetadata(value: unknown): Readonly<Record<string, unknown>> 
   }
 }
 
+/**
+ * An error's own words, through the one credential redactor and bounded to one line.
+ *
+ * A typed error leads with its code. Collapsing every message that was not a bare code to
+ * `PROVIDER_ERROR` hid causes: LIVE-07's exit printed only `PROVIDER_ERROR` for a latched storage
+ * failure whose message named the run and the refused write. A `SyntaxError` keeps only its code:
+ * `JSON.parse` quotes the rejected source text, which may hold an unrecognized secret.
+ */
 export function redactProviderError(error: unknown): string {
-  const message = error instanceof Error ? error.message : error
-  return safeProviderDiagnostic(message, 'PROVIDER_ERROR')
+  const message =
+    error instanceof SyntaxError
+      ? ''
+      : error instanceof Error
+        ? error.message
+        : typeof error === 'string'
+          ? error
+          : ''
+  const code =
+    error instanceof Error ? safeDiagnostic((error as { readonly code?: unknown }).code, '') : ''
+  const cause = providerCause(message)
+  if (cause === undefined) return code || 'PROVIDER_ERROR'
+  return code === '' || cause.startsWith(code) ? cause : `${code}: ${cause}`
 }
 
 function recordValue(value: unknown): Record<string, unknown> | undefined {

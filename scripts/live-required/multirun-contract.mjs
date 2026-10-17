@@ -362,6 +362,17 @@ export function assertMultirunProof(proof) {
     'LIVE-07 multirun cleanup retained its temporary workspace',
   )
 
+  // Older v3 artifacts predate permission receipts; a recorded receipt must show its answer landed.
+  const permissions = proof.terminal?.permissions
+  assert(
+    permissions === undefined ||
+      (Array.isArray(permissions) &&
+        permissions.every(
+          (receipt) => object(receipt) && text(receipt.interactionId) && receipt.accepted === true,
+        )),
+    'LIVE-07 multirun proof left a permission unanswered or unaccepted',
+  )
+
   assert(object(proof.phases), 'LIVE-07 multirun phase evidence is missing')
   for (const phase of REQUIRED_PHASES)
     assert(proof.phases[phase]?.status === 'passed', `LIVE-07 multirun phase ${phase} did not pass`)

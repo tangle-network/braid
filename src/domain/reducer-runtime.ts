@@ -71,11 +71,11 @@ export function reduceRuntimeEvent(state: BraidState, envelope: BraidEventEnvelo
       case 'run.interaction.responded':
       case 'run.provider.event':
       case 'run.finished':
-        return reduceInteractionEvent(state, event, base)
+        return reduceInteractionEvent(state, event, base, envelope.occurredAt)
       case 'run.environment.observed':
         return applyExecutionObservation(state, event, envelope.occurredAt)
       case 'run.status.changed':
-        return reduceInteractionEvent(state, event, base)
+        return reduceInteractionEvent(state, event, base, envelope.occurredAt)
       case 'run.reconciled':
         return reduceLifecycleEvent(state, event, base, envelope.occurredAt)
       default: {

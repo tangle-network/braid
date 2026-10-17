@@ -286,6 +286,27 @@ export interface StorageFactoryOptions {
   readonly maxQueuedTransactions?: number
 }
 
+const POST_TERMINAL_SIDEBAND_EVENT_KINDS: ReadonlySet<string> = new Set([
+  'interaction.automation.audited',
+  'replay.cursor.advanced',
+  'run.cancel.requested',
+  'run.control.acknowledged',
+  'run.control.requested',
+  'run.focused',
+  'run.interaction.responded',
+  'run.interaction.response.requested',
+  'run.queue.removed',
+  'run.reconciled',
+])
+
+/**
+ * A terminal event closes run output, not commands already racing with it.
+ * These events record command settlement or local navigation without reopening output.
+ */
+export function canAppendAfterTerminal(event: Pick<JournalEvent, 'kind' | 'terminal'>): boolean {
+  return event.terminal !== true && POST_TERMINAL_SIDEBAND_EVENT_KINDS.has(event.kind)
+}
+
 export function isJsonValue(value: unknown): value is JsonValue {
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return true
   if (typeof value === 'number') return Number.isFinite(value)

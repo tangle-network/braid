@@ -22,10 +22,12 @@ import {
 } from './tangle-sandbox-braid-stress.mjs'
 import {
   assertSameControlRef,
+  positiveEnvironment,
   rpcRoundTrip,
   stateRoundTrip,
   waitForControlIdentity,
   waitForTerminal,
+  withoutEnvironment,
 } from './tangle-sandbox-braid-stress-support.mjs'
 import { workspaceRequestFor } from './workspace-request.mjs'
 
@@ -72,17 +74,6 @@ const SECRET_ENVIRONMENT_NAMES = [
   'BRAID_TANGLE_SANDBOX_BEARER',
   'TANGLE_API_KEY',
 ]
-
-function positiveEnvironment(environment, name, fallback) {
-  const value = Number(environment[name])
-  return Number.isFinite(value) && value > 0 ? value : fallback
-}
-
-function sanitizedEnvironment(environment) {
-  const child = { ...environment }
-  for (const name of SECRET_ENVIRONMENT_NAMES) delete child[name]
-  return child
-}
 
 function assertAck(result, command) {
   const response = result.response
@@ -503,7 +494,7 @@ export async function runCloudInteractionProof({
       throw new Error('cloud interaction proof installed another release candidate')
     config = await prepareProductionWorkspace({
       repository,
-      environment: sanitizedEnvironment(environment),
+      environment: withoutEnvironment(environment, SECRET_ENVIRONMENT_NAMES),
       kind: values.kind,
       endpoint: values.endpoint,
       model: values.model,

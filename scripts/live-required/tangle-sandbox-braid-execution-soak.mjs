@@ -15,7 +15,10 @@ import {
 } from './headless.mjs'
 import { DEFAULT_TANGLE_ROUTER_MODEL } from './model-defaults.mjs'
 import {
+  argument,
+  boundedInteger,
   environmentForRun,
+  percentile,
   resourceDelta,
   runObservations,
 } from './tangle-sandbox-braid-stress-support.mjs'
@@ -26,24 +29,6 @@ const DEFAULT_RUNS = 3
 const DEFAULT_CONCURRENCY = 2
 const MAX_RUNS = 20
 const MAX_CONCURRENCY = 4
-
-function argument(name, argv = process.argv) {
-  const index = argv.indexOf(`--${name}`)
-  return index >= 0 && index + 1 < argv.length ? argv[index + 1] : undefined
-}
-
-function boundedInteger(value, fallback, maximum, name) {
-  const parsed = value === undefined ? fallback : Number(value)
-  if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > maximum) {
-    throw new Error(`${name} must be an integer from 1 through ${maximum}`)
-  }
-  return parsed
-}
-
-function percentile(sorted, ratio) {
-  if (sorted.length === 0) return null
-  return sorted[Math.max(0, Math.ceil(sorted.length * ratio) - 1)]
-}
 
 export function executionLatencyDistribution(attempts) {
   const sorted = attempts

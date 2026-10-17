@@ -3,7 +3,14 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { safeJson, safeMessage } from './contracts.mjs'
 import { runBraidSandboxStress } from './tangle-sandbox-braid-stress.mjs'
-import { resourceDelta } from './tangle-sandbox-braid-stress-support.mjs'
+import {
+  argument,
+  awaitUsagePeriodRoom,
+  boundedInteger,
+  percentile,
+  record,
+  resourceDelta,
+} from './tangle-sandbox-braid-stress-support.mjs'
 import {
   captureTangleComparison,
   prepareTangleComparison,
@@ -45,10 +52,6 @@ const CONTROL_REF_FIELDS = [
   'requestDigest',
 ]
 const RUN_SNAPSHOT_NAMES = ['first', 'resumed', 'followUp', 'cancelled']
-
-function record(value) {
-  return value !== null && typeof value === 'object' && !Array.isArray(value) ? value : undefined
-}
 
 function nonEmptyString(value) {
   return typeof value === 'string' && value.length > 0
@@ -212,7 +215,11 @@ function addUsageFailures(failures, proof, label, maxConcurrentRuns, aggregate =
   for (const field of ACCOUNT_USAGE_FIELDS.slice(1)) {
     const value = delta?.[field]
     if (!finiteNonNegative(value)) {
-      failures.push(`${label} account ${field} delta was unknown`)
+      failures.push(
+        delta?.periodChanged === undefined
+          ? `${label} account ${field} delta was unknown`
+          : `${label} account ${field} delta spans the daily usage reset (${delta.periodChanged.before} to ${delta.periodChanged.after})`,
+      )
       continue
     }
     if (proof?.cleanup?.activeResourceDeltaRequired !== true) continue
@@ -726,24 +733,6 @@ export function proofFailures(proof, { maxConcurrentRuns = 1 } = {}) {
   return [...new Set(failures)]
 }
 
-function argument(name, argv = process.argv) {
-  const index = argv.indexOf(`--${name}`)
-  return index >= 0 && index + 1 < argv.length ? argv[index + 1] : undefined
-}
-
-function boundedInteger(value, fallback, maximum, label) {
-  const parsed = value === undefined ? fallback : Number(value)
-  if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > maximum) {
-    throw new Error(`${label} must be an integer from 1 through ${maximum}`)
-  }
-  return parsed
-}
-
-function percentile(sorted, ratio) {
-  if (sorted.length === 0) return null
-  return sorted[Math.max(0, Math.ceil(sorted.length * ratio) - 1)]
-}
-
 function distribution(values) {
   const sorted = values.filter(Number.isFinite).toSorted((left, right) => left - right)
   if (sorted.length === 0) return { n: 0, min: null, median: null, p90: null, max: null }
@@ -845,7 +834,12 @@ function cohortUsage(attempts) {
 function cohortAccountFailures(usage) {
   const failures = []
   if (!usage.complete) {
-    failures.push('cohort account usage delta was unavailable or unknown')
+    const period = usage.delta.periodChanged
+    failures.push(
+      period === undefined
+        ? 'cohort account usage delta was unavailable or unknown'
+        : `cohort account usage delta spans the daily usage reset (${period.before} to ${period.after})`,
+    )
     return failures
   }
   for (const field of ACCOUNT_USAGE_FIELDS) {
@@ -967,6 +961,7 @@ export async function runBraidSandboxSoak({
   )
   if (afterCanary !== undefined && (requestedRuns !== 3 || requestedConcurrency !== 2))
     throw new Error('Post-canary overlap requires the frozen three-proof, two-worker cohort')
+  await awaitUsagePeriodRoom()
   const startedAt = new Date().toISOString()
   const comparison = await prepareTangleComparison(environment, requestedRuns, requestedConcurrency)
   const comparableAttempts = new Map()

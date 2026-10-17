@@ -8,6 +8,7 @@ import {
   proofInvocation,
   proofReceipt,
   safeJson,
+  safeMessage,
   scalarMeasurement,
 } from './contracts.mjs'
 import {
@@ -146,8 +147,31 @@ export function sandboxSoakDiagnostic(cohort) {
             : soakFailureCategory(failure, fingerprint),
         failureHttpStatus: fingerprint.httpStatus,
         failureCode: fingerprint.code,
+        // The failure's own words, redacted and bounded: a category alone left LIVE-07 failures without a cause.
+        failureMessage:
+          failure === undefined || failure === null
+            ? null
+            : String(safeMessage(failure?.message ?? failure)).slice(0, 400),
         lastCompletedPhase: phases.lastCompletedPhase,
         failedPhase: phases.failedPhase,
+        // What the proof declined (redacted previews), so a model variant outside its exact
+        // operations is named; LIVE-07 at 92284cb ended a turn after an unnamed decline.
+        declinedPermissions: (proof?.permissionReceipts ?? [])
+          .filter((receipt) => receipt?.declined !== undefined)
+          .slice(0, 8)
+          .map(({ declined }) => ({
+            tool: declined.toolName ?? null,
+            command:
+              typeof declined.commandPreview === 'string'
+                ? String(safeMessage(declined.commandPreview)).slice(0, 240)
+                : null,
+            path:
+              typeof declined.pathPreview === 'string'
+                ? String(safeMessage(declined.pathPreview)).slice(0, 240)
+                : null,
+          })),
+        permissionWorkspace:
+          typeof proof?.permissionWorkspace === 'string' ? proof.permissionWorkspace : null,
         ...proofRunFailure(failure),
         firstRunAdmitted:
           progress === undefined || progress === null
@@ -181,6 +205,44 @@ export function sandboxSoakDiagnostic(cohort) {
       }
     }),
   }
+}
+
+/** Each LIVE-07 cohort exactness requirement that failed, with the values that failed it. */
+function cohortExactnessFailures(cohort) {
+  const failures = []
+  const requested = cohort.requestedRuns
+  if (!Number.isSafeInteger(requested) || requested < MINIMUM_SANDBOX_STRESS_RUNS)
+    failures.push(
+      `requested ${requested ?? 'unknown'} proofs, minimum ${MINIMUM_SANDBOX_STRESS_RUNS}`,
+    )
+  if (cohort.attemptedRuns !== requested)
+    failures.push(`attempted ${cohort.attemptedRuns ?? 'unknown'} of ${requested} proofs`)
+  if (
+    !Number.isSafeInteger(cohort.concurrency) ||
+    cohort.concurrency < MINIMUM_SANDBOX_STRESS_CONCURRENCY
+  )
+    failures.push(
+      `concurrency was ${cohort.concurrency ?? 'unknown'}, minimum ${MINIMUM_SANDBOX_STRESS_CONCURRENCY}`,
+    )
+  if (!Array.isArray(cohort.attempts) || cohort.attempts.length !== requested)
+    failures.push(`recorded ${cohort.attempts?.length ?? 'no'} of ${requested} attempts`)
+  const cleanup = cohort.cleanup
+  if (cleanup?.exactProofs !== requested)
+    failures.push(
+      `${cleanup?.exactProofs ?? 'unknown'} of ${requested} proofs confirmed exact owned-resource cleanup`,
+    )
+  if (cleanup?.exactResourcesRemaining !== 0)
+    failures.push(
+      `${cleanup?.exactResourcesRemaining ?? 'an unknown number of'} owned resources remained`,
+    )
+  if (cleanup?.activeResourceDelta !== 0) {
+    const before = cohort.accountUsage?.before?.activeSandboxes ?? 'unknown'
+    const after = cohort.accountUsage?.after?.activeSandboxes ?? 'unknown'
+    failures.push(
+      `account active-Sandbox delta was ${cleanup?.activeResourceDelta ?? 'unknown'} (${before} before the canary, ${after} after the last cleanup); the count is account-wide, so another workload on the same Sandbox account moves it too`,
+    )
+  }
+  return failures
 }
 
 function requiredMeasurement(row, result) {
@@ -357,20 +419,15 @@ export async function runSandbox({
       `LIVE-07 Braid Tangle Sandbox stress failed: ${unresolved ?? 'no failure details'}`,
     )
   }
-  if (
-    !Number.isSafeInteger(cohort.requestedRuns) ||
-    cohort.requestedRuns < MINIMUM_SANDBOX_STRESS_RUNS ||
-    cohort.attemptedRuns !== cohort.requestedRuns ||
-    !Number.isSafeInteger(cohort.concurrency) ||
-    cohort.concurrency < MINIMUM_SANDBOX_STRESS_CONCURRENCY ||
-    !Array.isArray(cohort.attempts) ||
-    cohort.attempts.length !== cohort.requestedRuns ||
-    cohort.cleanup?.exactProofs !== cohort.requestedRuns ||
-    cohort.cleanup?.exactResourcesRemaining !== 0 ||
-    cohort.cleanup?.activeResourceDelta !== 0
-  ) {
+  const exactness = cohortExactnessFailures(cohort)
+  if (exactness.length > 0) {
+    // A failed overlapped sibling can explain an account delta, so its cause travels with this one.
+    const sibling =
+      overlappedMultirun?.status === 'rejected'
+        ? `; the overlapped multirun proof also failed: ${overlappedMultirun.reason?.message ?? overlappedMultirun.reason}`
+        : ''
     throw new Error(
-      'LIVE-07 requires at least three complete cloud proofs, two-way concurrency, and exact zero-resource cleanup',
+      `LIVE-07 requires at least three complete cloud proofs, two-way concurrency, and exact zero-resource cleanup: ${exactness.join('; ')}${sibling}`,
     )
   }
   const proof = cohort.attempts?.find((attempt) => attempt.index === 0)?.proof
