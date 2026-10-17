@@ -60,7 +60,14 @@ const readJson = (file) => {
 }
 
 function parseArgs(argv) {
-  const o = { runs: 3, host: 'beelink1', gh: 'gh', keyDir: '~/.braid-live', hours: 10, dryRun: false }
+  const o = {
+    runs: 3,
+    host: 'beelink1',
+    gh: 'gh',
+    keyDir: '~/.braid-live',
+    hours: 10,
+    dryRun: false,
+  }
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i]
     const value = () => argv[++i] ?? fail(`${flag} needs a value`)
@@ -118,7 +125,12 @@ async function observe(keyDir) {
   const newest = Math.max(0, ...live.map(created))
   const ageMin = newest === 0 ? Number.POSITIVE_INFINITY : (Date.now() - newest) / MINUTE
   const ids = createHash('sha256')
-    .update(live.map((box) => box.id).sort().join(','))
+    .update(
+      live
+        .map((box) => box.id)
+        .sort()
+        .join(','),
+    )
     .digest('hex')
     .slice(0, 12)
   const usage = await client.usage()
@@ -161,9 +173,14 @@ function summarize(logFile, receiptsFile, evidenceDir, since) {
     for (const attempt of r.attempts ?? []) {
       const message = attempt?.proof?.failure?.message
       if (message)
-        line('ATTEMPT', `${name} #${attempt.index} ${attempt.status ?? attempt?.proof?.status}: ${message}`, 900)
+        line(
+          'ATTEMPT',
+          `${name} #${attempt.index} ${attempt.status ?? attempt?.proof?.status}: ${message}`,
+          900,
+        )
     }
-    for (const receipt of r.terminal?.permissions ?? []) line('PERMISSION', `${name} ${JSON.stringify(receipt)}`, 500)
+    for (const receipt of r.terminal?.permissions ?? [])
+      line('PERMISSION', `${name} ${JSON.stringify(receipt)}`, 500)
   }
 }
 
@@ -215,10 +232,15 @@ async function liveRun(n, keyDir) {
   const start = Date.now()
   const code = await new Promise((resolve) => {
     const out = fs.openSync(logFile, 'w')
-    const child = spawn('node', ['scripts/live-required.mjs', 'live-tangle'], { env, stdio: ['ignore', out, out] })
+    const child = spawn('node', ['scripts/live-required.mjs', 'live-tangle'], {
+      env,
+      stdio: ['ignore', out, out],
+    })
     child.on('close', (c) => resolve(c ?? 1))
   })
-  console.log(`live-tangle rc=${code} seconds=${Math.round((Date.now() - start) / 1000)} end=${now()}`)
+  console.log(
+    `live-tangle rc=${code} seconds=${Math.round((Date.now() - start) / 1000)} end=${now()}`,
+  )
   const evidenceDir = 'artifacts/verification/live'
   summarize(logFile, receipts, evidenceDir, start)
   // Keep the raw log and receipts beside the keys (owner-only) for later reading.
@@ -260,15 +282,22 @@ class Driver {
 
   async gh(args) {
     const r = await run(this.o.gh, args)
-    if (r.code !== 0) throw new Error(`${this.o.gh} ${args.slice(0, 3).join(' ')} failed: ${r.out.trim().slice(0, 300)}`)
+    if (r.code !== 0)
+      throw new Error(
+        `${this.o.gh} ${args.slice(0, 3).join(' ')} failed: ${r.out.trim().slice(0, 300)}`,
+      )
     return r.out.trim()
   }
 
   gate(sha, command, log) {
     const { host } = this.o
-    return run('beelink-gate', ['--pin-host', '--retry', '60', '--summary', host, REPO_URL, sha, '--', ...command], {
-      log,
-    })
+    return run(
+      'beelink-gate',
+      ['--pin-host', '--retry', '60', '--summary', host, REPO_URL, sha, '--', ...command],
+      {
+        log,
+      },
+    )
   }
 
   async observe() {
@@ -278,9 +307,13 @@ class Driver {
       `exec node --input-type=module - observe --key-dir ${this.o.keyDir}`,
     ].join(' && ')
     const source = fs.readFileSync(new URL(import.meta.url), 'utf8')
-    const r = await run('timeout', ['120', 'ssh', '-o', 'ConnectTimeout=20', '-o', 'BatchMode=yes', this.o.ssh, remote], {
-      input: source,
-    })
+    const r = await run(
+      'timeout',
+      ['120', 'ssh', '-o', 'ConnectTimeout=20', '-o', 'BatchMode=yes', this.o.ssh, remote],
+      {
+        input: source,
+      },
+    )
     return r.out.trim().split('\n').at(-1) ?? ''
   }
 
@@ -302,24 +335,47 @@ class Driver {
   async unreadReviews(pr) {
     const me = await this.gh(['api', 'user', '--jq', '.login'])
     const human = `select(.user.login!="${me}" and .user.type!="Bot" and ((.body // "")|test("Auto-approved PR")|not))`
-    const count = (endpoint, filter) => this.gh(['api', endpoint, '--paginate', '--jq', `[.[]|${filter}]|length`])
+    const count = (endpoint, filter) =>
+      this.gh(['api', endpoint, '--paginate', '--jq', `[.[]|${filter}]|length`])
     const counts = [
       await count(`repos/${REPO}/issues/${pr}/comments?since=${this.t0}`, human),
-      await count(`repos/${REPO}/pulls/${pr}/reviews`, `select(.submitted_at>"${this.t0}")|${human}`),
+      await count(
+        `repos/${REPO}/pulls/${pr}/reviews`,
+        `select(.submitted_at>"${this.t0}")|${human}`,
+      ),
       await count(`repos/${REPO}/pulls/${pr}/comments?since=${this.t0}`, human),
     ]
-    return counts.reduce((sum, value) => sum + value.split('\n').map(Number).reduce((a, b) => a + b, 0), 0)
+    return counts.reduce(
+      (sum, value) =>
+        sum +
+        value
+          .split('\n')
+          .map(Number)
+          .reduce((a, b) => a + b, 0),
+      0,
+    )
   }
 
   async comment(pr, name, body) {
     const file = path.join(this.dir, name)
     fs.writeFileSync(file, body)
-    if (!this.o.dryRun) await this.gh(['pr', 'comment', String(pr), '-R', REPO, '--body-file', file])
+    if (!this.o.dryRun)
+      await this.gh(['pr', 'comment', String(pr), '-R', REPO, '--body-file', file])
   }
 
   async waitRun(id) {
     while (Date.now() < this.deadline) {
-      const s = await this.gh(['run', 'view', String(id), '-R', REPO, '--json', 'status,conclusion', '--jq', '.status+" "+.conclusion']).catch(() => '')
+      const s = await this.gh([
+        'run',
+        'view',
+        String(id),
+        '-R',
+        REPO,
+        '--json',
+        'status,conclusion',
+        '--jq',
+        '.status+" "+.conclusion',
+      ]).catch(() => '')
       if (s.startsWith('completed')) return s.slice('completed '.length)
       await sleep(45_000)
     }
@@ -334,9 +390,24 @@ class Driver {
     await this.gh(args)
     for (let i = 0; i < 12; i++) {
       await sleep(10_000)
-      const id = await this.gh(['run', 'list', '-R', REPO, '--workflow', workflow, '-L', '10', '--json', 'databaseId,createdAt', '--jq', `[.[]|select(.createdAt>"${after}")]|last|.databaseId // empty`])
+      const id = await this.gh([
+        'run',
+        'list',
+        '-R',
+        REPO,
+        '--workflow',
+        workflow,
+        '-L',
+        '10',
+        '--json',
+        'databaseId,createdAt',
+        '--jq',
+        `[.[]|select(.createdAt>"${after}")]|last|.databaseId // empty`,
+      ])
       if (id) {
-        this.log(`${workflow} ${JSON.stringify(fields)} https://github.com/${REPO}/actions/runs/${id}`)
+        this.log(
+          `${workflow} ${JSON.stringify(fields)} https://github.com/${REPO}/actions/runs/${id}`,
+        )
         const conclusion = await this.waitRun(id)
         this.log(`${workflow} run ${id}: ${conclusion}`)
         return { id, conclusion }
@@ -347,15 +418,31 @@ class Driver {
 
   // The LIVE-07 runs execute this file inside the gate checkout, so the PR head must contain it.
   hasLiveRun(sha) {
-    return this.gh(['api', `repos/${REPO}/contents/scripts/release/live-release.mjs?ref=${sha}`, '--jq', '.sha'])
+    return this.gh([
+      'api',
+      `repos/${REPO}/contents/scripts/release/live-release.mjs?ref=${sha}`,
+      '--jq',
+      '.sha',
+    ])
       .then(() => true)
       .catch(() => false)
   }
 
   async preflight() {
-    const files = Object.values(KEY_FILES).map((f) => `${this.o.keyDir}/${f}`).join(' ')
-    const r = await run('ssh', ['-o', 'ConnectTimeout=20', '-o', 'BatchMode=yes', this.o.ssh, `stat -c '%a %n' ${files}`])
-    this.log(`credential files on ${this.o.ssh}: ${r.code === 0 ? r.out.trim().replace(/\n/g, ', ') : `missing (${r.out.trim()})`}`)
+    const files = Object.values(KEY_FILES)
+      .map((f) => `${this.o.keyDir}/${f}`)
+      .join(' ')
+    const r = await run('ssh', [
+      '-o',
+      'ConnectTimeout=20',
+      '-o',
+      'BatchMode=yes',
+      this.o.ssh,
+      `stat -c '%a %n' ${files}`,
+    ])
+    this.log(
+      `credential files on ${this.o.ssh}: ${r.code === 0 ? r.out.trim().replace(/\n/g, ', ') : `missing (${r.out.trim()})`}`,
+    )
     if (r.code !== 0 || r.out.split('\n').some((l) => l && !l.startsWith('600 '))) return false
     this.log(`account now: ${await this.observe()}`)
     return true
@@ -366,7 +453,17 @@ class Driver {
     let sha = o.commit
     let pr
     if (o.pr !== undefined) {
-      pr = JSON.parse(await this.gh(['pr', 'view', String(o.pr), '-R', REPO, '--json', 'headRefOid,state,isDraft,baseRefName']))
+      pr = JSON.parse(
+        await this.gh([
+          'pr',
+          'view',
+          String(o.pr),
+          '-R',
+          REPO,
+          '--json',
+          'headRefOid,state,isDraft,baseRefName',
+        ]),
+      )
       if (pr.state !== 'OPEN') fail(`PR #${o.pr} is ${pr.state}`)
       sha = pr.headRefOid
     }
@@ -397,13 +494,19 @@ class Driver {
         'release.yml publish=true live_evidence_run_id; read the npm latest dist-tag',
       ]
       for (const [i, step] of steps.entries()) console.log(`  ${i + 1}. ${step}`)
-      this.finish(`dry run for ${target}: preflight ${ok ? 'ok' : 'FAILED'}; nothing dispatched`, ok ? 0 : 1)
+      this.finish(
+        `dry run for ${target}: preflight ${ok ? 'ok' : 'FAILED'}; nothing dispatched`,
+        ok ? 0 : 1,
+      )
     }
-    if (!(await this.preflight())) this.finish('preflight failed: credential files missing or not owner-only')
+    if (!(await this.preflight()))
+      this.finish('preflight failed: credential files missing or not owner-only')
 
     let commit = sha
     if (pr && !(await this.hasLiveRun(sha)))
-      this.finish(`PR #${o.pr} head ${sha} lacks scripts/release/live-release.mjs; merge main into it first`)
+      this.finish(
+        `PR #${o.pr} head ${sha} lacks scripts/release/live-release.mjs; merge main into it first`,
+      )
     if (pr) commit = await this.verifyAndMerge(o.pr, sha)
     await this.release(commit)
   }
@@ -411,10 +514,17 @@ class Driver {
   async verifyAndMerge(number, sha) {
     const gateLog = path.join(this.dir, 'gate.log')
     const gate = await this.gate(sha, ['bash', '-c', CODE_GATE], gateLog)
-    const receipt = gate.out.split('\n').filter((l) => l.includes('beelink-gate receipt')).at(-1) ?? ''
+    const receipt =
+      gate.out
+        .split('\n')
+        .filter((l) => l.includes('beelink-gate receipt'))
+        .at(-1) ?? ''
     this.log(`code gate rc=${gate.code} ${receipt.slice(0, 300)}`)
     if (gate.code !== 0) this.finish(`code gate failed rc=${gate.code} at ${sha}; see ${gateLog}`)
-    const summary = gate.out.split('\n').filter((l) => /^ℹ (tests|pass|fail)|-OK$/.test(l)).slice(0, 20)
+    const summary = gate.out
+      .split('\n')
+      .filter((l) => /^ℹ (tests|pass|fail)|-OK$/.test(l))
+      .slice(0, 20)
     await this.comment(
       number,
       'gate-comment.md',
@@ -426,9 +536,26 @@ class Driver {
       const before = await this.waitSettled()
       if (before === undefined) break
       const log = path.join(this.dir, `run${n}.log`)
-      const r = await this.gate(sha, ['node', 'scripts/release/live-release.mjs', 'live-run', String(n), '--key-dir', this.o.keyDir], log)
+      const r = await this.gate(
+        sha,
+        [
+          'node',
+          'scripts/release/live-release.mjs',
+          'live-run',
+          String(n),
+          '--key-dir',
+          this.o.keyDir,
+        ],
+        log,
+      )
       const after = await this.observe()
-      runs.push({ n, code: r.code, before, after, lines: r.out.split('\n').filter((l) => REPORT_LINE.test(l)) })
+      runs.push({
+        n,
+        code: r.code,
+        before,
+        after,
+        lines: r.out.split('\n').filter((l) => REPORT_LINE.test(l)),
+      })
       this.log(`LIVE-07 run ${n} rc=${r.code}; account after: ${after}`)
       if (r.code !== 0) break
     }
@@ -439,57 +566,125 @@ class Driver {
       'live-comment.md',
       [
         `LIVE-07 consecutive runs at \`${sha}\` on ${this.o.host} (\`node scripts/live-required.mjs live-tangle\`, protected config, via \`scripts/release/live-release.mjs\`), each started only after the shared Sandbox account settled: **${passes}/${this.o.runs} passed** (${runs.length} attempted; stops at the first LIVE-07 failure).`,
-        ...(settledOut ? ['', 'The Sandbox account did not settle before the deadline, so the remaining runs did not start.'] : []),
-        ...runs.flatMap((r) => ['', `Run ${r.n}. Account before: \`${r.before}\`. After: \`${r.after}\`.`, '```', ...r.lines.map((l) => l.slice(0, 1500)).slice(0, 40), '```']),
+        ...(settledOut
+          ? [
+              '',
+              'The Sandbox account did not settle before the deadline, so the remaining runs did not start.',
+            ]
+          : []),
+        ...runs.flatMap((r) => [
+          '',
+          `Run ${r.n}. Account before: \`${r.before}\`. After: \`${r.after}\`.`,
+          '```',
+          ...r.lines.map((l) => l.slice(0, 1500)).slice(0, 40),
+          '```',
+        ]),
       ].join('\n'),
     )
     if (passes < this.o.runs) this.finish(`LIVE-07 ${passes}/${this.o.runs} at ${sha}; not merged`)
 
-    const head = await this.gh(['pr', 'view', String(number), '-R', REPO, '--json', 'headRefOid', '--jq', '.headRefOid'])
-    if (head !== sha) this.finish(`head moved to ${head} after LIVE-07 passed at ${sha}; not merged`)
+    const head = await this.gh([
+      'pr',
+      'view',
+      String(number),
+      '-R',
+      REPO,
+      '--json',
+      'headRefOid',
+      '--jq',
+      '.headRefOid',
+    ])
+    if (head !== sha)
+      this.finish(`head moved to ${head} after LIVE-07 passed at ${sha}; not merged`)
     let unread = await this.unreadReviews(number)
-    if (unread > 0) this.finish(`${unread} human review(s) or comment(s) on #${number} since ${this.t0}; read them first; not merged`)
-    await this.gh(['pr', 'ready', String(number), '-R', REPO]).catch((e) => this.log(String(e.message)))
+    if (unread > 0)
+      this.finish(
+        `${unread} human review(s) or comment(s) on #${number} since ${this.t0}; read them first; not merged`,
+      )
+    await this.gh(['pr', 'ready', String(number), '-R', REPO]).catch((e) =>
+      this.log(String(e.message)),
+    )
     await sleep(5 * MINUTE)
     unread = await this.unreadReviews(number)
-    if (unread > 0) this.finish(`${unread} review(s) or comment(s) arrived after ready; read them first; not merged`)
+    if (unread > 0)
+      this.finish(
+        `${unread} review(s) or comment(s) arrived after ready; read them first; not merged`,
+      )
     const mergeEnd = Date.now() + 60 * MINUTE
     for (;;) {
-      const m = await run(this.o.gh, ['pr', 'merge', String(number), '-R', REPO, '--squash', '--match-head-commit', sha])
+      const m = await run(this.o.gh, [
+        'pr',
+        'merge',
+        String(number),
+        '-R',
+        REPO,
+        '--squash',
+        '--match-head-commit',
+        sha,
+      ])
       if (m.code === 0) break
       this.log(`merge refused: ${m.out.trim().slice(0, 300)}`)
       if (Date.now() >= mergeEnd) this.finish(`merge refused for 60 min at ${sha}`)
       await sleep(10 * MINUTE)
     }
     await sleep(15_000)
-    const merged = await this.gh(['pr', 'view', String(number), '-R', REPO, '--json', 'mergeCommit', '--jq', '.mergeCommit.oid'])
+    const merged = await this.gh([
+      'pr',
+      'view',
+      String(number),
+      '-R',
+      REPO,
+      '--json',
+      'mergeCommit',
+      '--jq',
+      '.mergeCommit.oid',
+    ])
     this.log(`merged #${number} as ${merged}`)
     return merged
   }
 
   async release(commit) {
     const candidate = await this.dispatch('release.yml', { commit, publish: 'false' })
-    if (candidate.conclusion !== 'success') this.finish(`candidate ${candidate.id} for ${commit} ended ${candidate.conclusion}; not published`)
+    if (candidate.conclusion !== 'success')
+      this.finish(
+        `candidate ${candidate.id} for ${commit} ended ${candidate.conclusion}; not published`,
+      )
     let evidence
     for (let attempt = 1; attempt <= 2; attempt++) {
       const settled = await this.waitSettled()
-      if (settled === undefined) this.finish(`candidate ${candidate.id} passed; account never settled for live evidence; not published`)
-      evidence = await this.dispatch('release-live-evidence.yml', { commit, candidate_run_id: candidate.id })
+      if (settled === undefined)
+        this.finish(
+          `candidate ${candidate.id} passed; account never settled for live evidence; not published`,
+        )
+      evidence = await this.dispatch('release-live-evidence.yml', {
+        commit,
+        candidate_run_id: candidate.id,
+      })
       if (evidence.conclusion === 'success') break
     }
-    if (evidence.conclusion !== 'success') this.finish(`live evidence ${evidence.id} ended ${evidence.conclusion} twice; not published`)
-    const publish = await this.dispatch('release.yml', { commit, publish: 'true', live_evidence_run_id: evidence.id })
-    if (publish.conclusion !== 'success') this.finish(`publish ${publish.id} ended ${publish.conclusion}`)
+    if (evidence.conclusion !== 'success')
+      this.finish(`live evidence ${evidence.id} ended ${evidence.conclusion} twice; not published`)
+    const publish = await this.dispatch('release.yml', {
+      commit,
+      publish: 'true',
+      live_evidence_run_id: evidence.id,
+    })
+    if (publish.conclusion !== 'success')
+      this.finish(`publish ${publish.id} ended ${publish.conclusion}`)
     const latest = await fetch('https://registry.npmjs.org/@tangle-network/braid')
       .then((r) => r.json())
       .then((r) => r['dist-tags']?.latest)
       .catch(() => 'unknown')
-    this.finish(`published ${commit}: npm latest ${latest}; publish run https://github.com/${REPO}/actions/runs/${publish.id}`, 0)
+    this.finish(
+      `published ${commit}: npm latest ${latest}; publish run https://github.com/${REPO}/actions/runs/${publish.id}`,
+      0,
+    )
   }
 }
 
 const [mode, ...rest] = process.argv.slice(2)
-const keyDirArg = (args) => (args.includes('--key-dir') ? args[args.indexOf('--key-dir') + 1] : '~/.braid-live')
+const keyDirArg = (args) =>
+  args.includes('--key-dir') ? args[args.indexOf('--key-dir') + 1] : '~/.braid-live'
 if (mode === 'observe') await observe(keyDirArg(rest))
 else if (mode === 'live-run') await liveRun(Number(rest[0]) || 1, keyDirArg(rest))
 else await new Driver(parseArgs(process.argv.slice(2))).main()
