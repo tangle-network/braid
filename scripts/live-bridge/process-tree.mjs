@@ -7,7 +7,6 @@ const pollMs = 25
 const procRoot = '/proc'
 const processTreeToken = 'BRAID_PROCESS_TREE_TOKEN'
 const processTreeTrackers = new WeakMap()
-const ownershipObservationTimeoutMs = 1_000
 const defaultTermTimeoutMs = 2_000
 const defaultKillTimeoutMs = 2_000
 
@@ -169,6 +168,25 @@ function readOwnershipMarker(pid, token) {
   }
 }
 
+let ownInitialEnvironment
+
+// Between fork and exec a child still shows this process's initial environment block, and it may
+// not have left this process's group yet. A missing marker means "not exec'd yet" only while the
+// two blocks are identical; once the child has exec'd, the marker must be there.
+function readRootOwnership(pid, token) {
+  let environment
+  try {
+    environment = readFileSync(procFile(pid, 'environ'))
+  } catch (error) {
+    if (error?.code === 'ENOENT' || error?.code === 'ESRCH') return undefined
+    throw error
+  }
+  if (environment.toString('utf8').split('\0').includes(`${processTreeToken}=${token}`))
+    return 'marked'
+  ownInitialEnvironment ??= readFileSync(procFile('self', 'environ'))
+  return environment.equals(ownInitialEnvironment) ? 'before-exec' : 'unmarked'
+}
+
 function descendants(records, roots) {
   const childrenByParent = new Map()
   for (const record of records.values()) {
@@ -215,7 +233,6 @@ class PosixProcessTreeTracker {
     this.rootObserved = false
     this.rootStartTime = undefined
     this.ownerGroupId = undefined
-    this.ownershipDeadline = Date.now() + ownershipObservationTimeoutMs
     this.released = false
     this.failure = undefined
     this.observeRoot()
@@ -230,12 +247,10 @@ class PosixProcessTreeTracker {
       return
     }
     let root
-    let marker
     try {
       root = processStat(this.rootPid)
-      marker = readOwnershipMarker(this.rootPid, this.token)
     } catch (error) {
-      this.failure = `The POSIX process ownership marker could not be read: ${errorMessage(error)}`
+      this.failure = `The POSIX process could not be inspected: ${errorMessage(error)}`
       return
     }
     if (root === undefined) {
@@ -243,13 +258,30 @@ class PosixProcessTreeTracker {
       return
     }
     this.rootStartTime = root.startTime
+    this.entries.set(root.pid, { ...root, depth: 0 })
+  }
+
+  // Ownership is settled only after exec, when the child has also left this process's group, so
+  // the group recorded here is the child's own and never the parent's.
+  observeOwnership(root) {
+    let ownership
+    try {
+      ownership = readRootOwnership(this.rootPid, this.token)
+    } catch (error) {
+      this.failure = `The POSIX process ownership marker could not be read: ${errorMessage(error)}`
+      return
+    }
+    if (ownership === undefined || ownership === 'before-exec') return
+    if (ownership !== 'marked') {
+      this.failure = 'The POSIX process did not retain its ownership marker'
+      return
+    }
     this.ownerGroupId = numericPid(root.processGroup)
     if (this.ownerGroupId === undefined) {
       this.failure = `The POSIX process ${this.rootPid} has no valid process group`
       return
     }
-    this.entries.set(root.pid, { ...root, depth: 0 })
-    if (marker === true) this.rootObserved = true
+    this.rootObserved = true
   }
 
   refresh() {
@@ -270,21 +302,12 @@ class PosixProcessTreeTracker {
         this.failure = 'The POSIX process exited before ownership was observed'
         return
       }
-      let marker
-      try {
-        marker = readOwnershipMarker(this.rootPid, this.token)
-      } catch (error) {
-        this.failure = `The POSIX process ownership marker could not be read: ${errorMessage(error)}`
+      if (root.startTime !== this.rootStartTime) {
+        this.failure = 'The POSIX owner PID was reused before ownership was observed'
         return
       }
-      if (marker !== true) {
-        if (Date.now() >= this.ownershipDeadline) {
-          this.failure = 'The POSIX process did not retain its ownership marker'
-        }
-        return
-      }
-      this.rootObserved = true
-      this.rootStartTime = root.startTime
+      this.observeOwnership(root)
+      if (!this.rootObserved) return
     } else if (root !== undefined && root.startTime !== this.rootStartTime) {
       this.failure = 'The POSIX owner PID was reused before cleanup completed'
       return
