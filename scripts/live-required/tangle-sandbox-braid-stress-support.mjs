@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { createHash, randomUUID } from 'node:crypto'
-import { posix } from 'node:path'
+import { join, posix } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import {
   AgentExactRunControlRefSchema,
   validateInteractionAnswer,
@@ -1125,6 +1126,28 @@ export function terminalStatus(run) {
 }
 
 // Helpers shared by the live-required Sandbox proofs. Each proof imports them from here instead of keeping a copy.
+
+/**
+ * Why a run that should have completed did not, in Braid's own words (`runOutcomeDetail`), so the
+ * failed proof names its cause. A reconnected LIVE-07 run once ended unknown with no detail, which
+ * left a status read past its deadline indistinguishable from a provider that lost the run.
+ */
+export async function runOutcomeSuffix(repository, run) {
+  if (run === undefined || run === null || run.status === 'completed') return ''
+  try {
+    const owner = pathToFileURL(join(repository, 'dist/domain/provider-values.js')).href
+    const { runOutcomeDetail } = await import(owner)
+    const detail = runOutcomeDetail({
+      status: run.status,
+      activity: Array.isArray(run.activity) ? run.activity : [],
+      error: run.error,
+      terminalReason: run.terminalReason,
+    })
+    return detail === undefined ? '' : `: ${redactString(detail)}`
+  } catch (error) {
+    return ` (outcome detail unavailable: ${redactString(String(error?.message ?? error))})`
+  }
+}
 
 export function argument(name, argv = process.argv) {
   const index = argv.indexOf(`--${name}`)

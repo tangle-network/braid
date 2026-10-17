@@ -41,6 +41,7 @@ import {
   resourceDelta,
   rpcRoundTrip,
   runObservations,
+  runOutcomeSuffix,
   sandboxWorkspaceRelativePath,
   sessionWorkspaceFilePath,
   shellQuote,
@@ -1692,10 +1693,11 @@ export async function runBraidSandboxStress({
       ),
     )
     const freshRun = freshTerminal.run
+    const freshOutcome = await runOutcomeSuffix(suppliedRepository, freshRun)
     assert.equal(
       freshRun?.status,
       'completed',
-      `reconnected run ended ${freshRun?.status ?? 'missing'}`,
+      `reconnected run ended ${freshRun?.status ?? 'missing'}${freshOutcome}`,
     )
     assert.equal(
       hasSingleMarkerLine(
@@ -1756,7 +1758,12 @@ export async function runBraidSandboxStress({
     const followUpTerminal = await phase('followUp.waitTerminal', () =>
       waitForTerminal(freshSession, followUpRunId, timeoutMs, permissionPolicy('followUp')),
     )
-    assert.equal(followUpTerminal.run?.status, 'completed')
+    const followUpOutcome = await runOutcomeSuffix(suppliedRepository, followUpTerminal.run)
+    assert.equal(
+      followUpTerminal.run?.status,
+      'completed',
+      `follow-up run ended ${followUpTerminal.run?.status ?? 'missing'}${followUpOutcome}`,
+    )
     assert.equal(
       hasSingleMarkerLine(
         assistantMarker(followUpTerminal.response.state, followUpRunId),
