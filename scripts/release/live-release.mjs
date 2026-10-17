@@ -106,7 +106,9 @@ function fail(message) {
 // Runs a command; streams redacted output to `log` (and stdout when `echo`), returns { code, out }.
 function run(cmd, args, { input, log, echo = false } = {}) {
   return new Promise((resolve) => {
-    const child = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'pipe'] })
+    const child = spawn(cmd, args, {
+      stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
+    })
     let out = ''
     const take = (chunk) => {
       const text = redact(chunk)
@@ -118,7 +120,12 @@ function run(cmd, args, { input, log, echo = false } = {}) {
     child.stderr.on('data', take)
     child.on('error', (error) => take(`${cmd}: ${error.message}\n`))
     child.on('close', (code) => resolve({ code: code ?? 1, out }))
-    child.stdin.end(input ?? '')
+    if (input !== undefined) {
+      // A child that exits before reading its input closes the pipe (EPIPE); its exit code reports
+      // the outcome, so the write error must not crash the driver.
+      child.stdin.on('error', () => {})
+      child.stdin.end(input)
+    }
   })
 }
 
