@@ -154,6 +154,24 @@ export function sandboxSoakDiagnostic(cohort) {
             : String(safeMessage(failure?.message ?? failure)).slice(0, 400),
         lastCompletedPhase: phases.lastCompletedPhase,
         failedPhase: phases.failedPhase,
+        // What the proof declined (redacted previews), so a model variant outside its exact
+        // operations is named; LIVE-07 at 92284cb ended a turn after an unnamed decline.
+        declinedPermissions: (proof?.permissionReceipts ?? [])
+          .filter((receipt) => receipt?.declined !== undefined)
+          .slice(0, 8)
+          .map(({ declined }) => ({
+            tool: declined.toolName ?? null,
+            command:
+              typeof declined.commandPreview === 'string'
+                ? String(safeMessage(declined.commandPreview)).slice(0, 240)
+                : null,
+            path:
+              typeof declined.pathPreview === 'string'
+                ? String(safeMessage(declined.pathPreview)).slice(0, 240)
+                : null,
+          })),
+        permissionWorkspace:
+          typeof proof?.permissionWorkspace === 'string' ? proof.permissionWorkspace : null,
         ...proofRunFailure(failure),
         firstRunAdmitted:
           progress === undefined || progress === null
