@@ -4,7 +4,7 @@ import type { FeedbackDecisionRecord } from '../domain/entities-graph.js'
 import type { AutomationRuleRecord } from '../domain/entities-runtime.js'
 import type { BraidEventEnvelope } from '../domain/events.js'
 import { createFeedbackDecisionId } from '../domain/ids.js'
-import { interactionRemainingMs } from '../domain/interaction-timeout.js'
+import { interactionRemainingMs, interactionRequestedAt } from '../domain/interaction-timeout.js'
 import { type ExecutionPort, supportsInteractionResponse } from '../ports/execution.js'
 import type { JournalWriter, StateReader } from './application-ports.js'
 import type { InteractionReceipt } from './application-types.js'
@@ -293,7 +293,9 @@ export function isInteractionExpired(
   const timeoutMs = interaction.request.timeoutMs
   if (timeoutMs === undefined) return false
   const now = input.now?.() ?? new Date().toISOString()
-  return interactionRemainingMs(timeoutMs, interaction.source.occurredAt, run.startedAt, now) === 0
+  return (
+    interactionRemainingMs(timeoutMs, interactionRequestedAt(interaction), run.startedAt, now) === 0
+  )
 }
 
 function currentInteractionExpired(

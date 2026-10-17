@@ -724,6 +724,10 @@ async function backgroundPermissionFlow(
     )
     assert.equal(created.state().runs[0]?.status, 'completed')
     assert.equal(created.storageFailure(), undefined)
+    const receivedAt = created.state().runs[0]?.interactions.map((item) => item.receivedAt) ?? []
+    assert.equal(receivedAt.length, 2)
+    for (const value of receivedAt) assert.ok(value !== undefined && Number.isFinite(Date.parse(value)))
+    return receivedAt
   } finally {
     raiseFirst()
     view.stop()
@@ -743,24 +747,42 @@ test('a background run permission answer reaches the provider through the durabl
   const root = await mkdtemp(join(tmpdir(), 'braid-background-permission-'))
   const workspace = join(root, 'workspace')
   const keyPath = join(root, 'database.key')
+  const open = (execution: ExecutionPort) =>
+    createDurableBraidApplication({
+      path: join(root, 'braid.sqlite'),
+      storageRoot: root,
+      workspaceRoot: workspace,
+      databaseKeySource: { type: 'file' as const, path: keyPath, workspaceRoot: workspace },
+      credentialStore: new MemoryCredentialStore(),
+      profile: DETERMINISTIC_PROFILE,
+      ids: new SequenceIds(),
+      execution,
+    })
   try {
     await mkdir(workspace)
     await writeFile(keyPath, randomBytes(32), { mode: 0o600 })
-    await backgroundPermissionFlow(async (execution) => ({
-      app: (
-        await createDurableBraidApplication({
-          path: join(root, 'braid.sqlite'),
-          storageRoot: root,
-          workspaceRoot: workspace,
-          databaseKeySource: { type: 'file' as const, path: keyPath, workspaceRoot: workspace },
-          credentialStore: new MemoryCredentialStore(),
-          profile: DETERMINISTIC_PROFILE,
-          ids: new SequenceIds(),
-          execution,
-        })
-      ).app,
-      workspace,
-    }))
+    let first: Awaited<ReturnType<typeof open>> | undefined
+    let recorded: readonly (string | undefined)[]
+    try {
+      recorded = await backgroundPermissionFlow(async (execution) => {
+        first = await open(execution)
+        return { app: first.app, workspace }
+      })
+    } finally {
+      await first?.storage.close()
+    }
+    // Replay rebuilds each window start from the journaled provider receipt time.
+    const reopened = await open({ async *streamTurn(): AsyncIterable<BraidRuntimeEvent> {} })
+    try {
+      await reopened.app.whenDurable()
+      assert.equal(reopened.app.storageFailure(), undefined)
+      assert.deepEqual(
+        reopened.app.state().runs[0]?.interactions.map((item) => item.receivedAt),
+        recorded,
+      )
+    } finally {
+      await reopened.storage.close()
+    }
   } finally {
     await rm(root, { recursive: true, force: true })
   }

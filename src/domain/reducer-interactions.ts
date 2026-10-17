@@ -72,6 +72,9 @@ export function reduceInteractionEvent(
         responseBinding: event.responseBinding,
         runId: event.runId,
         source,
+        ...(event.provider?.receivedAt === undefined
+          ? {}
+          : { receivedAt: event.provider.receivedAt }),
         status: 'pending',
       }
       const interactions = [...run.interactions, interaction]

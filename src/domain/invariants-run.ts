@@ -162,6 +162,7 @@ function assertBraidInteraction(value: unknown, runId: string, index: number): s
     assertPublicIdentifier(value.source.cursor, `${label}.source.cursor`)
   if (value.source.occurredAt !== undefined)
     assertDate(value.source.occurredAt, `${label}.source.occurredAt`)
+  if (value.receivedAt !== undefined) assertDate(value.receivedAt, `${label}.receivedAt`)
 
   assertEntityId('run', value.runId, `${label}.runId`)
   if (value.runId !== runId) fail(`${label}.runId must match run.id`)
