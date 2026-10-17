@@ -13,7 +13,7 @@ import { sanitizeTitle } from '../shared/sanitize.js'
 import { GuardedAutocompleteProvider } from './autocomplete-guard.js'
 import type { TerminalConfigurationOptions } from './configuration-wizard-options.js'
 import { DynamicAutocompleteProvider } from './dynamic-autocomplete.js'
-import { type BraidKeymap, resolveKeymap } from './keyboard.js'
+import { type BraidKeymap, isTextInputSequence, resolveKeymap } from './keyboard.js'
 import { ModalCoordinator } from './modal-coordinator.js'
 import { TerminalCommandController } from './terminal-command-controller.js'
 import { installTerminalOutputPolicy, keyboardCompatibility } from './terminal-compatibility.js'
@@ -58,6 +58,7 @@ export class BraidTerminalApp {
   readonly #unsubscribe: () => void
   #removeInputListener: (() => void) | undefined
   #stopped = false
+  #lastComposerEditAt = 0
   #started = false
   #suspended = false
   #openConfigurationOnStart = false
@@ -167,6 +168,11 @@ export class BraidTerminalApp {
       isStopped: () => this.#stopped,
       requestRender: () => this.#tui.requestRender(),
       rows: () => this.#tui.terminal.rows,
+      composerBusy: () => this.#composerBusy(),
+      setDeferred: (notice) => {
+        this.#shell.setDeferredInteraction(notice)
+        this.#tui.requestRender()
+      },
       openAutomation: (input) => this.#overlays.openAutomation(input),
     })
     this.#input = new TerminalInputController({
@@ -180,6 +186,7 @@ export class BraidTerminalApp {
       nextOperationId: this.#nextOperationId,
       dispatch: (intent) => this.#dispatch(intent),
       interactionOpen: () => this.#interactions.isOpen,
+      openDeferredInteraction: () => this.#interactions.openDeferred(),
       stop: () => this.stop(),
       stateChanged: () => this.#render(this.#controller.view()),
     })
@@ -218,7 +225,7 @@ export class BraidTerminalApp {
   start(startupInput: readonly string[] = []): Promise<void> {
     if (this.#started) return this.#done
     this.#started = true
-    this.#removeInputListener = this.#tui.addInputListener((data) => this.#input.handle(data))
+    this.#removeInputListener = this.#tui.addInputListener((data) => this.#handleInput(data))
     if (this.#theme.terminalMetadata)
       this.#tui.terminal.setTitle(sanitizeTitle(`Braid — ${this.#workspace}`))
     if (!this.#tuiStarted) this.#tui.start()
@@ -245,7 +252,7 @@ export class BraidTerminalApp {
   resume(): void {
     if (this.#stopped || !this.#started || !this.#suspended) return
     this.#suspended = false
-    this.#removeInputListener = this.#tui.addInputListener((data) => this.#input.handle(data))
+    this.#removeInputListener = this.#tui.addInputListener((data) => this.#handleInput(data))
     this.#tui.start()
     if (this.#modals.hasOpen()) this.#modals.focusTop()
     else this.#tui.setFocus(this.#shell.editor)
@@ -277,12 +284,28 @@ export class BraidTerminalApp {
     this.#tui.requestRender()
   }
 
+  /** A focused composer with an unsent draft, or one typed into within the last 1.5 s. */
+  #composerBusy(): boolean {
+    const editor = this.#shell.editor
+    if (!editor.focused) return false
+    return editor.getText().length > 0 || Date.now() - this.#lastComposerEditAt < 1_500
+  }
+
   #submit(rawText: string): void {
+    // A sent message is not a draft in progress, so an interaction may take focus at once.
+    this.#lastComposerEditAt = 0
     this.#commands.submit(rawText)
   }
 
+  #handleInput(data: string): { consume?: boolean } | undefined {
+    // Keystrokes, not onChange: restoring a saved draft also fires onChange without any typing.
+    if (this.#shell.editor.focused && isComposerKeystroke(data))
+      this.#lastComposerEditAt = Date.now()
+    return this.#input.handle(data)
+  }
+
   #replayInput(data: string): void {
-    if (this.#input.handle(data)?.consume) return
+    if (this.#handleInput(data)?.consume) return
     if (!this.#modals.handleInput(data)) this.#shell.editor.handleInput(data)
     this.#tui.requestRender()
   }
@@ -301,4 +324,10 @@ export class BraidTerminalApp {
       return result
     })
   }
+}
+
+/** Printable text, Backspace (0x7f) or a paste; never Enter, an escape sequence or a chord. */
+function isComposerKeystroke(data: string): boolean {
+  if (isTextInputSequence(data)) return true
+  return data.length > 0 && [...data].every((char) => (char.codePointAt(0) ?? 0) >= 0x20)
 }

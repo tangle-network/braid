@@ -13,6 +13,10 @@ export interface TerminalInteractionControllerOptions {
   readonly isStopped: () => boolean
   readonly requestRender: () => void
   readonly rows: () => number
+  /** True while the composer holds an unsent draft or was typed into moments ago. */
+  readonly composerBusy: () => boolean
+  /** Shows or clears the status-line notice for an interaction held back from the composer. */
+  readonly setDeferred: (notice: string | undefined) => void
   readonly openAutomation: (input: {
     readonly interaction: InteractionView
     readonly proposedResponse: InteractionResponseValue
@@ -30,12 +34,16 @@ export class TerminalInteractionController {
   readonly #isStopped: () => boolean
   readonly #requestRender: () => void
   readonly #rows: () => number
+  readonly #composerBusy: () => boolean
+  readonly #setDeferred: (notice: string | undefined) => void
   readonly #openAutomation: TerminalInteractionControllerOptions['openAutomation']
   #open = false
   #interactionKey: string | undefined
   #pendingInteractionKey: string | undefined
   #shell: InteractionShell | undefined
   #refresh: ReturnType<typeof setInterval> | undefined
+  #deferredKey: string | undefined
+  #recheck: ReturnType<typeof setTimeout> | undefined
 
   constructor(options: TerminalInteractionControllerOptions) {
     this.#theme = options.theme
@@ -46,6 +54,8 @@ export class TerminalInteractionController {
     this.#isStopped = options.isStopped
     this.#requestRender = options.requestRender
     this.#rows = options.rows
+    this.#composerBusy = options.composerBusy
+    this.#setDeferred = options.setDeferred
     this.#openAutomation = options.openAutomation
   }
 
@@ -57,6 +67,7 @@ export class TerminalInteractionController {
     const interaction = view.interactions[0]
     const interactionKey = interaction ? keyFor(interaction) : undefined
     if (!interaction) {
+      this.#clearDeferred()
       this.#pendingInteractionKey = undefined
       this.#stopRefresh()
       if (this.#open) {
@@ -76,11 +87,47 @@ export class TerminalInteractionController {
       interactionKey !== this.#pendingInteractionKey &&
       (!this.#open || interactionKey !== this.#interactionKey)
     ) {
-      this.#openInteraction(interaction)
+      // LIVE-07 lost 547 typed characters to a form that opened mid-prompt: a request that arrives
+      // while the user is composing waits in the status line until they ask for it or go idle.
+      if (this.#composerBusy()) this.#defer(interaction)
+      else this.#openInteraction(interaction)
     }
   }
 
+  /** Opens the interaction held back from the composer; false when none is waiting. */
+  openDeferred(): boolean {
+    const interaction = this.#currentView().interactions[0]
+    if (this.#open || this.#deferredKey === undefined || interaction === undefined) return false
+    this.#openInteraction(interaction)
+    return true
+  }
+
+  #defer(interaction: InteractionView): void {
+    const notice = `${interaction.kind} waiting · alt+p`
+    if (this.#deferredKey !== keyFor(interaction)) {
+      this.#deferredKey = keyFor(interaction)
+      this.#setDeferred(notice)
+    }
+    if (this.#recheck !== undefined) return
+    this.#recheck = setTimeout(() => {
+      this.#recheck = undefined
+      if (this.#isStopped()) return
+      this.sync(this.#currentView())
+      this.#requestRender()
+    }, 250)
+    this.#recheck.unref?.()
+  }
+
+  #clearDeferred(): void {
+    if (this.#recheck !== undefined) clearTimeout(this.#recheck)
+    this.#recheck = undefined
+    if (this.#deferredKey === undefined) return
+    this.#deferredKey = undefined
+    this.#setDeferred(undefined)
+  }
+
   #openInteraction(interaction: InteractionView): void {
+    this.#clearDeferred()
     this.#open = true
     this.#interactionKey = keyFor(interaction)
     const shell = new InteractionShell(
@@ -141,6 +188,7 @@ export class TerminalInteractionController {
   }
 
   dispose(): void {
+    this.#clearDeferred()
     this.#stopRefresh()
     this.#shell = undefined
   }

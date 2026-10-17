@@ -20,6 +20,8 @@ export interface TerminalChromeState {
   readonly activityVisible: boolean
   readonly navigationHint: string
   readonly composerMode: ComposerMode
+  /** An interaction held back so it cannot take an unsent draft, such as `permission waiting · alt+p`. */
+  readonly deferredInteraction?: string
 }
 
 /** Fixed-height terminal chrome; the transcript never owns these lines. */
@@ -52,16 +54,18 @@ export class TerminalChrome implements Component {
     const { view } = state
     const mode = terminalContextModeForColumns(safeWidth)
     const target = executionTargetFor(view)
-    const transientNotice = state.quitArmed ? undefined : transientNoticeFor(view)
+    const deferred = state.quitArmed ? undefined : state.deferredInteraction
+    const transientNotice = state.quitArmed ? undefined : (deferred ?? transientNoticeFor(view))
     const workStrip = renderWorkStrip(this.#theme, view, mode, safeWidth)
+    const noticeText = (value: string) =>
+      value === deferred
+        ? this.#theme.warning(sanitizeNotification(value))
+        : statusText(this.#theme, view, value)
     if (mode === 'narrow' && transientNotice !== undefined) {
-      return boundedTerminalRows(
-        [statusText(this.#theme, view, transientNotice), ...workStrip],
-        safeWidth,
-      )
+      return boundedTerminalRows([noticeText(transientNotice), ...workStrip], safeWidth)
     }
     const statusValue = transientNotice ?? conciseStatus(view, state.quitArmed, mode)
-    const status = statusText(this.#theme, view, statusValue)
+    const status = noticeText(statusValue)
     const navigation =
       mode === 'narrow' || transientNotice !== undefined
         ? ''
