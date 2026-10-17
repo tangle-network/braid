@@ -793,7 +793,11 @@ for (const [columns, rows] of SIZES) {
     await backgroundPermissionFlow(
       async (execution) => ({
         // The response window is measured on the wall clock, as in production.
-        app: createBraidApplication({ fixture: 'deterministic', execution, clock: new SystemClock() }),
+        app: createBraidApplication({
+          fixture: 'deterministic',
+          execution,
+          clock: new SystemClock(),
+        }),
         workspace: '/workspace',
       }),
       [columns, rows],
