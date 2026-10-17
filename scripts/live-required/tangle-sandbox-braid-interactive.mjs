@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
@@ -603,6 +604,28 @@ async function waitFor(label, predicate, timeoutMs) {
   }
 }
 
+/** One process group's members for evidence: pid, age and a redacted, bounded command line. */
+function processGroupMembers(processGroupId) {
+  try {
+    const listing = execFileSync('ps', ['-eo', 'pid=,pgid=,etime=,args='], {
+      encoding: 'utf8',
+      timeout: 5_000,
+    })
+    return listing
+      .split('\n')
+      .map((line) => line.trim().split(/\s+/u))
+      .filter(([, pgid]) => Number(pgid) === processGroupId)
+      .slice(0, 16)
+      .map(([pid, , etime, ...args]) => ({
+        pid: Number(pid),
+        etime,
+        command: safeMessage(args.join(' ')).slice(0, 200),
+      }))
+  } catch {
+    return []
+  }
+}
+
 function createPty(binary, config, statePath, exitTimeoutMs) {
   const terminal = new xterm.Terminal({ cols: 120, rows: 36, allowProposedApi: true })
   const environment = processTreeEnvironment({
@@ -624,8 +647,22 @@ function createPty(binary, config, statePath, exitTimeoutMs) {
   let exitResult
   let processCleanup
   const outputTracker = createTerminalOutputTracker()
+  // Braid exits first. A group member still present after the wait (slow teardown on a loaded
+  // host) is named and terminated, so cleanup stays exact instead of refusing; LIVE-08 at 23330bc
+  // refused cleanup on one. Only a member that outlives SIGKILL still fails the proof.
   const waitForProcessCleanup = async () => {
-    processCleanup ??= await waitForTreeGone(child, exitTimeoutMs)
+    if (processCleanup !== undefined) return processCleanup
+    const waited = await waitForTreeGone(child, exitTimeoutMs)
+    if (!waited.supported || waited.gone) {
+      processCleanup = waited
+      return processCleanup
+    }
+    const survivors = processGroupMembers(child.pid)
+    const termination = await terminateTrackedProcessTree(child, {
+      termTimeoutMs: Math.min(1_000, exitTimeoutMs),
+      killTimeoutMs: exitTimeoutMs,
+    })
+    processCleanup = { ...termination.tree, survivors }
     return processCleanup
   }
   child.onData((chunk) => {
@@ -1182,7 +1219,10 @@ export async function finalizeInteractiveProof({
     errors.push(new Error('PTY process did not exit; workspace cleanup was refused'))
   }
   if (runtime !== undefined && processExited && !processGroupExited) {
-    errors.push(new Error('PTY process group did not exit; workspace cleanup was refused'))
+    const survivors = JSON.stringify(runtime.processCleanup?.survivors ?? [])
+    errors.push(
+      new Error(`PTY process group did not exit; workspace cleanup was refused; members ${survivors}`),
+    )
   }
 
   let resolvedIdentity = identity
