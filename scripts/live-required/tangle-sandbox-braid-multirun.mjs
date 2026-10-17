@@ -367,6 +367,8 @@ async function focusRunFromActivityBrowser(runtime, runId, direction, label, tim
 async function answerPendingPermissions(runtime, frame, timeoutMs) {
   const refused = runtime.permissions.find((receipt) => !receipt.answered)
   if (refused !== undefined) throw new Error(`The proof cannot answer a ${refused.kind} request`)
+  // Keys typed while the activity browser is open go to the browser; answer once it closes.
+  if (activityBrowserOpen(runtime.screen())) return false
   let answered = false
   // The form on screen is the head of the queue; answer in queue order so receipts match it.
   const queue = [...(frame?.view?.interactions ?? [])].sort(
