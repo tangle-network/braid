@@ -160,6 +160,20 @@ export class StorageJournal implements JournalPort, EffectStoragePort {
     return envelope
   }
 
+  /**
+   * The first terminal outcome closes its run. A provider event or a second outcome that raced it
+   * (LIVE-07: a cancellation and the stream's own end) is declined with the rule storage enforces,
+   * because storage would refuse it and a refused write would latch the whole journal read-only.
+   */
+  declines(event: BraidEvent): boolean {
+    const runId = eventRunId(event)
+    return (
+      runId !== undefined &&
+      this.#terminalRuns.has(runId) &&
+      !canAppendAfterTerminal({ kind: event.kind, terminal: event.kind === 'run.finished' })
+    )
+  }
+
   append(envelope: BraidEventEnvelope): Promise<{ readonly appended: boolean }> {
     return this.appendEnvelope(envelope)
   }
@@ -223,10 +237,7 @@ export class StorageJournal implements JournalPort, EffectStoragePort {
     const task = this.#pending
       .then(async () => {
         if (this.#failure !== undefined) throw this.#failure
-        // The first terminal outcome closes the run. A provider event or a second outcome that
-        // raced it (LIVE-07: a cancellation and the stream's own end) is declined here, because
-        // storage would refuse it and a refused write would latch the whole journal read-only.
-        if (this.#terminalRuns.has(runId) && !canAppendAfterTerminal(record)) {
+        if (this.declines(envelope.event)) {
           this.#contexts.delete(eventId)
           return { appended: false as const }
         }

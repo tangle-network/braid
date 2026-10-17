@@ -51,6 +51,12 @@ export interface ApplicationJournal {
     state: BraidState,
   ) => Promise<{ readonly appended?: boolean } | undefined>
   readonly asynchronous?: boolean
+  /**
+   * True when the journal will not record this event because the first terminal outcome already
+   * closed its run. The event is then a no-op, decided before it is reduced: a late output event
+   * would otherwise fail the reducer or the write and latch the application read-only.
+   */
+  readonly declines?: (event: BraidEvent) => boolean
   readonly envelope?: (state: BraidState, event: BraidEvent) => BraidEventEnvelope
   readonly flush?: () => Promise<void>
   readonly close?: () => Promise<void>
@@ -479,6 +485,7 @@ function redactedEventForCommit(event: BraidEvent): BraidEvent {
 export function commitApplicationEvent(input: CommitApplicationEventInput): BraidState {
   const key = providerEventKey(input.event)
   if (key && input.providerEventKeys.hasProviderEvent(key)) return input.state
+  if (input.journal.declines?.(input.event) === true) return input.state
   const redacted = redactedEventForCommit(input.event)
   const envelope = input.journal.envelope
     ? input.journal.envelope(input.state, redacted)
@@ -515,6 +522,7 @@ export async function commitApplicationEventAsync(
 ): Promise<BraidState> {
   const key = providerEventKey(input.event)
   if (key && input.providerEventKeys.hasProviderEvent(key)) return input.state
+  if (input.journal.declines?.(input.event) === true) return input.state
   const redacted = redactedEventForCommit(input.event)
   const envelope = input.journal.envelope
     ? input.journal.envelope(input.state, redacted)
