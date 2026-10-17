@@ -371,21 +371,35 @@ async function openActivityBrowser(runtime, label, timeoutMs) {
   )
 }
 
-async function focusRunFromActivityBrowser(runtime, runId, direction, label, timeoutMs) {
-  await openActivityBrowser(runtime, label, timeoutMs)
-  runtime.input('\t')
-  await pause(100)
-  runtime.input(direction)
-  runtime.input('\r')
-  const frame = await waitForFrame(
-    runtime,
-    `${label} focus`,
-    (candidate) => candidate.view.focusedRunId === runId,
-    timeoutMs,
-  )
-  runtime.input('\u001b')
-  await waitForActivityBrowserDismissal(runtime, label, timeoutMs)
-  return frame
+const FOCUS_ATTEMPT_MS = 20_000
+
+/**
+ * Focus one run from the activity browser's runs list, as a user does. The list orders runs by
+ * their latest activity, so the row below the cursor after Tab changes while concurrent runs report
+ * events: 0.3.5's first live run pressed Down from B, stayed on B, and waited 300 s. Try each
+ * position and accept only a frame that focuses runId.
+ */
+async function focusRunFromActivityBrowser(runtime, runId, label, timeoutMs) {
+  for (const move of [ACTIVITY_DOWN, ACTIVITY_UP, '']) {
+    await openActivityBrowser(runtime, label, timeoutMs)
+    runtime.input('\t')
+    await pause(100)
+    runtime.input(`${move}\r`)
+    const frame = await waitForFrame(
+      runtime,
+      `${label} focus`,
+      (candidate) => candidate.view.focusedRunId === runId,
+      FOCUS_ATTEMPT_MS,
+    ).catch(() => undefined)
+    // A wrong row may leave the browser in its detail view; close it before the next attempt.
+    for (let press = 0; press < 3 && !transcriptSurfaceReady(runtime.screen()); press++) {
+      runtime.input('\u001b')
+      await pause(300)
+    }
+    await waitForActivityBrowserDismissal(runtime, label, timeoutMs)
+    if (frame !== undefined) return frame
+  }
+  throw new Error(`${label}: no row of the activity browser focused ${runId}`)
 }
 
 /**
@@ -1110,39 +1124,15 @@ export async function runProof({
     const focusedBefore = secondFrame.view.focusedRunId
     assert.equal(focusedBefore, runBId, 'newly admitted branch B was not foreground')
     await phase('focus-a', async () => {
-      await openActivityBrowser(runtime, 'focus branch A', timeoutMs)
-      runtime.input('\t')
-      await pause(100)
-      runtime.input('\u001b[B')
-      runtime.input('\r')
-      focusAFrame = await waitForFrame(
-        runtime,
-        'focus branch A',
-        (frame) => frame.view.focusedRunId === runAId,
-        timeoutMs,
-      )
+      focusAFrame = await focusRunFromActivityBrowser(runtime, runAId, 'focus branch A', timeoutMs)
       assertFrameHasConcurrentRuns(focusAFrame, [runAId, runBId])
       assert.ok(isActive(runStatus(focusAFrame, runAId)))
       assert.ok(isActive(runStatus(focusAFrame, runBId)))
-      runtime.input('\u001b')
-      await waitForActivityBrowserDismissal(runtime, 'focus branch A', timeoutMs)
     })
     terminalEvidence.focusA = runtime.snapshot()
     await phase('focus-b', async () => {
-      await openActivityBrowser(runtime, 'focus branch B', timeoutMs)
-      runtime.input('\t')
-      await pause(100)
-      runtime.input('\u001b[A')
-      runtime.input('\r')
-      focusBFrame = await waitForFrame(
-        runtime,
-        'focus branch B',
-        (frame) => frame.view.focusedRunId === runBId,
-        timeoutMs,
-      )
+      focusBFrame = await focusRunFromActivityBrowser(runtime, runBId, 'focus branch B', timeoutMs)
       assertFrameHasConcurrentRuns(focusBFrame, [runAId, runBId])
-      runtime.input('\u001b')
-      await waitForActivityBrowserDismissal(runtime, 'focus branch B', timeoutMs)
     })
     terminalEvidence.focusB = runtime.snapshot()
     await phase('cancel-b.dispatch', async () => {
@@ -1188,19 +1178,12 @@ export async function runProof({
       const transcriptFrame = await focusRunFromActivityBrowser(
         runtime,
         runAId,
-        ACTIVITY_DOWN,
         'branch A transcript',
         timeoutMs,
       )
       branchATranscriptProof = assertBranchATranscript(transcriptFrame, runAId, markerA)
       // Restore B focus so restart replay compares against the same focused view as before.
-      finalFrame = await focusRunFromActivityBrowser(
-        runtime,
-        runBId,
-        ACTIVITY_UP,
-        'branch B refocus',
-        timeoutMs,
-      )
+      finalFrame = await focusRunFromActivityBrowser(runtime, runBId, 'branch B refocus', timeoutMs)
       assertUniqueEventIds(finalFrame, runAId, 'branch A completion')
       assertUniqueEventIds(finalFrame, runBId, 'branch B terminal state')
     })
