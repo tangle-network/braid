@@ -19,6 +19,10 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import {
+  DEFAULT_TANGLE_ROUTER_MODEL,
+  DEFAULT_TANGLE_ROUTER_MODEL_ID,
+} from '../live-required/model-defaults.mjs'
 
 const REPO = 'tangle-network/braid'
 const REPO_URL = `git@github.com:${REPO}.git`
@@ -33,12 +37,12 @@ const CODE_GATE = [
   'pnpm test',
   'pnpm run test:property',
 ].join('; ')
-// The protected live configuration the 0.3.4 release used; the environment overrides each value.
+// The protected live configuration; model-defaults.mjs owns the model and the environment overrides each value.
 const LIVE_CONFIG = {
   BRAID_TANGLE_ENDPOINT: 'https://router.tangle.tools/v1',
-  BRAID_TANGLE_MODEL: 'glm-5.3',
+  BRAID_TANGLE_MODEL: DEFAULT_TANGLE_ROUTER_MODEL_ID,
   BRAID_TANGLE_SANDBOX_ENDPOINT: 'https://sandbox.tangle.tools',
-  BRAID_TANGLE_SANDBOX_MODEL: 'tangle-router/glm-5.3',
+  BRAID_TANGLE_SANDBOX_MODEL: DEFAULT_TANGLE_ROUTER_MODEL,
   BRAID_TANGLE_SANDBOX_RUNNER: 'opencode',
 }
 const KEY_FILES = { router: 'router.key', sandbox: 'sandbox.key' }
