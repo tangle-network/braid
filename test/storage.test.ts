@@ -269,6 +269,7 @@ test('a durable terminal event declines racing run output without latching stora
 
   let app = await open()
   app.initialize('/workspace')
+  await app.whenDurable()
   await app.send({ operationId: 'operation-terminal-race', text: 'finish' }).completion
   const runId = app.state().runs[0]?.id
   assert.ok(runId)
