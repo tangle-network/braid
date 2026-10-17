@@ -713,7 +713,22 @@ async function backgroundPermissionFlow(
     await terminal.waitForRender()
     terminal.sendInput('{"grant":["allow_once"]}')
     terminal.sendInput('\r')
-    await waitUntil(() => responses.length === 1, 'the typed answer at the provider', 5_000)
+    await waitUntil(() => responses.length === 1, 'the typed answer at the provider', 5_000).catch(
+      (error: unknown) => {
+        const run = created.state().runs[0]
+        const detail = JSON.stringify({
+          startedAt: run?.startedAt,
+          interactions: run?.interactions.map((item) => ({
+            status: item.status,
+            source: item.source,
+            receivedAt: item.receivedAt,
+            timeoutMs: item.request.timeoutMs,
+          })),
+          screen: terminal.getViewport().join('\n').replace(/\s+/gu, ' ').slice(0, 1_500),
+        })
+        throw new Error(`${String(error)} ${detail}`)
+      },
+    )
     assert.deepEqual(
       responses.map(({ id: _id, ...response }) => response),
       [{ outcome: 'accepted', data: { grant: ['allow_once'] } }],
@@ -726,7 +741,8 @@ async function backgroundPermissionFlow(
     assert.equal(created.storageFailure(), undefined)
     const receivedAt = created.state().runs[0]?.interactions.map((item) => item.receivedAt) ?? []
     assert.equal(receivedAt.length, 2)
-    for (const value of receivedAt) assert.ok(value !== undefined && Number.isFinite(Date.parse(value)))
+    for (const value of receivedAt)
+      assert.ok(value !== undefined && Number.isFinite(Date.parse(value)))
     return receivedAt
   } finally {
     raiseFirst()
