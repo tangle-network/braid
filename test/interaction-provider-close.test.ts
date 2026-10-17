@@ -640,8 +640,8 @@ test('a background run permission answered through its typed form reaches the pr
   const firstRaised = new Promise<void>((resolve) => {
     raiseFirst = resolve
   })
-  const status = (id: string) =>
-    app?.state().runs[0]?.interactions.find((interaction) => interaction.request.id === id)?.status
+  // Braid rebinds each request to its own interaction id, so the requests are found by arrival order.
+  const status = (index: number) => app?.state().runs[0]?.interactions[index]?.status
   const responses: InteractionResponse[] = []
   const bound = (request: InteractionRequest, runId: string) =>
     rebindInteractionRequest(request, { ...request.binding, runId, executionId: runId })
@@ -654,7 +654,7 @@ test('a background run permission answered through its typed form reaches the pr
       yield { type: 'interaction.cancel', id: first.id, reason: 'timeout' }
       yield { type: 'interaction', request: bound(second, input.runId) }
       await waitUntil(
-        () => !['pending', 'responding', undefined].includes(status(second.id)) || input.signal.aborted,
+        () => !['pending', 'responding', undefined].includes(status(1)) || input.signal.aborted,
         'a recorded response to the second permission',
         5_000,
       )
@@ -691,7 +691,7 @@ test('a background run permission answered through its typed form reaches the pr
     terminal.sendInput(prompt.slice(0, 30))
     await terminal.waitForRender()
     raiseFirst()
-    await waitUntil(() => status(first.id) === 'pending', 'the first permission')
+    await waitUntil(() => status(0) === 'pending', 'the first permission')
     await waitUntil(
       () => terminal.getViewport().join('\n').includes(first.title),
       'the first permission form',
@@ -699,7 +699,7 @@ test('a background run permission answered through its typed form reaches the pr
     // The rest of branch B's prompt and its Enter land in the open form, as they did live.
     terminal.sendInput(prompt.slice(30))
     terminal.sendInput('\r')
-    await waitUntil(() => status(second.id) === 'pending', 'the second permission')
+    await waitUntil(() => status(1) === 'pending', 'the second permission')
     await waitUntil(
       () => terminal.getViewport().join('\n').includes(second.title),
       'the second permission form',
