@@ -13,7 +13,7 @@ import { sanitizeTitle } from '../shared/sanitize.js'
 import { GuardedAutocompleteProvider } from './autocomplete-guard.js'
 import type { TerminalConfigurationOptions } from './configuration-wizard-options.js'
 import { DynamicAutocompleteProvider } from './dynamic-autocomplete.js'
-import { type BraidKeymap, resolveKeymap } from './keyboard.js'
+import { type BraidKeymap, isTextInputSequence, resolveKeymap } from './keyboard.js'
 import { ModalCoordinator } from './modal-coordinator.js'
 import { TerminalCommandController } from './terminal-command-controller.js'
 import { installTerminalOutputPolicy, keyboardCompatibility } from './terminal-compatibility.js'
@@ -126,7 +126,6 @@ export class BraidTerminalApp {
       () => options.tui.terminal.rows,
       (text) => this.#submit(text),
       (text) => {
-        if (text.length > 0) this.#lastComposerEditAt = Date.now()
         autocomplete.inputChanged()
         this.#drafts.changed(text)
       },
@@ -226,7 +225,7 @@ export class BraidTerminalApp {
   start(startupInput: readonly string[] = []): Promise<void> {
     if (this.#started) return this.#done
     this.#started = true
-    this.#removeInputListener = this.#tui.addInputListener((data) => this.#input.handle(data))
+    this.#removeInputListener = this.#tui.addInputListener((data) => this.#handleInput(data))
     if (this.#theme.terminalMetadata)
       this.#tui.terminal.setTitle(sanitizeTitle(`Braid — ${this.#workspace}`))
     if (!this.#tuiStarted) this.#tui.start()
@@ -253,7 +252,7 @@ export class BraidTerminalApp {
   resume(): void {
     if (this.#stopped || !this.#started || !this.#suspended) return
     this.#suspended = false
-    this.#removeInputListener = this.#tui.addInputListener((data) => this.#input.handle(data))
+    this.#removeInputListener = this.#tui.addInputListener((data) => this.#handleInput(data))
     this.#tui.start()
     if (this.#modals.hasOpen()) this.#modals.focusTop()
     else this.#tui.setFocus(this.#shell.editor)
@@ -298,8 +297,15 @@ export class BraidTerminalApp {
     this.#commands.submit(rawText)
   }
 
+  #handleInput(data: string): { consume?: boolean } | undefined {
+    // Keystrokes, not onChange: restoring a saved draft also fires onChange without any typing.
+    if (this.#shell.editor.focused && isComposerKeystroke(data))
+      this.#lastComposerEditAt = Date.now()
+    return this.#input.handle(data)
+  }
+
   #replayInput(data: string): void {
-    if (this.#input.handle(data)?.consume) return
+    if (this.#handleInput(data)?.consume) return
     if (!this.#modals.handleInput(data)) this.#shell.editor.handleInput(data)
     this.#tui.requestRender()
   }
@@ -318,4 +324,10 @@ export class BraidTerminalApp {
       return result
     })
   }
+}
+
+/** Printable text, Backspace (0x7f) or a paste; never Enter, an escape sequence or a chord. */
+function isComposerKeystroke(data: string): boolean {
+  if (isTextInputSequence(data)) return true
+  return data.length > 0 && [...data].every((char) => (char.codePointAt(0) ?? 0) >= 0x20)
 }
