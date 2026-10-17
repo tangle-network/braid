@@ -290,6 +290,9 @@ export function terminalFailureEvidence(runtime) {
   }
 }
 
+/** A proof failure that more polling cannot change; waitFor rethrows it at once. */
+class ProofRefusal extends Error {}
+
 async function waitFor(label, predicate, timeoutMs) {
   const deadline = performance.now() + timeoutMs
   let lastError
@@ -299,6 +302,7 @@ async function waitFor(label, predicate, timeoutMs) {
       const value = await predicate()
       if (value) return value
     } catch (error) {
+      if (error instanceof ProofRefusal) throw error
       lastError = error
     }
     if (performance.now() >= deadline) {
@@ -366,7 +370,8 @@ async function focusRunFromActivityBrowser(runtime, runId, direction, label, tim
  */
 async function answerPendingPermissions(runtime, frame, timeoutMs) {
   const refused = runtime.permissions.find((receipt) => !receipt.answerable)
-  if (refused !== undefined) throw new Error(`The proof cannot answer a ${refused.kind} request`)
+  if (refused !== undefined)
+    throw new ProofRefusal(`The proof cannot answer a ${refused.kind} request`)
   // Keys typed while the activity browser is open go to the browser; answer once it closes.
   if (activityBrowserOpen(runtime.screen())) return false
   let answered = false
@@ -393,26 +398,66 @@ async function answerPendingPermissions(runtime, frame, timeoutMs) {
     }
     runtime.permissions.push(receipt)
     if (answer === undefined)
-      throw new Error(`The proof cannot answer a ${interaction.kind} request`)
+      throw new ProofRefusal(`The proof cannot answer a ${interaction.kind} request`)
     await runtime.waitForStable(1_000).catch(() => undefined)
-    await typeText(runtime, JSON.stringify(answer), 2)
-    runtime.input('\r')
-    await waitFor(
+    // Clear anything a racing prompt left in the form, then enter the answer in one paste.
+    const clear = `${CURSOR_LINE_END}${DELETE_TO_LINE_START}`
+    runtime.input(`${clear}${bracketedPaste(JSON.stringify(answer))}\r`)
+    const settled = await waitFor(
       'permission answer',
-      async () =>
-        !(await runtime.captureState(timeoutMs)).view?.interactions?.some(
+      async () => {
+        const frame = await runtime.captureState(timeoutMs)
+        return frame.view?.interactions?.some(
           (candidate) => candidate.interactionId === interactionId,
-        ),
+        )
+          ? undefined
+          : frame
+      },
       timeoutMs,
     )
+    // A form also leaves the queue when it expires; only a journaled response is acceptance.
+    const outcome = permissionOutcome(settled, interactionId)
+    if (outcome !== 'responded')
+      throw new ProofRefusal(`Braid did not accept the typed permission answer (${outcome})`)
     receipt.accepted = true
     answered = true
   }
   return answered
 }
 
+/** How Braid's journal settled one permission: a recorded response, a cancellation, or neither. */
+export function permissionOutcome(frame, interactionId) {
+  let outcome = 'unsettled'
+  for (const event of frame?.events ?? []) {
+    const payload = event?.payload ?? {}
+    if ((payload.interactionId ?? payload.interaction?.id) !== interactionId) continue
+    if (['run.interaction.response.requested', 'run.interaction.responded'].includes(event.kind))
+      return 'responded'
+    if (event.kind === 'run.interaction.cancelled')
+      outcome = `cancelled: ${payload.interaction?.reason ?? 'unknown reason'}`
+  }
+  return outcome
+}
+
 async function settlePermissions(runtime, timeoutMs) {
   await answerPendingPermissions(runtime, await runtime.captureState(timeoutMs), timeoutMs)
+}
+
+const CURSOR_LINE_END = '\u0005'
+const DELETE_TO_LINE_START = '\u0015'
+
+function bracketedPaste(value) {
+  return `\u001b[200~${value}\u001b[201~`
+}
+
+/**
+ * Send a prompt the way a user pastes it: one input event, so a permission form that opens while it
+ * arrives cannot take its tail (LIVE-07 at 48da449 lost 547 of 870 typed characters to a form).
+ */
+async function pasteAndSubmit(runtime, value, timeoutMs) {
+  await settlePermissions(runtime, timeoutMs)
+  // The paste and its Enter share one write, so no form can open between them.
+  runtime.input(`${bracketedPaste(value)}\r`)
 }
 
 async function typeAndSubmit(runtime, value, timeoutMs) {
@@ -890,7 +935,7 @@ export async function runProof({
     const firstBranch = firstFrame.state.branchId
     await phase('branch-a.send', async () => {
       proofWindow?.assertAdmission()
-      await typeAndSubmit(runtime, promptFor(markerA, holdSeconds), timeoutMs)
+      await pasteAndSubmit(runtime, promptFor(markerA, holdSeconds), timeoutMs)
       firstFrame = await waitForFrame(
         runtime,
         'branch A admission',
@@ -948,7 +993,7 @@ export async function runProof({
     assert.notEqual(secondBranch, firstBranch, 'independent conversations reused the branch id')
     await phase('branch-b.send', async () => {
       proofWindow?.assertAdmission()
-      await typeAndSubmit(runtime, promptFor(markerB, holdSeconds), timeoutMs)
+      await pasteAndSubmit(runtime, promptFor(markerB, holdSeconds), timeoutMs)
       secondFrame = await waitForFrame(
         runtime,
         'branch B admission',
