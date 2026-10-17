@@ -1,4 +1,5 @@
 import type { InteractionResponse } from '@tangle-network/agent-interface'
+import { runOutcomeDetail } from '../../domain/provider-values.js'
 import {
   capabilityForHeadlessCommand,
   isMutatingHeadlessCommand,
@@ -176,16 +177,31 @@ export async function dispatchHeadlessCommand(
       resolveStart = resolve
       rejectStart = reject
     })
+    let attached = false
     const reconnect = context.app.reconnectRun({
       operationId: intent.operationId ?? '',
       runId,
-      onInteractionReady: () => resolveStart?.(),
+      onAttached: () => {
+        attached = true
+        resolveStart?.()
+      },
     })
     void reconnect.then(
       () => resolveStart?.(),
       (error: unknown) => rejectStart?.(error),
     )
+    // Re-attach and settlement are both bounded (stream idle, then one status read), so this
+    // wait ends with an attached run, a learned outcome, or the unknown run's cause.
     await responseReady
+    const run = context.app.state().runs.find((candidate) => candidate.id === runId)
+    if (!attached && run?.status === 'unknown') {
+      return {
+        kind: 'error',
+        code: 'RECONNECT_FAILED',
+        message: `Run ${runId} could not be re-attached: ${runOutcomeDetail(run) ?? 'no cause was recorded'}`,
+        retryable: true,
+      }
+    }
     return {
       kind: 'accepted',
       ...(intent.operationId === undefined ? {} : { operationId: intent.operationId }),

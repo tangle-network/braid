@@ -190,8 +190,12 @@ export interface RuntimeEventIngestionResult {
 export interface ReconnectInput {
   readonly operationId: string
   readonly runId: string
-  /** Called when replay has committed a pending interaction that needs a response. */
-  readonly onInteractionReady?: () => void
+  /**
+   * Called once the re-attach is proven: a pending interaction is visible, the replay stream
+   * committed a new event, or the provider's status confirmed the run. A reconnect that settles
+   * without calling it never re-attached.
+   */
+  readonly onAttached?: () => void
 }
 
 export interface ReconcileInput extends ReconnectInput {

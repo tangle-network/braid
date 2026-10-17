@@ -17,7 +17,7 @@ import {
 import type { ConnectionRecord } from '../src/domain/entities.js'
 import { createConnectionId } from '../src/domain/ids.js'
 import { isRuntimeEventEnvelope } from '../src/domain/runtime-events.js'
-import { type RetainedRunAdmissionRecord } from '../src/ports/execution.js'
+import type { ExecutionPort, RetainedRunAdmissionRecord } from '../src/ports/execution.js'
 import { RandomIds } from '../src/ports/ids.js'
 import { startRuntimeBridgeServer } from './support/runtime-bridge-server.js'
 
@@ -456,6 +456,109 @@ test('cancel_requested remains an unconfirmed Braid outcome', async () => {
     await stream.return?.()
   } finally {
     abort.abort()
+    await bridge.close()
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+/** The production execution port with short watchdog bounds, so the test runs in milliseconds. */
+function withWatchdogBounds(execution: ExecutionPort, boundMs: number): ExecutionPort {
+  return new Proxy(execution, {
+    get(target, property) {
+      if (property === 'streamIdleMs' || property === 'statusTimeoutMs') return boundMs
+      const value = Reflect.get(target, property, target)
+      return typeof value === 'function' ? value.bind(target) : value
+    },
+  })
+}
+
+test('a restarted reconnect fails typed within the bound when the provider never answers, then acknowledges a provider-confirmed re-attach', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-retained-reattach-bound-'))
+  const bridgeOptions = { holdStreams: true, holdStatus: false }
+  const bridge = await startRuntimeBridgeServer(bridgeOptions)
+  const configuration = production(bridge.endpoint)
+  const path = join(root, 'braid.db')
+  const credentials = new MemoryCredentialStore()
+  const boundMs = 200
+  let first: DurableBraidApplication | undefined
+  let restarted: DurableBraidApplication | undefined
+  try {
+    first = await createDurableBraidApplication({
+      path,
+      workspaceRoot: root,
+      credentialStore: credentials,
+      production: configuration,
+      ids: new RandomIds(),
+    })
+    first.app.initialize(root)
+    await first.app.whenDurable()
+    const send = first.app.send({
+      operationId: 'operation-reattach-bound-send',
+      text: 'Keep working while Braid restarts.',
+    })
+    await send.admissionReady
+    await waitFor(() => (first?.app.state().runs[0]?.lastProviderSequence ?? 0) >= 2)
+    const detached = await first.app.detachRun({
+      operationId: 'operation-reattach-bound-detach',
+      runId: send.runId,
+    })
+    await detached.completion
+    await send.completion
+    await first.app.close()
+    first = undefined
+
+    restarted = await createDurableBraidApplication({
+      path,
+      workspaceRoot: root,
+      credentialStore: credentials,
+      production: configuration,
+      execution: withWatchdogBounds(
+        createProductionComposition({ ...configuration, workspaceRoot: root }).execution,
+        boundMs,
+      ),
+      ids: new RandomIds(),
+    })
+    const controller = createApplicationUiController(restarted.app)
+
+    // The replay is silent and the provider never answers its status read.
+    bridgeOptions.holdStatus = true
+    const replaysBefore = bridge.replays.length
+    const started = performance.now()
+    const failed = await controller.dispatch({
+      type: 'headless-command',
+      command: 'reconnect',
+      operationId: 'operation-reattach-bound-unanswered',
+      params: { runId: send.runId },
+    })
+    const elapsedMs = performance.now() - started
+    assert.equal(failed.kind, 'error', JSON.stringify(failed))
+    assert.equal(failed.kind === 'error' ? failed.code : undefined, 'RECONNECT_FAILED')
+    assert.equal(failed.kind === 'error' ? failed.retryable : undefined, true)
+    assert.match(
+      failed.kind === 'error' ? failed.message : '',
+      /could not be re-attached: provider stream lost; the status read timed out/u,
+    )
+    // One idle bound, then one status read: far inside the 180s the stress proof waited.
+    assert.ok(elapsedMs < 2 * boundMs + 2_000, `reconnect settled after ${elapsedMs}ms`)
+    assert.ok(bridge.replays.length > replaysBefore, 'the reconnect never asked for a replay')
+    assert.equal(restarted.app.state().runs[0]?.status, 'unknown')
+
+    // The replay stays silent, but the provider now confirms the run: the reconnect is
+    // acknowledged while the run is still live, instead of only once it settles.
+    bridgeOptions.holdStatus = false
+    const confirmed = await controller.dispatch({
+      type: 'headless-command',
+      command: 'reconnect',
+      operationId: 'operation-reattach-bound-confirmed',
+      params: { runId: send.runId },
+    })
+    assert.equal(confirmed.kind, 'accepted', JSON.stringify(confirmed))
+    assert.equal(restarted.app.state().runs[0]?.status, 'reconnecting')
+    assert.equal(restarted.app.storageFailure(), undefined)
+    assert.equal(bridge.requests.length, 1)
+  } finally {
+    await first?.app.close().catch(() => undefined)
+    await restarted?.app.close().catch(() => undefined)
     await bridge.close()
     await rm(root, { recursive: true, force: true })
   }

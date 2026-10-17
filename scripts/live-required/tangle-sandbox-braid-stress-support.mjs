@@ -484,7 +484,7 @@ export function workspaceToolEvents(observation) {
 }
 
 /** The newest status detail or unknown reason Braid emitted for one run, redacted and bounded. */
-function lastRunStatusDetail(responses, runId) {
+export function lastRunStatusDetail(responses, runId) {
   for (let index = responses.length - 1; index >= 0; index -= 1) {
     const response = responses[index]
     if (response?.type !== 'event' || eventRunId(response) !== runId) continue

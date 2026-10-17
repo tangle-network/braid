@@ -760,6 +760,8 @@ A run that fails before its first event is recovered the same way; when recovery
 A provider that finished but whose replay also goes silent supplies the result from its status read.
 The ingest of one event is bound by the same deadline, so a slow commit never holds the turn open.
 Cancel and detach stop the watchdog: a detached run is not reconnected, and its timers end with the stream.
+A reconnect request is acknowledged once the re-attach is proven: a pending interaction is visible, the replay commits a new event, or the provider's status confirms the run.
+Every step of a re-attach is bounded, and reconciliation's status read uses the same short deadline, so a re-attach that proves none of these ends the run as `unknown` with its cause within the idle bound plus one status read, and the request returns `RECONNECT_FAILED` naming that cause instead of waiting.
 
 Duplicate event identifiers produce no duplicate transcript part, tool row, usage total, interaction, or terminal result.
 

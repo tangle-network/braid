@@ -92,17 +92,38 @@ test('tracked PTY termination verifies the exact process group used by live proo
     cols: 80,
     rows: 24,
   })
-  trackProcessTree(child, tracked.token)
+  let exited = false
+  const exit = new Promise((resolve) =>
+    child.onExit(() => {
+      exited = true
+      resolve()
+    }),
+  )
+  try {
+    trackProcessTree(child, tracked.token)
 
-  const result = await terminateTrackedProcessTree(child, {
-    termTimeoutMs: 1_000,
-    killTimeoutMs: 1_000,
-  })
+    const result = await terminateTrackedProcessTree(child, {
+      termTimeoutMs: 1_000,
+      killTimeoutMs: 1_000,
+    })
 
-  assert.equal(result.termSent || result.killSent, true)
-  assert.equal(result.descendantsExited, true, JSON.stringify(result))
-  assert.equal(result.descendantsVerified, true, JSON.stringify(result))
-  assert.equal(result.tree.gone, true, JSON.stringify(result))
+    assert.equal(result.termSent || result.killSent, true, JSON.stringify(result))
+    assert.equal(result.descendantsExited, true, JSON.stringify(result))
+    assert.equal(result.descendantsVerified, true, JSON.stringify(result))
+    assert.equal(result.tree.gone, true, JSON.stringify(result))
+  } finally {
+    // A failed check must not leave the PTY open: node-pty keeps polling it and the test
+    // process spins after its last test (#160). Kill the child's own group, then close the PTY.
+    if (!exited) {
+      try {
+        process.kill(-child.pid, 'SIGKILL')
+      } catch {}
+      child.kill('SIGKILL')
+      await Promise.race([exit, new Promise((resolve) => setTimeout(resolve, 5_000).unref())])
+    }
+    releaseProcessTree(child)
+    child.destroy()
+  }
 })
 
 test('timeout cleanup terminates a tracked descendant set', async () => {
