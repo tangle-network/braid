@@ -391,8 +391,8 @@ async function focusRunFromActivityBrowser(runtime, runId, direction, label, tim
 /**
  * Answer each permission a run raises through its terminal form, the way a user answers it, and
  * keep a receipt. A model may ask for a command the prompt did not name (LIVE-07: an exploratory
- * `ls` in branch A). The open form takes the composer, so an unanswered one swallowed branch B's
- * prompt and branch A waited out the permission.
+ * `ls` in branch A). At 48da449 the form took the composer and swallowed branch B's prompt; Braid
+ * now holds a form that arrives during typing in the status line, so the proof opens it with alt+p.
  */
 async function answerPendingPermissions(runtime, frame, timeoutMs) {
   const refused = runtime.permissions.find((receipt) => !receipt.answerable)
@@ -426,6 +426,7 @@ async function answerPendingPermissions(runtime, frame, timeoutMs) {
     if (answer === undefined)
       throw new ProofRefusal(`The proof cannot answer a ${interaction.kind} request`)
     await runtime.waitForStable(1_000).catch(() => undefined)
+    await openDeferredInteraction(runtime, timeoutMs)
     // Clear anything a racing prompt left in the form, then enter the answer in one paste.
     const clear = `${CURSOR_LINE_END}${DELETE_TO_LINE_START}`
     runtime.input(`${clear}${bracketedPaste(JSON.stringify(answer))}\r`)
@@ -445,6 +446,20 @@ async function answerPendingPermissions(runtime, frame, timeoutMs) {
     answered = true
   }
   return answered
+}
+
+const DEFERRED_INTERACTION = /waiting · alt\+p/u
+
+/** Open a form Braid held back from a busy composer; the notice leaves the screen once it opens. */
+async function openDeferredInteraction(runtime, timeoutMs) {
+  if (!DEFERRED_INTERACTION.test(runtime.screen())) return
+  runtime.input('\u001bp')
+  await waitFor(
+    'the waiting interaction form',
+    async () => !DEFERRED_INTERACTION.test(runtime.screen()),
+    timeoutMs,
+  )
+  await runtime.waitForStable(1_000).catch(() => undefined)
 }
 
 /** How Braid's journal settled one permission: a recorded response, a cancellation, or neither. */

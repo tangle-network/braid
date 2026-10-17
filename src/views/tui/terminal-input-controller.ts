@@ -20,6 +20,7 @@ export interface TerminalInputControllerOptions {
   readonly nextOperationId: () => string
   readonly dispatch: (intent: BraidIntent) => Promise<UiDispatchResult>
   readonly interactionOpen: () => boolean
+  readonly openDeferredInteraction: () => boolean
   readonly stop: () => void
   readonly stateChanged: () => void
 }
@@ -36,6 +37,7 @@ export class TerminalInputController {
   readonly #nextOperationId: () => string
   readonly #dispatch: TerminalInputControllerOptions['dispatch']
   readonly #interactionOpen: () => boolean
+  readonly #openDeferredInteraction: () => boolean
   readonly #stop: () => void
   readonly #stateChanged: () => void
   #quitTimer: ReturnType<typeof setTimeout> | undefined
@@ -53,6 +55,7 @@ export class TerminalInputController {
     this.#nextOperationId = options.nextOperationId
     this.#dispatch = options.dispatch
     this.#interactionOpen = options.interactionOpen
+    this.#openDeferredInteraction = options.openDeferredInteraction
     this.#stop = options.stop
     this.#stateChanged = options.stateChanged
   }
@@ -137,6 +140,10 @@ export class TerminalInputController {
     }
     if (matchesKeyAction(data, this.#keymap, 'switcher')) {
       this.#overlays.openSwitcher()
+      return { consume: true }
+    }
+    if (matchesKeyAction(data, this.#keymap, 'openInteraction')) {
+      this.#openDeferredInteraction()
       return { consume: true }
     }
     if (matchesKeyAction(data, this.#keymap, 'activity')) {
