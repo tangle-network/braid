@@ -172,13 +172,15 @@ let ownInitialEnvironment
 
 // Between fork and exec a child still shows this process's initial environment block, and it may
 // not have left this process's group yet. A missing marker means "not exec'd yet" only while the
-// two blocks are identical; once the child has exec'd, the marker must be there.
+// two blocks are identical; once the child has exec'd, the marker must be there. An exiting
+// process refuses the read (EACCES), which leaves ownership undecided until it is gone.
 function readRootOwnership(pid, token) {
   let environment
   try {
     environment = readFileSync(procFile(pid, 'environ'))
   } catch (error) {
-    if (error?.code === 'ENOENT' || error?.code === 'ESRCH') return undefined
+    if (error?.code === 'ENOENT' || error?.code === 'ESRCH' || error?.code === 'EACCES')
+      return undefined
     throw error
   }
   if (environment.toString('utf8').split('\0').includes(`${processTreeToken}=${token}`))
@@ -259,6 +261,8 @@ class PosixProcessTreeTracker {
     }
     this.rootStartTime = root.startTime
     this.entries.set(root.pid, { ...root, depth: 0 })
+    // Read before any table scan: a short-lived child is still readable right after spawn.
+    this.observeOwnership(root)
   }
 
   // Ownership is settled only after exec, when the child has also left this process's group, so
@@ -290,6 +294,26 @@ class PosixProcessTreeTracker {
       this.failure = 'The POSIX process has no valid owner PID'
       return
     }
+    if (!this.rootObserved) {
+      // Ownership is read before the table scan, which takes tens of milliseconds on a busy host.
+      let current
+      try {
+        current = processStat(this.rootPid)
+      } catch (error) {
+        this.failure = `The POSIX process could not be inspected: ${errorMessage(error)}`
+        return
+      }
+      if (current === undefined) {
+        this.failure = 'The POSIX process exited before ownership was observed'
+        return
+      }
+      if (current.startTime !== this.rootStartTime) {
+        this.failure = 'The POSIX owner PID was reused before ownership was observed'
+        return
+      }
+      this.observeOwnership(current)
+      if (!this.rootObserved) return
+    }
     const requiredPids = new Set([this.rootPid, ...this.entries.keys()])
     const table = processTable(this.token, requiredPids)
     if (table.error !== undefined) {
@@ -297,18 +321,7 @@ class PosixProcessTreeTracker {
       return
     }
     const root = table.records.get(this.rootPid)
-    if (!this.rootObserved) {
-      if (root === undefined) {
-        this.failure = 'The POSIX process exited before ownership was observed'
-        return
-      }
-      if (root.startTime !== this.rootStartTime) {
-        this.failure = 'The POSIX owner PID was reused before ownership was observed'
-        return
-      }
-      this.observeOwnership(root)
-      if (!this.rootObserved) return
-    } else if (root !== undefined && root.startTime !== this.rootStartTime) {
+    if (root !== undefined && root.startTime !== this.rootStartTime) {
       this.failure = 'The POSIX owner PID was reused before cleanup completed'
       return
     }
