@@ -202,7 +202,7 @@ async function capture(columns, rows) {
     terminal.sendInput('\t')
     await terminal.waitForRender()
     const runsList = terminal.getViewport().join('\n')
-    assert.match(runsList, /runs · 2/u)
+    for (const runId of [alpha.runId, beta.runId]) assert.ok(runsList.includes(`run ${runId}`))
     terminal.sendInput('\u001b[B')
     terminal.sendInput('\r')
     await waitFor(() => restored.state().focusedRunId === alpha.runId, 'alpha run focus')
