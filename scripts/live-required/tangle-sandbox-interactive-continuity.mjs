@@ -11,6 +11,7 @@ import {
   safeJson,
   safeMessage,
 } from './contracts.mjs'
+import { argument } from './tangle-sandbox-braid-stress-support.mjs'
 
 const OPERATION = 'tangle.sandbox.interactive-continuity'
 const SANDBOX_PROVIDER = 'tangle-sandbox'
@@ -95,11 +96,6 @@ function safeIdentifier(value, label) {
     throw new Error(`${label} must be a bounded public identifier`)
   }
   return value
-}
-
-function argument(name, argv = process.argv) {
-  const index = argv.indexOf(`--${name}`)
-  return index >= 0 && index + 1 < argv.length ? argv[index + 1] : undefined
 }
 
 function positiveInteger(value, fallback) {

@@ -50,13 +50,21 @@ import {
   closeBraidWithProof,
   providerWorkspaceReadbackEvidence,
   publicAccountIdentityEvidence,
-  sandboxWorkspaceRelativePath,
-  sessionWorkspaceFilePath,
   singleRunSpendDisclosure,
   telemetryDisclosure,
   usage,
 } from './tangle-sandbox-braid-stress.mjs'
-import { MissingIntegrationError, resourceDelta } from './tangle-sandbox-braid-stress-support.mjs'
+import {
+  argument,
+  configurationEnvironment,
+  isMissingWorkspaceFileError,
+  MissingIntegrationError,
+  positiveEnvironment,
+  resourceDelta,
+  sandboxWorkspaceRelativePath,
+  sessionWorkspaceFilePath,
+  withoutEnvironment,
+} from './tangle-sandbox-braid-stress-support.mjs'
 import { assertSameInteractiveRef } from './tangle-sandbox-interactive-continuity.mjs'
 import {
   createTerminalOutputTracker,
@@ -128,35 +136,6 @@ const SECRET_ENVIRONMENT_NAMES = [
   'BRAID_TANGLE_SANDBOX_CLEANUP_API_KEY',
   'TANGLE_API_KEY',
 ]
-
-function argument(name, argv = process.argv) {
-  const index = argv.indexOf(`--${name}`)
-  return index >= 0 && index + 1 < argv.length ? argv[index + 1] : undefined
-}
-
-function positiveEnvironment(environment, name, fallback) {
-  const value = Number(environment[name])
-  return Number.isFinite(value) && value > 0 ? value : fallback
-}
-
-function configurationEnvironment(environment) {
-  if (
-    !environment.BRAID_TANGLE_SANDBOX_CREDENTIAL_REF &&
-    !environment.BRAID_TANGLE_SANDBOX_AUTH &&
-    !environment.BRAID_TANGLE_SANDBOX_API_KEY &&
-    !environment.BRAID_TANGLE_SANDBOX_BEARER &&
-    environment.TANGLE_API_KEY
-  ) {
-    return { ...environment, BRAID_TANGLE_SANDBOX_API_KEY: environment.TANGLE_API_KEY }
-  }
-  return environment
-}
-
-function sanitizedEnvironment(environment) {
-  const child = { ...environment }
-  for (const name of SECRET_ENVIRONMENT_NAMES) delete child[name]
-  return child
-}
 
 export function sandboxConfiguration(environment) {
   return {
@@ -334,15 +313,7 @@ export async function waitForProviderReadback(
           ? { environmentId: box.id, path: relativePath, value }
           : undefined
       } catch (error) {
-        const status = error?.status ?? error?.statusCode
-        if (
-          status === 404 ||
-          status === '404' ||
-          error?.code === 'NOT_FOUND' ||
-          error?.name === 'NotFoundError' ||
-          /\b(?:enoent|no such file|file not found)\b/iu.test(error?.message ?? '')
-        )
-          return undefined
+        if (isMissingWorkspaceFileError(error)) return undefined
         throw error
       }
     },
@@ -1474,7 +1445,7 @@ async function runProof({
       throw new Error('LIVE-08 installed another tarball than the release candidate')
     config = await prepareProductionWorkspace({
       repository: targetRepository,
-      environment: sanitizedEnvironment(configurationEnvironment(environment)),
+      environment: withoutEnvironment(configurationEnvironment(environment), SECRET_ENVIRONMENT_NAMES),
       kind: values.kind,
       endpoint: values.endpoint,
       model: values.model,

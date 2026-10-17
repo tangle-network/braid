@@ -3,7 +3,14 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { safeJson, safeMessage } from './contracts.mjs'
 import { runBraidSandboxStress } from './tangle-sandbox-braid-stress.mjs'
-import { awaitUsagePeriodRoom, resourceDelta } from './tangle-sandbox-braid-stress-support.mjs'
+import {
+  argument,
+  awaitUsagePeriodRoom,
+  boundedInteger,
+  percentile,
+  record,
+  resourceDelta,
+} from './tangle-sandbox-braid-stress-support.mjs'
 import {
   captureTangleComparison,
   prepareTangleComparison,
@@ -45,10 +52,6 @@ const CONTROL_REF_FIELDS = [
   'requestDigest',
 ]
 const RUN_SNAPSHOT_NAMES = ['first', 'resumed', 'followUp', 'cancelled']
-
-function record(value) {
-  return value !== null && typeof value === 'object' && !Array.isArray(value) ? value : undefined
-}
 
 function nonEmptyString(value) {
   return typeof value === 'string' && value.length > 0
@@ -728,24 +731,6 @@ export function proofFailures(proof, { maxConcurrentRuns = 1 } = {}) {
 
   addUsageFailures(failures, proof, 'proof', maxConcurrentRuns)
   return [...new Set(failures)]
-}
-
-function argument(name, argv = process.argv) {
-  const index = argv.indexOf(`--${name}`)
-  return index >= 0 && index + 1 < argv.length ? argv[index + 1] : undefined
-}
-
-function boundedInteger(value, fallback, maximum, label) {
-  const parsed = value === undefined ? fallback : Number(value)
-  if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > maximum) {
-    throw new Error(`${label} must be an integer from 1 through ${maximum}`)
-  }
-  return parsed
-}
-
-function percentile(sorted, ratio) {
-  if (sorted.length === 0) return null
-  return sorted[Math.max(0, Math.ceil(sorted.length * ratio) - 1)]
 }
 
 function distribution(values) {

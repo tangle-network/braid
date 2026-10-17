@@ -25,6 +25,7 @@ import {
 import { configEvidence, prepareProductionWorkspace } from './headless.mjs'
 import { DEFAULT_TANGLE_ROUTER_MODEL } from './model-defaults.mjs'
 import { workspaceRequestFor } from './workspace-request.mjs'
+import { configurationEnvironment, shellQuote } from './tangle-sandbox-braid-stress-support.mjs'
 
 const DEFAULT_REPOSITORY = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const DEFAULT_ENDPOINT = 'https://sandbox.tangle.tools'
@@ -59,19 +60,6 @@ function optionalConfidentialTrustPolicy(environment, confidential) {
     (name) => environment[name] !== undefined,
   )
   return configured ? parseConfidentialTrustPolicy(environment) : undefined
-}
-
-function configurationEnvironment(environment) {
-  if (
-    !environment.BRAID_TANGLE_SANDBOX_CREDENTIAL_REF &&
-    !environment.BRAID_TANGLE_SANDBOX_AUTH &&
-    !environment.BRAID_TANGLE_SANDBOX_API_KEY &&
-    !environment.BRAID_TANGLE_SANDBOX_BEARER &&
-    environment.TANGLE_API_KEY
-  ) {
-    return { ...environment, BRAID_TANGLE_SANDBOX_API_KEY: environment.TANGLE_API_KEY }
-  }
-  return environment
 }
 
 export function sandboxConfiguration(environment) {
@@ -184,10 +172,6 @@ export function parseConfidentialTrustPolicy(environment) {
     }),
     selectedPolicyId,
   })
-}
-
-function shellQuote(value) {
-  return `'${String(value).replaceAll("'", "'\\''")}'`
 }
 
 function sha256(value) {

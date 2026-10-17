@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { createHash, randomBytes } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { dirname, posix, resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   NetworkError,
@@ -22,6 +22,7 @@ import {
   resolveBinary,
 } from './headless.mjs'
 import {
+  argument,
   assertEnvironmentIdentity,
   assertExclusiveResume,
   assertNonTerminalRun,
@@ -30,7 +31,9 @@ import {
   assertSameCloudSession,
   assertSameControlRef,
   assertUniqueVisibleEvents,
+  configurationEnvironment,
   errorDetails,
+  isMissingWorkspaceFileError,
   latestCursorFromResponses,
   MissingIntegrationError,
   proofCoordinates,
@@ -38,12 +41,16 @@ import {
   resourceDelta,
   rpcRoundTrip,
   runObservations,
+  sandboxWorkspaceRelativePath,
+  sessionWorkspaceFilePath,
+  shellQuote,
   stateRoundTrip,
   terminalStatus,
   waitForControlIdentity,
   waitForRequestState,
   waitForTerminal,
   waitForWorkspaceToolEvents,
+  withoutEnvironment,
   workspaceToolEvents,
 } from './tangle-sandbox-braid-stress-support.mjs'
 import { workspaceRequestFor } from './workspace-request.mjs'
@@ -66,33 +73,9 @@ const SECRET_ENVIRONMENT_NAMES = [
   'TANGLE_API_KEY',
 ]
 
-function argument(name, argv = process.argv) {
-  const index = argv.indexOf(`--${name}`)
-  return index >= 0 && index + 1 < argv.length ? argv[index + 1] : undefined
-}
-
 function numberEnvironment(environment, name, fallback) {
   const value = Number(environment[name])
   return Number.isFinite(value) && value > 0 ? value : fallback
-}
-
-function sanitizedEnvironment(environment) {
-  const child = { ...environment }
-  for (const name of SECRET_ENVIRONMENT_NAMES) delete child[name]
-  return child
-}
-
-function configurationEnvironment(environment) {
-  if (
-    !environment.BRAID_TANGLE_SANDBOX_CREDENTIAL_REF &&
-    !environment.BRAID_TANGLE_SANDBOX_AUTH &&
-    !environment.BRAID_TANGLE_SANDBOX_API_KEY &&
-    !environment.BRAID_TANGLE_SANDBOX_BEARER &&
-    environment.TANGLE_API_KEY
-  ) {
-    return { ...environment, BRAID_TANGLE_SANDBOX_API_KEY: environment.TANGLE_API_KEY }
-  }
-  return environment
 }
 
 function sandboxClient(values) {
@@ -127,44 +110,6 @@ function continuityChallengePath(coordinates) {
 
 function continuityResponsePath(coordinates) {
   return `.braid-live/${coordinates.proofId}/continuity-response.txt`
-}
-
-export function sandboxWorkspaceRelativePath(path) {
-  const normalized = path.startsWith('./') ? path.slice(2) : path
-  const segments = normalized.split('/')
-  if (
-    normalized.length === 0 ||
-    path.startsWith('/') ||
-    path.includes('\\') ||
-    segments.some((segment) => segment.length === 0 || segment === '.' || segment === '..')
-  ) {
-    throw new Error('Sandbox workspace path must be a contained relative path')
-  }
-  return normalized
-}
-
-/**
- * The absolute path of a workspace file as the session's shell sees it.
- *
- * A relative Sandbox file read or write resolves from the sandbox home (`/home/agent`), while the
- * session works in the requested workspace: the repository checkout below it (`/home/agent/braid`
- * for the Braid repository). Proof files the agent reads or writes must use the session's path.
- */
-export async function sessionWorkspaceFilePath(box, controlRef, path) {
-  const relativePath = sandboxWorkspaceRelativePath(path)
-  const observed = await box.exec(
-    'pwd',
-    controlRef?.sessionId === undefined ? undefined : { sessionId: controlRef.sessionId },
-  )
-  const cwd = typeof observed?.stdout === 'string' ? observed.stdout.trim() : ''
-  const exitCode = observed?.exitCode ?? observed?.code
-  if (exitCode !== 0 || !cwd.startsWith('/') || /[\r\n\0]/u.test(cwd)) {
-    throw new MissingIntegrationError(
-      'Could not observe the session workspace for a Sandbox file path',
-      { environmentId: box?.id },
-    )
-  }
-  return posix.join(cwd, relativePath)
 }
 
 function sha256(value) {
@@ -345,10 +290,6 @@ export function continuityDigestMatches(value, expectedDigest) {
   return value === expectedDigest || value === `${expectedDigest}\n`
 }
 
-function shellQuote(value) {
-  return `'${String(value).replaceAll("'", "'\\''")}'`
-}
-
 function proofPrompts(coordinates, holdMs) {
   const path = workspaceMarkerPath(coordinates)
   const challengePath = continuityChallengePath(coordinates)
@@ -425,13 +366,6 @@ export async function readRetainedWorkspaceFile(
     throw error
   }
   return { environmentId: box.id, path: relativePath, value }
-}
-
-function isMissingWorkspaceFileError(error) {
-  const status = error?.status ?? error?.statusCode
-  if (status === 404 || status === '404') return true
-  if (error?.code === 'NOT_FOUND' || error?.name === 'NotFoundError') return true
-  return /\b(?:enoent|no such file|file not found)\b/iu.test(error?.message ?? '')
 }
 
 export function providerWorkspaceReadbackEvidence(
@@ -1619,7 +1553,7 @@ export async function runBraidSandboxStress({
     config = await phase('workspace', () =>
       prepareProductionWorkspace({
         repository: suppliedRepository,
-        environment: sanitizedEnvironment(environment),
+        environment: withoutEnvironment(environment, SECRET_ENVIRONMENT_NAMES),
         ...values,
         workspaceRequest: workspaceRequestFor(environment),
         providerOptions: { lifecycle: RETAINED_LIFECYCLE, idleTtlSeconds },

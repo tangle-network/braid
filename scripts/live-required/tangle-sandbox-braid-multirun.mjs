@@ -32,6 +32,12 @@ import {
 } from './tangle-sandbox-braid-stress.mjs'
 import { createTerminalOutputTracker, waitForTerminalQuiescence } from './terminal-quiescence.mjs'
 import { workspaceRequestFor } from './workspace-request.mjs'
+import {
+  argument,
+  configurationEnvironment,
+  positiveEnvironment,
+  withoutEnvironment,
+} from './tangle-sandbox-braid-stress-support.mjs'
 
 const scriptPath = fileURLToPath(import.meta.url)
 const repository = resolve(dirname(scriptPath), '../..')
@@ -62,35 +68,6 @@ const SECRET_ENVIRONMENT_NAMES = [
   'BRAID_TANGLE_SANDBOX_BEARER',
   'TANGLE_API_KEY',
 ]
-
-function argument(name, argv = process.argv) {
-  const index = argv.indexOf(`--${name}`)
-  return index >= 0 && index + 1 < argv.length ? argv[index + 1] : undefined
-}
-
-function positiveEnvironment(environment, name, fallback) {
-  const value = Number(environment[name])
-  return Number.isFinite(value) && value > 0 ? value : fallback
-}
-
-function configurationEnvironment(environment) {
-  if (
-    !environment.BRAID_TANGLE_SANDBOX_CREDENTIAL_REF &&
-    !environment.BRAID_TANGLE_SANDBOX_AUTH &&
-    !environment.BRAID_TANGLE_SANDBOX_API_KEY &&
-    !environment.BRAID_TANGLE_SANDBOX_BEARER &&
-    environment.TANGLE_API_KEY
-  ) {
-    return { ...environment, BRAID_TANGLE_SANDBOX_API_KEY: environment.TANGLE_API_KEY }
-  }
-  return environment
-}
-
-function sanitizedEnvironment(environment) {
-  const child = { ...environment }
-  for (const name of SECRET_ENVIRONMENT_NAMES) delete child[name]
-  return child
-}
 
 export function sandboxConfiguration(environment) {
   return connectionConfiguration(configurationEnvironment(environment), {
@@ -822,7 +799,7 @@ export async function runProof({
     config = await phase('workspace.prepare', () =>
       prepareProductionWorkspace({
         repository: targetRepository,
-        environment: sanitizedEnvironment(configurationEnvironment(environment)),
+        environment: withoutEnvironment(configurationEnvironment(environment), SECRET_ENVIRONMENT_NAMES),
         kind: values.kind,
         endpoint: values.endpoint,
         model: values.model,

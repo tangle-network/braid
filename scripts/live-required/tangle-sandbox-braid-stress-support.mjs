@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash, randomUUID } from 'node:crypto'
+import { posix } from 'node:path'
 import {
   AgentExactRunControlRefSchema,
   validateInteractionAnswer,
@@ -49,7 +50,7 @@ export class MissingIntegrationError extends Error {
   }
 }
 
-function record(value) {
+export function record(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value : undefined
 }
 
@@ -1095,4 +1096,99 @@ function errorFingerprint(error, depth = 0) {
 
 export function terminalStatus(run) {
   return run && TERMINAL_STATUSES.has(run.status) ? run.status : undefined
+}
+
+// Helpers shared by the live-required Sandbox proofs. Each proof imports them from here instead of keeping a copy.
+
+export function argument(name, argv = process.argv) {
+  const index = argv.indexOf(`--${name}`)
+  return index >= 0 && index + 1 < argv.length ? argv[index + 1] : undefined
+}
+
+export function positiveEnvironment(environment, name, fallback) {
+  const value = Number(environment[name])
+  return Number.isFinite(value) && value > 0 ? value : fallback
+}
+
+export function boundedInteger(value, fallback, maximum, label) {
+  const parsed = value === undefined ? fallback : Number(value)
+  if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > maximum) {
+    throw new Error(`${label} must be an integer from 1 through ${maximum}`)
+  }
+  return parsed
+}
+
+export function percentile(sorted, ratio) {
+  if (sorted.length === 0) return null
+  return sorted[Math.max(0, Math.ceil(sorted.length * ratio) - 1)]
+}
+
+export function shellQuote(value) {
+  return `'${String(value).replaceAll("'", "'\\''")}'`
+}
+
+/** The Sandbox credential Braid installs: `TANGLE_API_KEY` when no Braid-specific credential is set. */
+export function configurationEnvironment(environment) {
+  if (
+    !environment.BRAID_TANGLE_SANDBOX_CREDENTIAL_REF &&
+    !environment.BRAID_TANGLE_SANDBOX_AUTH &&
+    !environment.BRAID_TANGLE_SANDBOX_API_KEY &&
+    !environment.BRAID_TANGLE_SANDBOX_BEARER &&
+    environment.TANGLE_API_KEY
+  ) {
+    return { ...environment, BRAID_TANGLE_SANDBOX_API_KEY: environment.TANGLE_API_KEY }
+  }
+  return environment
+}
+
+/** A child process environment without the named credentials. */
+export function withoutEnvironment(environment, names) {
+  const child = { ...environment }
+  for (const name of names) delete child[name]
+  return child
+}
+
+export function sandboxWorkspaceRelativePath(path) {
+  const normalized = path.startsWith('./') ? path.slice(2) : path
+  const segments = normalized.split('/')
+  if (
+    normalized.length === 0 ||
+    path.startsWith('/') ||
+    path.includes('\\') ||
+    segments.some((segment) => segment.length === 0 || segment === '.' || segment === '..')
+  ) {
+    throw new Error('Sandbox workspace path must be a contained relative path')
+  }
+  return normalized
+}
+
+/**
+ * The absolute path of a workspace file as the session's shell sees it.
+ *
+ * A relative Sandbox file read or write resolves from the sandbox home (`/home/agent`), while the
+ * session works in the requested workspace: the repository checkout below it (`/home/agent/braid`
+ * for the Braid repository). Proof files the agent reads or writes must use the session's path.
+ */
+export async function sessionWorkspaceFilePath(box, controlRef, path) {
+  const relativePath = sandboxWorkspaceRelativePath(path)
+  const observed = await box.exec(
+    'pwd',
+    controlRef?.sessionId === undefined ? undefined : { sessionId: controlRef.sessionId },
+  )
+  const cwd = typeof observed?.stdout === 'string' ? observed.stdout.trim() : ''
+  const exitCode = observed?.exitCode ?? observed?.code
+  if (exitCode !== 0 || !cwd.startsWith('/') || /[\r\n\0]/u.test(cwd)) {
+    throw new MissingIntegrationError(
+      'Could not observe the session workspace for a Sandbox file path',
+      { environmentId: box?.id },
+    )
+  }
+  return posix.join(cwd, relativePath)
+}
+
+export function isMissingWorkspaceFileError(error) {
+  const status = error?.status ?? error?.statusCode
+  if (status === 404 || status === '404') return true
+  if (error?.code === 'NOT_FOUND' || error?.name === 'NotFoundError') return true
+  return /\b(?:enoent|no such file|file not found)\b/iu.test(error?.message ?? '')
 }
