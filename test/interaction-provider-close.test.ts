@@ -626,3 +626,102 @@ for (const [columns, rows] of SIZES) {
     }
   })
 }
+
+/**
+ * LIVE-07 multirun at 48da449: run A's opencode permission opened while branch B's prompt was being
+ * typed in a second conversation, took the rest of that prompt, and expired. The next permission's
+ * typed answer closed its form but never reached the provider, so run A waited it out too.
+ */
+test('a background run permission answered through its typed form reaches the provider', async () => {
+  let app: BraidApplication | undefined
+  const first = permissionForm('interaction-background-first')
+  const second = permissionForm('interaction-background-second')
+  let raiseFirst = () => {}
+  const firstRaised = new Promise<void>((resolve) => {
+    raiseFirst = resolve
+  })
+  const status = (id: string) =>
+    app?.state().runs[0]?.interactions.find((interaction) => interaction.request.id === id)?.status
+  const responses: InteractionResponse[] = []
+  const bound = (request: InteractionRequest, runId: string) =>
+    rebindInteractionRequest(request, { ...request.binding, runId, executionId: runId })
+  const execution: ExecutionPort = {
+    capabilities: () => interactionResponseRunCapabilities(),
+    async *streamTurn(input): AsyncIterable<BraidRuntimeEvent> {
+      await firstRaised
+      yield { type: 'interaction', request: bound(first, input.runId) }
+      await new Promise((resolve) => setTimeout(resolve, 300))
+      yield { type: 'interaction.cancel', id: first.id, reason: 'timeout' }
+      yield { type: 'interaction', request: bound(second, input.runId) }
+      await waitUntil(
+        () => !['pending', 'responding', undefined].includes(status(second.id)) || input.signal.aborted,
+        'a recorded response to the second permission',
+        5_000,
+      )
+      if (input.signal.aborted) return
+      yield { type: 'interaction.cancel', id: second.id, reason: 'resolved' }
+      yield finalEvent(input.runId)
+    },
+    respondInteraction: async (input) => {
+      responses.push(input.command.response)
+      return { operationId: input.command.operationId, outcome: 'accepted' as const }
+    },
+  }
+  const created = createBraidApplication({ fixture: 'deterministic', execution })
+  app = created
+  created.initialize('/workspace')
+  const terminal = new RecordingTerminal(120, 40)
+  let operation = 0
+  const view = new BraidTerminalApp({
+    controller: createApplicationUiController(created),
+    tui: new TuiMainScreen(terminal),
+    theme: createBraidTheme(false),
+    workspace: '/workspace',
+    nextOperationId: () => `operation-background-permission-${++operation}`,
+  })
+  const done = view.start()
+  try {
+    terminal.sendInput('branch A prompt')
+    terminal.sendInput('\r')
+    await waitUntil(() => created.state().runs.length === 1, 'run A')
+    terminal.sendInput('/new Second conversation')
+    terminal.sendInput('\r')
+    await waitUntil(() => created.state().conversations.length === 2, 'conversation B')
+    const prompt = 'Use the current working directory. Write exactly MARKER_B to marker.txt.'
+    terminal.sendInput(prompt.slice(0, 30))
+    await terminal.waitForRender()
+    raiseFirst()
+    await waitUntil(() => status(first.id) === 'pending', 'the first permission')
+    await waitUntil(
+      () => terminal.getViewport().join('\n').includes(first.title),
+      'the first permission form',
+    )
+    // The rest of branch B's prompt and its Enter land in the open form, as they did live.
+    terminal.sendInput(prompt.slice(30))
+    terminal.sendInput('\r')
+    await waitUntil(() => status(second.id) === 'pending', 'the second permission')
+    await waitUntil(
+      () => terminal.getViewport().join('\n').includes(second.title),
+      'the second permission form',
+    )
+    await terminal.waitForRender()
+    terminal.sendInput('{"grant":["allow_once"]}')
+    terminal.sendInput('\r')
+    await waitUntil(() => responses.length === 1, 'the typed answer at the provider', 5_000)
+    assert.deepEqual(
+      responses.map(({ id: _id, ...response }) => response),
+      [{ outcome: 'accepted', data: { grant: ['allow_once'] } }],
+    )
+    await waitUntil(
+      () => TERMINAL_RUN_STATUSES.has(created.state().runs[0]?.status ?? ''),
+      'a terminal run',
+    )
+    assert.equal(created.state().runs[0]?.status, 'completed')
+    assert.equal(created.storageFailure(), undefined)
+  } finally {
+    raiseFirst()
+    view.stop()
+    await done
+    await created.close()
+  }
+})
