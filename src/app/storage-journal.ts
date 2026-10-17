@@ -15,11 +15,12 @@ import {
 import type { BraidState } from '../domain/state.js'
 import type { Clock } from '../ports/clock.js'
 import type { EffectRecord, EffectStoragePort, JournalPort } from '../ports/effect-storage.js'
-import type {
-  JournalEvent,
-  StateSnapshot,
-  StoragePort,
-  StoredJournalEvent,
+import {
+  canAppendAfterTerminal,
+  type JournalEvent,
+  type StateSnapshot,
+  type StoragePort,
+  type StoredJournalEvent,
 } from '../ports/storage.js'
 import { createInMemoryOperationFingerprint } from './operation-fingerprint.js'
 import {
@@ -55,6 +56,8 @@ export class StorageJournal implements JournalPort, EffectStoragePort {
   readonly #events: BraidEventEnvelope[]
   readonly #contexts = new Map<string, EnvelopeContext>()
   readonly #runSequences = new Map<RunId, number>()
+  /** Runs whose terminal event is durable; storage refuses their further output. */
+  readonly #terminalRuns = new Set<RunId>()
   readonly #fallbackFingerprint = createInMemoryOperationFingerprint()
   readonly #initialState: BraidState | undefined
   #replayEvents: readonly BraidEventEnvelope[] | undefined
@@ -118,7 +121,10 @@ export class StorageJournal implements JournalPort, EffectStoragePort {
       replayEvents: events,
     })
     const cursors = storage.runSequences === undefined ? [] : await storage.runSequences()
-    for (const cursor of cursors) journal.#runSequences.set(cursor.runId, cursor.lastSequence)
+    for (const cursor of cursors) {
+      journal.#runSequences.set(cursor.runId, cursor.lastSequence)
+      if (cursor.terminal) journal.#terminalRuns.add(cursor.runId)
+    }
     if (cursors.length === 0) {
       for (const event of stored) {
         const runId = event.runId
@@ -126,6 +132,7 @@ export class StorageJournal implements JournalPort, EffectStoragePort {
           runId,
           Math.max(journal.#runSequences.get(runId) ?? 0, event.sequence),
         )
+        if (event.terminal === true) journal.#terminalRuns.add(runId)
       }
     }
     return journal
@@ -216,6 +223,13 @@ export class StorageJournal implements JournalPort, EffectStoragePort {
     const task = this.#pending
       .then(async () => {
         if (this.#failure !== undefined) throw this.#failure
+        // The first terminal outcome closes the run. A provider event or a second outcome that
+        // raced it (LIVE-07: a cancellation and the stream's own end) is declined here, because
+        // storage would refuse it and a refused write would latch the whole journal read-only.
+        if (this.#terminalRuns.has(runId) && !canAppendAfterTerminal(record)) {
+          this.#contexts.delete(eventId)
+          return { appended: false as const }
+        }
         const result =
           snapshot === undefined || this.#storage.appendWithSnapshot === undefined
             ? await this.#storage.append([record])
@@ -225,6 +239,7 @@ export class StorageJournal implements JournalPort, EffectStoragePort {
           return { appended: false as const }
         }
         this.#runSequences.set(runId, sequence)
+        if (record.terminal === true) this.#terminalRuns.add(runId)
         this.#events.push({ ...envelope, eventId })
         if (this.#events.length > MAX_IN_MEMORY_EVENTS) this.#events.shift()
         this.#contexts.delete(eventId)

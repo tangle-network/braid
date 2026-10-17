@@ -19,6 +19,7 @@ import { redactSensitiveText, redactStructuredValue } from '../domain/redaction.
 import {
   providerHttpFailureDiagnostic,
   publicRuntimeDiagnostic,
+  runtimeFailureCode,
 } from '../domain/runtime-diagnostics.js'
 import type { BraidFinalRuntimeEvent, BraidRuntimeEvent } from '../domain/runtime-events.js'
 import type { BraidMessagePart, RunStatus } from '../domain/state.js'
@@ -34,7 +35,6 @@ import {
   optionalFiniteNonNegativeNumber,
   providerCause,
   providerFailureReason,
-  safeDiagnostic,
   safeProviderDiagnostic,
   safePublicIdentifier,
 } from './provider-values.js'
@@ -432,8 +432,10 @@ export function providerEventFor(
         kind: 'run.error',
         runId,
         message:
-          providerHttpFailureDiagnostic(event.message) ??
-          providerCause(event.message) ??
+          (event.error === undefined
+            ? providerHttpFailureDiagnostic(event.message)
+            : runtimeFailureCode(event.error, '')) ||
+          providerCause(event.message) ||
           'RUNTIME_BACKEND_ERROR',
         recoverable: event.recoverable,
         provider,
@@ -547,9 +549,9 @@ export function providerEventFor(
 /**
  * A failed final keeps a stable error code and says why in its reason.
  *
- * The code is the provider's HTTP class, its own typed token, or `RUNTIME_FINAL_ERROR`. The reason
- * is the provider's terminal reason, or the error's own text when that reason is blank, an outcome,
- * or a diagnostic code. Both paths classify sanitized text, then bound the selected cause.
+ * The code is the HTTP class of the detail's upstream status, the provider's own typed token, or
+ * `RUNTIME_FINAL_ERROR`. The reason carries the provider's terminal reason and the error's own
+ * text whenever that text adds something, through the one credential redactor and one bound.
  */
 function finalFailure(event: BraidFinalRuntimeEvent): {
   readonly error?: string
@@ -557,9 +559,7 @@ function finalFailure(event: BraidFinalRuntimeEvent): {
 } {
   const message = event.error?.message
   const error =
-    event.error === undefined
-      ? undefined
-      : (providerHttpFailureDiagnostic(message) ?? safeDiagnostic(message, 'RUNTIME_FINAL_ERROR'))
+    event.error === undefined ? undefined : runtimeFailureCode(event.error, 'RUNTIME_FINAL_ERROR')
   const reason =
     providerFailureReason(publicRuntimeDiagnostic(event.reason) ?? event.reason, message) ??
     (event.reason === undefined ? undefined : 'RUNTIME_FINAL_REASON')

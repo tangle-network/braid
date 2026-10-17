@@ -1,4 +1,4 @@
-import { SENSITIVE_DIAGNOSTIC } from './provider-values.js'
+import { SENSITIVE_DIAGNOSTIC, safeDiagnostic } from './provider-values.js'
 import { redactSensitiveText } from './secret-sanitizer.js'
 
 export const BRAID_SANDBOX_INTERACTION_UNSUPPORTED =
@@ -69,6 +69,24 @@ export function providerHttpFailureDiagnostic(value: unknown): string | undefine
     .filter((found, index, all) => all.indexOf(found) === index)
   const detail = tokens.length === 0 ? '' : ` (${tokens.join('/')})`
   return `${providerFailureClass(status)}: provider returned HTTP ${status}${detail}`
+}
+
+/**
+ * The stable code for Runtime's typed failure detail (`BackendErrorDetail`).
+ *
+ * An upstream HTTP status is data on the detail, so its class comes from that field; the message
+ * contributes only the provider's own type and code tokens when it repeats the same status.
+ */
+export function runtimeFailureCode(
+  detail: { readonly status?: unknown; readonly message?: unknown },
+  fallback: string,
+): string {
+  const parsed = providerHttpFailureDiagnostic(detail.message)
+  const status = detail.status
+  if (typeof status !== 'number' || !Number.isInteger(status) || status < 400 || status > 599)
+    return parsed ?? safeDiagnostic(detail.message, fallback)
+  const statusCode = `${providerFailureClass(status)}: provider returned HTTP ${status}`
+  return parsed?.startsWith(statusCode) ? parsed : statusCode
 }
 
 // CLI runners such as opencode relay Router's refusal message but drop its HTTP

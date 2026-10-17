@@ -101,28 +101,34 @@ export function hasProviderCause(value: string | undefined): value is string {
   )
 }
 
-/** Prefer an informative reason, then the error's cause; retain outcome-only history otherwise. */
+/**
+ * The reason and the error's own text when each says something the other does not, so a generic
+ * reason cannot hide the error that explains it; outcome-only history is retained otherwise.
+ */
 export function providerFailureReason(reason: unknown, error: unknown): string | undefined {
   // Classify before the display bound: an ellipsis must not turn a long code into a cause.
   const candidates = [sanitizedProviderCause(reason), sanitizedProviderCause(error)]
+  const [first, second] = candidates.filter(hasProviderCause)
   const selected =
-    candidates.find(hasProviderCause) ?? candidates.find((value) => value !== undefined)
+    first === undefined
+      ? candidates.find((value) => value !== undefined)
+      : second === undefined || first.includes(second)
+        ? first
+        : second.includes(first)
+          ? second
+          : `${first}: ${second}`
   return selected === undefined ? undefined : boundProviderCause(selected)
 }
 
+/** A provider's typed code, such as `RATE_LIMITED` or `ROUTER.TIMEOUT`; anything else falls back. */
 export function safeProviderDiagnostic(value: unknown, fallback: string): string {
-  if (typeof value === 'string') {
-    const text = value.trim()
-    const redacted = redactSensitiveText(text)
-    if (redacted !== text && redacted.length > 0) return redacted
-    if (
-      TYPED_PROVIDER_DIAGNOSTIC.test(text) &&
-      !containsUnsafeControlCharacter(text) &&
-      !SENSITIVE_DIAGNOSTIC.test(text)
-    )
-      return text
-  }
-  return fallback
+  if (typeof value !== 'string') return fallback
+  const text = value.trim()
+  return TYPED_PROVIDER_DIAGNOSTIC.test(text) &&
+    !SENSITIVE_DIAGNOSTIC.test(text) &&
+    redactSensitiveText(text) === text
+    ? text
+    : fallback
 }
 
 const NO_RECORDED_PROVIDER_CAUSE = 'no cause was recorded'

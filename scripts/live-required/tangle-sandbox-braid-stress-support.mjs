@@ -993,15 +993,55 @@ export function numericDelta(after, before, field) {
   return typeof left === 'number' && typeof right === 'number' ? left - right : null
 }
 
+// Sandbox usage counts compute minutes and GPU work for the current UTC day (`UsageInfo.periodStart`).
+const DAILY_USAGE_FIELDS = new Set(['computeMinutes', 'gpuSeconds', 'gpuCostUsd'])
+
+function usagePeriod(value) {
+  if (value?.periodStart === undefined || value.periodStart === null) return undefined
+  const time = new Date(value.periodStart).getTime()
+  return Number.isFinite(time) ? new Date(time).toISOString() : undefined
+}
+
+/**
+ * Account usage change between two observations. Across a daily reset the daily counters restart,
+ * so their difference measures nothing: they are unknown and the delta names both periods.
+ */
 export function resourceDelta(after, before) {
   const fields = ['activeSandboxes', 'totalSandboxes', 'computeMinutes', 'gpuSeconds', 'gpuCostUsd']
+  const beforePeriod = usagePeriod(before)
+  const afterPeriod = usagePeriod(after)
+  const periodChanged =
+    beforePeriod !== undefined && afterPeriod !== undefined && beforePeriod !== afterPeriod
   const delta = Object.fromEntries(
-    fields.map((field) => [field, numericDelta(after, before, field)]),
+    fields.map((field) => [
+      field,
+      periodChanged && DAILY_USAGE_FIELDS.has(field) ? null : numericDelta(after, before, field),
+    ]),
   )
   return {
     ...delta,
     unknownFields: fields.filter((field) => delta[field] === null),
+    ...(periodChanged ? { periodChanged: { before: beforePeriod, after: afterPeriod } } : {}),
   }
+}
+
+const USAGE_PERIOD_MARGIN_MS = 15 * 60_000
+
+/**
+ * Start a measured cohort only when its usage observations share one daily period. A LIVE-07
+ * cohort started at 23:56 UTC once read the next day's counters after cleanup, so its compute
+ * delta was unmeasurable; inside the margin before 00:00 UTC the cohort waits for the reset.
+ */
+export async function awaitUsagePeriodRoom(now = Date.now()) {
+  const today = new Date(now)
+  const reset = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() + 1)
+  if (reset - now >= USAGE_PERIOD_MARGIN_MS) return 0
+  const waitMs = reset - now + 5_000
+  process.stderr.write(
+    `Waiting ${Math.ceil(waitMs / 1_000)} s for the Sandbox usage period to reset at ${new Date(reset).toISOString()}\n`,
+  )
+  await new Promise((resolveWait) => setTimeout(resolveWait, waitMs))
+  return waitMs
 }
 
 export function proofCoordinates() {

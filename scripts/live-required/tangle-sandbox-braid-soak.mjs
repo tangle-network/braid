@@ -3,7 +3,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { safeJson, safeMessage } from './contracts.mjs'
 import { runBraidSandboxStress } from './tangle-sandbox-braid-stress.mjs'
-import { resourceDelta } from './tangle-sandbox-braid-stress-support.mjs'
+import { awaitUsagePeriodRoom, resourceDelta } from './tangle-sandbox-braid-stress-support.mjs'
 import {
   captureTangleComparison,
   prepareTangleComparison,
@@ -212,7 +212,11 @@ function addUsageFailures(failures, proof, label, maxConcurrentRuns, aggregate =
   for (const field of ACCOUNT_USAGE_FIELDS.slice(1)) {
     const value = delta?.[field]
     if (!finiteNonNegative(value)) {
-      failures.push(`${label} account ${field} delta was unknown`)
+      failures.push(
+        delta?.periodChanged === undefined
+          ? `${label} account ${field} delta was unknown`
+          : `${label} account ${field} delta spans the daily usage reset (${delta.periodChanged.before} to ${delta.periodChanged.after})`,
+      )
       continue
     }
     if (proof?.cleanup?.activeResourceDeltaRequired !== true) continue
@@ -967,6 +971,7 @@ export async function runBraidSandboxSoak({
   )
   if (afterCanary !== undefined && (requestedRuns !== 3 || requestedConcurrency !== 2))
     throw new Error('Post-canary overlap requires the frozen three-proof, two-worker cohort')
+  await awaitUsagePeriodRoom()
   const startedAt = new Date().toISOString()
   const comparison = await prepareTangleComparison(environment, requestedRuns, requestedConcurrency)
   const comparableAttempts = new Map()
