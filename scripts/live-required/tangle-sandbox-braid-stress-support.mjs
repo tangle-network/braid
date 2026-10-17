@@ -285,23 +285,39 @@ function proofPermissionResponse(request, policy) {
   }
   const fields = request.answerSpec?.fields
   const grant = fields?.find((field) => field.name === 'grant')
+  const refusal = {
+    interactionId: request.id,
+    requestKind: request.kind,
+    requestSha256: proofRequestDigest(request),
+    ...proofPermissionPreview(request),
+    ...(subject?.type === 'tool' ? { toolName: subject.toolName } : {}),
+  }
   if (
     request.kind !== 'permission' ||
-    !allowed ||
     grant?.type !== 'select' ||
-    !grant.options?.some((option) => option.value === 'allow_once') ||
-    (request.allowedOutcomes !== undefined && !request.allowedOutcomes.includes('accepted')) ||
     fields.some((field) => field.type === 'secret' || (field.name !== 'grant' && field.required))
   ) {
     throw new MissingIntegrationError(
       'The proof received an interaction outside its authorized workspace operations',
-      {
-        interactionId: request.id,
-        requestKind: request.kind,
-        requestSha256: proofRequestDigest(request),
-        ...proofPermissionPreview(request),
-        ...(subject?.type === 'tool' ? { toolName: subject.toolName } : {}),
-      },
+      refusal,
+    )
+  }
+  // A tool request outside the proof's operations is declined, as its user would: the action never
+  // runs (so it cannot read the continuity challenge), the model can continue with the authorized
+  // steps, and the exact outcome checks still judge the run. LIVE-07 at a1c209a aborted on one.
+  if (
+    !allowed &&
+    (request.allowedOutcomes === undefined || request.allowedOutcomes.includes('declined'))
+  )
+    return { id: request.id, outcome: 'declined', declined: refusal }
+  if (
+    !allowed ||
+    !grant.options?.some((option) => option.value === 'allow_once') ||
+    (request.allowedOutcomes !== undefined && !request.allowedOutcomes.includes('accepted'))
+  ) {
+    throw new MissingIntegrationError(
+      'The proof received an interaction outside its authorized workspace operations',
+      refusal,
     )
   }
   const response = { id: request.id, outcome: 'accepted', data: { grant: ['allow_once'] } }
@@ -373,7 +389,7 @@ async function answerProofPermissions(session, runId, policy, deadline) {
             item.request?.id === interactionId && ['pending', 'responding'].includes(item.status),
         )
     if (!pending) continue
-    const response = proofPermissionResponse(request, policy)
+    const { declined, ...response } = proofPermissionResponse(request, policy)
     const operationId = `op-live-permission-${proofRequestDigest({ proofId: policy.proofId, runId, interactionId })}`
     const receipt = recorded ?? {
       runId,
@@ -382,6 +398,7 @@ async function answerProofPermissions(session, runId, policy, deadline) {
       operationId,
       request: structuredClone(request),
       response,
+      ...(declined === undefined ? {} : { declined }),
       pendingStateObserved: true,
       outcome: 'pending',
     }
