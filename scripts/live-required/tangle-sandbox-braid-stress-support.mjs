@@ -255,7 +255,7 @@ function proofPermissionPreview(request) {
   }
 }
 
-export function proofPermissionResponse(request, policy) {
+function proofPermissionResponse(request, policy) {
   const subject = request.subject
   const input = record(subject?.input)
   let allowed = false

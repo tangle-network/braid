@@ -27,7 +27,7 @@ import { DEFAULT_TANGLE_ROUTER_MODEL } from './model-defaults.mjs'
 import { workspaceRequestFor } from './workspace-request.mjs'
 import {
   configurationEnvironment,
-  proofPermissionResponse,
+  permissionFormAnswer,
   shellQuote,
 } from './tangle-sandbox-braid-stress-support.mjs'
 
@@ -653,11 +653,12 @@ function sourcePrompt(marker, path) {
 }
 
 /**
- * Answer the source run's permissions as the person who typed its prompt would: allow once each
- * exact command the prompt names (or a read of its marker file) and refuse anything else. LIVE-09
- * at 38a0c8e waited out an unanswered bash permission and failed "Agent is awaiting a response".
+ * Answer the source run's tool permissions as the person who typed its prompt would: allow each
+ * once. LIVE-09 at 38a0c8e waited out an unanswered bash permission ("Agent is awaiting a response");
+ * an exact-command allow-list then refused a model variation at de48b9e. The fork's own file checks
+ * judge the result, so the proof refuses only what it cannot answer: other kinds or secret fields.
  */
-function answerSourcePermissions(app, runId, policy) {
+function answerSourcePermissions(app, runId) {
   let stopped = false
   const answered = new Set()
   const loop = (async () => {
@@ -667,12 +668,24 @@ function answerSourcePermissions(app, runId, policy) {
         const interactionId = interaction.request.id
         if (interaction.status !== 'pending' || answered.has(interactionId)) continue
         answered.add(interactionId)
+        // The stored request carries only its fields; the form check reads them as the terminal does.
+        const { kind, answerSpec } = interaction.request
+        const data = permissionFormAnswer({
+          kind,
+          answerSpec: { kind: 'form', fields: answerSpec.fields },
+        })
+        if (data === undefined) {
+          const tool = interaction.request.subject?.toolName
+          throw new Error(
+            `LIVE-09 cannot answer a ${interaction.request.kind} request${tool ? ` for ${tool}` : ''}`,
+          )
+        }
         const digest = createHash('sha256').update(`${runId}\0${interactionId}`).digest('hex')
         await app.respondInteraction({
           operationId: `op-live-09-permission-${digest.slice(0, 32)}`,
           runId,
           interactionId,
-          response: proofPermissionResponse(interaction.request, policy),
+          response: { id: interactionId, outcome: 'accepted', data },
         })
       }
       await new Promise((resolve) => setTimeout(resolve, 100))
@@ -790,12 +803,7 @@ async function sendSource(app, proofId, onIdentity = () => {}, explainFailure = 
       }),
     )
   }
-  const permissions = answerSourcePermissions(app, receipt.runId, {
-    proofId,
-    commands: sourceCommands(marker, path),
-    readPaths: [path],
-    receipts: [],
-  })
+  const permissions = answerSourcePermissions(app, receipt.runId)
   let terminal
   try {
     await receipt.admissionReady
