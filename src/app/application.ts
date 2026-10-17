@@ -156,8 +156,8 @@ export class BraidApplication {
     {
       readonly operationId: string
       readonly completion: Promise<BraidState>
-      readonly interactionReady: () => boolean
-      readonly onInteractionReady: (callback: () => void) => void
+      readonly attached: () => boolean
+      readonly onAttached: (callback: () => void) => void
     }
   >()
   readonly #controlOwner = `braid-control-${randomUUID()}`
@@ -738,18 +738,18 @@ export class BraidApplication {
           'RECONNECT_IN_PROGRESS',
           `Run ${input.runId} already has a reconnect operation`,
         )
-      if (input.onInteractionReady !== undefined) {
-        if (existing.interactionReady()) input.onInteractionReady()
-        else existing.onInteractionReady(input.onInteractionReady)
+      if (input.onAttached !== undefined) {
+        if (existing.attached()) input.onAttached()
+        else existing.onAttached(input.onAttached)
       }
       return existing.completion
     }
     let ready = false
     const listeners = new Set<() => void>()
-    if (input.onInteractionReady !== undefined) listeners.add(input.onInteractionReady)
+    if (input.onAttached !== undefined) listeners.add(input.onAttached)
     const completion = reconnectRun(this.#portViews.replay, {
       ...input,
-      onInteractionReady: () => {
+      onAttached: () => {
         ready = true
         for (const listener of listeners) listener()
         listeners.clear()
@@ -758,8 +758,8 @@ export class BraidApplication {
     const active = {
       operationId: input.operationId,
       completion,
-      interactionReady: () => ready,
-      onInteractionReady: (callback: () => void) => listeners.add(callback),
+      attached: () => ready,
+      onAttached: (callback: () => void) => listeners.add(callback),
     }
     this.#activeReconnects.set(input.runId, active)
     void completion

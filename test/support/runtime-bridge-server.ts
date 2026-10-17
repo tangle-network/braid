@@ -6,10 +6,10 @@ import {
   type AgentEnvironmentCapabilities,
   type AgentProfile,
   type ContextTransferReceipt,
-  canonicalAgentProfileDigest,
-  canonicalCandidateDigest,
   ContextTransferReceiptSchema,
   ContextTransferRequestSchema,
+  canonicalAgentProfileDigest,
+  canonicalCandidateDigest,
 } from '@tangle-network/agent-interface'
 
 const PROFILE_MATERIALIZATION_SCHEMA = 'cli-bridge.profile-materialization.v2'
@@ -51,6 +51,8 @@ export interface RuntimeBridgeServerOptions {
   }
   readonly holdStreams?: boolean
   readonly statusFailureStatus?: number
+  /** Never answer a run status read, as a provider whose control plane hangs; close ends them. */
+  readonly holdStatus?: boolean
   readonly statusRunId?: string
   readonly cancellation?: {
     readonly mode?: 'acknowledged' | 'rejected'
@@ -393,6 +395,7 @@ export async function startRuntimeBridgeServer(
   const closedSessions: string[] = []
   const cancellations: RuntimeBridgeCancellationRequest[] = []
   const replays: RuntimeBridgeReplayRequest[] = []
+  const heldStatusReads = new Set<ServerResponse>()
   interface RunCoordinates {
     readonly provider: string
     readonly environmentId: string
@@ -705,6 +708,11 @@ export async function startRuntimeBridgeServer(
         response.end(JSON.stringify({ error: { type: 'run_not_found' } }))
         return
       }
+      if (options.holdStatus === true) {
+        heldStatusReads.add(response)
+        response.once('close', () => heldStatusReads.delete(response))
+        return
+      }
       if (options.statusFailureStatus !== undefined) {
         response.writeHead(options.statusFailureStatus, { 'content-type': 'application/json' })
         response.end(JSON.stringify({ error: { type: 'status_unavailable' } }))
@@ -1005,6 +1013,10 @@ export async function startRuntimeBridgeServer(
     },
     close: async () => {
       for (const run of runs.values()) finishReaders(run)
+      for (const response of heldStatusReads) {
+        response.writeHead(503, { 'content-type': 'application/json' })
+        response.end(JSON.stringify({ error: { type: 'status_unavailable' } }))
+      }
       await closeServer(server)
     },
   }

@@ -14,6 +14,7 @@ import {
 } from '../live-bridge/protocol.mjs'
 import { resolveModelProvider } from './configuration.mjs'
 import { endpointEvidence, protectedUnavailable, safeMessage } from './contracts.mjs'
+import { lastRunStatusDetail } from './tangle-sandbox-braid-stress-support.mjs'
 
 const AUTH_ENVIRONMENT_NAMES = Object.freeze([
   'BRAID_ANALYSIS_AUTH',
@@ -544,6 +545,9 @@ export async function runHeadlessTurn({ binary, config, marker, prompt, fixture 
     )
     const run = runFromState(terminal.state, response.runId)
     if (run?.status !== 'completed') {
+      // A run that ends unknown often has no error or reason; Braid's newest unknown or status
+      // detail is then the only recorded cause.
+      const lastStatus = lastRunStatusDetail(session.responses, response.runId)
       const diagnostics = [
         typeof run?.error === 'string' && run.error.length > 0
           ? `error=${JSON.stringify(safeMessage(run.error, config.environment))}`
@@ -555,6 +559,9 @@ export async function runHeadlessTurn({ binary, config, marker, prompt, fixture 
         typeof run?.terminalReason === 'string' && run.terminalReason.length > 0
           ? `reason=${JSON.stringify(safeMessage(run.terminalReason, config.environment))}`
           : undefined,
+        lastStatus === undefined
+          ? undefined
+          : `lastStatus=${JSON.stringify(safeMessage(lastStatus, config.environment))}`,
       ].filter(Boolean)
       throw new Error(
         `turn ${response.runId} ended with status ${run?.status ?? 'missing'}${diagnostics.length === 0 ? '' : `; ${diagnostics.join('; ')}`}`,
