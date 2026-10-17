@@ -61,7 +61,10 @@ export interface BraidInteraction {
   readonly responseBinding: InteractionBinding
   readonly runId: string
   readonly source: MessagePartSource
-  /** When Braid received the request; its response window starts here if the provider sent no time. */
+  /**
+   * When Braid received or journaled the request. The response window starts here when the
+   * provider sent no time of its own.
+   */
   readonly receivedAt?: string
   readonly status: 'pending' | 'responding' | 'declined' | 'cancelled' | 'resolved' | 'unknown'
   readonly responseOperation?: {
