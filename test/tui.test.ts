@@ -988,6 +988,11 @@ async function focusFromRunsList(
   await terminal.waitForRender()
   terminal.sendInput('\t')
   await terminal.waitForRender()
+  const selected = terminal.getViewport().find((line) => line.includes('›'))
+  assert.ok(
+    selected?.includes(`run ${app.state().focusedRunId}`),
+    `Tab must start the runs list on the focused run, not: ${selected}`,
+  )
   terminal.sendInput(arrow)
   terminal.sendInput('\r')
   await waitUntil(() => app.state().focusedRunId === expectedRunId)
@@ -1079,7 +1084,7 @@ test('Tab starts the runs list on the focused run however much activity arrived 
   const runs = reportingRunsExecution(clock)
   const app = createBraidApplication({ fixture: 'deterministic', execution: runs.execution, clock })
   app.initialize('/workspace')
-  await admitInNewConversation(app, 'first')
+  const first = await admitInNewConversation(app, 'first')
   const middle = await admitInNewConversation(app, 'middle')
   const newest = await admitInNewConversation(app, 'newest')
   await waitUntil(() => app.state().activeRuns.length === 3)
@@ -1087,7 +1092,7 @@ test('Tab starts the runs list on the focused run however much activity arrived 
   const { terminal, stop } = await startActivityOrderTerminal(app)
   try {
     // Rows reported while the feed is open push its selected row down; Tab must not inherit that.
-    await focusFromRunsList(terminal, app, '\u001b[A', newest, () => runs.report(app, newest, 5))
+    await focusFromRunsList(terminal, app, '\u001b[B', first, () => runs.report(app, newest, 5))
   } finally {
     await stop()
     await cancelStreamingRuns(app)
