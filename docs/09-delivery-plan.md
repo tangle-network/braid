@@ -449,6 +449,43 @@ The npm provenance must bind the package to the exact commit and release workflo
 
 Comprehensive product audits report their own status without blocking an otherwise usable package release.
 
+### One-command live release
+
+`scripts/release/live-release.mjs` drives a release from the operator machine through `beelink-gate`, `ssh`, and the GitHub CLI.
+It replaces the hand-run 0.3.4 chain.
+
+```bash
+# Gate a PR, prove LIVE-07, merge, then release the merge commit.
+node scripts/release/live-release.mjs --pr <n> --runs 3 --host beelink1 --gh gh-drew
+
+# Release a commit already on main.
+node scripts/release/live-release.mjs --commit <full-sha> --host beelink1 --gh gh-drew
+
+# Print the plan and the read-only preflight; dispatches nothing and creates no Sandbox.
+node scripts/release/live-release.mjs --pr <n> --dry-run --gh gh-drew
+```
+
+With `--pr`, the command runs these steps in order and stops at the first failure:
+
+1. Run the full code gate at the PR head on the pinned Beelink: format, lint, typecheck, boundaries, an import of every `scripts/live-required/*.mjs`, `pnpm test`, and `pnpm run test:property`.
+2. Run `--runs` consecutive `node scripts/live-required.mjs live-tangle` runs on the same Beelink with the protected configuration.
+   Each run starts only after the shared Sandbox account settles: no live Sandbox was created in the last 10 minutes, and the live-id set and active count match 5 minutes apart.
+   A run counts when its `LIVE-07` receipt row passed.
+   It also counts when the parsed failure reason does not name the Tangle sandbox proof and that run wrote a passed multirun evidence file.
+3. Comment the gate receipt and each run's redacted rows on the PR.
+4. Merge with `--match-head-commit` only at N/N with an unchanged head and no new human review or comment.
+   The tangletools "Auto-approved PR" message and bot accounts are not reviews.
+5. Dispatch `release.yml` with `publish=false` on the merge commit.
+   Then dispatch `Release Live Evidence` after a settled account, retrying once on failure.
+   Then dispatch `release.yml` with `publish=true` and that evidence run.
+
+`--commit` runs step 5 only.
+The router and Sandbox keys are read on the Beelink from `router.key` and `sandbox.key` in `--key-dir` (default `~/.braid-live`).
+Preflight refuses a key file that is not mode `600`.
+Key values are never printed, and every line the command prints or posts is redacted.
+Progress, run logs, PR comment bodies, and the final line live in `~/.local/state/braid-live-release/<sha>/`.
+The PR head must already contain the script, because each live run executes `live-release.mjs live-run <n>` inside its gate checkout.
+
 ## Requirement ownership
 
 | Requirement range | Primary work package | Admissible evidence |
