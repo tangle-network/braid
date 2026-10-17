@@ -346,10 +346,33 @@ export async function sendCancellationAfterActivityBrowserDismissal(runtime, lab
 const ACTIVITY_DOWN = '\u001b[B'
 const ACTIVITY_UP = '\u001b[A'
 
-async function focusRunFromActivityBrowser(runtime, runId, direction, label, timeoutMs) {
+/**
+ * Open the activity browser as a user does, answering a permission form that opens over the
+ * terminal first and pressing F2 again once it is gone: at 59aff2c a form appeared just after F2,
+ * took the key, and the browser wait sat behind it for 300s.
+ */
+async function openActivityBrowser(runtime, label, timeoutMs) {
   await settlePermissions(runtime, timeoutMs)
   runtime.input('\u001bOQ')
-  await waitFor(`${label} activity browser`, () => /activity/iu.test(runtime.screen()), timeoutMs)
+  let pressedAt = performance.now()
+  await waitFor(
+    `${label} activity browser`,
+    async () => {
+      if (/activity/iu.test(runtime.screen())) return true
+      const frame = await runtime.captureState(timeoutMs)
+      const answered = await answerPendingPermissions(runtime, frame, timeoutMs)
+      if (answered || performance.now() - pressedAt > 3_000) {
+        runtime.input('\u001bOQ')
+        pressedAt = performance.now()
+      }
+      return false
+    },
+    timeoutMs,
+  )
+}
+
+async function focusRunFromActivityBrowser(runtime, runId, direction, label, timeoutMs) {
+  await openActivityBrowser(runtime, label, timeoutMs)
   runtime.input('\t')
   await pause(100)
   runtime.input(direction)
@@ -1072,9 +1095,7 @@ export async function runProof({
     const focusedBefore = secondFrame.view.focusedRunId
     assert.equal(focusedBefore, runBId, 'newly admitted branch B was not foreground')
     await phase('focus-a', async () => {
-      await settlePermissions(runtime, timeoutMs)
-      runtime.input('\u001bOQ')
-      await waitFor('activity browser', () => /activity/iu.test(runtime.screen()), timeoutMs)
+      await openActivityBrowser(runtime, 'focus branch A', timeoutMs)
       runtime.input('\t')
       await pause(100)
       runtime.input('\u001b[B')
@@ -1093,9 +1114,7 @@ export async function runProof({
     })
     terminalEvidence.focusA = runtime.snapshot()
     await phase('focus-b', async () => {
-      await settlePermissions(runtime, timeoutMs)
-      runtime.input('\u001bOQ')
-      await waitFor('activity browser again', () => /activity/iu.test(runtime.screen()), timeoutMs)
+      await openActivityBrowser(runtime, 'focus branch B', timeoutMs)
       runtime.input('\t')
       await pause(100)
       runtime.input('\u001b[A')
