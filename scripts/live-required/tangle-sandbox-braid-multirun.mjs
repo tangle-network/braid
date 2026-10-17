@@ -403,20 +403,16 @@ async function answerPendingPermissions(runtime, frame, timeoutMs) {
     // Clear anything a racing prompt left in the form, then enter the answer in one paste.
     const clear = `${CURSOR_LINE_END}${DELETE_TO_LINE_START}`
     runtime.input(`${clear}${bracketedPaste(JSON.stringify(answer))}\r`)
-    const settled = await waitFor(
+    // The form closes before Braid journals the response, and it also leaves the queue when the
+    // request expires: wait for the journal to settle it, and accept only a recorded response.
+    const outcome = await waitFor(
       'permission answer',
       async () => {
-        const frame = await runtime.captureState(timeoutMs)
-        return frame.view?.interactions?.some(
-          (candidate) => candidate.interactionId === interactionId,
-        )
-          ? undefined
-          : frame
+        const settled = permissionOutcome(await runtime.captureState(timeoutMs), interactionId)
+        return settled === 'unsettled' ? undefined : settled
       },
       timeoutMs,
     )
-    // A form also leaves the queue when it expires; only a journaled response is acceptance.
-    const outcome = permissionOutcome(settled, interactionId)
     if (outcome !== 'responded')
       throw new ProofRefusal(`Braid did not accept the typed permission answer (${outcome})`)
     receipt.accepted = true
@@ -430,7 +426,8 @@ export function permissionOutcome(frame, interactionId) {
   let outcome = 'unsettled'
   for (const event of frame?.events ?? []) {
     const payload = event?.payload ?? {}
-    if ((payload.interactionId ?? payload.interaction?.id) !== interactionId) continue
+    const id = payload.interactionId ?? payload.value?.interactionId ?? payload.interaction?.id
+    if (id !== interactionId) continue
     if (['run.interaction.response.requested', 'run.interaction.responded'].includes(event.kind))
       return 'responded'
     if (event.kind === 'run.interaction.cancelled')
