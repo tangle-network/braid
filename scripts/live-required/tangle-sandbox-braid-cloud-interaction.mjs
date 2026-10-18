@@ -11,6 +11,7 @@ import {
 import { installPackedBraid } from '../packed-binary.mjs'
 import { safeJson } from './contracts.mjs'
 import { configEvidence, initializedSession, prepareProductionWorkspace } from './headless.mjs'
+import { releaseProofRouting } from './model-defaults.mjs'
 import {
   cleanupRetainedResourceByControlRef,
   cleanupRetainedResourceByRunId,
@@ -503,7 +504,11 @@ export async function runCloudInteractionProof({
       credentialRef: values.credentialRef,
       credentialValue: values.credentialValue,
       workspaceRequest: workspaceRequestFor(environment),
-      providerOptions: { lifecycle: 'retained', idleTtlSeconds },
+      providerOptions: {
+        lifecycle: 'retained',
+        idleTtlSeconds,
+        ...releaseProofRouting('opencode'),
+      },
     })
     client = new Sandbox({ baseUrl: values.endpoint, apiKey: values.credentialValue })
     if (proofWindow !== undefined) {

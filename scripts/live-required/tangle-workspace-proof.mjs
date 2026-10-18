@@ -24,7 +24,7 @@ import {
   scalarMeasurement,
 } from './contracts.mjs'
 import { configEvidence, prepareProductionWorkspace } from './headless.mjs'
-import { DEFAULT_TANGLE_ROUTER_MODEL } from './model-defaults.mjs'
+import { DEFAULT_TANGLE_ROUTER_MODEL, releaseProofRouting } from './model-defaults.mjs'
 import {
   configurationEnvironment,
   permissionFormAnswer,
@@ -1337,6 +1337,7 @@ async function runWorkspaceProof({
     providerOptions: {
       lifecycle: 'retained',
       idleTtlSeconds: idleTtlSeconds(environment),
+      ...releaseProofRouting(values.runner),
     },
     ...(trust === undefined ? {} : { confidentialAttestationPolicy: trust.policy }),
   })

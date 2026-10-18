@@ -74,7 +74,7 @@ export async function resolveTangleSandboxBackend(
   const { profile, model, runner } = await tangleExecutionIdentity(input, selection, connectionId)
 
   const [
-    { createTangleSandboxClient },
+    { createTangleSandboxClient, withConnectionRouting },
     { createTangleProvider },
     { createExecutor, providerAsSandboxClient },
   ] = await Promise.all([
@@ -94,6 +94,9 @@ export async function resolveTangleSandboxBackend(
     workspaceRequest: workspaceRequest ?? null,
     ...(resourceRequest === undefined ? {} : { resourceRequest }),
     ...(secretNames === undefined ? {} : { secretNames }),
+    ...(record.providerOptions.routing === undefined
+      ? {}
+      : { routing: record.providerOptions.routing }),
   })
   const rawClient = await createTangleSandboxClient(record, options, input.signal)
   const observedClient = observeSandboxClient(rawClient, lifecycle)
@@ -108,7 +111,7 @@ export async function resolveTangleSandboxBackend(
       ? {}
       : { confidentialAttestationVerifier: confidential.tangle }),
   })
-  const runtimeProvider = providerWithoutSandboxOptions(sdkProvider)
+  const runtimeProvider = withConnectionRouting(providerWithoutSandboxOptions(sdkProvider), record)
   const capabilities = capabilitiesForLifecycle(await sdkProvider.capabilities(), lifecycle)
   assertTangleWorkspaceCwdCapability(workspaceRequest, capabilities)
   const providerSessionId = providerSessionFor(input, capabilities)
@@ -243,7 +246,8 @@ export async function resolveTangleSandboxRetainedConnection(
     transferred ? stableProviderId('session-braid-', input.runId) : providerSessionId,
   )
   const lifecycle = retainedSandboxLifecycle(idleTtlSeconds)
-  const [{ createTangleSandboxClient }, { createTangleProvider }] = await Promise.all([
+  const [{ createTangleSandboxClient, withConnectionRouting }, { createTangleProvider }] =
+    await Promise.all([
     import('../connections/production-connection-providers.js'),
     import('@tangle-network/agent-provider-tangle'),
   ])
@@ -271,15 +275,18 @@ export async function resolveTangleSandboxRetainedConnection(
     options.tangleRetainedControlLookup ?? createTangleRetainedControlLookup(observedClient.client)
   const confidential = nitroVerifiersForConnection(record, options)
   const modelCredentials = tangleModelCredentialsForConnection(record, options)
-  const provider = createTangleProvider({
-    client: observedClient.client,
-    defaultBackend: runner,
-    name: 'tangle-sandbox',
-    ...(modelCredentials === undefined ? {} : { modelCredentials }),
-    ...(confidential?.tangle === undefined
-      ? {}
-      : { confidentialAttestationVerifier: confidential.tangle }),
-  })
+  const provider = withConnectionRouting(
+    createTangleProvider({
+      client: observedClient.client,
+      defaultBackend: runner,
+      name: 'tangle-sandbox',
+      ...(modelCredentials === undefined ? {} : { modelCredentials }),
+      ...(confidential?.tangle === undefined
+        ? {}
+        : { confidentialAttestationVerifier: confidential.tangle }),
+    }),
+    record,
+  )
   const reportedCapabilities = await provider.capabilities()
   assertTangleWorkspaceCwdCapability(workspaceRequest, reportedCapabilities)
   const retained = reportedCapabilities.retainedControl
@@ -314,6 +321,9 @@ export async function resolveTangleSandboxRetainedConnection(
     workspaceRequest: workspaceRequest ?? null,
     ...(resourceRequest === undefined ? {} : { resourceRequest }),
     ...(secretNames === undefined ? {} : { secretNames }),
+    ...(record.providerOptions.routing === undefined
+      ? {}
+      : { routing: record.providerOptions.routing }),
   })
   const workspaceRequestDigestValue = workspaceRequestDigest(workspaceRequest)
   return freezeExecution({
@@ -428,7 +438,6 @@ function providerWithoutSandboxOptions(
     },
   }
 }
-
 function capabilitiesForLifecycle(
   capabilities: AgentEnvironmentCapabilities,
   lifecycle: SandboxLifecyclePolicy,
