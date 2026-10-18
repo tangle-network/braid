@@ -11,9 +11,9 @@ import {
   stat,
   writeFile,
 } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
+import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import test from 'node:test'
 import {
@@ -104,9 +104,10 @@ function connection(
 }
 
 async function waitForCondition(predicate: () => boolean, timeoutMs = 1_000): Promise<void> {
-  const deadline = Date.now() + timeoutMs
+  const deadline = performance.now() + timeoutMs
   while (!predicate()) {
-    if (Date.now() >= deadline) throw new Error('Timed out waiting for the production provider')
+    if (performance.now() >= deadline)
+      throw new Error('Timed out waiting for the production provider')
     await new Promise((resolve) => setTimeout(resolve, 1))
   }
 }

@@ -52,9 +52,10 @@ function production(endpoint: string): ProductionCompositionConfig {
 }
 
 async function waitFor(predicate: () => boolean, timeoutMs = 2_000): Promise<void> {
-  const deadline = Date.now() + timeoutMs
+  const deadline = performance.now() + timeoutMs
   while (!predicate()) {
-    if (Date.now() >= deadline) throw new Error('Timed out waiting for retained CLI Bridge state')
+    if (performance.now() >= deadline)
+      throw new Error('Timed out waiting for retained CLI Bridge state')
     await new Promise((resolve) => setTimeout(resolve, 1))
   }
 }

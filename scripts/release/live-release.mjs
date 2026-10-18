@@ -19,10 +19,6 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import {
-  DEFAULT_TANGLE_ROUTER_MODEL,
-  DEFAULT_TANGLE_ROUTER_MODEL_ID,
-} from '../live-required/model-defaults.mjs'
 
 const REPO = 'tangle-network/braid'
 const REPO_URL = `git@github.com:${REPO}.git`
@@ -37,13 +33,23 @@ const CODE_GATE = [
   'pnpm test',
   'pnpm run test:property',
 ].join('; ')
-// The protected live configuration; model-defaults.mjs owns the model and the environment overrides each value.
+// The protected live configuration; the environment overrides each value.
 const LIVE_CONFIG = {
   BRAID_TANGLE_ENDPOINT: 'https://router.tangle.tools/v1',
-  BRAID_TANGLE_MODEL: DEFAULT_TANGLE_ROUTER_MODEL_ID,
   BRAID_TANGLE_SANDBOX_ENDPOINT: 'https://sandbox.tangle.tools',
-  BRAID_TANGLE_SANDBOX_MODEL: DEFAULT_TANGLE_ROUTER_MODEL,
   BRAID_TANGLE_SANDBOX_RUNNER: 'opencode',
+}
+
+// model-defaults.mjs owns the model. It is imported only by a live run, which executes this file in a
+// gate checkout: `observe` reaches the Beelink as a module on stdin, where a relative import cannot resolve.
+async function liveModels() {
+  const { DEFAULT_TANGLE_ROUTER_MODEL, DEFAULT_TANGLE_ROUTER_MODEL_ID } = await import(
+    new URL('../live-required/model-defaults.mjs', import.meta.url).href
+  )
+  return {
+    BRAID_TANGLE_MODEL: DEFAULT_TANGLE_ROUTER_MODEL_ID,
+    BRAID_TANGLE_SANDBOX_MODEL: DEFAULT_TANGLE_ROUTER_MODEL,
+  }
 }
 const KEY_FILES = { router: 'router.key', sandbox: 'sandbox.key' }
 const MINUTE = 60_000
@@ -100,7 +106,9 @@ function fail(message) {
 // Runs a command; streams redacted output to `log` (and stdout when `echo`), returns { code, out }.
 function run(cmd, args, { input, log, echo = false } = {}) {
   return new Promise((resolve) => {
-    const child = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'pipe'] })
+    const child = spawn(cmd, args, {
+      stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
+    })
     let out = ''
     const take = (chunk) => {
       const text = redact(chunk)
@@ -112,7 +120,12 @@ function run(cmd, args, { input, log, echo = false } = {}) {
     child.stderr.on('data', take)
     child.on('error', (error) => take(`${cmd}: ${error.message}\n`))
     child.on('close', (code) => resolve({ code: code ?? 1, out }))
-    child.stdin.end(input ?? '')
+    if (input !== undefined) {
+      // A child that exits before reading its input closes the pipe (EPIPE); its exit code reports
+      // the outcome, so the write error must not crash the driver.
+      child.stdin.on('error', () => {})
+      child.stdin.end(input)
+    }
   })
 }
 
@@ -230,7 +243,12 @@ async function liveRun(n, keyDir) {
   const logFile = path.join(os.tmpdir(), `braid-live-release-${n}.log`)
   fs.rmSync(receipts, { force: true })
   const key = (name) => fs.readFileSync(path.join(dir, name), 'utf8').trim()
-  const env = { ...LIVE_CONFIG, ...process.env, BRAID_LIVE_TANGLE_RECEIPTS: receipts }
+  const env = {
+    ...LIVE_CONFIG,
+    ...(await liveModels()),
+    ...process.env,
+    BRAID_LIVE_TANGLE_RECEIPTS: receipts,
+  }
   env.BRAID_TANGLE_API_KEY = key(KEY_FILES.router)
   env.TANGLE_API_KEY = key(KEY_FILES.sandbox)
   const start = Date.now()
@@ -448,8 +466,10 @@ class Driver {
       `credential files on ${this.o.ssh}: ${r.code === 0 ? r.out.trim().replace(/\n/g, ', ') : `missing (${r.out.trim()})`}`,
     )
     if (r.code !== 0 || r.out.split('\n').some((l) => l && !l.startsWith('600 '))) return false
-    this.log(`account now: ${await this.observe()}`)
-    return true
+    const account = await this.observe()
+    this.log(`account now: ${account}`)
+    // A crashed observation prints a stack, not SETTLED or BUSY; every later settle wait would spin on it.
+    return /^(SETTLED|BUSY) /.test(account)
   }
 
   async main() {

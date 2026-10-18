@@ -371,19 +371,23 @@ async function openActivityBrowser(runtime, label, timeoutMs) {
   )
 }
 
+/**
+ * Focus one run from the activity browser's runs list, as a user does: F2, Tab, one arrow, Enter.
+ * The runs list keeps every run's row in admission order, newest first, and Tab starts on the
+ * focused run (#169), so one arrow reaches the other run. Success is the frame focusing runId.
+ */
 async function focusRunFromActivityBrowser(runtime, runId, direction, label, timeoutMs) {
   await openActivityBrowser(runtime, label, timeoutMs)
   runtime.input('\t')
   await pause(100)
-  runtime.input(direction)
-  runtime.input('\r')
+  runtime.input(`${direction}\r`)
   const frame = await waitForFrame(
     runtime,
     `${label} focus`,
     (candidate) => candidate.view.focusedRunId === runId,
     timeoutMs,
   )
-  runtime.input('\u001b')
+  if (!transcriptSurfaceReady(runtime.screen())) runtime.input('\u001b')
   await waitForActivityBrowserDismissal(runtime, label, timeoutMs)
   return frame
 }
@@ -407,11 +411,14 @@ async function answerPendingPermissions(runtime, frame, timeoutMs) {
   )
   for (const interaction of queue) {
     const { interactionId } = interaction
-    if (runtime.permissions.some((receipt) => receipt.interactionId === interactionId)) continue
+    const recorded = runtime.permissions.find((receipt) => receipt.interactionId === interactionId)
+    if (recorded?.accepted) continue
     const answer = permissionFormAnswer(interaction)
     const command = interaction.request?.subject?.input?.command
-    // `accepted` turns true only once the form leaves the queue after the typed answer.
-    const receipt = {
+    // `accepted` turns true only once the form leaves the queue after the typed answer. A still
+    // queued form whose earlier answer did not land is answered again on its existing receipt:
+    // 0.3.5's run 5 left one unanswered after a poll error, and its run's cancel then voided it.
+    const receipt = recorded ?? {
       runId: interaction.runId,
       interactionId,
       kind: interaction.kind,
@@ -422,7 +429,7 @@ async function answerPendingPermissions(runtime, frame, timeoutMs) {
       answerable: answer !== undefined,
       accepted: false,
     }
-    runtime.permissions.push(receipt)
+    if (recorded === undefined) runtime.permissions.push(receipt)
     if (answer === undefined)
       throw new ProofRefusal(`The proof cannot answer a ${interaction.kind} request`)
     await runtime.waitForStable(1_000).catch(() => undefined)
@@ -1110,39 +1117,27 @@ export async function runProof({
     const focusedBefore = secondFrame.view.focusedRunId
     assert.equal(focusedBefore, runBId, 'newly admitted branch B was not foreground')
     await phase('focus-a', async () => {
-      await openActivityBrowser(runtime, 'focus branch A', timeoutMs)
-      runtime.input('\t')
-      await pause(100)
-      runtime.input('\u001b[B')
-      runtime.input('\r')
-      focusAFrame = await waitForFrame(
+      focusAFrame = await focusRunFromActivityBrowser(
         runtime,
+        runAId,
+        ACTIVITY_DOWN,
         'focus branch A',
-        (frame) => frame.view.focusedRunId === runAId,
         timeoutMs,
       )
       assertFrameHasConcurrentRuns(focusAFrame, [runAId, runBId])
       assert.ok(isActive(runStatus(focusAFrame, runAId)))
       assert.ok(isActive(runStatus(focusAFrame, runBId)))
-      runtime.input('\u001b')
-      await waitForActivityBrowserDismissal(runtime, 'focus branch A', timeoutMs)
     })
     terminalEvidence.focusA = runtime.snapshot()
     await phase('focus-b', async () => {
-      await openActivityBrowser(runtime, 'focus branch B', timeoutMs)
-      runtime.input('\t')
-      await pause(100)
-      runtime.input('\u001b[A')
-      runtime.input('\r')
-      focusBFrame = await waitForFrame(
+      focusBFrame = await focusRunFromActivityBrowser(
         runtime,
+        runBId,
+        ACTIVITY_UP,
         'focus branch B',
-        (frame) => frame.view.focusedRunId === runBId,
         timeoutMs,
       )
       assertFrameHasConcurrentRuns(focusBFrame, [runAId, runBId])
-      runtime.input('\u001b')
-      await waitForActivityBrowserDismissal(runtime, 'focus branch B', timeoutMs)
     })
     terminalEvidence.focusB = runtime.snapshot()
     await phase('cancel-b.dispatch', async () => {

@@ -22,8 +22,8 @@ function waitForClose(child) {
 }
 
 async function waitForFile(path, timeoutMs = 2_000) {
-  const deadline = Date.now() + timeoutMs
-  while (Date.now() < deadline) {
+  const deadline = performance.now() + timeoutMs
+  while (performance.now() < deadline) {
     try {
       return await readFile(path, 'utf8')
     } catch (error) {

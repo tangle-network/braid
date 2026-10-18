@@ -8,9 +8,9 @@ import { defineAgentProfile } from '@tangle-network/agent-interface'
 import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { createBraidApplication } from '../src/app/composition.js'
-import { MemoryJournal } from '../src/app/journal.js'
 import { ConfigurationSession } from '../src/app/configuration-session.js'
 import { ConnectionRegistry } from '../src/app/connections.js'
+import { MemoryJournal } from '../src/app/journal.js'
 import type { ProductionCompositionConfig } from '../src/app/production-composition.js'
 import { createProfileRecord } from '../src/app/profiles.js'
 import {
@@ -27,9 +27,9 @@ import {
   loadProductionStartup,
   type ProductionStartupLoadOptions,
 } from '../src/bin/production-startup.js'
+import { FixedClock } from '../src/ports/clock.js'
 import { BraidTerminalApp } from '../src/views/tui/terminal-app.js'
 import { createBraidTheme } from '../src/views/tui/theme.js'
-import { FixedClock } from '../src/ports/clock.js'
 import { FakeTangleRetainedSandbox } from './support/tangle-retained-sandbox.js'
 import { VirtualTerminal } from './support/virtual-terminal.js'
 
@@ -52,9 +52,9 @@ function profile(name: string) {
 }
 
 async function waitFor(predicate: () => boolean, detail: () => string): Promise<void> {
-  const deadline = Date.now() + 10_000
+  const deadline = performance.now() + 10_000
   while (!predicate()) {
-    if (Date.now() >= deadline) throw new Error(`Cloud setup proof timed out: ${detail()}`)
+    if (performance.now() >= deadline) throw new Error(`Cloud setup proof timed out: ${detail()}`)
     await new Promise((resolve) => setTimeout(resolve, 10))
   }
 }
