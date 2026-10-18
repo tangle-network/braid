@@ -8,17 +8,19 @@ import {
 } from '@earendil-works/pi-tui'
 import type { InteractionRequestMaterial } from '@tangle-network/agent-interface'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
+import { MAX_VISIBLE_RUNS } from '../src/adapters/tui/ui-projection.js'
 import { createBraidApplication } from '../src/app/composition.js'
 import {
   createInteractionRequest,
   rebindInteractionRequest,
 } from '../src/app/interaction-request.js'
 import type { BraidRuntimeEvent } from '../src/domain/runtime-events.js'
+import type { Clock } from '../src/ports/clock.js'
 import { DEFAULT_RUN_CAPABILITIES, type ExecutionPort } from '../src/ports/execution.js'
 import { BraidTerminalApp } from '../src/views/tui/terminal-app.js'
 import { createBraidTheme } from '../src/views/tui/theme.js'
-import { interactionResponseRunCapabilities } from './support/run-capabilities.js'
 import { heldFixtureExecution } from './support/held-fixture.js'
+import { interactionResponseRunCapabilities } from './support/run-capabilities.js'
 import { VirtualTerminal } from './support/virtual-terminal.js'
 
 const SIZES = [
@@ -859,4 +861,241 @@ test('Ctrl+C clears, cancels, then requires a second idle press to quit', async 
   terminal.sendInput('\u0003')
   await done
   assert.equal(stopped, true)
+})
+
+type TestApplication = ReturnType<typeof createBraidApplication>
+
+/** Advances one millisecond per reading so admission and activity times are distinct and ordered. */
+class SteppingClock implements Clock {
+  readonly #start = Date.now()
+  #tick = 0
+
+  now(): string {
+    this.#tick += 1
+    return new Date(this.#start + this.#tick).toISOString()
+  }
+}
+
+/** Runs that stay active and report tool calls only when the test asks, stamped by `clock`. */
+function reportingRunsExecution(clock: Clock): {
+  readonly execution: ExecutionPort
+  readonly report: (app: TestApplication, runId: string, count: number) => Promise<void>
+} {
+  const streams = new Map<
+    string,
+    { readonly push: (count: number) => void; readonly end: () => void; reported: number }
+  >()
+  const execution: ExecutionPort = {
+    capabilities: () => DEFAULT_RUN_CAPABILITIES,
+    async *streamTurn(input) {
+      let pending = 0
+      let sequence = 0
+      let ended = input.signal.aborted
+      let wake: (() => void) | undefined
+      const notify = () => {
+        const resolve = wake
+        wake = undefined
+        resolve?.()
+      }
+      streams.set(input.runId, {
+        push: (count) => {
+          pending += count
+          notify()
+        },
+        end: () => {
+          ended = true
+          notify()
+        },
+        reported: 0,
+      })
+      input.signal.addEventListener(
+        'abort',
+        () => {
+          ended = true
+          notify()
+        },
+        { once: true },
+      )
+      while (!ended) {
+        if (pending === 0) {
+          await new Promise<void>((resolve) => {
+            wake = resolve
+          })
+          continue
+        }
+        pending -= 1
+        sequence += 1
+        const at = clock.now()
+        yield {
+          runId: input.runId,
+          eventId: `${input.runId}-tool-${sequence}`,
+          sequence,
+          receivedAt: at,
+          occurredAt: at,
+          event: {
+            type: 'tool_call',
+            toolName: 'read',
+            toolCallId: `${input.runId}-call-${sequence}`,
+            args: {},
+          },
+        }
+      }
+    },
+    cancelRun: async (input) => {
+      streams.get(input.runId)?.end()
+      return { operationId: input.operationId, outcome: 'accepted' as const }
+    },
+  }
+  return {
+    execution,
+    report: async (app, runId, count) => {
+      const stream = streams.get(runId)
+      assert(stream, `run ${runId} is not streaming`)
+      stream.reported += count
+      const target = stream.reported
+      stream.push(count)
+      await waitUntil(
+        () =>
+          (app.state().runs.find((run) => run.id === runId)?.lastProviderSequence ?? 0) >= target,
+        10_000,
+      )
+    },
+  }
+}
+
+async function admitInNewConversation(app: TestApplication, name: string): Promise<string> {
+  await app.conversations.lifecycle.create({
+    operationId: `op-activity-order-create-${name}`,
+    title: `Activity order ${name}`,
+  })
+  const run = app.send({ operationId: `op-activity-order-send-${name}`, text: `run ${name}` })
+  await run.admissionReady
+  return run.runId
+}
+
+/** F2, Tab, one arrow, Enter, as a person switches runs; `whileOpen` reports activity meanwhile. */
+async function focusFromRunsList(
+  terminal: VirtualTerminal,
+  app: TestApplication,
+  arrow: string,
+  expectedRunId: string,
+  whileOpen: () => Promise<void>,
+): Promise<void> {
+  terminal.sendInput('\u001bOQ')
+  await terminal.waitForRender()
+  assert.match(terminal.getViewport().join('\n'), /activity · \d+/u)
+  await whileOpen()
+  await terminal.waitForRender()
+  terminal.sendInput('\t')
+  await terminal.waitForRender()
+  const selected = terminal.getViewport().find((line) => line.includes('›'))
+  assert.ok(
+    selected?.includes(`run ${app.state().focusedRunId}`),
+    `Tab must start the runs list on the focused run, not: ${selected}`,
+  )
+  terminal.sendInput(arrow)
+  terminal.sendInput('\r')
+  await waitUntil(() => app.state().focusedRunId === expectedRunId)
+  await terminal.waitForRender()
+  // Enter opened the run's details at 80 columns; the first Escape returns to the list.
+  terminal.sendInput('\u001b')
+  await terminal.waitForRender()
+  terminal.sendInput('\u001b')
+  await terminal.waitForRender()
+  assert.doesNotMatch(terminal.getViewport().join('\n'), /runs · \d+/u)
+}
+
+async function startActivityOrderTerminal(app: TestApplication): Promise<{
+  readonly terminal: VirtualTerminal
+  readonly stop: () => Promise<void>
+}> {
+  const terminal = new VirtualTerminal(80, 24)
+  let operation = 0
+  const view = new BraidTerminalApp({
+    controller: createApplicationUiController(app),
+    tui: new TuiMainScreen(terminal),
+    theme: createBraidTheme(false),
+    workspace: '/workspace',
+    nextOperationId: () => `op-activity-order-terminal-${++operation}`,
+  })
+  const done = view.start()
+  await terminal.waitForRender()
+  return {
+    terminal,
+    stop: async () => {
+      view.stop()
+      await done
+    },
+  }
+}
+
+async function cancelStreamingRuns(app: TestApplication): Promise<void> {
+  for (const run of app.state().runs) {
+    if (run.status !== 'streaming') continue
+    const cancelled = await app.cancelRun({
+      operationId: `op-activity-order-cleanup-${run.id}`,
+      runId: run.id,
+      terminalStatus: 'aborted',
+    })
+    await cancelled.completion
+  }
+}
+
+test('F2, Tab, Down focuses the same run while two concurrent runs flip the activity order', async () => {
+  const burst = Math.ceil(MAX_VISIBLE_RUNS / 2) + 10
+  const clock = new SteppingClock()
+  const runs = reportingRunsExecution(clock)
+  const app = createBraidApplication({ fixture: 'deterministic', execution: runs.execution, clock })
+  app.initialize('/workspace')
+  const runA = await admitInNewConversation(app, 'a')
+  const runB = await admitInNewConversation(app, 'b')
+  await waitUntil(() => app.state().activeRuns.length === 2)
+  app.focusRun({ operationId: 'op-activity-order-focus-b', runId: runB })
+  const { terminal, stop } = await startActivityOrderTerminal(app)
+  try {
+    // A reported last, so A's rows lead the activity feed.
+    await runs.report(app, runA, burst)
+    await focusFromRunsList(terminal, app, '\u001b[B', runA, () => runs.report(app, runA, 3))
+    await focusFromRunsList(terminal, app, '\u001b[A', runB, () => runs.report(app, runA, 3))
+    // B now reports last: the feed order flips and outgrows the projection's row window.
+    await runs.report(app, runB, burst)
+    await focusFromRunsList(terminal, app, '\u001b[B', runA, () => runs.report(app, runB, 3))
+    terminal.sendInput('\u001bOQ')
+    await terminal.waitForRender()
+    terminal.sendInput('\t')
+    await terminal.waitForRender()
+    const runsList = terminal.getViewport().join('\n')
+    assert.match(runsList, /runs · 2/u)
+    assert.ok(
+      runsList.indexOf(`run ${runB}`) < runsList.indexOf(`run ${runA}`),
+      'the runs list orders runs by admission, newest first',
+    )
+    terminal.sendInput('\u001b')
+    await terminal.waitForRender()
+  } finally {
+    await stop()
+    await cancelStreamingRuns(app)
+    await app.close()
+  }
+})
+
+test('Tab starts the runs list on the focused run however much activity arrived after F2', async () => {
+  const clock = new SteppingClock()
+  const runs = reportingRunsExecution(clock)
+  const app = createBraidApplication({ fixture: 'deterministic', execution: runs.execution, clock })
+  app.initialize('/workspace')
+  const first = await admitInNewConversation(app, 'first')
+  const middle = await admitInNewConversation(app, 'middle')
+  const newest = await admitInNewConversation(app, 'newest')
+  await waitUntil(() => app.state().activeRuns.length === 3)
+  app.focusRun({ operationId: 'op-activity-order-focus-middle', runId: middle })
+  const { terminal, stop } = await startActivityOrderTerminal(app)
+  try {
+    // Rows reported while the feed is open push its selected row down; Tab must not inherit that.
+    await focusFromRunsList(terminal, app, '\u001b[B', first, () => runs.report(app, newest, 5))
+  } finally {
+    await stop()
+    await cancelStreamingRuns(app)
+    await app.close()
+  }
 })

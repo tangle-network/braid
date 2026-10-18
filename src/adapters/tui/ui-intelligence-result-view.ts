@@ -14,7 +14,6 @@ import type {
 import { freezeView } from '../../views/shared/models.js'
 import { sanitizeTerminalText } from '../../views/shared/sanitize.js'
 import { viewStatusForSemanticStatus } from '../../views/shared/semantic-query-types.js'
-import { MAX_VISIBLE_RUNS } from './ui-projection.js'
 
 export interface IntelligenceResultViewOptions {
   readonly durableAnalyses: readonly AnalysisRecord[]
@@ -117,12 +116,10 @@ function pinActivity(
   visible: readonly ActivityItemView[],
   selected: ActivityItemView,
 ): readonly ActivityItemView[] {
+  // The projection already bounds `visible`; trimming it again here would drop the oldest rows,
+  // which are run rows, from the runs list while a result is pinned.
   const insertionOrder = new Map(visible.map((item, index) => [item.id, index] as const))
-  const selectedIsVisible = visible.some((item) => item.id === selected.id)
-  const retained = selectedIsVisible
-    ? visible.filter((item) => item.id !== selected.id).slice(-(MAX_VISIBLE_RUNS - 1))
-    : visible.slice(-(MAX_VISIBLE_RUNS - 1))
-  const merged = [...retained, selected]
+  const merged = [...visible.filter((item) => item.id !== selected.id), selected]
   merged.sort((left, right) => compareActivity(left, right, insertionOrder, visible.length))
   return merged
 }
