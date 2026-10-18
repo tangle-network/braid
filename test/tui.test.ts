@@ -31,9 +31,9 @@ const SIZES = [
 ] as const
 
 async function waitUntil(predicate: () => boolean, timeoutMs = 1_000): Promise<void> {
-  const deadline = Date.now() + timeoutMs
+  const deadline = performance.now() + timeoutMs
   while (!predicate()) {
-    if (Date.now() >= deadline) throw new Error('Timed out waiting for terminal input')
+    if (performance.now() >= deadline) throw new Error('Timed out waiting for terminal input')
     await new Promise((resolve) => setTimeout(resolve, 5))
   }
 }

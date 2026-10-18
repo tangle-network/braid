@@ -123,9 +123,10 @@ function retainedExecution(options: ProductionBackendResolverOptions) {
 }
 
 async function waitFor(predicate: () => boolean, timeoutMs = 1_000): Promise<void> {
-  const deadline = Date.now() + timeoutMs
+  const deadline = performance.now() + timeoutMs
   while (!predicate()) {
-    if (Date.now() >= deadline) throw new Error('Timed out waiting for the Runtime Bridge request')
+    if (performance.now() >= deadline)
+      throw new Error('Timed out waiting for the Runtime Bridge request')
     await new Promise((resolve) => setTimeout(resolve, 1))
   }
 }

@@ -379,9 +379,9 @@ for (const [columns, rows] of [
 }
 
 async function waitFor(predicate: () => Promise<boolean>): Promise<void> {
-  const deadline = Date.now() + 5000
+  const deadline = performance.now() + 5000
   while (!(await predicate())) {
-    if (Date.now() >= deadline) throw new Error('Timed out waiting for profile learning UI')
+    if (performance.now() >= deadline) throw new Error('Timed out waiting for profile learning UI')
     await new Promise((resolve) => setTimeout(resolve, 10))
   }
 }

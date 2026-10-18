@@ -94,9 +94,9 @@ function localInteractionRequest(providerRequest: InteractionRequest): {
 }
 
 async function waitFor(predicate: () => boolean, timeoutMs = 2_000): Promise<void> {
-  const deadline = Date.now() + timeoutMs
+  const deadline = performance.now() + timeoutMs
   while (!predicate()) {
-    if (Date.now() >= deadline) throw new Error('Timed out waiting for the expected state')
+    if (performance.now() >= deadline) throw new Error('Timed out waiting for the expected state')
     await new Promise((resolve) => setTimeout(resolve, 5))
   }
 }

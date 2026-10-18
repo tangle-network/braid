@@ -50,9 +50,9 @@ const SIZES = [
 const TERMINAL_RUN_STATUSES = new Set(['completed', 'failed', 'cancelled', 'aborted', 'expired'])
 
 async function waitUntil(predicate: () => boolean, label: string, timeoutMs = 3_000) {
-  const deadline = Date.now() + timeoutMs
+  const deadline = performance.now() + timeoutMs
   while (!predicate()) {
-    if (Date.now() >= deadline) throw new Error(`Timed out waiting for ${label}`)
+    if (performance.now() >= deadline) throw new Error(`Timed out waiting for ${label}`)
     await new Promise((resolve) => setTimeout(resolve, 5))
   }
 }

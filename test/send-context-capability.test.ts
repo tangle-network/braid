@@ -353,9 +353,9 @@ for (const [columns, rows] of SIZES) {
       await new Promise((resolve) => setTimeout(resolve, 300))
       terminal.sendInput('retry the task')
       terminal.sendInput('\r')
-      const deadline = Date.now() + 3_000
+      const deadline = performance.now() + 3_000
       while (!terminal.getViewport().join('\n').includes('Send unavailable')) {
-        if (Date.now() > deadline) throw new Error(terminal.getViewport().join('\n'))
+        if (performance.now() > deadline) throw new Error(terminal.getViewport().join('\n'))
         await new Promise((resolve) => setTimeout(resolve, 10))
       }
       await app.whenDurable()

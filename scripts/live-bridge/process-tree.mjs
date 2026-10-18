@@ -591,23 +591,27 @@ export function processTreeStatus(child) {
 
 export async function waitForTreeGone(child, timeoutMs) {
   const boundedTimeout = Number.isFinite(timeoutMs) ? Math.max(0, timeoutMs) : 0
-  const deadline = Date.now() + boundedTimeout
+  const deadline = performance.now() + boundedTimeout
   while (true) {
     const status = processTreeStatus(child)
     if (!status.supported && status.pending !== true) return status
     if (status.gone) return status
-    if (Date.now() >= deadline) return status
-    await new Promise((resolve) => setTimeout(resolve, Math.min(pollMs, deadline - Date.now())))
+    if (performance.now() >= deadline) return status
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.min(pollMs, deadline - performance.now())),
+    )
   }
 }
 
 async function waitForTreeOwnership(child, timeoutMs) {
   const boundedTimeout = Number.isFinite(timeoutMs) ? Math.max(0, timeoutMs) : 0
-  const deadline = Date.now() + boundedTimeout
+  const deadline = performance.now() + boundedTimeout
   while (true) {
     const status = processTreeStatus(child)
-    if (status.pending !== true || Date.now() >= deadline) return status
-    await new Promise((resolve) => setTimeout(resolve, Math.min(pollMs, deadline - Date.now())))
+    if (status.pending !== true || performance.now() >= deadline) return status
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.min(pollMs, deadline - performance.now())),
+    )
   }
 }
 

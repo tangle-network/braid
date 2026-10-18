@@ -26,15 +26,15 @@ import { ConnectionActionService } from '../src/app/connection-actions.js'
 import { ConnectionError } from '../src/app/connection-errors.js'
 import { ConnectionRegistry } from '../src/app/connections.js'
 import { MemoryJournal } from '../src/app/journal.js'
-import { createAdmissionReceipt } from '../src/domain/receipts.js'
-import type { RetainedRunAdmissionRecord } from '../src/ports/execution.js'
 import { activateProductionConnection } from '../src/bin/production-application.js'
 import type { ConnectionRecord, ConnectionTransportOptions } from '../src/domain/entities.js'
 import { createConnectionId, createCredentialRefId } from '../src/domain/ids.js'
 import { assertConnectionRecord } from '../src/domain/invariants-profile.js'
+import { createAdmissionReceipt } from '../src/domain/receipts.js'
 import { redactBraidEvent } from '../src/domain/redaction.js'
 import { FixedClock } from '../src/ports/clock.js'
 import { credentialRef } from '../src/ports/credentials.js'
+import type { RetainedRunAdmissionRecord } from '../src/ports/execution.js'
 import { RandomIds } from '../src/ports/ids.js'
 import { FakeTangleRetainedSandbox } from './support/tangle-retained-sandbox.js'
 
@@ -132,9 +132,9 @@ async function storedConnectionKey(connection: ConnectionRecord) {
 }
 
 async function waitFor(predicate: () => boolean, timeoutMs = 5_000): Promise<void> {
-  const deadline = Date.now() + timeoutMs
+  const deadline = performance.now() + timeoutMs
   while (!predicate()) {
-    if (Date.now() >= deadline) throw new Error('Timed out waiting for the seat proof')
+    if (performance.now() >= deadline) throw new Error('Timed out waiting for the seat proof')
     await new Promise((resolve) => setTimeout(resolve, 2))
   }
 }
