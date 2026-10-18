@@ -208,12 +208,34 @@ function compare(
   return order === 0 ? compareSemanticText(left.id, right.id) : order
 }
 
+/**
+ * Keeps the newest `limit` items and the rows of the newest `limit` runs. A run row sorts at its
+ * admission time, so concurrent streaming would otherwise push the runs out of the window and leave
+ * the runs list without the run a person wants to focus.
+ */
+function newestWithRuns(
+  items: readonly SemanticActivityItem[],
+  limit: number,
+): SemanticActivityItem[] {
+  const firstRecent = items.length - limit
+  const runRows = items.flatMap((item, index) => (isRunRow(item) ? [index] : []))
+  const firstRun = runRows.at(-limit) ?? runRows[0] ?? items.length
+  return items.filter(
+    (item, index) => index >= firstRecent || (index >= firstRun && isRunRow(item)),
+  )
+}
+
+function isRunRow(item: SemanticActivityItem): boolean {
+  return item.entityType === 'run' && item.id === `run:${item.entityId}`
+}
+
 export function queryActivity(
   state: BraidState,
   input: {
     readonly conversationId?: string
     readonly branchId?: string
     readonly runId?: string
+    /** Bounds the feed to the newest items; the newest `limit` run rows are always kept. */
     readonly limit?: number
   } = {},
 ): ActivityQueryResult {
@@ -268,7 +290,7 @@ export function queryActivity(
   }
   const insertionOrder = new Map(output.map((item, index) => [item.id, index] as const))
   output.sort((left, right) => compare(left, right, insertionOrder))
-  const activity = input.limit === undefined ? output : output.slice(-input.limit)
+  const activity = input.limit === undefined ? output : newestWithRuns(output, input.limit)
   return {
     ...(scope.conversationId === undefined ? {} : { conversationId: scope.conversationId }),
     ...(scope.branchId === undefined ? {} : { branchId: scope.branchId }),

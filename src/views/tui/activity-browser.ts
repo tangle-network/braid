@@ -33,21 +33,24 @@ export interface ActivityBrowserOptions {
 
 export class ActivityBrowserPanel extends EntityBrowser {
   readonly #scopeState: { scope: ActivityBrowserScope }
+  readonly #document: (selectedId?: string) => EntityBrowserDocument
+  readonly #view: () => BraidViewModel
   readonly #onAction: ActivityBrowserOptions['onAction']
 
   constructor(theme: BraidTheme, options: ActivityBrowserOptions) {
     const scopeState: { scope: ActivityBrowserScope } = { scope: options.scope ?? 'all' }
+    const document = (selectedId?: string) =>
+      activityDocument(
+        options.view(),
+        scopeState.scope,
+        options.notice?.(),
+        options.emptyMessage,
+        options.pinned,
+        options.workerAttachAvailable?.(),
+        selectedId,
+      )
     super(theme, {
-      document: (selectedId) =>
-        activityDocument(
-          options.view(),
-          scopeState.scope,
-          options.notice?.(),
-          options.emptyMessage,
-          options.pinned,
-          options.workerAttachAvailable?.(),
-          selectedId,
-        ),
+      document,
       rows: options.rows,
       onClose: options.onClose,
       ...(options.onOpenSelected === undefined ? {} : { onOpenSelected: options.onOpenSelected }),
@@ -55,6 +58,8 @@ export class ActivityBrowserPanel extends EntityBrowser {
       ...(options.openSelected === undefined ? {} : { openSelected: options.openSelected }),
     })
     this.#scopeState = scopeState
+    this.#document = document
+    this.#view = options.view
     this.#onAction = options.onAction
   }
 
@@ -62,6 +67,7 @@ export class ActivityBrowserPanel extends EntityBrowser {
     if (matchesKey(data, 'tab')) {
       const current = ACTIVITY_SCOPES.indexOf(this.#scopeState.scope)
       this.#scopeState.scope = ACTIVITY_SCOPES[(current + 1) % ACTIVITY_SCOPES.length] ?? 'all'
+      this.#selectInScope()
       this.invalidate()
       return
     }
@@ -71,6 +77,18 @@ export class ActivityBrowserPanel extends EntityBrowser {
       return
     }
     super.handleInput(data)
+  }
+
+  /**
+   * Keep the selected row when the new scope lists it. Otherwise start on the focused run, or the
+   * first row, so Up and Down after Tab do not depend on how much activity arrived since opening.
+   */
+  #selectInScope(): void {
+    const rows = this.#document().rows
+    if (rows.some((row) => row.id === this.selectedId)) return
+    const focusedRunId = this.#view().focusedRunId
+    const next = rows.find((row) => row.kind === 'run' && row.runId === focusedRunId) ?? rows[0]
+    if (next !== undefined) this.selectId(next.id)
   }
 }
 

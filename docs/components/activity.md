@@ -50,6 +50,8 @@ Rows within a group use canonical event or update order.
 The browser preserves selection by entity identifier across refreshes.
 
 The runs filter contains only run ownership rows so keyboard focus switching is deterministic.
+It lists the newest runs in admission order, newest first, however much activity they report: the projection's row window never drops a run row.
+Tab into a filter that does not list the selected row selects the focused run, or the first row, so F2, Tab and one arrow reach the same run each time.
 
 Other filters operate over their matching projected rows.
 
