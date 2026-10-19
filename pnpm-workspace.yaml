@@ -6,7 +6,7 @@ allowBuilds:
   node-pty: true
 ignoreScripts: false
 minimumReleaseAgeExclude:
-  - '@tangle-network/agent-runtime@0.312.0 || 0.319.8 || 0.322.1 || 0.325.15 || 0.326.1'
+  - '@tangle-network/agent-runtime@0.312.0 || 0.319.8 || 0.322.1 || 0.325.15 || 0.326.1 || 0.327.0'
   - '@tangle-network/agent-eval@0.209.1 || 0.214.0 || 0.215.1'
   - '@tangle-network/agent-interface@3.1.1 || 5.2.1 || 5.7.0'
   - '@tangle-network/agent-knowledge@20.0.0 || 22.0.1 || 22.0.2'
