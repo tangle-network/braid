@@ -21,6 +21,7 @@ import {
   prepareProductionWorkspace,
   resolveBinary,
 } from './headless.mjs'
+import { releaseProofRouting } from './model-defaults.mjs'
 import {
   argument,
   assertEnvironmentIdentity,
@@ -1557,7 +1558,11 @@ export async function runBraidSandboxStress({
         environment: withoutEnvironment(environment, SECRET_ENVIRONMENT_NAMES),
         ...values,
         workspaceRequest: workspaceRequestFor(environment),
-        providerOptions: { lifecycle: RETAINED_LIFECYCLE, idleTtlSeconds },
+        providerOptions: {
+          lifecycle: RETAINED_LIFECYCLE,
+          idleTtlSeconds,
+          ...releaseProofRouting(values.runner),
+        },
       }),
     )
 
