@@ -39,9 +39,9 @@ export function withTangleRouterClient<Out>(factory: ExecutorFactory<Out>): Exec
 }
 
 /** The connection's Router provider routing, shaped for Runtime's Router executor config. */
-export function connectionRouterRouting(
-  record: Pick<ConnectionRecord, 'providerOptions'>,
-): { readonly routing?: ConnectionRouterRouting } {
+export function connectionRouterRouting(record: Pick<ConnectionRecord, 'providerOptions'>): {
+  readonly routing?: ConnectionRouterRouting
+} {
   const routing = record.providerOptions.routing
   return routing === undefined ? {} : { routing: structuredClone(routing) }
 }

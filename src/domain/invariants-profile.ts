@@ -248,7 +248,9 @@ const MB_PER_GIB = 1_024
 /** Only Tangle connections reach the Router, so only they can carry its provider routing. */
 function assertConnectionRouting(value: unknown, routerBacked: boolean): void {
   if (!routerBacked)
-    fail('connection.providerOptions.routing requires a Tangle Sandbox or Tangle inference connection')
+    fail(
+      'connection.providerOptions.routing requires a Tangle Sandbox or Tangle inference connection',
+    )
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     fail('connection.providerOptions.routing must be an object')
   }
