@@ -20,7 +20,7 @@ import type {
   ConnectionModelVerificationOptions,
   ProductionConnectionOptions,
 } from './production-connection-types.js'
-import { tangleRouterClientHeaders } from './tangle-router-client.js'
+import { routerRoutingBody, tangleRouterClientHeaders } from './tangle-router-client.js'
 
 export async function healthForConnection(
   record: ConnectionRecord,
@@ -114,6 +114,7 @@ export async function verifyModelForConnection(
             messages: [{ role: 'user', content: 'Braid connection verification. Reply with OK.' }],
             stream: false,
             max_tokens: 1,
+            ...(record.kind === 'tangle-inference' ? routerRoutingBody(record) : {}),
           }
     const response = await request(chatUrl, {
       method: 'POST',
