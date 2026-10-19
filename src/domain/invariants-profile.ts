@@ -247,7 +247,8 @@ const MB_PER_GIB = 1_024
  * saved connection instead of failing each later environment create.
  */
 function assertConnectionRouting(value: unknown, tangleSandbox: boolean): void {
-  if (!tangleSandbox) fail('connection.providerOptions.routing requires a Tangle Sandbox connection')
+  if (!tangleSandbox)
+    fail('connection.providerOptions.routing requires a Tangle Sandbox connection')
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     fail('connection.providerOptions.routing must be an object')
   }

@@ -248,9 +248,9 @@ export async function resolveTangleSandboxRetainedConnection(
   const lifecycle = retainedSandboxLifecycle(idleTtlSeconds)
   const [{ createTangleSandboxClient, withConnectionRouting }, { createTangleProvider }] =
     await Promise.all([
-    import('../connections/production-connection-providers.js'),
-    import('@tangle-network/agent-provider-tangle'),
-  ])
+      import('../connections/production-connection-providers.js'),
+      import('@tangle-network/agent-provider-tangle'),
+    ])
   const rawClient = await createTangleSandboxClient(record, options, input.signal)
   if (
     options.tangleRetainedControlLookup === undefined &&
