@@ -1,4 +1,5 @@
 import type { ExecutorFactory } from '@tangle-network/agent-runtime/kernel'
+import type { ConnectionRecord, ConnectionRouterRouting } from '../../domain/entities.js'
 import { BRAID_VERSION } from '../../version.js'
 
 /**
@@ -34,5 +35,29 @@ export function withTangleRouterClient<Out>(factory: ExecutorFactory<Out>): Exec
         ...tangleRouterClientHeaders(),
       }),
     })
+  }
+}
+
+/** The connection's Router provider routing, shaped for Runtime's Router executor config. */
+export function connectionRouterRouting(record: Pick<ConnectionRecord, 'providerOptions'>): {
+  readonly routing?: ConnectionRouterRouting
+} {
+  const routing = record.providerOptions.routing
+  return routing === undefined ? {} : { routing: structuredClone(routing) }
+}
+
+/** The same routing in the Router's request-body form, for requests Braid sends itself. */
+export function routerRoutingBody(
+  record: Pick<ConnectionRecord, 'providerOptions'>,
+): Readonly<Record<string, unknown>> {
+  const routing = record.providerOptions.routing
+  if (routing === undefined) return {}
+  const gateway = {
+    ...(routing.only === undefined ? {} : { only: [...routing.only] }),
+    ...(routing.allowFallbacks === undefined ? {} : { allowFallbacks: routing.allowFallbacks }),
+  }
+  return {
+    ...(Object.keys(gateway).length === 0 ? {} : { providerOptions: { gateway } }),
+    ...(routing.requireModel === undefined ? {} : { require_model: routing.requireModel }),
   }
 }

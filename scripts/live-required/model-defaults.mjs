@@ -3,12 +3,13 @@ export const DEFAULT_TANGLE_ROUTER_MODEL = `tangle-router/${DEFAULT_TANGLE_ROUTE
 
 /**
  * Release proofs bill the braid-release-proof Router keys, and internal model calls spend no
- * per-token cash (all-costs #10337). Router-backed OpenCode is pinned to the flat Z.ai plan with no
+ * per-token cash (all-costs #10337). Router calls are pinned to the flat Z.ai plan with no
  * substitute provider or model, so a Z.ai limit fails the proof instead of paying a metered host.
- * Other runners refuse routing at create, so they get none.
+ * A Tangle inference connection sends the pin on every Router request; a Tangle Sandbox fixes it
+ * at create, where only Router-backed OpenCode accepts it, so other sandbox runners get none.
  */
-export function releaseProofRouting(runner) {
-  return runner === 'opencode'
+export function releaseProofRouting(runner, kind = 'tangle-sandbox') {
+  return kind === 'tangle-inference' || runner === 'opencode'
     ? { routing: { only: ['zai'], allowFallbacks: false, requireModel: true } }
     : {}
 }

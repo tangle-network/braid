@@ -21,6 +21,7 @@ import {
   runHeadlessTurn,
   verifyUnavailableCancellation,
 } from './headless.mjs'
+import { releaseProofRouting } from './model-defaults.mjs'
 import { assertMultirunProof } from './multirun-contract.mjs'
 import {
   interactiveFailureMessages,
@@ -278,6 +279,7 @@ async function runInference({ repository, environment, binary, invocationId }) {
     repository,
     environment,
     ...values,
+    providerOptions: releaseProofRouting(values.runner, 'tangle-inference'),
   })
   let normal
   let cancelled

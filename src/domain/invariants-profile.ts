@@ -131,7 +131,10 @@ export function assertConnectionRecord(record: ConnectionRecord): void {
     } else if (key === 'resources') {
       assertConnectionResources(value, record.kind === 'tangle-sandbox')
     } else if (key === 'routing') {
-      assertConnectionRouting(value, record.kind === 'tangle-sandbox')
+      assertConnectionRouting(
+        value,
+        record.kind === 'tangle-sandbox' || record.kind === 'tangle-inference',
+      )
     } else if (key === 'secrets' || key === 'modelCredentials') {
       // Validated together below, so the journal and the registry share one rule.
     } else if (typeof value !== 'string' || value.length === 0) {
@@ -242,13 +245,12 @@ export function assertConnectionRecord(record: ConnectionRecord): void {
 
 const MB_PER_GIB = 1_024
 
-/**
- * Tangle Sandbox provisions disk in whole gibibytes. Other providers own their sizing rules. Rejecting other sizes here keeps an unfulfillable request out of the
- * saved connection instead of failing each later environment create.
- */
-function assertConnectionRouting(value: unknown, tangleSandbox: boolean): void {
-  if (!tangleSandbox)
-    fail('connection.providerOptions.routing requires a Tangle Sandbox connection')
+/** Only Tangle connections reach the Router, so only they can carry its provider routing. */
+function assertConnectionRouting(value: unknown, routerBacked: boolean): void {
+  if (!routerBacked)
+    fail(
+      'connection.providerOptions.routing requires a Tangle Sandbox or Tangle inference connection',
+    )
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     fail('connection.providerOptions.routing must be an object')
   }
@@ -273,6 +275,10 @@ function assertConnectionRouting(value: unknown, tangleSandbox: boolean): void {
   }
 }
 
+/**
+ * Tangle Sandbox provisions disk in whole gibibytes. Other providers own their sizing rules. Rejecting other sizes here keeps an unfulfillable request out of the
+ * saved connection instead of failing each later environment create.
+ */
 function assertConnectionResources(value: unknown, wholeGiBDisk: boolean): void {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     fail('connection.providerOptions.resources must be an object')

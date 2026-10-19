@@ -3,7 +3,10 @@ import type { ConnectionId } from '../../domain/ids.js'
 import type { ExecuteTurnInput } from '../../ports/execution.js'
 import { readConnectionCredential } from '../connections/production-connection-credentials.js'
 import { normalizeTangleInferenceRuntimeBaseUrl } from '../connections/production-connection-endpoints.js'
-import { withTangleRouterClient } from '../connections/tangle-router-client.js'
+import {
+  connectionRouterRouting,
+  withTangleRouterClient,
+} from '../connections/tangle-router-client.js'
 import { endpointLocation, staticExecutionObservation } from './execution-observation-source.js'
 import type { PreparedExecution } from './prepared-execution.js'
 import {
@@ -31,11 +34,8 @@ export async function resolveTangleInferenceBackend(
       { connectionId },
     )
   }
-  const credential = await readConnectionCredential(
-    connectionRecord(connectionId, options),
-    options,
-    endpoint,
-  )
+  const record = connectionRecord(connectionId, options)
+  const credential = await readConnectionCredential(record, options, endpoint)
   const { createExecutor } = await import('@tangle-network/agent-runtime/kernel')
   const routerBaseUrl = normalizeTangleInferenceRuntimeBaseUrl(endpoint, connectionId)
   const routerLocation = endpointLocation(routerBaseUrl)
@@ -47,6 +47,7 @@ export async function resolveTangleInferenceBackend(
         backend: 'router',
         routerBaseUrl,
         routerKey: credential ?? '',
+        ...connectionRouterRouting(record),
         ...(options.routerComplete === undefined ? {} : { complete: options.routerComplete }),
       }),
     ),
