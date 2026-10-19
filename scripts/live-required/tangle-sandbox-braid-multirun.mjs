@@ -26,7 +26,7 @@ import { liveEvidenceBindingFromEnvironment } from '../release/live-evidence-bin
 import { connectionConfiguration } from './configuration.mjs'
 import { safeJson, safeMessage } from './contracts.mjs'
 import { configEvidence, prepareProductionWorkspace, resolveBinary } from './headless.mjs'
-import { DEFAULT_TANGLE_ROUTER_MODEL } from './model-defaults.mjs'
+import { DEFAULT_TANGLE_ROUTER_MODEL, releaseProofRouting } from './model-defaults.mjs'
 import { MULTIRUN_PROOF_SCHEMA } from './multirun-contract.mjs'
 import {
   cleanupRetainedResourceByControlRef,
@@ -992,7 +992,11 @@ export async function runProof({
         runner: values.runner,
         modelProvider: values.modelProvider,
         workspaceRequest: workspaceRequestFor(environment),
-        providerOptions: { lifecycle: 'retained', idleTtlSeconds: 1_800 },
+        providerOptions: {
+          lifecycle: 'retained',
+          idleTtlSeconds: 1_800,
+          ...releaseProofRouting(values.runner),
+        },
         credentialRef: values.credentialRef,
         credentialValue: values.credentialValue,
       }),

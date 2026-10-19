@@ -185,6 +185,19 @@ export interface ConnectionTransportOptions {
   readonly secrets?: readonly string[]
   /** Where a subscription profile gets its model seat; a reference, never a credential. */
   readonly modelCredentials?: ConnectionModelCredentials
+  /** Tangle Router provider routing for every model call a Tangle Sandbox environment makes. */
+  readonly routing?: ConnectionRouterRouting
+}
+
+/**
+ * Router provider routing fixed when a Tangle Sandbox environment is created: `only` names the
+ * upstream providers that may answer, `allowFallbacks: false` forbids a substitute provider, and
+ * `requireModel` forbids a substitute model. Router-backed OpenCode only; other runners refuse it.
+ */
+export interface ConnectionRouterRouting {
+  readonly only?: readonly string[]
+  readonly allowFallbacks?: boolean
+  readonly requireModel?: boolean
 }
 
 /** Provider-neutral compute request; provider-native resource options are never stored. */

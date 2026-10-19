@@ -261,6 +261,8 @@ interface ConnectionTransportOptions {
         connectionEndpointEnv?: string
       }
     | { cliAuth: { account: string; secretEnv: string; format: 'token' | 'bundle' | 'files' } }
+  // Tangle Sandbox only. Router provider routing fixed at environment creation.
+  routing?: { only?: string[]; allowFallbacks?: boolean; requireModel?: boolean }
 }
 ```
 
@@ -375,6 +377,12 @@ Validation accepts only names, a command, and a seat reference.
 It refuses a value map, an unknown field, a duplicate or malformed name, and any string that looks like a credential, with a plain message that never quotes the value.
 `secrets` and `modelCredentials` are refused on other connection kinds.
 `scripts/live-required/tangle-sandbox-braid-seats.mjs` runs one retained cloud turn in the Braid terminal with both references and records the tool trace, interaction requests, canary scan, and exact sandbox cleanup.
+
+A Tangle Sandbox connection can set `routing` to pin the Tangle Router providers for every model call its environments make.
+`only` lists the upstream providers that may answer, `allowFallbacks: false` forbids a substitute provider, and `requireModel: true` forbids a substitute model.
+Braid sends it on every environment create; the Sandbox fixes it for the environment's lifetime and accepts it only for Router-backed OpenCode.
+Validation refuses an empty `only`, a non-boolean flag, an unknown field, and `routing` on other connection kinds.
+The release proofs set `{"only": ["zai"], "allowFallbacks": false, "requireModel": true}` through `releaseProofRouting` in `scripts/live-required/model-defaults.mjs`, so a Z.ai limit fails a proof instead of spending on a metered provider.
 
 The ephemeral path deletes its environment after one turn.
 

@@ -74,17 +74,40 @@ export async function createTangleEnvironmentProvider(
   const client = await createTangleSandboxClient(record, options, signal)
   signal?.throwIfAborted()
   const modelCredentials = tangleModelCredentialsForConnection(record, options)
-  return createTangleProvider({
-    client:
-      lifecycle === 'retained' && idleTtlSeconds !== undefined
-        ? withRetainedSandboxPolicy(client, idleTtlSeconds)
-        : client,
-    name: 'tangle-sandbox',
-    ...(modelCredentials === undefined ? {} : { modelCredentials }),
-    ...(confidential?.tangle === undefined
-      ? {}
-      : { confidentialAttestationVerifier: confidential.tangle }),
-  })
+  return withConnectionRouting(
+    createTangleProvider({
+      client:
+        lifecycle === 'retained' && idleTtlSeconds !== undefined
+          ? withRetainedSandboxPolicy(client, idleTtlSeconds)
+          : client,
+      name: 'tangle-sandbox',
+      ...(modelCredentials === undefined ? {} : { modelCredentials }),
+      ...(confidential?.tangle === undefined
+        ? {}
+        : { confidentialAttestationVerifier: confidential.tangle }),
+    }),
+    record,
+  )
+}
+
+/**
+ * Send the connection's saved Router routing on every environment create, so each environment the
+ * connection makes is pinned for its whole lifetime; the Sandbox refuses routing on a turn.
+ */
+export function withConnectionRouting(
+  provider: AgentEnvironmentProvider,
+  record: ConnectionRecord,
+): AgentEnvironmentProvider {
+  const routing = record.providerOptions.routing
+  if (routing === undefined) return provider
+  return {
+    ...provider,
+    create: (input) =>
+      provider.create({
+        ...input,
+        providerOptions: { ...input.providerOptions, routing: structuredClone(routing) },
+      }),
+  }
 }
 
 /**

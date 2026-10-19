@@ -38,7 +38,7 @@ import {
   rpcRequest,
   rpcState,
 } from './headless.mjs'
-import { DEFAULT_TANGLE_ROUTER_MODEL } from './model-defaults.mjs'
+import { DEFAULT_TANGLE_ROUTER_MODEL, releaseProofRouting } from './model-defaults.mjs'
 import {
   assertProviderObservationDeadline,
   createProviderObservationDeadline,
@@ -1497,7 +1497,11 @@ async function runProof({
       runner: values.runner,
       modelProvider: values.modelProvider,
       workspaceRequest: workspaceRequestFor(environment),
-      providerOptions: { lifecycle: 'retained', idleTtlSeconds },
+      providerOptions: {
+        lifecycle: 'retained',
+        idleTtlSeconds,
+        ...releaseProofRouting(values.runner),
+      },
       credentialRef: values.credentialRef,
       credentialValue: values.credentialValue,
     })

@@ -103,6 +103,7 @@ export function assertConnectionRecord(record: ConnectionRecord): void {
     'resources',
     'secrets',
     'modelCredentials',
+    'routing',
   ])
   for (const [key, value] of Object.entries(record.providerOptions)) {
     if (!allowedOptions.has(key)) fail(`connection.providerOptions.${key} is provider-native state`)
@@ -129,6 +130,8 @@ export function assertConnectionRecord(record: ConnectionRecord): void {
       }
     } else if (key === 'resources') {
       assertConnectionResources(value, record.kind === 'tangle-sandbox')
+    } else if (key === 'routing') {
+      assertConnectionRouting(value, record.kind === 'tangle-sandbox')
     } else if (key === 'secrets' || key === 'modelCredentials') {
       // Validated together below, so the journal and the registry share one rule.
     } else if (typeof value !== 'string' || value.length === 0) {
@@ -243,6 +246,33 @@ const MB_PER_GIB = 1_024
  * Tangle Sandbox provisions disk in whole gibibytes. Other providers own their sizing rules. Rejecting other sizes here keeps an unfulfillable request out of the
  * saved connection instead of failing each later environment create.
  */
+function assertConnectionRouting(value: unknown, tangleSandbox: boolean): void {
+  if (!tangleSandbox)
+    fail('connection.providerOptions.routing requires a Tangle Sandbox connection')
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    fail('connection.providerOptions.routing must be an object')
+  }
+  const entries = Object.entries(value as Record<string, unknown>)
+  if (entries.length === 0) fail('connection.providerOptions.routing must set a routing field')
+  for (const [key, setting] of entries) {
+    if (key === 'only') {
+      if (
+        !Array.isArray(setting) ||
+        setting.length === 0 ||
+        setting.some((provider) => typeof provider !== 'string' || provider.trim().length === 0)
+      ) {
+        fail('connection.providerOptions.routing.only must list non-empty provider names')
+      }
+    } else if (key === 'allowFallbacks' || key === 'requireModel') {
+      if (typeof setting !== 'boolean') {
+        fail(`connection.providerOptions.routing.${key} must be a boolean`)
+      }
+    } else {
+      fail(`connection.providerOptions.routing.${key} is not a Router routing field`)
+    }
+  }
+}
+
 function assertConnectionResources(value: unknown, wholeGiBDisk: boolean): void {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     fail('connection.providerOptions.resources must be an object')
