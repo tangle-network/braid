@@ -96,12 +96,14 @@ function ownedCheckName(check, packageRecord, ownerRecord) {
   if (packageRecord.repository !== 'tangle-network/agent-sdk') return false
   if (check.workflowPath !== '.github/workflows/upstream-evidence.yml') return false
   if (check.workflowHeadSha !== packageRecord.gitCommit) return false
-  const pinned = (file) => (check.referencedWorkflows ?? []).some((reference) => {
-    const prefix = `tangle-network/agent-sdk/.github/workflows/${file}@`
-    const sha = String(reference.path ?? '').startsWith(prefix)
-      ? reference.path.slice(prefix.length) : ''
-    return COMMIT_SHA.test(sha) && reference.sha === sha
-  })
+  const pinned = (file) =>
+    (check.referencedWorkflows ?? []).some((reference) => {
+      const prefix = `tangle-network/agent-sdk/.github/workflows/${file}@`
+      const sha = String(reference.path ?? '').startsWith(prefix)
+        ? reference.path.slice(prefix.length)
+        : ''
+      return COMMIT_SHA.test(sha) && reference.sha === sha
+    })
   const isTangle = ['UP-09', 'UP-14'].includes(ownerRecord.check)
   if (check.name === `tangle / ${ownerRecord.check}`) {
     return isTangle && pinned('tangle-evidence.yml')
@@ -109,8 +111,12 @@ function ownedCheckName(check, packageRecord, ownerRecord) {
   if (check.name === `evidence / ${ownerRecord.check}`) {
     return !isTangle && pinned('upstream-trusted.yml')
   }
-  return isTangle && check.name === `evidence / tangle / ${ownerRecord.check}` &&
-    pinned('upstream-trusted.yml') && pinned('tangle-evidence.yml')
+  return (
+    isTangle &&
+    check.name === `evidence / tangle / ${ownerRecord.check}` &&
+    pinned('upstream-trusted.yml') &&
+    pinned('tangle-evidence.yml')
+  )
 }
 
 function passingCheck(packageRecord, ownerRecord, requirementId) {
