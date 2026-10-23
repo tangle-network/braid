@@ -64,7 +64,7 @@
     {
       "license": "MIT",
       "name": "@tangle-network/agent-eval",
-      "version": "0.214.0"
+      "version": "0.215.1"
     },
     {
       "license": "MIT",
@@ -74,17 +74,12 @@
     {
       "license": "MIT",
       "name": "@tangle-network/agent-interface",
-      "version": "5.2.0"
-    },
-    {
-      "license": "MIT",
-      "name": "@tangle-network/agent-interface",
-      "version": "5.2.1"
+      "version": "5.7.0"
     },
     {
       "license": "MIT",
       "name": "@tangle-network/agent-knowledge",
-      "version": "22.0.2"
+      "version": "22.0.3"
     },
     {
       "license": "Unknown",
@@ -104,17 +99,22 @@
     {
       "license": "MIT",
       "name": "@tangle-network/agent-provider-tangle",
-      "version": "4.0.0"
+      "version": "4.4.0"
     },
     {
       "license": "MIT",
       "name": "@tangle-network/agent-runtime",
-      "version": "0.322.1"
+      "version": "0.330.0"
     },
     {
       "license": "MIT",
       "name": "@tangle-network/agent-trace-contract",
       "version": "2.0.0"
+    },
+    {
+      "license": "MIT",
+      "name": "@tangle-network/agent-trace-contract",
+      "version": "2.1.0"
     },
     {
       "license": "MIT",
@@ -124,7 +124,7 @@
     {
       "license": "MIT",
       "name": "@tangle-network/sandbox",
-      "version": "0.60.58"
+      "version": "0.61.1"
     },
     {
       "license": "Apache-2.0",
