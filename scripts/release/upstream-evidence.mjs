@@ -88,9 +88,34 @@ function artifactNamesRequirement(name, requirementId) {
   return new RegExp(`(?:^|[^A-Z0-9])${escaped}(?:[^A-Z0-9]|$)`, 'u').test(String(name))
 }
 
+// SDK's immutable reusable bodies keep the package SHA but GitHub prefixes
+// their check names with the known caller jobs. Admit only these maintained
+// paths with API-confirmed immutable references, never an arbitrary leaf name.
+function ownedCheckName(check, packageRecord, ownerRecord) {
+  if (check.name === ownerRecord.check) return true
+  if (packageRecord.repository !== 'tangle-network/agent-sdk') return false
+  if (check.workflowPath !== '.github/workflows/upstream-evidence.yml') return false
+  if (check.workflowHeadSha !== packageRecord.gitCommit) return false
+  const pinned = (file) => (check.referencedWorkflows ?? []).some((reference) => {
+    const prefix = `tangle-network/agent-sdk/.github/workflows/${file}@`
+    const sha = String(reference.path ?? '').startsWith(prefix)
+      ? reference.path.slice(prefix.length) : ''
+    return COMMIT_SHA.test(sha) && reference.sha === sha
+  })
+  const isTangle = ['UP-09', 'UP-14'].includes(ownerRecord.check)
+  if (check.name === `tangle / ${ownerRecord.check}`) {
+    return isTangle && pinned('tangle-evidence.yml')
+  }
+  if (check.name === `evidence / ${ownerRecord.check}`) {
+    return !isTangle && pinned('upstream-trusted.yml')
+  }
+  return isTangle && check.name === `evidence / tangle / ${ownerRecord.check}` &&
+    pinned('upstream-trusted.yml') && pinned('tangle-evidence.yml')
+}
+
 function passingCheck(packageRecord, ownerRecord, requirementId) {
   const candidates = (packageRecord.checks ?? [])
-    .filter(({ name }) => name === ownerRecord.check)
+    .filter((check) => ownedCheckName(check, packageRecord, ownerRecord))
     .filter(
       (check) =>
         check.status === 'completed' &&
@@ -208,11 +233,15 @@ async function checkRuns(repository, gitCommit, options) {
   )
   assert(Array.isArray(payload.check_runs), `${repository}@${gitCommit} returned no check runs`)
   const artifactCache = new Map()
+  const runCache = new Map()
   const records = []
   for (const check of payload.check_runs) {
     const runId = checkRunId(check.details_url, repository)
     let artifacts = []
     if (runId !== undefined) {
+      if (!runCache.has(runId)) {
+        runCache.set(runId, await githubJson(`/repos/${repository}/actions/runs/${runId}`, options))
+      }
       if (!artifactCache.has(runId)) {
         const artifactPayload = await githubJson(
           `/repos/${repository}/actions/runs/${runId}/artifacts?per_page=100`,
@@ -241,6 +270,9 @@ async function checkRuns(repository, gitCommit, options) {
       id: check.id,
       name: check.name,
       headSha: check.head_sha,
+      workflowPath: runCache.get(runId)?.path,
+      workflowHeadSha: runCache.get(runId)?.head_sha,
+      referencedWorkflows: runCache.get(runId)?.referenced_workflows ?? [],
       status: check.status,
       conclusion: check.conclusion,
       app: check.app?.slug,
