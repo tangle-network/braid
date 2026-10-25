@@ -16,3 +16,6 @@ minimumReleaseAgeExclude:
   - hono@4.13.13
   - '@earendil-works/pi-tui@1.1.0'
   - '@tangle-network/agent-profile-materialize@0.21.0'
+overrides:
+  zod@<4.6.6: 4.6.7
+  undici@>=8.0.0 <8.12.2: 8.12.3
