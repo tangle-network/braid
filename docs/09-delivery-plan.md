@@ -529,7 +529,7 @@ The comprehensive audit verifier extracts required identifiers from the committe
 
 Every upstream behavior change updates its owning documentation in the same pull request.
 
-Every push receives current CI and review reinspection before the package is treated as ready.
+Every candidate receives the admitted local qualification in [verification](08-verification.md#local-merge-gate) and review reinspection before the package is treated as ready.
 
 ## Rollback and failure policy
 

@@ -1,5 +1,19 @@
 # Verification
 
+## Local merge gate
+
+Automatic PR/main-push verification is retired. Merge the current default branch and qualify source changes through the maintained admitted gate (frozen installation is owned by the gate):
+
+```bash
+beelink-gate auto https://github.com/tangle-network/braid.git <full-sha> -- bash -lc 'export BRAID_RELEASE_ARTIFACT_ROOT="$(mktemp -d -t braid-local-release.XXXXXX)"; pnpm check && pnpm release:prepare && pnpm build && node scripts/proof-cloud-setup-cli.mjs dist/bin/braid.js && node scripts/proof-cloud-setup-cli.mjs dist/bin/braid.js --compact'
+```
+
+Workflow/docs-only changes use YAML, actionlint, content and exact-source checks. The retired platform checks remain useful separately: on admitted macOS and Windows hosts, use the frozen repository install then `node scripts/live-bridge/matrix.mjs`. On admitted macOS, build before `node scripts/release/storage-smoke-child.mjs "$PWD" "$(mktemp -d -t braid-storage-smoke.XXXXXX)"` and `pnpm run test -- --scope security`. Linux does not establish those platform properties.
+
+The existing CLI setup proof exercises the real executable and encrypted storage against loopback responses; it does not prove execution in a live Tangle sandbox. For its separate current-public-package comparison, retain `npm view @tangle-network/braid dist-tags --json` and `npm view @tangle-network/braid@latest version dist.integrity gitHead --json`, install that package under an owned temporary prefix, and run `node scripts/proof-cloud-setup-cli.mjs <prefix>/node_modules/@tangle-network/braid/dist/bin/braid.js --public-probe`; record its observed identity separately from candidate proof and clean up the owned prefix. This comparison does not publish.
+
+The protected release and release-live-evidence workflows and their independent exact-source/package/live qualification remain unchanged; a local source result is not release acceptance.
+
 ## Completion rule
 
 Braid is complete only when one immutable release build passes every required check and one machine-readable evidence manifest links each requirement identifier to reproducible evidence.
@@ -255,7 +269,7 @@ Property checks generate event interleavings, branch operations, identifier valu
 
 Every generated failure records its seed and minimizes the counterexample.
 
-Required property runs use at least 1,000 seeds in normal CI and 100,000 seeds in the release soak.
+Required property runs use at least 1,000 seeds in normal qualification and 100,000 seeds in the release soak.
 
 ### Layer 3: shared-contract checks
 
@@ -1041,7 +1055,7 @@ The comprehensive collector and verifier remain separate commands for explicit a
 | --- | --- |
 | VR-01 | Every requirement identifier in all plan documents maps to an admissible passing check for the exact release build. |
 | VR-02 | Terminal and headless flows produce equivalent journal events and semantic state for every primary workflow. |
-| VR-03 | Normal CI completes 1,000 property seeds and release soak completes 100,000 with saved seeds and no unresolved failure. |
+| VR-03 | Normal qualification completes 1,000 property seeds and release soak completes 100,000 with saved seeds and no unresolved failure. |
 | VR-04 | All twelve live checks pass with complete provenance, measured fields, artifact hashes, and confirmed cleanup. |
 | VR-05 | Every advertised interactive runner passes the common live conformance flow at its recorded version. |
 | VR-06 | All four reference sizes have semantic snapshots, plain frames, PNGs, and required flow recording from the real packed binary. |

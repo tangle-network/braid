@@ -26,7 +26,6 @@ if (packageJson.dependencies?.['better-sqlite3-multiple-ciphers'] !== '13.0.3') 
 }
 
 const requiredFiles = [
-  '.github/workflows/ci.yml',
   'src/app/effect-coordinator.ts',
   'src/ports/effect-storage.ts',
   'src/domain/entities.ts',
