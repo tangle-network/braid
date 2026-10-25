@@ -339,7 +339,7 @@ Support upload, if added, is an explicit external action showing destination, re
 
 Direct dependencies use reviewed version ranges and an immutable lockfile.
 
-CI verifies npm integrity, provenance when available, package license, known vulnerabilities, install scripts, binary artifacts, and unexpected dependency changes.
+Local and protected release qualification verify npm integrity, provenance when available, package license, known vulnerabilities, install scripts, binary artifacts, and unexpected dependency changes.
 
 Release builds use protected CI, pinned actions by digest, least-privilege publish credentials, npm provenance, and signed release metadata.
 
