@@ -4,6 +4,10 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  zod@<4.6.6: 4.6.7
+  undici@>=8.0.0 <8.12.2: 8.12.3
+
 importers:
 
   .:
@@ -78,7 +82,7 @@ packages:
   '@asteasolutions/zod-to-openapi@9.1.0':
     resolution: {integrity: sha512-pLMeRgRYS7/vZIgAAkOe2P6+XGTifR1MT9pqDoxZ11EmcJJ+DPmdPqLN8ZZF4U8R9KHCCQCS9c2wtuE8wSrfkw==}
     peerDependencies:
-      zod: ^4.0.0
+      zod: 4.6.7
 
   '@biomejs/biome@2.5.15':
     resolution: {integrity: sha512-WZTW4slm/pdkh92K6t/3aEN++44JD1PQ7squ7RCMLI1flHGl43DVOIGXvCjHiZgBMO1V4uYxoFNtqrIA4qGuIQ==}
@@ -950,8 +954,8 @@ packages:
   undici-types@8.9.0:
     resolution: {integrity: sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg==}
 
-  undici@8.11.2:
-    resolution: {integrity: sha512-u4UB2/IrKdU6lFxumHmmo1a3fCQO5tzQllRorfoRS63txhrB7xTpSn1PftwC4qEHkOaqP95fCWW4lJzwErwzhQ==}
+  undici@8.12.3:
+    resolution: {integrity: sha512-+fdndUTwBP86cVjihTp21hZHo7d6oj1c/47XPA3lL8mM0XHs+C4EkcjmgRsFnFk2f/UONGDy9ItBItmXsLOQHw==}
     engines: {node: '>=22.19.0'}
 
   yaml@2.9.0:
@@ -959,15 +963,15 @@ packages:
     engines: {node: '>= 14.6'}
     hasBin: true
 
-  zod@4.6.5:
-    resolution: {integrity: sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q==}
+  zod@4.6.7:
+    resolution: {integrity: sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==}
 
 snapshots:
 
-  '@asteasolutions/zod-to-openapi@9.1.0(zod@4.6.5)':
+  '@asteasolutions/zod-to-openapi@9.1.0(zod@4.6.7)':
     dependencies:
       openapi3-ts: 4.6.1
-      zod: 4.6.5
+      zod: 4.6.7
 
   '@biomejs/biome@2.5.15':
     optionalDependencies:
@@ -1243,17 +1247,17 @@ snapshots:
     dependencies:
       '@tangle-network/agent-interface': 4.0.0
       '@tangle-network/agent-trace-contract': 2.1.0
-      zod: 4.6.5
+      zod: 4.6.7
 
   '@tangle-network/agent-core@0.12.0':
     dependencies:
       '@tangle-network/agent-interface': 5.7.0
       '@tangle-network/agent-trace-contract': 2.1.0
-      zod: 4.6.5
+      zod: 4.6.7
 
   '@tangle-network/agent-eval@0.215.1':
     dependencies:
-      '@asteasolutions/zod-to-openapi': 9.1.0(zod@4.6.5)
+      '@asteasolutions/zod-to-openapi': 9.1.0(zod@4.6.7)
       '@hono/node-server': 2.1.1(hono@4.13.13)
       '@tangle-network/agent-core': 0.12.0
       '@tangle-network/agent-interface': 5.7.0
@@ -1263,7 +1267,7 @@ snapshots:
       linear-sum-assignment: 1.0.9
       re2js: 2.8.6
       smol-toml: 1.9.0
-      zod: 4.6.5
+      zod: 4.6.7
     transitivePeerDependencies:
       - '@modelcontextprotocol/sdk'
 
@@ -1271,13 +1275,13 @@ snapshots:
     dependencies:
       '@noble/hashes': 2.4.0
       spdx-expression-parse: 5.0.0
-      zod: 4.6.5
+      zod: 4.6.7
 
   '@tangle-network/agent-interface@5.7.0':
     dependencies:
       '@noble/hashes': 2.4.0
       spdx-expression-parse: 5.0.0
-      zod: 4.6.5
+      zod: 4.6.7
 
   '@tangle-network/agent-knowledge@22.0.3(@tangle-network/agent-eval@0.215.1)(@tangle-network/agent-interface@5.7.0)':
     dependencies:
@@ -1285,7 +1289,7 @@ snapshots:
       '@tangle-network/agent-interface': 5.7.0
       '@types/proper-lockfile': 4.1.4
       proper-lockfile: 4.1.2
-      zod: 4.6.5
+      zod: 4.6.7
 
   '@tangle-network/agent-profile-materialize@0.25.2(@tangle-network/agent-interface@5.7.0)':
     dependencies:
@@ -1294,7 +1298,7 @@ snapshots:
   '@tangle-network/agent-provider-cli-bridge@2.0.0':
     dependencies:
       '@tangle-network/agent-interface': 5.7.0
-      undici: 8.11.2
+      undici: 8.12.3
 
   '@tangle-network/agent-provider-daytona@0.6.0':
     dependencies:
@@ -1316,7 +1320,7 @@ snapshots:
       '@tangle-network/agent-trace-contract': 2.1.0
       '@tangle-network/sandbox': 0.61.1
       tar-stream: 3.2.1
-      zod: 4.6.5
+      zod: 4.6.7
     transitivePeerDependencies:
       - '@modelcontextprotocol/sdk'
       - bare-abort-controller
@@ -1336,7 +1340,7 @@ snapshots:
       '@tangle-network/agent-core': 0.11.0
       '@tangle-network/agent-interface': 4.0.0
       tar-stream: 3.2.1
-      zod: 4.6.5
+      zod: 4.6.7
     transitivePeerDependencies:
       - bare-abort-controller
       - bare-buffer
@@ -1660,8 +1664,8 @@ snapshots:
 
   undici-types@8.9.0: {}
 
-  undici@8.11.2: {}
+  undici@8.12.3: {}
 
   yaml@2.9.0: {}
 
-  zod@4.6.5: {}
+  zod@4.6.7: {}

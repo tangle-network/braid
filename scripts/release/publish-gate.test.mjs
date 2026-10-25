@@ -638,6 +638,8 @@ async function createBundle({ live10Refusal = false } = {}) {
     })}\n`,
   )
   git(repository, 'init', '-q')
+  // A throwaway fixture: keep a developer's global hooks (identity, secret scans) out of it.
+  git(repository, 'config', 'core.hooksPath', '/dev/null')
   git(repository, 'add', '.')
   git(repository, 'commit', '-qm', 'fixture')
 
