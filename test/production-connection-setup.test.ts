@@ -319,26 +319,22 @@ test('startup prompt selects saved noncurrent history after setup and refuses ba
       const record = join(workspace, 'final.json')
       await writeFile(key, randomBytes(32), { mode: 0o600 })
       await writeFile(profilePath, JSON.stringify(profile), { mode: 0o600 })
+      const discovered = await loadProductionSetup({
+        workspace,
+        cliBridgeEndpoint: bridge.endpoint,
+        profileReference: profilePath,
+      })
+      const connection = discovered.connections.find((candidate) => candidate.kind === 'cli-bridge')
+      assert.ok(connection)
       await writeFile(
         config,
         JSON.stringify({
           format: 'braid-startup-config',
           schemaVersion: 2,
           profile,
-          connectionId: 'connection-seed',
+          connectionId: connection.id,
           databaseKeyFile: key,
-          connections: [
-            {
-              id: 'connection-seed',
-              kind: 'cli-bridge',
-              name: 'Loopback Bridge',
-              endpoint: bridge.endpoint,
-              providerOptions: { transport: 'local' },
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-              lastHealth: { status: 'unknown' },
-            },
-          ],
+          connections: [connection],
         }),
         { mode: 0o600 },
       )
