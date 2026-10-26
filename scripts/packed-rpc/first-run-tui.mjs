@@ -75,13 +75,18 @@ export async function runPackedFirstRun(binary, repository) {
   delete environment.FORCE_COLOR
 
   async function runTui(args, expectedResponse, expectSetup, prompt) {
-    const session = pty.spawn(process.execPath, [binary, ...args, '--prompt', prompt], {
-      name: 'xterm-256color',
-      cols: 100,
-      rows: 30,
-      cwd: repository,
-      env: environment,
-    })
+    const recordPath = join(workspace, `startup-${expectSetup ? 'first' : 'restart'}.json`)
+    const session = pty.spawn(
+      process.execPath,
+      [binary, ...args, '--prompt', prompt, '--record-state', recordPath],
+      {
+        name: 'xterm-256color',
+        cols: 100,
+        rows: 30,
+        cwd: repository,
+        env: environment,
+      },
+    )
     let output = ''
     const exited = new Promise((resolve) => session.onExit(resolve))
     session.onData((chunk) => {
@@ -140,6 +145,25 @@ export async function runPackedFirstRun(binary, repository) {
       } catch (error) {
         throw new Error(`packed response missing ${expectedResponse}\n${output}`, { cause: error })
       }
+      if (expectSetup) {
+        let offset = output.length
+        const select = async (keys, expected) => {
+          session.write(keys)
+          await waitFor(
+            () => output.slice(offset).includes(expected),
+            expected,
+            15_000,
+            () => output,
+          )
+          offset = output.length
+        }
+        await select('\u000b', 'Setup')
+        await select('\u001b[B\r', 'choose an AgentProfile')
+        await select('\r', 'choose a connection')
+        await select('\r', 'review and start')
+        await select('\r', 'selection applied')
+        session.write('\r')
+      }
       session.write('\u0003')
       await waitFor(() => output.toLowerCase().includes('ctrl+c again to quit'), 'packed safe exit')
       session.write('\u0003')
@@ -151,6 +175,12 @@ export async function runPackedFirstRun(binary, repository) {
         }),
       ])
       if (exit.exitCode !== 0) throw new Error(`packed TUI exited ${exit.exitCode}\n${output}`)
+      const recorded = JSON.parse(await readFile(recordPath, 'utf8'))
+      const promptRuns = recorded.state.messages.filter(
+        (message) => message.role === 'user' && message.text === prompt,
+      )
+      assert.equal(promptRuns.length, 1, 'startup prompt must admit exactly one user turn')
+      assert.equal(recorded.state.runs.filter((run) => run.id === promptRuns[0].runId).length, 1)
       completed = true
       return output
     } finally {

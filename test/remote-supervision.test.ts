@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { once } from 'node:events'
 import { randomBytes } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
+import xterm from '@xterm/headless'
+import * as pty from 'node-pty'
 import {
   createInMemoryRunContext,
   createSupervisor,
@@ -156,11 +156,11 @@ test('real Runtime workers cross authenticated HTTP into the conversation graph,
             process.env[envName] = JSON.stringify(server.readOnly)
             // A separate real executable inherits the read capability; no Braid turn is admitted.
             const childRecord = join(root, 'observer-state.json')
-            const child = spawn(
+            const emulator = new xterm.Terminal({ cols: 120, rows: 40 })
+            const child = pty.spawn(
               process.execPath,
               [
                 fileURLToPath(new URL('../src/bin/braid.js', import.meta.url)),
-                '--plain',
                 '--workspace',
                 workspace,
                 '--config',
@@ -174,28 +174,61 @@ test('real Runtime workers cross authenticated HTTP into the conversation graph,
               ],
               {
                 cwd: workspace,
+                cols: 120,
+                rows: 40,
                 env: {
                   ...process.env,
                   HOME: root,
+                  TERM: 'xterm-256color',
                   BRAID_CLI_BRIDGE_ENDPOINT: 'http://127.0.0.1:9',
                   XDG_CONFIG_HOME: join(root, 'config'),
                   XDG_DATA_HOME: join(root, 'data'),
                   BRAID_STATE_PATH: join(root, 'observer.sqlite'),
                 },
-                signal: AbortSignal.timeout(10_000),
-                stdio: ['pipe', 'pipe', 'pipe'],
               },
             )
             let output = ''
-            child.stdout.on('data', (chunk: Buffer) => {
-              output += chunk.toString()
+            let childExited = false
+            const closed = new Promise<number>((resolve) =>
+              child.onExit(({ exitCode }) => {
+                childExited = true
+                resolve(exitCode)
+              }),
+            )
+            child.onData((chunk) => {
+              output += chunk
+              emulator.write(chunk)
             })
-            child.stderr.on('data', (chunk: Buffer) => {
-              output += chunk.toString()
-            })
-            const closed = once(child, 'close')
-            child.stdin.end('/quit\n')
-            assert.equal((await closed)[0], 0, output)
+            const screen = () =>
+              Array.from(
+                { length: 40 },
+                (_, row) =>
+                  emulator.buffer.active
+                    .getLine(emulator.buffer.active.viewportY + row)
+                    ?.translateToString(true) ?? '',
+              ).join('\n')
+            const waitForScreen = async (predicate: () => boolean) => {
+              const deadline = Date.now() + 10_000
+              while (!predicate()) {
+                assert.ok(!childExited && Date.now() < deadline, screen())
+                await new Promise((resolve) => setTimeout(resolve, 20))
+              }
+            }
+            const watchdog = setTimeout(() => child.kill(), 15_000)
+            try {
+              await waitForScreen(
+                () => screen().includes('conversation graph') && screen().includes('Surveyor'),
+              )
+              assert.ok(!screen().includes('choose an AgentProfile'))
+              child.write('\u001b')
+              await waitForScreen(() => !screen().includes('conversation graph'))
+              child.write('/quit\r')
+              assert.equal(await closed, 0, output)
+            } finally {
+              clearTimeout(watchdog)
+              if (!childExited) child.kill()
+              emulator.dispose()
+            }
             const recorded = await readFile(childRecord, 'utf8')
             const observed = JSON.parse(recorded)
             assert.equal(observed.state.runs.length, 0)

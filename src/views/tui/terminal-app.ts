@@ -211,6 +211,7 @@ export class BraidTerminalApp {
       ...(options.onFrameTiming === undefined ? {} : { onFrameTiming: options.onFrameTiming }),
     })
     this.#render(this.#controller.view())
+    if (this.#controller.view().selectedSurface === 'graph') this.#overlays.openSurface('graph')
     if (keymapDiagnostic) {
       this.#overlays.openUnavailable('key mappings unavailable', keymapDiagnostic)
     }
