@@ -4,6 +4,7 @@ import {
   stripCliBridgeVersion,
 } from '../adapters/connections/production-connection-endpoints.js'
 import { DEFAULT_TANGLE_SANDBOX_ENDPOINT } from '../adapters/connections/production-connection-types.js'
+import { readConnectionCredential } from '../adapters/connections/production-connections.js'
 import type { ProductionCompositionConfig } from '../app/production-composition.js'
 import type { ProfileRecord } from '../app/profile-types.js'
 import { discoverProfiles } from '../app/profiles.js'
@@ -22,7 +23,11 @@ import { productionConfigPath, resolveProductionDatabaseKeyFile } from './produc
 import { projectSetupProfiles, trustedProfileSources } from './production-profile-projection.js'
 import { recoverPendingProductionCredential } from './production-setup-credentials.js'
 import type { ProductionStartupSetup } from './production-setup-types.js'
-import { ProductionStartupError, type ProductionStartupLoadOptions } from './production-startup.js'
+import {
+  ProductionStartupError,
+  type ProductionStartupLoadOptions,
+  productionConnectionOptions,
+} from './production-startup.js'
 import { publishedProfileSource } from './published-profile.js'
 
 export { DEFAULT_CLI_BRIDGE_ENDPOINT } from './production-bridge-client.js'
@@ -196,6 +201,18 @@ export async function loadProductionProfileCatalog(
     ...options,
     ...(connection.endpoint === undefined ? {} : { cliBridgeEndpoint: connection.endpoint }),
   })
-  const bridge = await discoverBridge(options, endpoint)
+  const bridge = await discoverBridge(
+    {
+      ...options,
+      cliBridgeEndpoint: endpoint,
+      bridgeAuth:
+        (await readConnectionCredential(
+          connection,
+          { ...productionConnectionOptions(options), ...production.connectionOptions },
+          endpoint,
+        )) ?? '',
+    },
+    endpoint,
+  )
   return projectSetupProfiles(options, endpoint, bridge.models, merged).profiles
 }

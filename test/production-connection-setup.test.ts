@@ -2,8 +2,8 @@ import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { once } from 'node:events'
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { createServer } from 'node:http'
+import { access, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { createServer, request as requestHttp } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
@@ -12,16 +12,18 @@ import xterm from '@xterm/headless'
 import * as pty from 'node-pty'
 import { createProductionConnectionAdapter } from '../src/adapters/connections/production-connections.js'
 import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
+import { createProductionCredentialContext } from '../src/bin/production-credential-context.js'
 import {
   prepareProductionSelection,
   productionConnectionNeedsCredential,
   recoverPendingProductionCredential,
 } from '../src/bin/production-setup-credentials.js'
-import {
-  loadProductionProfileCatalog,
-  loadProductionSetup,
-} from '../src/bin/production-setup-discovery.js'
+import { loadProductionSetup } from '../src/bin/production-setup-discovery.js'
 import { saveProductionStartupSelection } from '../src/bin/production-setup-persistence.js'
+import {
+  defaultBraidDataDirectory,
+  productionWorkspaceConfigIdentity,
+} from '../src/bin/state-path.js'
 import { credentialRef } from '../src/ports/credentials.js'
 import type { HeadlessState } from '../src/views/shared/models.js'
 
@@ -73,55 +75,6 @@ test('first-run discovery offers CLI Bridge, Tangle inference, and Tangle sandbo
   assert.equal(
     setup.connections.every((connection) => connection.credentialRef === undefined),
     true,
-  )
-})
-
-test('regression: startup authentication never follows a workspace endpoint edit', async () => {
-  const fixture = await setupSelection('tangle-inference')
-  const bridge = fixture.setup.connections.find((connection) => connection.kind === 'cli-bridge')
-  assert.ok(bridge)
-  const edited = { ...bridge, endpoint: 'http://127.0.0.1:43918' }
-  let requests = 0
-  const fetcher: typeof fetch = async (input, init) => {
-    requests++
-    assert.equal(new Headers(init?.headers).get('authorization'), 'Bearer startup-canary')
-    return bridgeFetch(input, init)
-  }
-  const production = {
-    profile: fixture.selection.profile.profile,
-    connections: [edited],
-    connectionId: edited.id,
-  }
-  await assert.rejects(
-    loadProductionProfileCatalog(
-      { workspace: fixture.workspace, bridgeAuth: 'startup-canary', fetch: fetcher },
-      production,
-      edited.id,
-    ),
-    { code: 'CONNECTION_CREDENTIAL_REAUTH_REQUIRED' },
-  )
-  assert.equal(requests, 0)
-  await loadProductionProfileCatalog(
-    {
-      workspace: fixture.workspace,
-      cliBridgeEndpoint: edited.endpoint,
-      bridgeAuth: 'startup-canary',
-      fetch: fetcher,
-    },
-    production,
-    edited.id,
-  )
-  assert.equal(requests, 2)
-  await assert.rejects(
-    prepareProductionSelection(
-      { workspace: fixture.workspace, tangleAuth: 'startup-canary' },
-      {
-        ...fixture.selection,
-        connection: { ...fixture.selection.connection, endpoint: 'https://attacker.example' },
-      },
-      fixture.setup.configPath,
-    ),
-    { code: 'CONNECTION_CREDENTIAL_REAUTH_REQUIRED' },
   )
 })
 
@@ -289,6 +242,212 @@ test('generic pending credential recovery removes an interrupted Tangle secret',
     await assert.rejects(() => access(`${setup.configPath}.pending-credential`))
   } finally {
     secret.fill(0)
+  }
+})
+
+test('public plain startup uses private origin-bound Bridge auth and preserves stored references', {
+  timeout: 60_000,
+}, async () => {
+  const { startRuntimeBridgeServer } = await import('./support/runtime-bridge-server.js')
+  const root = await mkdtemp(join(tmpdir(), 'braid-private-bootstrap-'))
+  const secret = randomBytes(24).toString('hex')
+  const ignoredSecret = randomBytes(24).toString('hex')
+  const bridge = await startRuntimeBridgeServer({
+    expectedBearer: secret,
+    advertisedModels: [{ id: 'pi/openai/gpt-5', backend: 'pi' }],
+    responseText: 'PRIVATE_BOOTSTRAP_REPLY',
+  })
+  const headers: Array<string | undefined> = []
+  const gateway = createServer((incoming, outgoing) => {
+    headers.push(incoming.headers.authorization)
+    const forwarded = requestHttp(
+      new URL(incoming.url ?? '/', bridge.endpoint),
+      { method: incoming.method, headers: incoming.headers },
+      (reply) => {
+        outgoing.writeHead(reply.statusCode ?? 502, reply.headers)
+        reply.pipe(outgoing)
+      },
+    )
+    forwarded.on('error', () => outgoing.destroy())
+    incoming.pipe(forwarded)
+  })
+  const foreignHeaders: Array<string | undefined> = []
+  const foreign = createServer((request, response) => {
+    foreignHeaders.push(request.headers.authorization)
+    response.writeHead(403).end()
+  })
+  gateway.listen(0, '127.0.0.1')
+  foreign.listen(0, '127.0.0.1')
+  await Promise.all([once(gateway, 'listening'), once(foreign, 'listening')])
+  const address = gateway.address()
+  const foreignAddress = foreign.address()
+  assert.ok(address && typeof address !== 'string')
+  assert.ok(foreignAddress && typeof foreignAddress !== 'string')
+  const endpoint = `http://127.0.0.1:${address.port}`
+  const foreignEndpoint = `http://127.0.0.1:${foreignAddress.port}`
+  const profile = defineAgentProfile({
+    name: 'Private bootstrap proof',
+    harness: 'pi',
+    model: { default: 'openai/gpt-5', provider: 'openai' },
+  })
+  const ownedCredentialRoots: string[] = []
+  try {
+    for (const scenario of ['ephemeral', 'different-origin', 'stored-reference'] as const) {
+      const workspace = join(root, scenario)
+      await mkdir(workspace)
+      const config = join(workspace, 'config.json')
+      const key = join(root, `${scenario}.key`)
+      const profilePath = join(workspace, 'profile.json')
+      const record = join(workspace, 'final.json')
+      await writeFile(key, randomBytes(32), { mode: 0o600 })
+      await writeFile(profilePath, JSON.stringify(profile), { mode: 0o600 })
+      const env: NodeJS.ProcessEnv = {
+        ...process.env,
+        NO_COLOR: '1',
+        NODE_NO_WARNINGS: '1',
+        BRAID_CLI_BRIDGE_ENDPOINT: endpoint,
+        BRAID_CLI_BRIDGE_AUTH: scenario === 'stored-reference' ? ignoredSecret : secret,
+        BRAID_STATE_PATH: join(workspace, 'state.sqlite'),
+        XDG_CONFIG_HOME: join(root, `${scenario}-config`),
+        XDG_DATA_HOME: join(root, `${scenario}-data`),
+      }
+      delete env.FORCE_COLOR
+      const options = {
+        workspace,
+        configPath: config,
+        cliBridgeEndpoint: endpoint,
+        bridgeAuth: secret,
+      }
+      const setup = await loadProductionSetup({ ...options, profileReference: profilePath })
+      const selectedProfile = setup.profiles.find(
+        (candidate) => candidate.profile.name === profile.name,
+      )
+      const connection = setup.connections.find((candidate) => candidate.kind === 'cli-bridge')
+      assert.ok(selectedProfile && connection)
+      const selection = {
+        profile: selectedProfile,
+        connection:
+          scenario === 'different-origin'
+            ? { ...connection, endpoint: foreignEndpoint }
+            : connection,
+        profileDigest: selectedProfile.digest,
+        connectionDigest:
+          'sha256:0000000000000000000000000000000000000000000000000000000000000000' as const,
+      }
+      if (scenario === 'stored-reference') {
+        const dataDirectory = defaultBraidDataDirectory(env)
+        ownedCredentialRoots.push(
+          join(dataDirectory, 'credentials', productionWorkspaceConfigIdentity(workspace, config)),
+        )
+        const context = createProductionCredentialContext({
+          ...options,
+          databaseKeyFile: key,
+          dataDirectory,
+        })
+        assert.ok(context)
+        try {
+          const prepared = await prepareProductionSelection(
+            { ...options, databaseKeyFile: key, credentialContext: context },
+            selection,
+            config,
+          )
+          await saveProductionStartupSelection(config, prepared.selection, { databaseKeyFile: key })
+          await prepared.commit()
+        } finally {
+          context.dispose()
+        }
+      } else {
+        await saveProductionStartupSelection(config, selection, { databaseKeyFile: key })
+      }
+      headers.length = 0
+      foreignHeaders.length = 0
+      const beforeRequests = bridge.requests.length
+      const beforeSessions = bridge.sessions.length
+      const child = spawn(
+        process.execPath,
+        [
+          resolve('dist/bin/braid.js'),
+          '--plain',
+          '--workspace',
+          workspace,
+          '--config',
+          config,
+          '--database-key-file',
+          key,
+          '--profile',
+          profilePath,
+          '--connection',
+          connection.id,
+          '--prompt',
+          `PRIVATE_BOOTSTRAP_${scenario}`,
+          '--record-state',
+          record,
+        ],
+        {
+          cwd: workspace,
+          env,
+          signal: AbortSignal.timeout(15_000),
+          stdio: ['pipe', 'pipe', 'pipe'],
+        },
+      )
+      let output = ''
+      let errorOutput = ''
+      let quitting = false
+      child.stdout.on('data', (chunk: Buffer) => {
+        output += chunk.toString()
+        if (
+          !quitting &&
+          output.includes('run.finished; status: completed') &&
+          output.includes('effect.upserted; status: completed')
+        ) {
+          quitting = true
+          child.stdin.end('/quit\n')
+        }
+      })
+      child.stderr.on('data', (chunk: Buffer) => {
+        errorOutput += chunk.toString()
+      })
+      child.stdin.on('error', () => {})
+      const [code] = await once(child, 'close')
+      for (const value of [secret, ignoredSecret]) {
+        assert.ok(!`${output}${errorOutput}`.includes(value), 'startup exposed a credential')
+        const files = await readdir(root, { recursive: true, withFileTypes: true })
+        for (const file of files.filter((candidate) => candidate.isFile())) {
+          assert.ok(
+            !(await readFile(join(file.parentPath, file.name))).includes(Buffer.from(value)),
+            'credential entered workspace/config/state',
+          )
+        }
+      }
+      if (scenario === 'different-origin') {
+        assert.notEqual(code, 0, 'changed origin admitted startup')
+        assert.equal(bridge.requests.length, beforeRequests)
+        assert.equal(bridge.sessions.length, beforeSessions)
+        assert.equal(headers.length, 0)
+        assert.equal(foreignHeaders.length, 0, 'startup contacted an untrusted endpoint')
+      } else {
+        assert.equal(code, 0, `${scenario}: ${output} ${errorOutput}`)
+        assert.ok(output.includes('PRIVATE_BOOTSTRAP_REPLY'))
+        assert.equal(bridge.requests.length - beforeRequests, 1)
+        assert.ok(
+          headers.length > 0 && headers.every((value) => value === `Bearer ${secret}`),
+          'startup selected another credential authority',
+        )
+        const final = JSON.parse(await readFile(record, 'utf8')) as { state: HeadlessState }
+        assert.equal(final.state.runs.length, 1)
+      }
+    }
+  } finally {
+    gateway.closeAllConnections()
+    foreign.closeAllConnections()
+    await Promise.all([
+      new Promise<void>((resolve) => gateway.close(() => resolve())),
+      new Promise<void>((resolve) => foreign.close(() => resolve())),
+    ])
+    await bridge.close()
+    for (const directory of ownedCredentialRoots)
+      await rm(directory, { recursive: true, force: true })
+    await rm(root, { recursive: true, force: true })
   }
 })
 
