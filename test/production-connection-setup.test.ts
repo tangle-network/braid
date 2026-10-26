@@ -314,7 +314,7 @@ test('startup prompt selects saved noncurrent history after setup and refuses ba
       const workspace = join(root, target)
       await mkdir(workspace)
       const config = join(workspace, 'config.json')
-      const key = join(workspace, 'database.key')
+      const key = join(root, `${target}.key`)
       const profilePath = join(workspace, 'profile.json')
       const record = join(workspace, 'final.json')
       await writeFile(key, randomBytes(32), { mode: 0o600 })
