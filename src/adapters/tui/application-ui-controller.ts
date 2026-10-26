@@ -280,6 +280,8 @@ export class ApplicationUiController implements BraidUiController {
   }
 
   async dispatch(intent: BraidIntent): Promise<UiDispatchResult> {
+    if (intent.type === 'send' || ('command' in intent && intent.command === 'send'))
+      this.#notice = undefined
     const app = this.#app
     if (
       intent.type === 'run-command' &&
