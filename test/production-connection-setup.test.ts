@@ -342,7 +342,7 @@ test('startup prompt selects saved noncurrent history after setup and refuses ba
         }),
         { mode: 0o600 },
       )
-      const env = {
+      const env: NodeJS.ProcessEnv = {
         ...process.env,
         TERM: 'xterm-256color',
         NO_COLOR: '1',

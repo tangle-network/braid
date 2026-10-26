@@ -52,7 +52,6 @@ export async function runInterface(input: InterfaceRunnerInput): Promise<number>
       : new ProductionConnectionActions({
           currentApp: () => active.current.app,
           currentCatalog,
-          validateOnSend: options.prompt !== undefined,
           configPath:
             setup?.configPath ?? productionConfigPath(workspace, startupOptions.configPath),
           startupOptions,
@@ -153,6 +152,7 @@ export async function runInterface(input: InterfaceRunnerInput): Promise<number>
           active,
           controller,
           currentCatalog,
+          validateOnSend: options.prompt !== undefined,
           ...(options.reauthenticate ? { reauthenticate: true, onCancel: () => view.stop() } : {}),
           openApplication: input.openConfiguredApplication,
         })
