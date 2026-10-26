@@ -50,27 +50,14 @@ export function parityEvidence(state, events) {
     }
     return normalized
   }
-  const normalizeDerivedOperationId = (value) => {
-    if (typeof value !== 'string') return value
-    for (const [operationId, normalized] of operationIds) {
-      if (value.includes(operationId)) return value.replaceAll(operationId, normalized)
-    }
-    return value
-  }
   const normalizeEffect = (effect) => {
     if (!effect || typeof effect !== 'object') return effect
     const key = `${String(effect.operationId)}\u0000${String(effect.effectKind)}\u0000${String(effect.requestDigest)}`
-    let ordinal = effects.get(key)
-    if (ordinal === undefined) {
-      ordinal = effects.size + 1
-      effects.set(key, ordinal)
-    }
+    const ordinal = effects.get(key) ?? effects.size + 1
+    effects.set(key, ordinal)
     return {
       ...effect,
-      id:
-        typeof effect.id === 'string'
-          ? `<effect-${ordinal}>`
-          : normalizeDerivedOperationId(effect.id),
+      id: typeof effect.id === 'string' ? `<effect-${ordinal}>` : effect.id,
       operationId: normalizeCallerOperationId(effect.operationId),
       ...(typeof effect.requestDigest === 'string'
         ? { requestDigest: `<effect-request-${ordinal}>` }
@@ -102,6 +89,18 @@ export function parityEvidence(state, events) {
     run && typeof run === 'object'
       ? {
           ...run,
+          // Artifact metadata charges raw elapsed-time digits; compare their canonical zero width.
+          ...(typeof run.contentBytes !== 'number' || run.contentTruncated
+            ? {}
+            : {
+                contentBytes: events.reduce((bytes, event) => {
+                  const ms =
+                    event?.kind === 'run.artifact' && event.payload?.runId === run.id
+                      ? event.payload.artifact?.metadata?.spend?.ms
+                      : undefined
+                  return Number.isFinite(ms) ? bytes - String(ms).length + 1 : bytes
+                }, run.contentBytes),
+              }),
           operationId: normalizeCallerOperationId(run.operationId),
           ...(run.receipt === undefined ? {} : { receipt: normalizeReceipt(run.receipt) }),
         }

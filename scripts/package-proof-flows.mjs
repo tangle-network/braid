@@ -15,7 +15,7 @@ export async function runRpc(binary, cwd) {
     env: cleanEnvironment({
       NO_COLOR: '1',
       NODE_NO_WARNINGS: '1',
-      BRAID_FIXTURE_CHUNK_DELAY_MS: '100',
+      BRAID_FIXTURE_CHUNK_DELAY_MS: '300',
       BRAID_JOURNAL_PATH: join(cwd, 'rpc-events.jsonl'),
     }),
     stdio: ['pipe', 'pipe', 'pipe'],
