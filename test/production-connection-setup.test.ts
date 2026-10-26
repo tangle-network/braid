@@ -1,10 +1,16 @@
 import assert from 'node:assert/strict'
+import { spawn } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
 import { once } from 'node:events'
-import { access, mkdtemp, readFile } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
+import { defineAgentProfile } from '@tangle-network/agent-interface'
+import xterm from '@xterm/headless'
+import * as pty from 'node-pty'
 import { createProductionConnectionAdapter } from '../src/adapters/connections/production-connections.js'
 import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
 import {
@@ -18,6 +24,7 @@ import {
 } from '../src/bin/production-setup-discovery.js'
 import { saveProductionStartupSelection } from '../src/bin/production-setup-persistence.js'
 import { credentialRef } from '../src/ports/credentials.js'
+import type { HeadlessState } from '../src/views/shared/models.js'
 
 const bridgeFetch: typeof fetch = async (input) => {
   const path = new URL(String(input)).pathname
@@ -283,5 +290,255 @@ test('generic pending credential recovery removes an interrupted Tangle secret',
     await assert.rejects(() => access(`${setup.configPath}.pending-credential`))
   } finally {
     secret.fill(0)
+  }
+})
+
+// Real executable, encrypted restart, terminal input and HTTP Bridge protocol; no model is called.
+test('startup prompt selects saved noncurrent history after setup and refuses bad IDs without a probe', {
+  timeout: 60_000,
+}, async () => {
+  const { startRuntimeBridgeServer } = await import('./support/runtime-bridge-server.js')
+  const bridge = await startRuntimeBridgeServer({
+    advertisedModels: [{ id: 'pi/openai/gpt-5', backend: 'pi' }],
+    responseText: 'SAVED_TARGET_REPLY',
+  })
+  const root = await mkdtemp(join(tmpdir(), 'braid-startup-target-'))
+  const binary = fileURLToPath(new URL('../src/bin/braid.js', import.meta.url))
+  const profile = defineAgentProfile({
+    name: 'Saved target proof',
+    harness: 'pi',
+    model: { default: 'openai/gpt-5', provider: 'openai' },
+  })
+  try {
+    for (const target of ['saved', 'missing', 'fuzzy'] as const) {
+      const workspace = join(root, target)
+      await mkdir(workspace)
+      const config = join(workspace, 'config.json')
+      const key = join(workspace, 'database.key')
+      const profilePath = join(workspace, 'profile.json')
+      const record = join(workspace, 'final.json')
+      await writeFile(key, randomBytes(32), { mode: 0o600 })
+      await writeFile(profilePath, JSON.stringify(profile), { mode: 0o600 })
+      await writeFile(
+        config,
+        JSON.stringify({
+          format: 'braid-startup-config',
+          schemaVersion: 2,
+          profile,
+          connectionId: 'connection-seed',
+          databaseKeyFile: key,
+          connections: [
+            {
+              id: 'connection-seed',
+              kind: 'cli-bridge',
+              name: 'Loopback Bridge',
+              endpoint: bridge.endpoint,
+              providerOptions: { transport: 'local' },
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              lastHealth: { status: 'unknown' },
+            },
+          ],
+        }),
+        { mode: 0o600 },
+      )
+      const env = {
+        ...process.env,
+        TERM: 'xterm-256color',
+        NO_COLOR: '1',
+        NODE_NO_WARNINGS: '1',
+        BRAID_CLI_BRIDGE_ENDPOINT: bridge.endpoint,
+        BRAID_STATE_PATH: join(workspace, 'state.sqlite'),
+        XDG_CONFIG_HOME: join(workspace, 'config'),
+        XDG_DATA_HOME: join(workspace, 'data'),
+      }
+      delete env.FORCE_COLOR
+      const seed = spawn(
+        process.execPath,
+        [binary, 'rpc', '--workspace', workspace, '--config', config, '--database-key-file', key],
+        { env, signal: AbortSignal.timeout(15_000), stdio: ['pipe', 'pipe', 'pipe'] },
+      )
+      let seedOutput = ''
+      let seedError = ''
+      seed.stdout.on('data', (chunk: Buffer) => {
+        seedOutput += chunk.toString()
+      })
+      seed.stderr.on('data', (chunk: Buffer) => {
+        seedError += chunk.toString()
+      })
+      const seeded = once(seed, 'close')
+      seed.stdin.end(
+        `${[
+          { version: 1, requestId: 'init', command: 'initialize', params: { workspace } },
+          {
+            version: 1,
+            requestId: 'target',
+            operationId: 'op-create-target',
+            command: 'new_conversation',
+            params: { title: 'Saved target B' },
+          },
+          {
+            version: 1,
+            requestId: 'other',
+            operationId: 'op-create-other',
+            command: 'new_conversation',
+            params: { title: 'Other A' },
+          },
+          { version: 1, requestId: 'state', command: 'get_state' },
+          {
+            version: 1,
+            requestId: 'stop',
+            operationId: 'op-seed-shutdown',
+            command: 'shutdown',
+            params: { mode: 'wait' },
+          },
+        ]
+          .map((request) => JSON.stringify(request))
+          .join('\n')}\n`,
+      )
+      assert.equal((await seeded)[0], 0, seedError)
+      const seedReplies = seedOutput
+        .split('\n')
+        .filter(Boolean)
+        .map((line) => JSON.parse(line)) as Array<{
+        type?: string
+        requestId?: string
+        state?: HeadlessState
+      }>
+      const seedState = seedReplies.find(
+        (reply) => reply.type === 'state' && reply.requestId === 'state',
+      )?.state
+      assert.ok(seedState)
+      const savedId = seedState.conversations.find(
+        (conversation) => conversation.title === 'Saved target B',
+      )?.id
+      assert.ok(savedId)
+      assert.notEqual(seedState.conversationId, savedId)
+      await rm(config)
+      const requested =
+        target === 'saved' ? savedId : target === 'fuzzy' ? 'Saved' : 'conversation-missing'
+      const prompt = `STARTUP_TARGET_${target}`
+      const beforeRequests = bridge.requests.length
+      const beforeSessions = bridge.sessions.length
+      const emulator = new xterm.Terminal({ cols: 120, rows: 40, allowProposedApi: true })
+      const child = pty.spawn(
+        process.execPath,
+        [
+          binary,
+          '--workspace',
+          workspace,
+          '--config',
+          config,
+          '--database-key-file',
+          key,
+          '--profile',
+          profilePath,
+          '--conversation',
+          requested,
+          '--prompt',
+          prompt,
+          '--record-state',
+          record,
+        ],
+        { cwd: workspace, env, cols: 120, rows: 40 },
+      )
+      let output = ''
+      const started = performance.now()
+      const terminalEvents: unknown[] = []
+      let exited = false
+      const closed = new Promise<number>((resolve) =>
+        child.onExit(({ exitCode }) => {
+          exited = true
+          resolve(exitCode)
+        }),
+      )
+      child.onData((chunk) => {
+        output += chunk
+        terminalEvents.push([(performance.now() - started) / 1000, 'o', chunk])
+        emulator.write(chunk)
+      })
+      const screen = () =>
+        Array.from(
+          { length: 40 },
+          (_, row) =>
+            emulator.buffer.active
+              .getLine(emulator.buffer.active.viewportY + row)
+              ?.translateToString(true) ?? '',
+        ).join('\n')
+      const waitFor = async (predicate: () => boolean) => {
+        const deadline = Date.now() + 15_000
+        while (!predicate()) {
+          assert.ok(!exited && Date.now() < deadline, screen())
+          await new Promise((resolve) => setTimeout(resolve, 20))
+        }
+      }
+      const watchdog = setTimeout(() => child.kill(), 20_000)
+      try {
+        await waitFor(() => screen().includes('choose an AgentProfile'))
+        child.write('\r')
+        await waitFor(() => screen().includes('choose a connection'))
+        child.write('\r')
+        await waitFor(() => screen().includes('review and start'))
+        assert.equal(bridge.requests.length, beforeRequests, 'setup started a model/auth probe')
+        child.write('\r')
+        if (target === 'saved') {
+          await waitFor(() => screen().includes('selection applied'))
+          child.write('\r')
+          await waitFor(
+            () => screen().includes('SAVED_TARGET_REPLY') && screen().includes('new message'),
+          )
+          assert.equal(
+            bridge.requests.length - beforeRequests,
+            1,
+            'initial prompt was not the only model request',
+          )
+        } else {
+          await waitFor(() => screen().includes('Conversation not opened'))
+          assert.equal(bridge.requests.length, beforeRequests, 'bad ID started a model/auth probe')
+          assert.equal(bridge.sessions.length, beforeSessions, 'bad ID created a provider session')
+          child.write('\u001b')
+          await waitFor(() => !screen().includes('braid setup'))
+        }
+        child.write('\u0003')
+        await waitFor(() => screen().toLowerCase().includes('ctrl+c again to quit'))
+        child.write('\u0003')
+        assert.equal(await closed, 0, output)
+        const final = JSON.parse(await readFile(record, 'utf8')) as { state: HeadlessState }
+        assert.equal(final.state.runs.length, target === 'saved' ? 1 : 0)
+        if (target === 'saved') {
+          assert.equal(final.state.conversationId, savedId)
+          assert.equal(
+            final.state.messages.filter(
+              (message: { role: string; text: string }) =>
+                message.role === 'user' && message.text === prompt,
+            ).length,
+            1,
+          )
+        }
+        if (process.env.BRAID_RELEASE_ARTIFACT_ROOT !== undefined)
+          await writeFile(
+            join(process.env.BRAID_RELEASE_ARTIFACT_ROOT, `startup-target-${target}.cast`),
+            [
+              JSON.stringify({
+                version: 2,
+                width: 120,
+                height: 40,
+                title: `Public CLI setup ${target} target over controlled HTTP Bridge`,
+                env: { TERM: 'xterm-256color' },
+              }),
+              ...terminalEvents.map((event) => JSON.stringify(event)),
+              '',
+            ].join('\n'),
+            { mode: 0o600, flag: 'wx' },
+          )
+      } finally {
+        clearTimeout(watchdog)
+        if (!exited) child.kill()
+        emulator.dispose()
+      }
+    }
+  } finally {
+    await bridge.close()
+    await rm(root, { recursive: true, force: true })
   }
 })

@@ -52,6 +52,7 @@ export async function runInterface(input: InterfaceRunnerInput): Promise<number>
       : new ProductionConnectionActions({
           currentApp: () => active.current.app,
           currentCatalog,
+          validateOnSend: options.prompt !== undefined,
           configPath:
             setup?.configPath ?? productionConfigPath(workspace, startupOptions.configPath),
           startupOptions,
@@ -105,12 +106,6 @@ export async function runInterface(input: InterfaceRunnerInput): Promise<number>
       text: options.prompt,
       ...(options.conversation === undefined ? {} : { conversationId: options.conversation }),
     })
-  const startupError = setup && startupTargetError(controller, initialIntents.at(-1))
-  if (startupError !== undefined) {
-    process.stderr.write(`${startupError.code}: ${startupError.message}\n`)
-    if (options.recordState) await recordInterfaceState(options.recordState, controller)
-    return 2
-  }
   const dispatchInitialIntents = async (): Promise<void> => {
     for (const intent of initialIntents.splice(0)) {
       const result = startupTargetError(controller, intent) ?? (await controller.dispatch(intent))

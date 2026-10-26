@@ -142,14 +142,16 @@ export function parseArgs(argv: readonly string[], cwd: string): CliOptions {
     else throw new CliUsageError('Unknown command; expected "rpc" or an option')
   }
 
-  if (options.uiFixture !== undefined && options.fixture !== 'deterministic')
+  if (options.uiFixture !== undefined && options.fixture !== 'deterministic') {
     throw new CliUsageError('--ui-fixture requires --fixture deterministic')
+  }
 
   if (
     options.reauthenticate &&
     (options.mode === 'rpc' || options.plain || options.fixture !== undefined)
-  )
+  ) {
     throw new CliUsageError('--reauthenticate requires the production interactive terminal')
+  }
 
   if (
     options.mode === 'rpc' &&

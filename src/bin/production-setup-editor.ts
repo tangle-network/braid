@@ -43,6 +43,7 @@ export interface ProductionSetupEditorOptions {
   readonly controller: ProductionSetupController
   readonly currentCatalog: () => ConnectionRegistry
   readonly reauthenticate?: boolean
+  readonly validateOnSend?: boolean
   readonly onCancel?: () => void
   readonly openApplication: (
     options: ProductionStartupLoadOptions,
@@ -197,9 +198,9 @@ export async function createProductionSetupEditor(
           ...(credential === undefined ? {} : { credential }),
           active: options.active,
           controller: options.controller,
-          // Initial CLI setup retains its existing bounded authentication probe.
-          // Editing a saved selection never submits that probe or a user task.
-          ...(configured
+          // Manual first setup keeps its authentication probe. A pending initial turn
+          // checks the connection after conversation selection, through normal admission.
+          ...(configured || options.validateOnSend
             ? {
                 validate: async () => ({
                   status: 'unverified' as const,
