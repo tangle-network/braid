@@ -28,5 +28,3 @@
 ```bash
 npm install --global @tangle-network/braid@0.3.6
 ```
-
-Cloud execution still requires a Tangle account, available credit, and a supported profile.
