@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { once } from 'node:events'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -29,6 +29,52 @@ function settledCompletions(text) {
 }
 
 export async function runPlain(binary, cwd) {
+  for (const [name, flags, conversation] of [
+    ['missing', ['--fixture', 'deterministic'], 'conversation-does-not-exist'],
+    ['fuzzy', ['--fixture', 'deterministic'], 'New'],
+    ['fresh', ['--config', join(cwd, 'absent-config.json')], 'conversation-does-not-exist'],
+  ]) {
+    const refusedRecord = join(cwd, `plain-refused-${name}.json`)
+    const refused = spawnSync(
+      binary,
+      [
+        '--plain',
+        ...flags,
+        '--workspace',
+        cwd,
+        '--conversation',
+        conversation,
+        '--prompt',
+        PROMPT,
+        '--record-state',
+        refusedRecord,
+      ],
+      {
+        cwd,
+        env: cleanEnvironment({
+          NO_COLOR: '1',
+          NODE_NO_WARNINGS: '1',
+          BRAID_CLI_BRIDGE_ENDPOINT: 'http://127.0.0.1:9',
+          BRAID_STATE_PATH: join(cwd, `${name}.sqlite`),
+          BRAID_JOURNAL_PATH: join(cwd, `plain-refused-${name}.jsonl`),
+        }),
+        input: '',
+        encoding: 'utf8',
+        timeout: 10_000,
+      },
+    )
+    assert(
+      refused.status === 2,
+      `${name} startup did not fail: ${refused.stdout} ${refused.stderr}`,
+    )
+    assert(
+      `${refused.stdout}${refused.stderr}`.includes('Run: braid'),
+      'startup refusal omitted the next command',
+    )
+    const rejected = JSON.parse(await readFile(refusedRecord, 'utf8'))
+    assert(rejected.state.runs.length === 0, 'wrong-conversation startup admitted a run')
+    assert(rejected.state.messages.length === 0, 'wrong-conversation startup submitted a prompt')
+  }
   const recordPath = join(cwd, 'plain-final-state.json')
   const child = spawn(
     binary,
@@ -36,6 +82,8 @@ export async function runPlain(binary, cwd) {
       '--plain',
       '--prompt',
       PROMPT,
+      '--conversation',
+      'conv-1',
       '--fixture',
       'deterministic',
       '--no-color',

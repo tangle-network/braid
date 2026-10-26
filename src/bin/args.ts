@@ -130,9 +130,7 @@ export function parseArgs(argv: readonly string[], cwd: string): CliOptions {
     } else if (argument === '--ui-fixture') {
       const value = requiredValue(argv, index, argument)
       if (!UI_FIXTURES.includes(value as NonNullable<CliOptions['uiFixture']>))
-        throw new CliUsageError(
-          '--ui-fixture supports "interaction", "fork", "analysis", "comparison", "product-demo", "supervision", "native-children", "cancellation-unavailable", or "profile-handoff"',
-        )
+        throw new CliUsageError(`--ui-fixture supports ${UI_FIXTURES.join(', ')}`)
       options.uiFixture = value as NonNullable<CliOptions['uiFixture']>
       index += 1
     } else if (argument === '-h' || argument === '--help') options.help = true

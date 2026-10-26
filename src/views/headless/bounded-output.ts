@@ -44,9 +44,13 @@ export class BoundedOutputQueue {
     return task
   }
 
+  assertHealthy(): void {
+    if (this.#failure !== undefined) throw this.#failure
+  }
+
   async flush(): Promise<void> {
     await this.#tail
-    if (this.#failure !== undefined) throw this.#failure
+    this.assertHealthy()
   }
 
   async #waitForDrain(): Promise<void> {

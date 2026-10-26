@@ -18,7 +18,7 @@ import type { CliOptions } from './args.js'
 import { createInterfaceSignalLifecycle } from './interface-signal-lifecycle.js'
 import { recordInterfaceState } from './interface-state-recorder.js'
 import { createNativeInteractiveUiActions } from './native-interactive-actions.js'
-import { runPlain } from './plain.js'
+import { runPlain, startupTargetError } from './plain.js'
 import { ProductionConnectionActions } from './production-connection-actions.js'
 import { productionConfigPath } from './production-key-path.js'
 import type { ProductionStartupSetup } from './production-setup.js'
@@ -88,32 +88,32 @@ export async function runInterface(input: InterfaceRunnerInput): Promise<number>
   const nextOperationId = options.fixture
     ? () => `op-terminal-${String(++operation).padStart(6, '0')}`
     : () => `op-${randomUUID()}`
-  const startupIntents = (): BraidIntent[] => {
-    const commands: Array<[CommandName, string | undefined]> = [['open', options.conversation]]
-    // Production profile, connection, runner, and model values are resolved before the
-    // application is constructed; replaying them as UI commands would select a second path.
-    if (options.fixture) {
-      commands.push(
-        ['profile', options.profile],
-        ['connection', options.connection],
-        ['runner', options.runner],
-        ['model', options.model],
-        ['effort', options.effort],
-      )
-    }
-    const intents: BraidIntent[] = []
-    for (const [command, value] of commands)
-      if (value) intents.push(commandIntent(command, [value], nextOperationId()))
-    if (options.remoteEndpointEnv !== undefined)
-      intents.push(commandIntent('graph', ['--remote-env', options.remoteEndpointEnv]))
-    if (options.prompt !== undefined)
-      intents.push({ type: 'send', operationId: nextOperationId(), text: options.prompt })
-    return intents
+  const commands: Array<[CommandName, string | undefined]> = [['open', options.conversation]]
+  // Production selections are already resolved before application construction.
+  if (options.fixture)
+    for (const command of ['profile', 'connection', 'runner', 'model', 'effort'] as const)
+      commands.push([command, options[command]])
+  const initialIntents: BraidIntent[] = []
+  for (const [command, value] of commands)
+    if (value) initialIntents.push(commandIntent(command, [value], nextOperationId()))
+  if (options.remoteEndpointEnv !== undefined)
+    initialIntents.push(commandIntent('graph', ['--remote-env', options.remoteEndpointEnv]))
+  if (options.prompt !== undefined)
+    initialIntents.push({
+      type: 'send',
+      operationId: nextOperationId(),
+      text: options.prompt,
+      ...(options.conversation === undefined ? {} : { conversationId: options.conversation }),
+    })
+  const startupError = setup && startupTargetError(controller, initialIntents.at(-1))
+  if (startupError !== undefined) {
+    process.stderr.write(`${startupError.code}: ${startupError.message}\n`)
+    if (options.recordState) await recordInterfaceState(options.recordState, controller)
+    return 2
   }
-  const initialIntents = startupIntents()
   const dispatchInitialIntents = async (): Promise<void> => {
     for (const intent of initialIntents.splice(0)) {
-      const result = await controller.dispatch(intent)
+      const result = startupTargetError(controller, intent) ?? (await controller.dispatch(intent))
       if (result.kind !== 'accepted')
         throw new Error(result.kind === 'unavailable' ? result.reason : result.message)
     }

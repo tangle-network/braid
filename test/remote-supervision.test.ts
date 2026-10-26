@@ -179,7 +179,6 @@ test('real Runtime workers cross authenticated HTTP into the conversation graph,
                 rows: 40,
                 env: {
                   ...process.env,
-                  HOME: root,
                   TERM: 'xterm-256color',
                   BRAID_CLI_BRIDGE_ENDPOINT: 'http://127.0.0.1:9',
                   XDG_CONFIG_HOME: join(root, 'config'),
