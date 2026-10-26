@@ -292,7 +292,14 @@ test('public plain startup uses private origin-bound Bridge auth and preserves s
   })
   const ownedCredentialRoots: string[] = []
   try {
-    for (const scenario of ['ephemeral', 'different-origin', 'stored-reference'] as const) {
+    for (const scenario of [
+      'ephemeral',
+      'different-origin',
+      'stored-reference',
+      'missing-conversation',
+      'fuzzy-conversation',
+      'fresh-conversation',
+    ] as const) {
       const workspace = join(root, scenario)
       await mkdir(workspace)
       const config = join(workspace, 'config.json')
@@ -371,13 +378,19 @@ test('public plain startup uses private origin-bound Bridge auth and preserves s
           '--workspace',
           workspace,
           '--config',
-          config,
+          scenario === 'fresh-conversation' ? join(workspace, 'absent-config.json') : config,
           '--database-key-file',
           key,
           '--profile',
           profilePath,
           '--connection',
           connection.id,
+          ...(scenario.endsWith('-conversation')
+            ? [
+                '--conversation',
+                scenario === 'fuzzy-conversation' ? 'New' : 'conversation-does-not-exist',
+              ]
+            : []),
           '--prompt',
           `PRIVATE_BOOTSTRAP_${scenario}`,
           '--record-state',
@@ -386,7 +399,7 @@ test('public plain startup uses private origin-bound Bridge auth and preserves s
         {
           cwd: workspace,
           env,
-          signal: AbortSignal.timeout(15_000),
+          signal: AbortSignal.timeout(scenario.endsWith('-conversation') ? 10_000 : 15_000),
           stdio: ['pipe', 'pipe', 'pipe'],
         },
       )
@@ -425,6 +438,14 @@ test('public plain startup uses private origin-bound Bridge auth and preserves s
         assert.equal(bridge.sessions.length, beforeSessions)
         assert.equal(headers.length, 0)
         assert.equal(foreignHeaders.length, 0, 'startup contacted an untrusted endpoint')
+      } else if (scenario.endsWith('-conversation')) {
+        assert.equal(code, 2)
+        assert.ok(output.includes('Run: braid'))
+        assert.equal(bridge.requests.length, beforeRequests)
+        assert.equal(bridge.sessions.length, beforeSessions)
+        const final = JSON.parse(await readFile(record, 'utf8')) as { state: HeadlessState }
+        assert.equal(final.state.runs.length, 0)
+        assert.equal(final.state.messages.length, 0)
       } else {
         assert.equal(code, 0, `${scenario}: ${output} ${errorOutput}`)
         assert.ok(output.includes('PRIVATE_BOOTSTRAP_REPLY'))
