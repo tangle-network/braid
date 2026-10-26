@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict'
+import { spawn } from 'node:child_process'
+import { once } from 'node:events'
 import { randomBytes } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 import {
   createInMemoryRunContext,
   createSupervisor,
@@ -151,6 +154,55 @@ test('real Runtime workers cross authenticated HTTP into the conversation graph,
               assert.ok(!reply.result.isError)
             }
             process.env[envName] = JSON.stringify(server.readOnly)
+            // A separate real executable inherits the read capability; no Braid turn is admitted.
+            const childRecord = join(root, 'observer-state.json')
+            const child = spawn(
+              process.execPath,
+              [
+                fileURLToPath(new URL('../src/bin/braid.js', import.meta.url)),
+                '--plain',
+                '--workspace',
+                workspace,
+                '--config',
+                join(root, 'observer-config.json'),
+                '--database-key-file',
+                key,
+                '--remote-env',
+                envName,
+                '--record-state',
+                childRecord,
+              ],
+              {
+                cwd: workspace,
+                env: {
+                  ...process.env,
+                  HOME: root,
+                  BRAID_CLI_BRIDGE_ENDPOINT: 'http://127.0.0.1:9',
+                  XDG_CONFIG_HOME: join(root, 'config'),
+                  XDG_DATA_HOME: join(root, 'data'),
+                  BRAID_STATE_PATH: join(root, 'observer.sqlite'),
+                },
+                signal: AbortSignal.timeout(10_000),
+                stdio: ['pipe', 'pipe', 'pipe'],
+              },
+            )
+            let output = ''
+            child.stdout.on('data', (chunk: Buffer) => {
+              output += chunk.toString()
+            })
+            child.stderr.on('data', (chunk: Buffer) => {
+              output += chunk.toString()
+            })
+            const closed = once(child, 'close')
+            child.stdin.end('/quit\n')
+            assert.equal((await closed)[0], 0, output)
+            const recorded = await readFile(childRecord, 'utf8')
+            const observed = JSON.parse(recorded)
+            assert.equal(observed.state.runs.length, 0)
+            assert.equal(observed.state.workers.length, 2)
+            assert.equal(observed.state.supervisors[0].remoteEndpointEnv, envName)
+            for (const secret of [server.readOnly.url, ...Object.values(server.readOnly.headers)])
+              assert.ok(!`${output}${recorded}`.includes(secret))
             let controller = createApplicationUiController(durable.app)
             const initial = await controller.dispatch({
               type: 'headless-command',

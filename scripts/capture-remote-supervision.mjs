@@ -96,6 +96,8 @@ export async function captureRemoteSupervision(endpointEnv) {
         process.execPath,
         [
           packed.binary,
+          '--remote-env',
+          endpointEnv,
           '--workspace',
           workspace,
           '--config',
@@ -190,11 +192,6 @@ export async function captureRemoteSupervision(endpointEnv) {
         await writeRaster(`${prefix}.cast`, `${prefix}.png`, `${prefix}.gif`)
       }
       try {
-        await waitFor(
-          () => screen().includes('Runtime observer') && screen().includes('new message'),
-          'conversation shell',
-        )
-        await command(`/graph --remote-env ${endpointEnv}`)
         await waitFor(
           () =>
             screen().includes('conversation graph') &&

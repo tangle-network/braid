@@ -65,14 +65,6 @@ export async function runPlain(
     }
     await write(`Braid ready — ${sanitizeTerminalText(workspace)}\n`)
     await write(`${plainAccessibilityText(controller.view())}\n`)
-    for (const intent of options.initialIntents ?? []) {
-      const result = await controller.dispatch(intent)
-      if (result.kind !== 'accepted') {
-        await write(
-          `error: ${sanitizeNotification(result.kind === 'unavailable' ? result.reason : result.message)}\n`,
-        )
-      }
-    }
     unsubscribe = controller.subscribe((view, event) => {
       if (!event) return
       void emit(`${plainEventText(view, event)}\n`).catch(() => undefined)
@@ -90,6 +82,15 @@ export async function runPlain(
       let tracked: Promise<void>
       tracked = completion.finally(() => pendingCompletions.delete(tracked))
       pendingCompletions.add(tracked)
+    }
+    for (const intent of options.initialIntents ?? []) {
+      const result = await controller.dispatch(intent)
+      if (result.kind !== 'accepted') {
+        await write(
+          `error: ${sanitizeNotification(result.kind === 'unavailable' ? result.reason : result.message)}\n`,
+        )
+      }
+      if (result.kind === 'accepted' && result.completion) trackCompletion(result.completion)
     }
     const submit = async (line: string): Promise<void> => {
       const parsed = parseCommandInput(line)

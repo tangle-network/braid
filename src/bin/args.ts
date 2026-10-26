@@ -1,18 +1,21 @@
+const UI_FIXTURES = [
+  'interaction',
+  'fork',
+  'analysis',
+  'comparison',
+  'product-demo',
+  'supervision',
+  'native-children',
+  'cancellation-unavailable',
+  'profile-handoff',
+] as const
+
 export interface CliOptions {
   readonly mode: 'tui' | 'rpc'
   readonly plain: boolean
   readonly reauthenticate?: true
   readonly fixture?: 'deterministic'
-  readonly uiFixture?:
-    | 'interaction'
-    | 'fork'
-    | 'analysis'
-    | 'comparison'
-    | 'product-demo'
-    | 'supervision'
-    | 'native-children'
-    | 'cancellation-unavailable'
-    | 'profile-handoff'
+  readonly uiFixture?: (typeof UI_FIXTURES)[number]
   readonly inline: boolean
   readonly noColor: boolean
   readonly highContrast: boolean
@@ -20,6 +23,8 @@ export interface CliOptions {
   readonly workspace: string
   readonly config?: string
   readonly conversation?: string
+  readonly remoteEndpointEnv?: string
+  readonly prompt?: string
   readonly profile?: string
   readonly connection?: string
   readonly runner?: string
@@ -47,6 +52,8 @@ Options:
   --high-contrast              Use high-contrast semantic colors
   --reduced-motion             Replace motion with stable status text
   --conversation <id>         Open a conversation by id
+  --remote-env <NAME>         Open a Runtime graph using a protected environment reference
+  --prompt <text>             Send one initial message after connection setup
   --profile <name|path>        Select a published profile or canonical profile file
   --connection <id>            Select a connection for the run
   --runner <name>              Set a run-level runner preference
@@ -70,94 +77,66 @@ function requiredValue(args: readonly string[], index: number, flag: string): st
   return value
 }
 
+const VALUE_FLAGS = {
+  '--workspace': 'workspace',
+  '--config': 'config',
+  '--record-state': 'recordState',
+  '--conversation': 'conversation',
+  '--remote-env': 'remoteEndpointEnv',
+  '--prompt': 'prompt',
+  '--profile': 'profile',
+  '--connection': 'connection',
+  '--runner': 'runner',
+  '--model': 'model',
+  '--effort': 'effort',
+  '--database-key-file': 'databaseKeyFile',
+} as const
+
 export function parseArgs(argv: readonly string[], cwd: string): CliOptions {
-  let mode: CliOptions['mode'] = 'tui'
-  let plain = false
-  let reauthenticate = false
-  let fixture: CliOptions['fixture']
-  let uiFixture: CliOptions['uiFixture']
-  let inline = false
-  let noColor = false
-  let highContrast = false
-  let reducedMotion = false
-  let workspace = cwd
-  let config: string | undefined
-  let conversation: string | undefined
-  let profile: string | undefined
-  let connection: string | undefined
-  let runner: string | undefined
-  let model: string | undefined
-  let effort: string | undefined
-  let databaseKeyFile: string | undefined
-  let recordState: string | undefined
-  let help = false
-  let version = false
+  const options: { -readonly [Key in keyof CliOptions]: CliOptions[Key] } = {
+    mode: 'tui',
+    plain: false,
+    inline: false,
+    noColor: false,
+    highContrast: false,
+    reducedMotion: false,
+    workspace: cwd,
+    help: false,
+    version: false,
+  }
 
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index]
-    if (argument === 'rpc' && index === 0) mode = 'rpc'
-    else if (argument === '--inline') inline = true
-    else if (argument === '--plain') plain = true
-    else if (argument === '--reauthenticate') reauthenticate = true
-    else if (argument === '--no-color') noColor = true
-    else if (argument === '--high-contrast') highContrast = true
-    else if (argument === '--reduced-motion') reducedMotion = true
-    else if (argument === '--workspace') {
-      workspace = requiredValue(argv, index, argument)
-      index += 1
-    } else if (argument === '--config') {
-      config = requiredValue(argv, index, argument)
-      index += 1
-    } else if (argument === '--record-state') {
-      recordState = requiredValue(argv, index, argument)
+    if (argument === 'rpc' && index === 0) options.mode = 'rpc'
+    else if (argument === '--inline') options.inline = true
+    else if (argument === '--plain') options.plain = true
+    else if (argument === '--reauthenticate') options.reauthenticate = true
+    else if (argument === '--no-color') options.noColor = true
+    else if (argument === '--high-contrast') options.highContrast = true
+    else if (argument === '--reduced-motion') options.reducedMotion = true
+    else if (argument !== undefined && Object.hasOwn(VALUE_FLAGS, argument)) {
+      options[VALUE_FLAGS[argument as keyof typeof VALUE_FLAGS]] = requiredValue(
+        argv,
+        index,
+        argument,
+      )
       index += 1
     } else if (argument === '--fixture') {
       const value = requiredValue(argv, index, argument)
       if (value !== 'deterministic')
         throw new CliUsageError('--fixture supports only "deterministic"')
-      fixture = value
+      options.fixture = value
       index += 1
     } else if (argument === '--ui-fixture') {
       const value = requiredValue(argv, index, argument)
-      if (
-        value !== 'interaction' &&
-        value !== 'fork' &&
-        value !== 'analysis' &&
-        value !== 'comparison' &&
-        value !== 'product-demo' &&
-        value !== 'supervision' &&
-        value !== 'native-children' &&
-        value !== 'cancellation-unavailable' &&
-        value !== 'profile-handoff'
-      )
+      if (!UI_FIXTURES.includes(value as NonNullable<CliOptions['uiFixture']>))
         throw new CliUsageError(
           '--ui-fixture supports "interaction", "fork", "analysis", "comparison", "product-demo", "supervision", "native-children", "cancellation-unavailable", or "profile-handoff"',
         )
-      uiFixture = value
+      options.uiFixture = value as NonNullable<CliOptions['uiFixture']>
       index += 1
-    } else if (argument === '--conversation') {
-      conversation = requiredValue(argv, index, argument)
-      index += 1
-    } else if (argument === '--profile') {
-      profile = requiredValue(argv, index, argument)
-      index += 1
-    } else if (argument === '--connection') {
-      connection = requiredValue(argv, index, argument)
-      index += 1
-    } else if (argument === '--runner') {
-      runner = requiredValue(argv, index, argument)
-      index += 1
-    } else if (argument === '--model') {
-      model = requiredValue(argv, index, argument)
-      index += 1
-    } else if (argument === '--effort') {
-      effort = requiredValue(argv, index, argument)
-      index += 1
-    } else if (argument === '--database-key-file') {
-      databaseKeyFile = requiredValue(argv, index, argument)
-      index += 1
-    } else if (argument === '-h' || argument === '--help') help = true
-    else if (argument === '-v' || argument === '--version') version = true
+    } else if (argument === '-h' || argument === '--help') options.help = true
+    else if (argument === '-v' || argument === '--version') options.version = true
     else if (argument?.startsWith('-'))
       throw new CliUsageError(
         /^--?[a-z][a-z0-9-]*$/iu.test(argument) ? `Unknown option: ${argument}` : 'Unknown option',
@@ -165,35 +144,33 @@ export function parseArgs(argv: readonly string[], cwd: string): CliOptions {
     else throw new CliUsageError('Unknown command; expected "rpc" or an option')
   }
 
-  if (uiFixture !== undefined && fixture !== 'deterministic') {
+  if (options.uiFixture !== undefined && options.fixture !== 'deterministic') {
     throw new CliUsageError('--ui-fixture requires --fixture deterministic')
   }
 
-  if (reauthenticate && (mode === 'rpc' || plain || fixture !== undefined)) {
+  if (
+    options.reauthenticate &&
+    (options.mode === 'rpc' || options.plain || options.fixture !== undefined)
+  ) {
     throw new CliUsageError('--reauthenticate requires the production interactive terminal')
   }
 
-  return {
-    mode,
-    plain,
-    ...(reauthenticate ? { reauthenticate: true as const } : {}),
-    ...(fixture ? { fixture } : {}),
-    ...(uiFixture ? { uiFixture } : {}),
-    inline,
-    noColor,
-    highContrast,
-    reducedMotion,
-    workspace,
-    ...(config ? { config } : {}),
-    ...(conversation ? { conversation } : {}),
-    ...(profile ? { profile } : {}),
-    ...(connection ? { connection } : {}),
-    ...(runner ? { runner } : {}),
-    ...(model ? { model } : {}),
-    ...(effort ? { effort } : {}),
-    ...(databaseKeyFile ? { databaseKeyFile } : {}),
-    ...(recordState ? { recordState } : {}),
-    help,
-    version,
-  }
+  if (
+    options.mode === 'rpc' &&
+    (options.remoteEndpointEnv !== undefined || options.prompt !== undefined)
+  )
+    throw new CliUsageError('Use the refresh_supervision and send JSONL commands in rpc mode')
+  if (
+    options.remoteEndpointEnv !== undefined &&
+    !/^[A-Z_][A-Z0-9_]*$/u.test(options.remoteEndpointEnv)
+  )
+    throw new CliUsageError('--remote-env requires an environment variable name')
+
+  if (
+    options.remoteEndpointEnv !== undefined &&
+    (options.prompt !== undefined || options.reauthenticate)
+  )
+    throw new CliUsageError('--remote-env cannot be combined with --prompt or --reauthenticate')
+
+  return options
 }

@@ -34,6 +34,8 @@ export async function runPlain(binary, cwd) {
     binary,
     [
       '--plain',
+      '--prompt',
+      PROMPT,
       '--fixture',
       'deterministic',
       '--no-color',
@@ -97,7 +99,6 @@ export async function runPlain(binary, cwd) {
   try {
     await waitForOutput(() => stdout.includes('Braid ready'), 'plain startup')
 
-    await writeLine(PROMPT)
     await waitForOutput(() => occurrences(stdout, RESPONSE) >= 1, 'first plain completion')
     await waitForOutput(() => settledCompletions(stdout) >= 1, 'first plain settlement')
 

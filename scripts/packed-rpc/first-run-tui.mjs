@@ -75,7 +75,7 @@ export async function runPackedFirstRun(binary, repository) {
   delete environment.FORCE_COLOR
 
   async function runTui(args, expectedResponse, expectSetup, prompt) {
-    const session = pty.spawn(process.execPath, [binary, ...args], {
+    const session = pty.spawn(process.execPath, [binary, ...args, '--prompt', prompt], {
       name: 'xterm-256color',
       cols: 100,
       rows: 30,
@@ -125,8 +125,7 @@ export async function runPackedFirstRun(binary, repository) {
         session.write('\r')
         await sleep(250)
       }
-      const responseOffset = output.length
-      session.write(`${prompt}\r`)
+      const responseOffset = 0
       try {
         await waitFor(
           () => {

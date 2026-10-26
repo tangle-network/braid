@@ -12,11 +12,7 @@ import {
   TuiMainScreen,
 } from '../startup/terminal-runtime.js'
 import { runRpc } from '../views/headless/rpc.js'
-import {
-  type CommandName,
-  commandIntent,
-  isMutatingCommand,
-} from '../views/shared/command-registry.js'
+import { type CommandName, commandIntent } from '../views/shared/command-registry.js'
 import type { BraidIntent } from '../views/shared/intents.js'
 import type { CliOptions } from './args.js'
 import { createInterfaceSignalLifecycle } from './interface-signal-lifecycle.js'
@@ -105,12 +101,22 @@ export async function runInterface(input: InterfaceRunnerInput): Promise<number>
         ['effort', options.effort],
       )
     }
-    return commands.flatMap(([command, value]) => {
-      if (!value) return []
-      return [
-        commandIntent(command, [value], isMutatingCommand(command) ? nextOperationId() : undefined),
-      ]
-    })
+    const intents: BraidIntent[] = []
+    for (const [command, value] of commands)
+      if (value) intents.push(commandIntent(command, [value], nextOperationId()))
+    if (options.remoteEndpointEnv !== undefined)
+      intents.push(commandIntent('graph', ['--remote-env', options.remoteEndpointEnv]))
+    if (options.prompt !== undefined)
+      intents.push({ type: 'send', operationId: nextOperationId(), text: options.prompt })
+    return intents
+  }
+  const initialIntents = startupIntents()
+  const dispatchInitialIntents = async (): Promise<void> => {
+    for (const intent of initialIntents.splice(0)) {
+      const result = await controller.dispatch(intent)
+      if (result.kind !== 'accepted')
+        throw new Error(result.kind === 'unavailable' ? result.reason : result.message)
+    }
   }
 
   if (options.mode === 'rpc') {
@@ -121,7 +127,7 @@ export async function runInterface(input: InterfaceRunnerInput): Promise<number>
 
   if (options.plain) {
     const exitCode = await runPlain(controller, workspace, process.stdin, process.stdout, {
-      initialIntents: startupIntents(),
+      initialIntents,
     })
     if (options.recordState) await recordInterfaceState(options.recordState, controller)
     return exitCode
@@ -139,7 +145,7 @@ export async function runInterface(input: InterfaceRunnerInput): Promise<number>
     return 2
   }
 
-  const configuration =
+  const setupEditor =
     startupOptions === undefined
       ? undefined
       : await createProductionSetupEditor({
@@ -155,17 +161,29 @@ export async function runInterface(input: InterfaceRunnerInput): Promise<number>
           ...(options.reauthenticate ? { reauthenticate: true, onCancel: () => view.stop() } : {}),
           openApplication: input.openConfiguredApplication,
         })
+  const configuration =
+    setupEditor === undefined
+      ? undefined
+      : {
+          ...setupEditor,
+          openOnStart: options.remoteEndpointEnv === undefined && setupEditor.openOnStart === true,
+          onCommit: async (...args: Parameters<typeof setupEditor.onCommit>) => {
+            await setupEditor.onCommit(...args)
+            await dispatchInitialIntents()
+          },
+        }
   const tui =
     input.startupPreview?.tui ??
     new TuiMainScreen(options.inline ? new ProcessTerminal() : new AlternateScreenTerminal())
   const colors = !options.noColor && process.env.NO_COLOR === undefined
   const startupMessages: Array<{ readonly title: string; readonly reason: string }> = []
-  for (const intent of startupIntents()) {
-    const result = await controller.dispatch(intent)
-    if (result.kind !== 'accepted') {
+  if ((setup === undefined && !options.reauthenticate) || options.prompt === undefined) {
+    try {
+      await dispatchInitialIntents()
+    } catch (error) {
       startupMessages.push({
-        title: intent.type === 'run-command' ? `/${intent.command}` : 'startup option',
-        reason: result.kind === 'unavailable' ? result.reason : result.message,
+        title: 'startup option',
+        reason: error instanceof Error ? error.message : 'Startup command failed',
       })
     }
   }
