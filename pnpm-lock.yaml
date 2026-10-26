@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  zod@<4.6.6: 4.6.7
+  zod@<4.6.7: 4.6.7
   undici@>=8.0.0 <8.12.2: 8.12.3
 
 importers:
@@ -963,18 +963,15 @@ packages:
     engines: {node: '>= 14.6'}
     hasBin: true
 
-  zod@4.6.6:
-    resolution: {integrity: sha512-4UmzQUF5fxvfcYHlbjBmejU+w+hbDnWFx4aS8kBx7nPBHcO2SqPbpAG8snbdg+Xse4pRefR98hgjFgIMCI/UhA==}
-
   zod@4.6.7:
     resolution: {integrity: sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==}
 
 snapshots:
 
-  '@asteasolutions/zod-to-openapi@9.1.0(zod@4.6.6)':
+  '@asteasolutions/zod-to-openapi@9.1.0(zod@4.6.7)':
     dependencies:
       openapi3-ts: 4.6.1
-      zod: 4.6.6
+      zod: 4.6.7
 
   '@biomejs/biome@2.5.15':
     optionalDependencies:
@@ -1256,11 +1253,11 @@ snapshots:
     dependencies:
       '@tangle-network/agent-interface': 5.7.1
       '@tangle-network/agent-trace-contract': 2.1.0
-      zod: 4.6.6
+      zod: 4.6.7
 
   '@tangle-network/agent-eval@0.221.8':
     dependencies:
-      '@asteasolutions/zod-to-openapi': 9.1.0(zod@4.6.6)
+      '@asteasolutions/zod-to-openapi': 9.1.0(zod@4.6.7)
       '@hono/node-server': 2.1.1(hono@4.13.13)
       '@tangle-network/agent-core': 0.13.2
       '@tangle-network/agent-interface': 5.7.1
@@ -1270,7 +1267,7 @@ snapshots:
       linear-sum-assignment: 1.0.9
       re2js: 2.8.6
       smol-toml: 1.9.0
-      zod: 4.6.6
+      zod: 4.6.7
     transitivePeerDependencies:
       - '@modelcontextprotocol/sdk'
 
@@ -1284,7 +1281,7 @@ snapshots:
     dependencies:
       '@noble/hashes': 2.4.0
       spdx-expression-parse: 5.0.0
-      zod: 4.6.6
+      zod: 4.6.7
 
   '@tangle-network/agent-interface@5.8.0':
     dependencies:
@@ -1298,7 +1295,7 @@ snapshots:
       '@tangle-network/agent-interface': 5.8.0
       '@types/proper-lockfile': 4.1.4
       proper-lockfile: 4.1.2
-      zod: 4.6.6
+      zod: 4.6.7
 
   '@tangle-network/agent-profile-materialize@0.27.5(@tangle-network/agent-interface@5.8.0)':
     dependencies:
@@ -1674,7 +1671,5 @@ snapshots:
   undici@8.12.3: {}
 
   yaml@2.9.0: {}
-
-  zod@4.6.6: {}
 
   zod@4.6.7: {}
