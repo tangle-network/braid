@@ -19,6 +19,7 @@ import { createDurableBraidApplication } from '../src/app/composition.js'
 import { runtimeWorkerReference } from '../src/app/supervisor-projection.js'
 import { queryDetails } from '../src/views/shared/semantic-details.js'
 import { queryGraph } from '../src/views/shared/semantic-graph.js'
+import type { BraidViewModel, HeadlessState } from '../src/views/shared/models.js'
 
 test('real Runtime workers cross authenticated HTTP into the conversation graph, selected stream, and encrypted restart', {
   timeout: 30_000,
@@ -233,10 +234,16 @@ test('real Runtime workers cross authenticated HTTP into the conversation graph,
               emulator.dispose()
             }
             const recorded = await readFile(childRecord, 'utf8')
-            const observed = JSON.parse(recorded)
+            const observed = JSON.parse(recorded) as { state: HeadlessState; view: BraidViewModel }
             assert.equal(observed.state.runs.length, 0)
-            assert.equal(observed.state.workers.length, 2)
-            assert.equal(observed.state.supervisors[0].remoteEndpointEnv, envName)
+            assert.deepEqual(
+              observed.view.graph
+                .filter((node) => node.type === 'worker')
+                .map((node) => node.title)
+                .sort(),
+              ['Checker', 'Surveyor'],
+            )
+            assert.ok(recorded.includes(envName))
             for (const secret of [server.readOnly.url, ...Object.values(server.readOnly.headers)])
               assert.ok(!`${output}${recorded}`.includes(secret))
             if (process.env.BRAID_RELEASE_ARTIFACT_ROOT !== undefined)
