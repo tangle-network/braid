@@ -5,9 +5,8 @@ import { once } from 'node:events'
 import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { fileURLToPath } from 'node:url'
 import { defineAgentProfile } from '@tangle-network/agent-interface'
 import xterm from '@xterm/headless'
 import * as pty from 'node-pty'
@@ -303,7 +302,7 @@ test('startup prompt selects saved noncurrent history after setup and refuses ba
     responseText: 'SAVED_TARGET_REPLY',
   })
   const root = await mkdtemp(join(tmpdir(), 'braid-startup-target-'))
-  const binary = fileURLToPath(new URL('../src/bin/braid.js', import.meta.url))
+  const binary = resolve('dist/bin/braid.js')
   const profile = defineAgentProfile({
     name: 'Saved target proof',
     harness: 'pi',

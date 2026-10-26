@@ -2,9 +2,8 @@ import assert from 'node:assert/strict'
 import { randomBytes } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { fileURLToPath } from 'node:url'
 import xterm from '@xterm/headless'
 import * as pty from 'node-pty'
 import {
@@ -161,7 +160,7 @@ test('real Runtime workers cross authenticated HTTP into the conversation graph,
             const child = pty.spawn(
               process.execPath,
               [
-                fileURLToPath(new URL('../src/bin/braid.js', import.meta.url)),
+                resolve('dist/bin/braid.js'),
                 '--workspace',
                 workspace,
                 '--config',
