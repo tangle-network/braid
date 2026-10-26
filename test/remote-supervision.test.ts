@@ -188,6 +188,8 @@ test('real Runtime workers cross authenticated HTTP into the conversation graph,
               },
             )
             let output = ''
+            const started = performance.now()
+            const terminalEvents: unknown[] = []
             let childExited = false
             const closed = new Promise<number>((resolve) =>
               child.onExit(({ exitCode }) => {
@@ -197,6 +199,7 @@ test('real Runtime workers cross authenticated HTTP into the conversation graph,
             )
             child.onData((chunk) => {
               output += chunk
+              terminalEvents.push([(performance.now() - started) / 1_000, 'o', chunk])
               emulator.write(chunk)
             })
             const screen = () =>
@@ -236,6 +239,22 @@ test('real Runtime workers cross authenticated HTTP into the conversation graph,
             assert.equal(observed.state.supervisors[0].remoteEndpointEnv, envName)
             for (const secret of [server.readOnly.url, ...Object.values(server.readOnly.headers)])
               assert.ok(!`${output}${recorded}`.includes(secret))
+            if (process.env.BRAID_RELEASE_ARTIFACT_ROOT !== undefined)
+              await writeFile(
+                join(process.env.BRAID_RELEASE_ARTIFACT_ROOT, 'remote-startup.cast'),
+                [
+                  JSON.stringify({
+                    version: 2,
+                    width: 120,
+                    height: 40,
+                    title: 'Braid startup attachment to real Runtime workers',
+                    env: { TERM: 'xterm-256color' },
+                  }),
+                  ...terminalEvents.map((event) => JSON.stringify(event)),
+                  '',
+                ].join('\n'),
+                { mode: 0o600, flag: 'wx' },
+              )
             let controller = createApplicationUiController(durable.app)
             const initial = await controller.dispatch({
               type: 'headless-command',
