@@ -156,7 +156,7 @@ test('real Runtime workers cross authenticated HTTP into the conversation graph,
             process.env[envName] = JSON.stringify(server.readOnly)
             // A separate real executable inherits the read capability; no Braid turn is admitted.
             const childRecord = join(root, 'observer-state.json')
-            const emulator = new xterm.Terminal({ cols: 120, rows: 40 })
+            const emulator = new xterm.Terminal({ cols: 120, rows: 40, allowProposedApi: true })
             const child = pty.spawn(
               process.execPath,
               [
