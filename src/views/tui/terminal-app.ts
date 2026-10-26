@@ -231,6 +231,8 @@ export class BraidTerminalApp {
     if (!this.#tuiStarted) this.#tui.start()
     if (this.#modals.hasOpen()) this.#modals.focusTop()
     else this.#tui.setFocus(this.#shell.editor)
+    if (this.#controller.view().selectedSurface === 'graph' && !this.#modals.hasOpen())
+      this.#overlays.openSurface('graph')
     if (this.#openConfigurationOnStart) {
       this.#openConfigurationOnStart = false
       this.#overlays.openConfiguration()

@@ -2,8 +2,10 @@ import assert from 'node:assert/strict'
 import { randomBytes } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import test from 'node:test'
+import xterm from '@xterm/headless'
+import * as pty from 'node-pty'
 import {
   createInMemoryRunContext,
   createSupervisor,
@@ -16,6 +18,7 @@ import { createDurableBraidApplication } from '../src/app/composition.js'
 import { runtimeWorkerReference } from '../src/app/supervisor-projection.js'
 import { queryDetails } from '../src/views/shared/semantic-details.js'
 import { queryGraph } from '../src/views/shared/semantic-graph.js'
+import type { BraidViewModel, HeadlessState } from '../src/views/shared/models.js'
 
 test('real Runtime workers cross authenticated HTTP into the conversation graph, selected stream, and encrypted restart', {
   timeout: 30_000,
@@ -151,6 +154,112 @@ test('real Runtime workers cross authenticated HTTP into the conversation graph,
               assert.ok(!reply.result.isError)
             }
             process.env[envName] = JSON.stringify(server.readOnly)
+            // A separate real executable inherits the read capability; no Braid turn is admitted.
+            const childRecord = join(root, 'observer-state.json')
+            const emulator = new xterm.Terminal({ cols: 120, rows: 40, allowProposedApi: true })
+            const child = pty.spawn(
+              process.execPath,
+              [
+                resolve('dist/bin/braid.js'),
+                '--workspace',
+                workspace,
+                '--config',
+                join(root, 'observer-config.json'),
+                '--database-key-file',
+                key,
+                '--remote-env',
+                envName,
+                '--record-state',
+                childRecord,
+              ],
+              {
+                cwd: workspace,
+                cols: 120,
+                rows: 40,
+                env: {
+                  ...process.env,
+                  TERM: 'xterm-256color',
+                  BRAID_CLI_BRIDGE_ENDPOINT: 'http://127.0.0.1:9',
+                  XDG_CONFIG_HOME: join(root, 'config'),
+                  XDG_DATA_HOME: join(root, 'data'),
+                  BRAID_STATE_PATH: join(root, 'observer.sqlite'),
+                },
+              },
+            )
+            let output = ''
+            const started = performance.now()
+            const terminalEvents: unknown[] = []
+            let childExited = false
+            const closed = new Promise<number>((resolve) =>
+              child.onExit(({ exitCode }) => {
+                childExited = true
+                resolve(exitCode)
+              }),
+            )
+            child.onData((chunk) => {
+              output += chunk
+              terminalEvents.push([(performance.now() - started) / 1_000, 'o', chunk])
+              emulator.write(chunk)
+            })
+            const screen = () =>
+              Array.from(
+                { length: 40 },
+                (_, row) =>
+                  emulator.buffer.active
+                    .getLine(emulator.buffer.active.viewportY + row)
+                    ?.translateToString(true) ?? '',
+              ).join('\n')
+            const waitForScreen = async (predicate: () => boolean) => {
+              const deadline = Date.now() + 10_000
+              while (!predicate()) {
+                assert.ok(!childExited && Date.now() < deadline, screen())
+                await new Promise((resolve) => setTimeout(resolve, 20))
+              }
+            }
+            const watchdog = setTimeout(() => child.kill(), 15_000)
+            try {
+              await waitForScreen(
+                () => screen().includes('conversation graph') && screen().includes('Surveyor'),
+              )
+              assert.ok(!screen().includes('choose an AgentProfile'))
+              child.write('\u001b')
+              await waitForScreen(() => !screen().includes('conversation graph'))
+              child.write('/quit\r')
+              assert.equal(await closed, 0, output)
+            } finally {
+              clearTimeout(watchdog)
+              if (!childExited) child.kill()
+              emulator.dispose()
+            }
+            const recorded = await readFile(childRecord, 'utf8')
+            const observed = JSON.parse(recorded) as { state: HeadlessState; view: BraidViewModel }
+            assert.equal(observed.state.runs.length, 0)
+            assert.deepEqual(
+              observed.view.graph
+                .filter((node) => node.type === 'worker')
+                .map((node) => node.title)
+                .sort(),
+              ['Checker', 'Surveyor'],
+            )
+            assert.ok(recorded.includes(envName))
+            for (const secret of [server.readOnly.url, ...Object.values(server.readOnly.headers)])
+              assert.ok(!`${output}${recorded}`.includes(secret))
+            if (process.env.BRAID_RELEASE_ARTIFACT_ROOT !== undefined)
+              await writeFile(
+                join(process.env.BRAID_RELEASE_ARTIFACT_ROOT, 'remote-startup.cast'),
+                [
+                  JSON.stringify({
+                    version: 2,
+                    width: 120,
+                    height: 40,
+                    title: 'Braid startup attachment to real Runtime workers',
+                    env: { TERM: 'xterm-256color' },
+                  }),
+                  ...terminalEvents.map((event) => JSON.stringify(event)),
+                  '',
+                ].join('\n'),
+                { mode: 0o600, flag: 'wx' },
+              )
             let controller = createApplicationUiController(durable.app)
             const initial = await controller.dispatch({
               type: 'headless-command',

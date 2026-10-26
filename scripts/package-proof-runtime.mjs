@@ -1,7 +1,7 @@
-import { createHash } from 'node:crypto'
 import { execFileSync, spawn } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import * as pty from 'node-pty'
@@ -160,10 +160,13 @@ export function sleep(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds))
 }
 
-export async function waitFor(predicate, label, timeoutMs = 5_000) {
+export async function waitFor(predicate, label, timeoutMs = 5_000, diagnostic) {
   const deadline = Date.now() + timeoutMs
   while (!predicate()) {
-    if (Date.now() >= deadline) throw new Error(`Timed out waiting for ${label}`)
+    if (Date.now() >= deadline) {
+      const detail = diagnostic?.()
+      throw new Error(`Timed out waiting for ${label}${detail ? `\n${detail}` : ''}`)
+    }
     await sleep(20)
   }
 }

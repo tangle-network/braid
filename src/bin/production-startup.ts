@@ -22,11 +22,34 @@ import { redactProviderError } from '../domain/redaction.js'
 import { recoverPendingConnectionCredentialRemoval } from './production-connection-credential-cleanup.js'
 import { defaultProductionCredentialRefResolver } from './production-credential-reference.js'
 import { productionConfigPath, resolveProductionDatabaseKeyFile } from './production-key-path.js'
+import { startupCredentialForEndpoint } from './production-setup-auth.js'
 import { recoverPendingProductionCredential } from './production-setup-credentials.js'
 import type { ProductionStartupLoadOptions } from './production-setup-types.js'
 import { publishedProfileSource } from './published-profile.js'
 
 export type { ProductionStartupLoadOptions } from './production-setup-types.js'
+
+export function productionConnectionOptions(
+  options: ProductionStartupLoadOptions,
+): ProductionConnectionOptions {
+  return {
+    credentials:
+      options.credentialStore ??
+      options.credentialContext?.store ??
+      createOperatingSystemCredentialStore(),
+    credentialRefResolver: options.credentialRefResolver ?? defaultProductionCredentialRefResolver,
+    ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+    ...(options.bridgeModelCredential === undefined
+      ? {}
+      : { bridgeModelCredential: options.bridgeModelCredential }),
+    ...(options.cliBridgeEndpoint === undefined
+      ? {}
+      : {
+          cliBridgeCredential: (endpoint: string) =>
+            startupCredentialForEndpoint(options, 'cli-bridge', endpoint),
+        }),
+  }
+}
 
 const MAX_STARTUP_CONFIG_BYTES = 2 * 1024 * 1024
 
@@ -93,12 +116,6 @@ const RUNTIME_STARTUP_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   STORAGE_INITIALIZING: 'Another Braid process is initializing encrypted storage',
 }
 
-function runtimeStartupError(error: unknown): string | undefined {
-  if (!isRecord(error) || typeof error.code !== 'string') return undefined
-  const message = RUNTIME_STARTUP_ERROR_MESSAGES[error.code]
-  return message === undefined ? undefined : `${error.code}: ${message}`
-}
-
 export function formatProductionStartupError(error: unknown): string {
   if (error instanceof ProductionStartupError) {
     return `${error.code}: ${STARTUP_ERROR_MESSAGES[error.code]}`
@@ -106,8 +123,10 @@ export function formatProductionStartupError(error: unknown): string {
   if (error instanceof ProductionCompositionError) {
     return `${error.code}: ${COMPOSITION_ERROR_MESSAGES[error.code]}`
   }
-  const runtimeError = runtimeStartupError(error)
-  if (runtimeError !== undefined) return runtimeError
+  if (isRecord(error) && typeof error.code === 'string') {
+    const message = RUNTIME_STARTUP_ERROR_MESSAGES[error.code]
+    if (message !== undefined) return `${error.code}: ${message}`
+  }
   return redactProviderError(error)
 }
 
@@ -270,10 +289,6 @@ function effectiveStartupProfile(
   return validated.profile
 }
 
-function configPathFor(options: ProductionStartupLoadOptions): string {
-  return productionConfigPath(options.workspace, options.configPath)
-}
-
 function readConfig(path: string): ProductionStartupDocument {
   let bytes: Buffer | undefined
   try {
@@ -361,7 +376,7 @@ export async function loadProductionStartup(
       'Production startup requires a workspace path',
     )
   }
-  const configPath = configPathFor(options)
+  const configPath = productionConfigPath(options.workspace, options.configPath)
   const document = readConfig(configPath)
   let databaseKeyFile: string | undefined
   const configuredDatabaseKeyFile = options.databaseKeyFile ?? document.databaseKeyFile
@@ -422,25 +437,6 @@ export async function loadProductionStartup(
     migrateStartupProfile(loadedProfile, document.schemaVersion, selectedConnection),
     options,
   )
-  const credentialStore =
-    selectedConnection?.credentialRef === undefined
-      ? undefined
-      : (options.credentialStore ??
-        options.credentialContext?.store ??
-        createOperatingSystemCredentialStore())
-  const connectionOptions: ProductionConnectionOptions = {
-    ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
-    ...(credentialStore === undefined ? {} : { credentials: credentialStore }),
-    ...(credentialStore === undefined
-      ? {}
-      : {
-          credentialRefResolver:
-            options.credentialRefResolver ?? defaultProductionCredentialRefResolver,
-        }),
-    ...(options.bridgeModelCredential === undefined
-      ? {}
-      : { bridgeModelCredential: options.bridgeModelCredential }),
-  }
   let workspaceRequest: Readonly<WorkspaceRequest> | undefined
   try {
     workspaceRequest = snapshotWorkspaceRequest(
@@ -459,6 +455,6 @@ export async function loadProductionStartup(
     connectionId: selectedConnectionId,
     ...(workspaceRequest === undefined ? {} : { workspaceRequest }),
     ...(databaseKeyFile === undefined ? {} : { databaseKeyFile }),
-    ...(Object.keys(connectionOptions).length === 0 ? {} : { connectionOptions }),
+    connectionOptions: productionConnectionOptions(options),
   }
 }

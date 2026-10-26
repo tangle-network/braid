@@ -22,6 +22,21 @@ function nextOperationId(): string {
   return `op-${randomUUID()}`
 }
 
+export function startupTargetError(controller: BraidUiController, intent: BraidIntent | undefined) {
+  if (
+    intent?.type === 'send' &&
+    intent.conversationId !== undefined &&
+    controller.state().conversationId !== intent.conversationId
+  )
+    return {
+      kind: 'error',
+      code: 'STARTUP_CONVERSATION_NOT_OPEN',
+      retryable: false,
+      message: 'Conversation not opened. Run: braid, then Ctrl+O to choose an existing ID.',
+    } as const
+  return undefined
+}
+
 export async function runPlain(
   controller: BraidUiController,
   workspace: string,
@@ -30,28 +45,20 @@ export async function runPlain(
   options: PlainOptions = {},
 ): Promise<number> {
   const outputQueue = new BoundedOutputQueue(output)
-  let outputFailure: unknown
-  const write = async (chunk: string): Promise<void> => {
-    if (outputFailure !== undefined) throw outputFailure
-    try {
-      await outputQueue.write(chunk)
-    } catch (error) {
-      outputFailure ??= error
-      throw error
-    }
-  }
-  const emit = write
-  const shutdownOperationId = 'op-plain-shutdown'
+  const write = (chunk: string): Promise<void> => outputQueue.write(chunk)
   let shutdownStarted = false
   let unsubscribe = () => {}
   let closePromise: Promise<void> | undefined
-  let closeApplication: (() => Promise<void>) | undefined
+  const pendingCompletions = new Set<Promise<void>>()
+  const closeApplication = (): Promise<void> =>
+    (closePromise ??=
+      controller.close?.() ?? boundedDrain(pendingCompletions).then(() => undefined))
   const requestShutdown = async () => {
     if (shutdownStarted) return undefined
     shutdownStarted = true
     return controller.dispatch({
       type: 'shutdown',
-      operationId: shutdownOperationId,
+      operationId: 'op-plain-shutdown',
       mode: 'cancel',
     })
   }
@@ -65,31 +72,27 @@ export async function runPlain(
     }
     await write(`Braid ready — ${sanitizeTerminalText(workspace)}\n`)
     await write(`${plainAccessibilityText(controller.view())}\n`)
-    for (const intent of options.initialIntents ?? []) {
-      const result = await controller.dispatch(intent)
-      if (result.kind !== 'accepted') {
-        await write(
-          `error: ${sanitizeNotification(result.kind === 'unavailable' ? result.reason : result.message)}\n`,
-        )
-      }
-    }
     unsubscribe = controller.subscribe((view, event) => {
       if (!event) return
-      void emit(`${plainEventText(view, event)}\n`).catch(() => undefined)
+      void write(`${plainEventText(view, event)}\n`).catch(() => undefined)
     })
     const decoder = new TextDecoder('utf-8', { fatal: true })
     let buffered = ''
     let quitting = false
-    const pendingCompletions = new Set<Promise<void>>()
-    closeApplication = async (): Promise<void> => {
-      closePromise ??=
-        controller.close?.() ?? boundedDrain(pendingCompletions).then(() => undefined)
-      await closePromise
-    }
     const trackCompletion = (completion: Promise<void>): void => {
       let tracked: Promise<void>
       tracked = completion.finally(() => pendingCompletions.delete(tracked))
       pendingCompletions.add(tracked)
+    }
+    for (const intent of options.initialIntents ?? []) {
+      const result = startupTargetError(controller, intent) ?? (await controller.dispatch(intent))
+      if (result.kind !== 'accepted') {
+        await write(
+          `error: ${sanitizeNotification(result.kind === 'unavailable' ? result.reason : result.message)}\n`,
+        )
+        return 2
+      }
+      if (result.kind === 'accepted' && result.completion) trackCompletion(result.completion)
     }
     const submit = async (line: string): Promise<void> => {
       const parsed = parseCommandInput(line)
@@ -156,9 +159,8 @@ export async function runPlain(
         newline = buffered.indexOf('\n')
       }
     }
-    if (!input[Symbol.asyncIterator]) return 0
     for await (const chunk of input) {
-      if (outputFailure !== undefined) throw outputFailure
+      outputQueue.assertHealthy()
       let decoded: string
       try {
         decoded = typeof chunk === 'string' ? chunk : decoder.decode(chunk, { stream: true })
@@ -180,13 +182,12 @@ export async function runPlain(
     }
     await closeApplication()
     await outputQueue.flush()
-    if (outputFailure !== undefined) throw outputFailure
     return 0
   } finally {
     try {
       const result = await requestShutdown()
       if (result?.kind === 'accepted' && result.completion) await result.completion
-      if (closeApplication !== undefined) await closeApplication()
+      await closeApplication()
     } catch {
       // The outer application close barrier records any unresolved run state.
     }

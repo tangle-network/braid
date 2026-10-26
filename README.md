@@ -7,6 +7,10 @@ npm install -g @tangle-network/braid
 braid --profile discovery-operator --connection connection-local-cli-bridge
 ```
 
+Start a profile with one message using `braid --profile ./graph-designer.json --prompt "Design and run a PR sweep"`. First-run setup finishes before the message is sent. To inspect an existing Runtime graph, pass `braid --remote-env NAME`: the caller supplies Runtime's protected read capability as JSON in that environment variable, never in command arguments or a file. This opens the graph without starting an execution turn. In JSONL use `refresh_supervision` and `send` instead.
+
+Unattended local startup uses `--plain --config <file> --database-key-file <external-mode-0600-file>` with the selected profile and initial prompt. For a configured loopback CLI Bridge without a saved credential reference, pass the paired `BRAID_CLI_BRIDGE_ENDPOINT` and `BRAID_CLI_BRIDGE_AUTH` through the inherited environment. Authorization is limited to that endpoint origin; saved credential references take precedence. Bearer values never belong in command arguments or the configuration file.
+
 The existing connection picker configures CLI Bridge or Tangle Sandbox. `--connection`
 selects its configured id. The operator needs `disco` read access, `gh-drew`, and a
 subscription seat on the execution host. The published name selects the immutable Lab profile snapshot bundled in the package

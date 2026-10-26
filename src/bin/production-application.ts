@@ -4,7 +4,6 @@ import {
   createTraceAnalysisAdapter,
   createTraceAnalysisAnalyst,
 } from '../adapters/analysis/trace-analysis-adapter.js'
-import type { ProductionConnectionOptions } from '../adapters/connections/production-connections.js'
 import type { HeadlessKeySource } from '../adapters/credentials/headless-key.js'
 import type { BraidApplication } from '../app/application.js'
 import type { ConfigurationSelection } from '../app/configuration-session.js'
@@ -25,7 +24,10 @@ import {
 } from './production-credential-context.js'
 import { productionConfigPath, resolveProductionDatabaseKeyFile } from './production-key-path.js'
 import { productionConnectionsForSelection } from './production-setup-persistence.js'
-import type { ProductionStartupLoadOptions } from './production-startup.js'
+import {
+  type ProductionStartupLoadOptions,
+  productionConnectionOptions,
+} from './production-startup.js'
 
 export interface ProductionApplicationOpenOptions {
   readonly workspace: string
@@ -39,16 +41,6 @@ export function productionConfigForSelection(
   options: ProductionStartupLoadOptions,
   connections: readonly import('../domain/entities.js').ConnectionRecord[] = [],
 ): ProductionCompositionConfig {
-  const connectionOptions: ProductionConnectionOptions = {
-    ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
-    ...(options.credentialStore === undefined ? {} : { credentials: options.credentialStore }),
-    ...(options.credentialRefResolver === undefined
-      ? {}
-      : { credentialRefResolver: options.credentialRefResolver }),
-    ...(options.bridgeModelCredential === undefined
-      ? {}
-      : { bridgeModelCredential: options.bridgeModelCredential }),
-  }
   return {
     profile: selection.profile.profile,
     connections: productionConnectionsForSelection(selection, connections),
@@ -58,7 +50,7 @@ export function productionConfigForSelection(
       ? {}
       : { workspaceRequest: selection.workspaceRequest }),
     ...(options.databaseKeyFile === undefined ? {} : { databaseKeyFile: options.databaseKeyFile }),
-    ...(Object.keys(connectionOptions).length === 0 ? {} : { connectionOptions }),
+    connectionOptions: productionConnectionOptions(options),
   }
 }
 

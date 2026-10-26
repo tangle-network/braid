@@ -12,17 +12,13 @@ import {
   TuiMainScreen,
 } from '../startup/terminal-runtime.js'
 import { runRpc } from '../views/headless/rpc.js'
-import {
-  type CommandName,
-  commandIntent,
-  isMutatingCommand,
-} from '../views/shared/command-registry.js'
+import { type CommandName, commandIntent } from '../views/shared/command-registry.js'
 import type { BraidIntent } from '../views/shared/intents.js'
 import type { CliOptions } from './args.js'
 import { createInterfaceSignalLifecycle } from './interface-signal-lifecycle.js'
 import { recordInterfaceState } from './interface-state-recorder.js'
 import { createNativeInteractiveUiActions } from './native-interactive-actions.js'
-import { runPlain } from './plain.js'
+import { runPlain, startupTargetError } from './plain.js'
 import { ProductionConnectionActions } from './production-connection-actions.js'
 import { productionConfigPath } from './production-key-path.js'
 import type { ProductionStartupSetup } from './production-setup.js'
@@ -92,25 +88,29 @@ export async function runInterface(input: InterfaceRunnerInput): Promise<number>
   const nextOperationId = options.fixture
     ? () => `op-terminal-${String(++operation).padStart(6, '0')}`
     : () => `op-${randomUUID()}`
-  const startupIntents = (): BraidIntent[] => {
-    const commands: Array<[CommandName, string | undefined]> = [['open', options.conversation]]
-    // Production profile, connection, runner, and model values are resolved before the
-    // application is constructed; replaying them as UI commands would select a second path.
-    if (options.fixture) {
-      commands.push(
-        ['profile', options.profile],
-        ['connection', options.connection],
-        ['runner', options.runner],
-        ['model', options.model],
-        ['effort', options.effort],
-      )
-    }
-    return commands.flatMap(([command, value]) => {
-      if (!value) return []
-      return [
-        commandIntent(command, [value], isMutatingCommand(command) ? nextOperationId() : undefined),
-      ]
+  const commands: Array<[CommandName, string | undefined]> = [['open', options.conversation]]
+  // Production selections are already resolved before application construction.
+  if (options.fixture)
+    for (const command of ['profile', 'connection', 'runner', 'model', 'effort'] as const)
+      commands.push([command, options[command]])
+  const initialIntents: BraidIntent[] = []
+  for (const [command, value] of commands)
+    if (value) initialIntents.push(commandIntent(command, [value], nextOperationId()))
+  if (options.remoteEndpointEnv !== undefined)
+    initialIntents.push(commandIntent('graph', ['--remote-env', options.remoteEndpointEnv]))
+  if (options.prompt !== undefined)
+    initialIntents.push({
+      type: 'send',
+      operationId: nextOperationId(),
+      text: options.prompt,
+      ...(options.conversation === undefined ? {} : { conversationId: options.conversation }),
     })
+  const dispatchInitialIntents = async (): Promise<void> => {
+    for (const intent of initialIntents.splice(0)) {
+      const result = startupTargetError(controller, intent) ?? (await controller.dispatch(intent))
+      if (result.kind !== 'accepted')
+        throw new Error(result.kind === 'unavailable' ? result.reason : result.message)
+    }
   }
 
   if (options.mode === 'rpc') {
@@ -121,7 +121,7 @@ export async function runInterface(input: InterfaceRunnerInput): Promise<number>
 
   if (options.plain) {
     const exitCode = await runPlain(controller, workspace, process.stdin, process.stdout, {
-      initialIntents: startupIntents(),
+      initialIntents,
     })
     if (options.recordState) await recordInterfaceState(options.recordState, controller)
     return exitCode
@@ -139,7 +139,7 @@ export async function runInterface(input: InterfaceRunnerInput): Promise<number>
     return 2
   }
 
-  const configuration =
+  const setupEditor =
     startupOptions === undefined
       ? undefined
       : await createProductionSetupEditor({
@@ -152,20 +152,33 @@ export async function runInterface(input: InterfaceRunnerInput): Promise<number>
           active,
           controller,
           currentCatalog,
+          validateOnSend: options.prompt !== undefined,
           ...(options.reauthenticate ? { reauthenticate: true, onCancel: () => view.stop() } : {}),
           openApplication: input.openConfiguredApplication,
         })
+  const configuration =
+    setupEditor === undefined
+      ? undefined
+      : {
+          ...setupEditor,
+          openOnStart: options.remoteEndpointEnv === undefined && setupEditor.openOnStart === true,
+          onCommit: async (...args: Parameters<typeof setupEditor.onCommit>) => {
+            await setupEditor.onCommit(...args)
+            await dispatchInitialIntents()
+          },
+        }
   const tui =
     input.startupPreview?.tui ??
     new TuiMainScreen(options.inline ? new ProcessTerminal() : new AlternateScreenTerminal())
   const colors = !options.noColor && process.env.NO_COLOR === undefined
   const startupMessages: Array<{ readonly title: string; readonly reason: string }> = []
-  for (const intent of startupIntents()) {
-    const result = await controller.dispatch(intent)
-    if (result.kind !== 'accepted') {
+  if ((setup === undefined && !options.reauthenticate) || options.prompt === undefined) {
+    try {
+      await dispatchInitialIntents()
+    } catch (error) {
       startupMessages.push({
-        title: intent.type === 'run-command' ? `/${intent.command}` : 'startup option',
-        reason: result.kind === 'unavailable' ? result.reason : result.message,
+        title: 'startup option',
+        reason: error instanceof Error ? error.message : 'Startup command failed',
       })
     }
   }

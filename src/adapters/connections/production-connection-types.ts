@@ -123,6 +123,8 @@ export interface ProductionConnectionOptions {
   readonly credentials?: CredentialPort
   /** Map Braid's durable credential id to the credential-port's opaque ref. */
   readonly credentialRefResolver?: (ref: CredentialRefId) => CredentialRef | Promise<CredentialRef>
+  /** Trusted startup authorization, resolved only for an unreferenced loopback Bridge. */
+  readonly cliBridgeCredential?: (endpoint: string) => string | undefined
   /** Request-scoped model credential for a loopback CLI Bridge. */
   readonly bridgeModelCredential?: OriginBoundBridgeModelCredential
   readonly fetch?: typeof fetch

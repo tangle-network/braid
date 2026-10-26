@@ -53,7 +53,7 @@ export async function readConnectionCredential(
         { connectionId: record.id },
       )
     }
-    return undefined
+    return options.cliBridgeCredential?.(endpoint)
   }
   const handle = await resolveConnectionCredentialHandle(record, record.credentialRef, options)
   let bytes: Uint8Array | undefined
