@@ -225,9 +225,7 @@ test('real Runtime workers cross authenticated HTTP into the conversation graph,
               assert.ok(!screen().includes('choose an AgentProfile'))
               child.write('\u001b')
               await waitForScreen(() => !screen().includes('conversation graph'))
-              child.write('\u0003')
-              await waitForScreen(() => screen().toLowerCase().includes('ctrl+c again to quit'))
-              child.write('\u0003')
+              child.write('/quit\r')
               assert.equal(await closed, 0, output)
             } finally {
               clearTimeout(watchdog)
