@@ -60,7 +60,7 @@ export function interactiveMaterializationReceipt(
   const workspaceRequestDigestValue = workspaceRequestDigest(prepared.workspaceRequest)
   const resourceRequestDigest =
     prepared.resourceRequest === undefined ? undefined : canonicalDigest(prepared.resourceRequest)
-  const storedSecretNamesDigest =
+  const grantedNamesDigest =
     prepared.secretNames === undefined ? undefined : canonicalDigest(prepared.secretNames)
   return publicMaterializationReceipt({
     provider: prepared.provider.name,
@@ -77,7 +77,7 @@ export function interactiveMaterializationReceipt(
       ? {}
       : { workspaceRequestDigest: workspaceRequestDigestValue }),
     ...(resourceRequestDigest === undefined ? {} : { resourceRequestDigest }),
-    ...(storedSecretNamesDigest === undefined ? {} : { storedSecretNamesDigest }),
+    ...(grantedNamesDigest === undefined ? {} : { grantedNamesDigest }),
   })
 }
 
