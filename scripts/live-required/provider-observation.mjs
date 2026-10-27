@@ -183,3 +183,8 @@ export async function listAllSandboxes(client) {
   }
   return boxes
 }
+
+/** One complete Sandbox inventory, observed within the caller's deadline. */
+export function observeSandboxInventory(client, { deadline, timeoutMs, label }) {
+  return waitForProviderObservation(label, () => listAllSandboxes(client), timeoutMs, { deadline })
+}

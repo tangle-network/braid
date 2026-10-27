@@ -40,7 +40,7 @@ import { DEFAULT_TANGLE_ROUTER_MODEL, releaseProofRouting } from './model-defaul
 import {
   assertProviderObservationDeadline,
   createProviderObservationDeadline,
-  listAllSandboxes,
+  observeSandboxInventory,
   waitForProviderObservation,
 } from './provider-observation.mjs'
 import { runCloudInteractionProof } from './tangle-sandbox-braid-cloud-interaction.mjs'
@@ -382,14 +382,6 @@ function sameNameInteractiveResources(resources, expectedName, predicate) {
   return matches
 }
 
-async function listAllSandboxResources(
-  client,
-  { deadline: providedDeadline, timeoutMs = DEFAULT_TIMEOUT_MS, label = 'Sandbox resource list' } = {},
-) {
-  const deadline = providedDeadline ?? createProviderObservationDeadline(label, timeoutMs)
-  return waitForProviderObservation(label, () => listAllSandboxes(client), timeoutMs, { deadline })
-}
-
 async function observeInteractiveResource(
   client,
   controlRef,
@@ -417,7 +409,7 @@ async function observeInteractiveResource(
     )
   }
   const matches = sameNameInteractiveResources(
-    await listAllSandboxResources(client, {
+    await observeSandboxInventory(client, {
       deadline,
       timeoutMs,
       label: 'Interactive Sandbox resource census',
@@ -451,7 +443,7 @@ async function cleanupInteractiveByRunId(
   const expectedName = interactiveResourceName(runId)
   const predicate = (resource) => isOwnedInteractiveResource(resource, expectedName)
   const listed = sameNameInteractiveResources(
-    await listAllSandboxResources(client, {
+    await observeSandboxInventory(client, {
       deadline,
       timeoutMs,
       label: 'Interactive Sandbox cleanup resource census',
@@ -513,7 +505,7 @@ async function cleanupInteractiveByRunId(
     })
   }
   const remaining = sameNameInteractiveResources(
-    await listAllSandboxResources(client, {
+    await observeSandboxInventory(client, {
       deadline,
       timeoutMs,
       label: 'Interactive Sandbox cleanup final census',
