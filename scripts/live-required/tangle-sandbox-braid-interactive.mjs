@@ -1234,7 +1234,7 @@ async function stopThroughBraid(binary, config, runId, timeoutMs) {
         acknowledgement.outcome === 'accepted' || acknowledgement.outcome === 'replayed',
         'Braid stop did not return an accepted or replayed outcome',
       )
-      const terminal = await initialized.session.waitForValue(
+      const terminal = await initialized.session.waitFor(
         'Braid interactive stop state',
         (candidate) => stoppedRunFromState(candidate, runId) !== undefined,
         timeoutMs,
@@ -1281,8 +1281,8 @@ async function writeRecording(runtime, castPath, values, proofError) {
   const cast = runtime.cast(`Braid LIVE-08 ${values.runner}`)
   if (cast.includes(values.credentialValue))
     return proofError ?? new Error('LIVE-08 terminal recording contained the Sandbox credential')
-  await writeFile(castPath, cast, { mode: 0o600 })
-  return proofError
+  // A failed write must not skip the cleanup that follows.
+  return writeFile(castPath, cast, { mode: 0o600 }).then(() => proofError, (error) => proofError ?? error)
 }
 
 async function runProof({
