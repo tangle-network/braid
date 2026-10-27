@@ -1277,12 +1277,12 @@ function proofMarkers() {
 }
 
 /** Keeps the recording on failure too, and withholds it if it ever carries the Sandbox key. */
-async function writeRecording(runtime, castPath, values) {
+async function writeRecording(runtime, castPath, values, proofError) {
   const cast = runtime.cast(`Braid LIVE-08 ${values.runner}`)
   if (cast.includes(values.credentialValue))
-    return new Error('LIVE-08 terminal recording contained the Sandbox credential')
+    return proofError ?? new Error('LIVE-08 terminal recording contained the Sandbox credential')
   await writeFile(castPath, cast, { mode: 0o600 })
-  return undefined
+  return proofError
 }
 
 async function runProof({
@@ -1586,7 +1586,7 @@ async function runProof({
     proofError = new AggregateError(failures, 'Braid native interactive flow failed')
   }
   if (castPath !== undefined && runtime !== undefined)
-    proofError ??= await writeRecording(runtime, castPath, values)
+    proofError = await writeRecording(runtime, castPath, values, proofError)
 
   let cleanup
   let cleanupError
