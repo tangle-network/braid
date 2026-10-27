@@ -1243,6 +1243,7 @@ async function runProof({
   profile,
   providerOptions = {},
   castPath,
+  requireZeroActiveResourceDelta = true, // false on a shared key: the exact census is the proof
 } = {}) {
   const timeoutMs = positiveEnvironment(
     environment,
@@ -1587,9 +1588,7 @@ async function runProof({
         afterUsage?.value !== null &&
         usageDelta.activeSandboxes !== null
       assert.equal(usageObservationComplete, true, 'interactive usage telemetry was unavailable')
-      // Account-wide counts prove no residue only while the release proof window holds the
-      // account; on a shared key other lanes move them, and the exact census above is the proof.
-      if (proofWindow !== undefined) {
+      if (requireZeroActiveResourceDelta) {
         assert.equal(usageDelta.activeSandboxes, 0, 'interactive cleanup changed active usage')
       }
       const accountIdentityConsistency = assertStableAccountIdentity(identityRecords)
@@ -1835,6 +1834,7 @@ export async function main(argv = process.argv, environment = process.env) {
       environment,
       runner,
       profile,
+      requireZeroActiveResourceDelta: false,
       providerOptions: (await jsonFile('provider-options')) || undefined,
       castPath: argument('cast', argv),
     })
