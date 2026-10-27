@@ -32,6 +32,7 @@ import {
 import {
   createPty,
   harnessCommand,
+  occurrences,
   terminalText,
   waitForValue,
   writeRecording,
@@ -186,19 +187,6 @@ function shellLiteral(value) {
 
 function interactiveShellMutationCommand(value, path) {
   return `!!mkdir -p -- ${shellLiteral(dirname(path))} && printf '%s\\n' ${shellLiteral(value)} >> ${shellLiteral(path)}`
-}
-
-function occurrences(value, marker) {
-  if (!marker) return 0
-  let count = 0
-  let offset = 0
-  while (offset >= 0) {
-    offset = value.indexOf(marker, offset)
-    if (offset < 0) break
-    count += 1
-    offset += marker.length
-  }
-  return count
 }
 
 export function assertProviderBoundEvidence(evidence, label = 'provider-bound mutation') {
@@ -1396,12 +1384,12 @@ async function runProof({
     await runtime.submit(interactiveCommand)
     await waitForValue(
       'native interactive output',
-      () => {
-        if (/This action is unavailable with the selected connection/iu.test(runtime.screen)) {
+      async () => {
+        await runtime.answerWorkspaceTrust()
+        if (/This action is unavailable with the selected connection/iu.test(runtime.screen))
           throw new Error(
             `native interactive command was unavailable: ${terminalDiagnostic(runtime)}`,
           )
-        }
         return occurrences(runtime.output, markers.output) > promptCount
       },
       timeoutMs,
@@ -1766,7 +1754,7 @@ async function runProof({
     telemetry: metrics.telemetry,
     spend: metrics.spend,
     timing: metrics.timing,
-    markers: proofData.markers,
+    markers: { ...proofData.markers, workspaceTrustAnswered: runtime.workspaceTrustAnswered },
   }
 }
 

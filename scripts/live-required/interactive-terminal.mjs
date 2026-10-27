@@ -98,6 +98,7 @@ export function createPty(binary, config, statePath, exitTimeoutMs, runner) {
   let exited = false
   let exitResult
   let processCleanup
+  let workspaceTrustAnswered = false
   const outputTracker = createTerminalOutputTracker()
   // Braid exits first. A group member still present after the wait (slow teardown on a loaded
   // host) is named and terminated, so cleanup stays exact instead of refusing; LIVE-08 at 23330bc
@@ -149,6 +150,18 @@ export function createPty(binary, config, statePath, exitTimeoutMs, runner) {
     },
     cast(title) {
       return castFor({ events, columns: 120, rows: 36 }, title, 'braid --inline')
+    },
+    get workspaceTrustAnswered() {
+      return workspaceTrustAnswered
+    },
+    // Sandbox does not yet pre-trust the interactive workspace for claude-code, so its trust
+    // dialog opens first; the proof answers it through the native terminal as a user would.
+    async answerWorkspaceTrust() {
+      if (workspaceTrustAnswered || !/Yes,\s*I\s*trust\s*this\s*folder/u.test(this.screen)) return
+      workspaceTrustAnswered = true
+      this.write('\u001b[B')
+      await sleep(SUBMIT_PAUSE_MS)
+      this.write('\r')
     },
     // Braid's composer footer is on screen whatever the profile is named.
     waitForComposer(timeoutMs) {
@@ -228,4 +241,17 @@ export async function writeRecording(runtime, castPath, credential, proofError) 
     () => proofError,
     (error) => proofError ?? error,
   )
+}
+
+export function occurrences(value, marker) {
+  if (!marker) return 0
+  let count = 0
+  let offset = 0
+  while (offset >= 0) {
+    offset = value.indexOf(marker, offset)
+    if (offset < 0) break
+    count += 1
+    offset += marker.length
+  }
+  return count
 }
