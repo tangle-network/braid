@@ -1587,11 +1587,11 @@ async function runProof({
         afterUsage?.value !== null &&
         usageDelta.activeSandboxes !== null
       assert.equal(usageObservationComplete, true, 'interactive usage telemetry was unavailable')
-      assert.equal(
-        usageDelta.activeSandboxes,
-        0,
-        'interactive resource cleanup changed active usage',
-      )
+      // Account-wide counts prove no residue only while the release proof window holds the
+      // account; on a shared key other lanes move them, and the exact census above is the proof.
+      if (proofWindow !== undefined) {
+        assert.equal(usageDelta.activeSandboxes, 0, 'interactive cleanup changed active usage')
+      }
       const accountIdentityConsistency = assertStableAccountIdentity(identityRecords)
       const telemetry = telemetryDisclosure(
         proofData.stop.run,
