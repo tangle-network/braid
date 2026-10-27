@@ -15,7 +15,11 @@ import {
   createProviderRetainedPlan,
   startProviderRetainedRun,
 } from '../src/adapters/runtime/provider-retained-run.js'
-import { interactiveEnvironment } from '../src/adapters/runtime/tangle-retained-interactive-contract.js'
+import {
+  interactiveEnvironment,
+  interactiveMaterializationReceipt,
+} from '../src/adapters/runtime/tangle-retained-interactive-contract.js'
+import { assertPersistablePayload } from '../src/adapters/storage/sqlite-crypto.js'
 import {
   createBraidApplication,
   createDurableBraidApplication,
@@ -432,6 +436,12 @@ test('retained and interactive environments bind the connection secret names int
   )
   assert.deepEqual(interactiveEnvironment(prepared, 'run/retained-grants').secrets, GRANTED)
   assert.equal('secrets' in interactiveEnvironment(without, 'run/retained-grants'), false)
+  // The journal persists the interactive receipt; a secret-named digest field crashed LIVE-08.
+  const receipt = interactiveMaterializationReceipt(prepared)
+  assert.notEqual(receipt.grantedNamesDigest, undefined)
+  assertPersistablePayload(
+    JSON.parse(JSON.stringify({ receipt: { materializationReceipt: receipt } })),
+  )
   assert.equal(sandbox.createCalls.length, 0)
 })
 

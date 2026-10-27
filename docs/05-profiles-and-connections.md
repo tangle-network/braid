@@ -373,6 +373,24 @@ The `cliAuth` form names a seat that is already stored.
 For example, Discovery Lab's account owner is `{"command": ["acct", "sandbox", "resolve"], "connectionKeyEnv": "DISCOVERY_SANDBOX_API_KEY", "connectionEndpointEnv": "DISCOVERY_SANDBOX_BASE_URL"}`.
 Managed profiles ignore the reference and never contact the resolver.
 
+A retained connection for a subscription `claude-code` profile, such as Drew's exported default, uses these `providerOptions`:
+
+```json
+{
+  "lifecycle": "retained",
+  "idleTtlSeconds": 1800,
+  "secrets": ["GH_TOKEN"],
+  "modelCredentials": {
+    "command": ["acct", "sandbox", "resolve"],
+    "connectionKeyEnv": "DISCOVERY_SANDBOX_API_KEY",
+    "connectionEndpointEnv": "DISCOVERY_SANDBOX_BASE_URL"
+  }
+}
+```
+
+The idle limit sits inside the retained range in `04-runtime-contracts.md`, and `acct` must run on the host that starts Braid.
+`scripts/live-required/tangle-sandbox-braid-interactive.mjs --runner claude-code --profile <file> --provider-options <this file>` proves `/interactive`, detach, reconnect and terminal input with it.
+
 Validation accepts only names, a command, and a seat reference.
 It refuses a value map, an unknown field, a duplicate or malformed name, and any string that looks like a credential, with a plain message that never quotes the value.
 `secrets` and `modelCredentials` are refused on other connection kinds.

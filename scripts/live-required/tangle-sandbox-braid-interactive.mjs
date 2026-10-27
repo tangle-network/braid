@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
@@ -7,16 +6,8 @@ import { fileURLToPath } from 'node:url'
 import * as agentInterface from '@tangle-network/agent-interface'
 import { AgentExactRunControlRefSchema } from '@tangle-network/agent-interface'
 import { Sandbox } from '@tangle-network/sandbox'
-import xterm from '@xterm/headless'
-import * as pty from 'node-pty'
 import { readFreshStateFrame, stateFrameVersion } from '../interface-state-frame.mjs'
 import { sleep } from '../live-bridge/process.mjs'
-import {
-  processTreeEnvironment,
-  terminateTrackedProcessTree,
-  trackProcessTree,
-  waitForTreeGone,
-} from '../live-bridge/process-tree.mjs'
 import { runFromState, stateForRun } from '../live-bridge/protocol.mjs'
 import { installPackedBraid } from '../packed-binary.mjs'
 import { countProtectedWork, observeOwnedSandbox } from '../proof-tools.mjs'
@@ -38,6 +29,13 @@ import {
   rpcRequest,
   rpcState,
 } from './headless.mjs'
+import {
+  createPty,
+  harnessCommand,
+  terminalText,
+  waitForValue,
+  writeRecording,
+} from './interactive-terminal.mjs'
 import { DEFAULT_TANGLE_ROUTER_MODEL, releaseProofRouting } from './model-defaults.mjs'
 import {
   assertProviderObservationDeadline,
@@ -67,11 +65,6 @@ import {
   withoutEnvironment,
 } from './tangle-sandbox-braid-stress-support.mjs'
 import { assertSameInteractiveRef } from './tangle-sandbox-interactive-continuity.mjs'
-import {
-  createTerminalOutputTracker,
-  waitForPiTerminalReady,
-  waitForTerminalQuiescence,
-} from './terminal-quiescence.mjs'
 import { workspaceRequestFor } from './workspace-request.mjs'
 
 const scriptPath = fileURLToPath(import.meta.url)
@@ -325,15 +318,6 @@ export async function waitForProviderReadback(
     providerWorkspaceReadbackEvidence(observation, expectedValue, `provider-bound ${label}`),
     label,
   )
-}
-
-function terminalText(terminal) {
-  let text = ''
-  for (let row = 0; row < terminal.rows; row += 1) {
-    text += terminal.buffer.active.getLine(row)?.translateToString(true) ?? ''
-    text += '\n'
-  }
-  return text
 }
 
 function terminalDiagnostic(runtime) {
@@ -593,164 +577,11 @@ async function cleanupInteractiveByRunId(
   }
 }
 
-async function waitFor(label, predicate, timeoutMs) {
-  const deadline = performance.now() + timeoutMs
-  for (;;) {
-    countProtectedWork('polls')
-    const value = await predicate()
-    if (value) return value
-    if (performance.now() >= deadline) throw new Error(`${label} timed out after ${timeoutMs}ms`)
-    await sleep(50)
-  }
-}
-
-/** One process group's members for evidence: pid, age and a redacted, bounded command line. */
-function processGroupMembers(processGroupId) {
-  try {
-    const listing = execFileSync('ps', ['-eo', 'pid=,pgid=,etime=,args='], {
-      encoding: 'utf8',
-      timeout: 5_000,
-    })
-    return listing
-      .split('\n')
-      .map((line) => line.trim().split(/\s+/u))
-      .filter(([, pgid]) => Number(pgid) === processGroupId)
-      .slice(0, 16)
-      .map(([pid, , etime, ...args]) => ({
-        pid: Number(pid),
-        etime,
-        command: safeMessage(args.join(' ')).slice(0, 200),
-      }))
-  } catch {
-    return []
-  }
-}
-
-function createPty(binary, config, statePath, exitTimeoutMs) {
-  const terminal = new xterm.Terminal({ cols: 120, rows: 36, allowProposedApi: true })
-  const environment = processTreeEnvironment({
-    ...config.environment,
-    BRAID_SHUTDOWN_MODE: 'detach',
-    NO_COLOR: '1',
-    NODE_NO_WARNINGS: '1',
-  })
-  const child = pty.spawn(process.execPath, [binary, '--inline', '--record-state', statePath], {
-    cwd: config.workspace,
-    env: environment.environment,
-    name: 'xterm-256color',
-    cols: 120,
-    rows: 36,
-  })
-  trackProcessTree(child, environment.token)
-  let output = ''
-  let exited = false
-  let exitResult
-  let processCleanup
-  const outputTracker = createTerminalOutputTracker()
-  // Braid exits first. A group member still present after the wait (slow teardown on a loaded
-  // host) is named and terminated, so cleanup stays exact instead of refusing; LIVE-08 at 23330bc
-  // refused cleanup on one. Only a member that outlives SIGKILL still fails the proof.
-  const waitForProcessCleanup = async () => {
-    if (processCleanup !== undefined) return processCleanup
-    const waited = await waitForTreeGone(child, exitTimeoutMs)
-    if (!waited.supported || waited.gone) {
-      processCleanup = waited
-      return processCleanup
-    }
-    const survivors = processGroupMembers(child.pid)
-    const termination = await terminateTrackedProcessTree(child, {
-      termTimeoutMs: Math.min(1_000, exitTimeoutMs),
-      killTimeoutMs: exitTimeoutMs,
-    })
-    processCleanup = { ...termination.tree, survivors }
-    return processCleanup
-  }
-  child.onData((chunk) => {
-    output += chunk
-    outputTracker.observe(chunk, (settle) => terminal.write(chunk, settle))
-  })
-  child.onExit((result) => {
-    exited = true
-    exitResult = result
-  })
-  return {
-    child,
-    terminal,
-    get output() {
-      return output
-    },
-    get screen() {
-      return terminalText(terminal)
-    },
-    get exited() {
-      return exited || (processCleanup?.supported === true && processCleanup.gone === true)
-    },
-    get processCleanup() {
-      return processCleanup
-    },
-    get terminalOutputRevision() {
-      return outputTracker.snapshot().revision
-    },
-    waitForTerminalQuiescence(timeoutMs, afterRevision) {
-      return waitForTerminalQuiescence(outputTracker, { timeoutMs, afterRevision, pause: sleep })
-    },
-    waitForPiTerminalReady(timeoutMs, afterRevision, beforeScreen) {
-      return waitForPiTerminalReady({
-        tracker: outputTracker,
-        readScreen: () => terminalText(terminal),
-        timeoutMs,
-        afterRevision,
-        beforeScreen,
-        pause: sleep,
-      })
-    },
-    write(value) {
-      child.write(value)
-    },
-    resize(columns, rows) {
-      assert.ok(Number.isInteger(columns) && columns > 0, 'PTY columns must be positive')
-      assert.ok(Number.isInteger(rows) && rows > 0, 'PTY rows must be positive')
-      child.resize(columns, rows)
-      terminal.resize(columns, rows)
-    },
-    async close() {
-      if (exited) return { ...exitResult, processCleanup: await waitForProcessCleanup() }
-      child.write('\u0003')
-      await waitFor(
-        'Braid terminal quit prompt',
-        () => /Ctrl\+C again to quit/iu.test(this.screen),
-        exitTimeoutMs,
-      )
-      child.write('\u0003')
-      const result = await waitFor('Braid terminal exit', () => exited && exitResult, exitTimeoutMs)
-      return { ...result, processCleanup: await waitForProcessCleanup() }
-    },
-    async forceClose() {
-      if (exited) return { ...exitResult, processCleanup: await waitForProcessCleanup() }
-      const termTimeoutMs = Math.min(1_000, exitTimeoutMs)
-      const termination = await terminateTrackedProcessTree(child, {
-        termTimeoutMs,
-        killTimeoutMs: Math.max(0, exitTimeoutMs - termTimeoutMs),
-      })
-      processCleanup = termination.tree
-      if (!termination.descendantsVerified) {
-        throw new Error(
-          `forced Braid terminal cleanup did not remove the tracked process tree (${termination.cleanupStatus})`,
-        )
-      }
-      return { ...exitResult, processCleanup, termination }
-    },
-    dispose() {
-      terminal.dispose()
-    },
-  }
-}
-
 async function captureStateFrame(runtime, recordPath, timeoutMs) {
   const framePath = `${recordPath}.frame`
   const previousVersion = await stateFrameVersion(framePath)
   process.kill(runtime.child.pid, 'SIGUSR2')
-  return waitFor(
+  return waitForValue(
     'atomic Braid interactive state frame',
     () => readFreshStateFrame(framePath, previousVersion),
     timeoutMs,
@@ -765,13 +596,13 @@ async function proveTuiReturned(runtime, timeoutMs, label) {
     `${label} started with the Braid help surface already open`,
   )
   await submitBraidCommand(runtime, '/help', timeoutMs)
-  await waitFor(
+  await waitForValue(
     `${label} returned to Braid`,
     () => isBraidHelpSurfaceVisible(runtime.screen),
     timeoutMs,
   )
   runtime.write('\u001b')
-  await waitFor(
+  await waitForValue(
     `${label} closed the Braid help surface`,
     () => !isBraidHelpSurfaceVisible(runtime.screen),
     timeoutMs,
@@ -1431,11 +1262,32 @@ async function stopThroughBraid(binary, config, runId, timeoutMs) {
   return result
 }
 
+function proofMarkers() {
+  const seed = (label) => `braid_interactive_${label}_${randomUUID().replaceAll('-', '')}`
+  const proofId = `braid-live-interactive-${randomUUID().replaceAll('-', '')}`
+  const [outputSeed, inputSeed, reconnectSeed] = ['output', 'input', 'reconnect'].map(seed)
+  return {
+    proofId,
+    outputSeed,
+    inputSeed,
+    reconnectSeed,
+    output: outputSeed.toUpperCase(),
+    input: inputSeed.toUpperCase(),
+    reconnect: reconnectSeed.toUpperCase(),
+    inputPath: `.braid-live/${proofId}/native-input.txt`,
+    reconnectPath: `.braid-live/${proofId}/native-reconnect.txt`,
+  }
+}
+
 async function runProof({
   repository: targetRepository = repository,
   environment = process.env,
   proofWindow,
   proofScope = 'native-08',
+  runner = 'pi',
+  profile,
+  providerOptions = {},
+  castPath,
 } = {}) {
   const timeoutMs = positiveEnvironment(
     environment,
@@ -1448,8 +1300,7 @@ async function runProof({
     'BRAID_TANGLE_SANDBOX_INTERACTIVE_IDLE_TTL_SECONDS',
     DEFAULT_IDLE_TTL_SECONDS,
   )
-  const values = sandboxConfiguration(environment)
-  assert.equal(values.runner, 'pi', 'LIVE-08 native interactive proof must run the Pi harness')
+  const values = { ...sandboxConfiguration(environment), runner }
   if (!values.credentialValue) {
     throw protectedUnavailable(
       'SANDBOX_OBSERVATION_CREDENTIAL_REQUIRED',
@@ -1493,14 +1344,16 @@ async function runProof({
       ),
       kind: values.kind,
       endpoint: values.endpoint,
-      model: values.model,
+      model: profile?.model?.default ?? values.model,
       runner: values.runner,
-      modelProvider: values.modelProvider,
+      modelProvider: profile?.model?.provider ?? values.modelProvider,
+      ...(profile === undefined ? {} : { profile }),
       workspaceRequest: workspaceRequestFor(environment),
       providerOptions: {
         lifecycle: 'retained',
         idleTtlSeconds,
         ...releaseProofRouting(values.runner),
+        ...providerOptions,
       },
       credentialRef: values.credentialRef,
       credentialValue: values.credentialValue,
@@ -1529,29 +1382,19 @@ async function runProof({
       await proofWindow.reserve(proofScope, 1)
     }
     recordPath = join(config.root, 'interactive-state.json')
-    runtime = createPty(packed.binary, config, recordPath, exitTimeoutMs)
-    await waitFor('packed Braid TUI startup', () => /Braid/iu.test(runtime.screen), timeoutMs)
+    runtime = createPty(packed.binary, config, recordPath, exitTimeoutMs, values.runner)
+    await runtime.waitForComposer(timeoutMs)
 
-    const markers = {
-      proofId: `braid-live-interactive-${randomUUID().replaceAll('-', '')}`,
-      outputSeed: `braid_interactive_output_${randomUUID().replaceAll('-', '')}`,
-      inputSeed: `braid_interactive_input_${randomUUID().replaceAll('-', '')}`,
-      reconnectSeed: `braid_interactive_reconnect_${randomUUID().replaceAll('-', '')}`,
-    }
-    markers.output = markers.outputSeed.toUpperCase()
-    markers.input = markers.inputSeed.toUpperCase()
-    markers.reconnect = markers.reconnectSeed.toUpperCase()
-    markers.inputPath = `.braid-live/${markers.proofId}/native-input.txt`
-    markers.reconnectPath = `.braid-live/${markers.proofId}/native-reconnect.txt`
+    const markers = proofMarkers()
 
     const [interactiveCommand, inputCommand, detach, , attach, reconnectCommand] =
-      interactiveProofCommandSequence(markers)
+      interactiveProofCommandSequence(markers).map((command) => harnessCommand(command, runner))
     const promptCount = occurrences(runtime.output, markers.output)
     const interactiveBeforeScreen = runtime.screen
     const interactiveActionRevision = runtime.terminalOutputRevision
     proofWindow?.assertAdmission()
-    runtime.write(`${interactiveCommand}\r`)
-    await waitFor(
+    await runtime.submit(interactiveCommand)
+    await waitForValue(
       'native interactive output',
       () => {
         if (/This action is unavailable with the selected connection/iu.test(runtime.screen)) {
@@ -1563,7 +1406,7 @@ async function runProof({
       },
       timeoutMs,
     )
-    await runtime.waitForPiTerminalReady(
+    await runtime.waitForReady(
       timeoutMs,
       interactiveActionRevision,
       interactiveBeforeScreen,
@@ -1590,7 +1433,7 @@ async function runProof({
     )
     const inputBeforeScreen = runtime.screen
     const inputActionRevision = runtime.terminalOutputRevision
-    runtime.write(`${inputCommand}\r`)
+    await runtime.submit(inputCommand)
     const inputEvidence = await waitForProviderReadback(
       client,
       initialIdentity.controlRef,
@@ -1600,14 +1443,14 @@ async function runProof({
       timeoutMs,
       'interactive input',
     )
-    await runtime.waitForPiTerminalReady(timeoutMs, inputActionRevision, inputBeforeScreen)
+    await runtime.waitForReady(timeoutMs, inputActionRevision, inputBeforeScreen)
 
     runtime.write(detach)
     await proveTuiReturned(runtime, timeoutMs, 'native interactive detach')
     const attachOutputRevision = runtime.terminalOutputRevision
     const attachBeforeScreen = runtime.screen
     await submitBraidCommand(runtime, attach, timeoutMs)
-    await runtime.waitForPiTerminalReady(timeoutMs, attachOutputRevision, attachBeforeScreen)
+    await runtime.waitForReady(timeoutMs, attachOutputRevision, attachBeforeScreen)
     const resizeOutputRevision = runtime.terminalOutputRevision
     runtime.resize(100, 30)
     await runtime.waitForTerminalQuiescence(timeoutMs, resizeOutputRevision)
@@ -1635,7 +1478,7 @@ async function runProof({
     verifiedIdentity = reconnectedIdentity
     const reconnectBeforeScreen = runtime.screen
     const reconnectActionRevision = runtime.terminalOutputRevision
-    runtime.write(`${reconnectCommand}\r`)
+    await runtime.submit(reconnectCommand)
     const reconnectEvidence = await waitForProviderReadback(
       client,
       initialIdentity.controlRef,
@@ -1645,7 +1488,7 @@ async function runProof({
       timeoutMs,
       'interactive reconnect input',
     )
-    await runtime.waitForPiTerminalReady(timeoutMs, reconnectActionRevision, reconnectBeforeScreen)
+    await runtime.waitForReady(timeoutMs, reconnectActionRevision, reconnectBeforeScreen)
     runtime.write(detach)
     await proveTuiReturned(runtime, timeoutMs, 'native interactive reconnect detach')
     const exit = await runtime.close()
@@ -1734,6 +1577,8 @@ async function runProof({
     failures.push(new Error(`last Braid terminal screen: ${terminalDiagnostic(runtime)}`))
     proofError = new AggregateError(failures, 'Braid native interactive flow failed')
   }
+  if (castPath !== undefined && runtime !== undefined)
+    proofError = await writeRecording(runtime, castPath, values.credentialValue, proofError)
 
   let cleanup
   let cleanupError
@@ -2025,9 +1870,23 @@ export async function runInteractiveProof({
 
 export async function main(argv = process.argv, environment = process.env) {
   const outputPath = argument('output', argv)
+  // --profile is an AgentProfile file; --provider-options is a tangle-sandbox connection's
+  // providerOptions, such as the retained recipe in docs/05-profiles-and-connections.md.
+  const jsonFile = async (name) =>
+    argument(name, argv) && JSON.parse(await readFile(argument(name, argv), 'utf8'))
   try {
     if (outputPath) await rm(outputPath, { force: true })
-    const result = await runProof({ environment })
+    const profile = (await jsonFile('profile')) || undefined
+    const runner = argument('runner', argv) ?? profile?.harness ?? 'pi'
+    if (profile !== undefined)
+      assert.equal(profile.harness, runner, 'LIVE-08 --profile harness must match --runner')
+    const result = await runProof({
+      environment,
+      runner,
+      profile,
+      providerOptions: (await jsonFile('provider-options')) || undefined,
+      castPath: argument('cast', argv),
+    })
     if (outputPath) await writeFile(outputPath, `${safeJson(result, environment)}\n`)
     process.stdout.write(`${safeJson(result, environment)}\n`)
     return EXIT_CODES.passed
