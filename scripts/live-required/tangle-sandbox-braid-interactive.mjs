@@ -1391,7 +1391,7 @@ async function runProof({
     }
     recordPath = join(config.root, 'interactive-state.json')
     runtime = createPty(packed.binary, config, recordPath, exitTimeoutMs, values.runner)
-    await waitForValue('packed Braid TUI startup', () => /Braid/iu.test(runtime.screen), timeoutMs)
+    await waitForValue('packed Braid TUI startup', () => /type \/ for/iu.test(runtime.screen), timeoutMs)
 
     const markers = proofMarkers()
 
