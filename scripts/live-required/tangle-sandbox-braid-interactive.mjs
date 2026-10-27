@@ -33,7 +33,6 @@ import {
   createPty,
   harnessCommand,
   occurrences,
-  terminalText,
   waitForValue,
   writeRecording,
 } from './interactive-terminal.mjs'
@@ -1394,11 +1393,7 @@ async function runProof({
       },
       timeoutMs,
     )
-    await runtime.waitForReady(
-      timeoutMs,
-      interactiveActionRevision,
-      interactiveBeforeScreen,
-    )
+    await runtime.waitForReady(timeoutMs, interactiveActionRevision, interactiveBeforeScreen)
     const { frame: initialFrame, identity: initialIdentity } =
       await waitForInteractiveIdentityFrame({
         captureFrame: () => captureStateFrame(runtime, recordPath, timeoutMs),

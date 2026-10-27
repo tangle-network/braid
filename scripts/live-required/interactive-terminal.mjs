@@ -165,7 +165,11 @@ export function createPty(binary, config, statePath, exitTimeoutMs, runner) {
     },
     // Braid's composer footer is on screen whatever the profile is named.
     waitForComposer(timeoutMs) {
-      return waitForValue('packed Braid TUI startup', () => /type \/ for/iu.test(this.screen), timeoutMs)
+      return waitForValue(
+        'packed Braid TUI startup',
+        () => /type \/ for/iu.test(this.screen),
+        timeoutMs,
+      )
     },
     waitForReady(timeoutMs, afterRevision, beforeScreen) {
       return waitForHarnessTerminalReady({
