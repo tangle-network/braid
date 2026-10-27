@@ -310,7 +310,7 @@ function intelligenceSourceContext(
   }
   const source = sourceReferenceForArgument(args[0], view) ?? latestTerminalSource(view)
   if (source === undefined) return undefined
-  if (source.kind === 'branch') return `source ${displaySourceReference(source)}`
+  if (source.kind !== 'run') return `source ${displaySourceReference(source)}`
   const target = executionTargetFor(view, source.id)
   return `source ${displaySourceReference(source)} · ${target.profileName} · ${target.runner} · ${target.model} · ${target.connection}`
 }

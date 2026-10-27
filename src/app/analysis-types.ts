@@ -1,4 +1,5 @@
 import type { ExactAnalystRunEvent } from '@tangle-network/agent-eval'
+import type { ToolSpan } from '@tangle-network/agent-eval/traces'
 import type { AgentProfile, HarnessType } from '@tangle-network/agent-interface'
 import type {
   AnalysisRecord,
@@ -7,6 +8,7 @@ import type {
   MessagePartRecord,
   MessageRecord,
   RunRecord,
+  RuntimeRunReference,
 } from '../domain/entities.js'
 import type { BraidEvent, BraidEventEnvelope } from '../domain/events.js'
 import type {
@@ -29,6 +31,8 @@ export interface AnalysisSourceRequest {
   readonly conversationId?: ConversationId
   readonly branchId?: BranchId
   readonly runId?: RunId
+  /** A Runtime durable run analyzed without a Braid run; exclusive with `runId`. */
+  readonly runtimeRun?: RuntimeRunReference
   readonly throughMessageId?: MessageId
 }
 
@@ -53,9 +57,22 @@ export interface FrozenAnalysisEvent {
   readonly event: BraidEvent
 }
 
+/** One Runtime durable run as Runtime recorded it, read through Runtime's public readers. */
+export interface RuntimeRunEvidence extends RuntimeRunReference {
+  readonly pursuitId: string
+  /** Observer journal digest-chain tip and length when the run was read. */
+  readonly chainTip: string
+  readonly sequence: number
+  /** Every attempt of the run has a terminal observer record. */
+  readonly settled: boolean
+  /** Redacted root-stream and worker tool spans, one trace per Runtime node. */
+  readonly spans: readonly ToolSpan[]
+}
+
 export interface FrozenAnalysisEvidence {
   readonly source: FrozenAnalysisSource
   readonly run?: RunRecord
+  readonly runtime?: RuntimeRunEvidence
   readonly events: readonly FrozenAnalysisEvent[]
   readonly messages: readonly MessageRecord[]
   readonly messageParts: readonly MessagePartRecord[]
@@ -79,6 +96,7 @@ export interface AnalysisApplicationHost {
   readonly loadEventHistory?: (
     source: AnalysisSourceRequest,
   ) => Promise<readonly BraidEventEnvelope[]>
+  readonly loadRuntimeRun?: (reference: RuntimeRunReference) => Promise<RuntimeRunEvidence>
   readonly commit: (event: BraidEvent) => void | Promise<void>
   readonly commitAndWait?: (event: BraidEvent) => void | Promise<void>
   readonly now: () => string

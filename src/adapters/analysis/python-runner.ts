@@ -336,5 +336,3 @@ export async function resolvePythonRunner(
     message: 'No usable Python executable was found. Set BRAID_PYTHON or install python3.',
   }
 }
-
-export const TRACE_ANALYSIS_PYTHON_PACKAGE_PROBE = PACKAGE_PROBE

@@ -5,6 +5,7 @@ import {
   otlpTextToTraceAnalysisStore,
   type ToolSpan,
   type TraceAnalysisStore,
+  toolSpansToTraceAnalysisStore,
 } from '@tangle-network/agent-eval/traces'
 import { verifyFrozenAnalysisSource } from '../../app/analysis-source.js'
 import type { FrozenAnalysisEvent, FrozenAnalysisEvidence } from '../../app/analysis-types.js'
@@ -22,12 +23,9 @@ export interface AnalysisTraceSpanReference {
   readonly spanId: string
   readonly eventIds: readonly string[]
   readonly partId?: string
-  readonly toolName?: string
 }
 
 export interface AnalysisTraceBundle {
-  readonly traceId: string
-  readonly sourceDigest: string
   readonly store: TraceAnalysisStore
   readonly spans: readonly AnalysisTraceSpanReference[]
 }
@@ -92,7 +90,6 @@ function buildToolSpans(evidence: FrozenAnalysisEvidence): {
         spanId: span.spanId,
         eventIds: [String(event.id)],
         partId: event.event.partId,
-        toolName: event.event.toolName,
       })
       continue
     }
@@ -128,7 +125,6 @@ function buildToolSpans(evidence: FrozenAnalysisEvidence): {
         spanId: span.spanId,
         eventIds: [String(event.id)],
         partId: event.event.partId,
-        toolName: event.event.toolName,
       })
       continue
     }
@@ -155,7 +151,6 @@ function buildToolSpans(evidence: FrozenAnalysisEvidence): {
       spanId: span.spanId,
       eventIds: [String(existing.event.id), String(event.id)],
       partId: event.event.partId,
-      toolName: event.event.toolName,
     })
   }
 
@@ -236,6 +231,18 @@ function toolTraceText(spans: readonly ToolSpan[]): string {
 
 export function buildAnalysisTraceStore(evidence: FrozenAnalysisEvidence): AnalysisTraceBundle {
   verifyFrozenAnalysisSource(evidence)
+  if (evidence.runtime !== undefined) {
+    // agent-eval refuses an empty trace: it cannot tell a tool-free run from a failed capture.
+    if (evidence.runtime.spans.length === 0) {
+      throw new AnalysisSourceError(`Runtime run ${evidence.runtime.runId} has no recorded spans`)
+    }
+    return {
+      store: createBoundedTraceAnalysisStore(
+        toolSpansToTraceAnalysisStore([...evidence.runtime.spans]),
+      ),
+      spans: [],
+    }
+  }
   if (evidence.source.runId === undefined) {
     throw new AnalysisSourceError('Trace analysis requires a frozen run source')
   }
@@ -251,8 +258,6 @@ export function buildAnalysisTraceStore(evidence: FrozenAnalysisEvidence): Analy
   const references = [...toolEvidence.references, ...generic.references]
 
   return {
-    traceId: String(evidence.source.runId),
-    sourceDigest: String(evidence.source.digest),
     store: createBoundedTraceAnalysisStore(store),
     spans: references,
   }
