@@ -6,16 +6,19 @@ allowBuilds:
   node-pty: true
 ignoreScripts: false
 minimumReleaseAgeExclude:
-  - '@tangle-network/agent-runtime@0.312.0 || 0.319.8 || 0.322.1 || 0.325.15 || 0.326.1 || 0.327.0 || 0.330.0'
-  - '@tangle-network/agent-eval@0.209.1 || 0.214.0 || 0.215.1 || 0.221.8'
-  - '@tangle-network/agent-interface@3.1.1 || 5.2.1 || 5.7.0 || 5.8.0'
-  - '@tangle-network/agent-knowledge@20.0.0 || 22.0.1 || 22.0.2'
+  - '@tangle-network/agent-runtime@0.312.0 || 0.319.8 || 0.322.1 || 0.325.15 || 0.326.1 || 0.327.0 || 0.330.0 || 2.0.1'
+  - '@tangle-network/agent-eval@0.209.1 || 0.214.0 || 0.215.1 || 0.221.8 || 1.0.0'
+  - '@tangle-network/agent-interface@3.1.1 || 5.2.1 || 5.7.0 || 5.8.0 || 5.10.2'
+  - '@tangle-network/agent-knowledge@20.0.0 || 22.0.1 || 22.0.2 || 23.0.0'
   - '@tangle-network/agent-provider-cli-bridge@1.1.2'
-  - '@tangle-network/agent-provider-tangle@3.6.6 || 4.4.0'
-  - '@tangle-network/sandbox@0.60.27 || 0.60.58 || 0.60.88 || 0.61.1'
+  - '@tangle-network/agent-provider-tangle@3.6.6 || 4.4.0 || 4.5.0'
+  - '@tangle-network/sandbox@0.60.27 || 0.60.58 || 0.60.88 || 0.61.1 || 1.0.33'
   - hono@4.13.13
   - '@earendil-works/pi-tui@1.1.0'
-  - '@tangle-network/agent-profile-materialize@0.21.0'
+  - '@tangle-network/agent-profile-materialize@0.21.0 || 1.1.2'
+  - '@tangle-network/agent-core@1.0.0'
+  - '@tangle-network/agent-trace-contract@2.2.0'
+  - '@tangle-network/harness-sessions@1.0.1'
 overrides:
   zod@<4.6.7: 4.6.7
   undici@>=8.0.0 <8.12.2: 8.12.3
