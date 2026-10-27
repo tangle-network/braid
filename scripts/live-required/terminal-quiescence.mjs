@@ -15,6 +15,9 @@ const PI_FOOTER_PATH_PATTERN = /^(?:~|\/)[^\n]*$/u
 const PI_WIDGET_REGION_ROWS = 10
 const PI_ACTIVE_STATUS_ROW_PATTERN =
   /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\s+(?:Working(?:\.\.\.|…)|Retrying\b|Compacting\b|Auto-compacting\b|Context overflow detected,\s+Auto-compacting\b|Summarizing branch\b)/iu
+const CLAUDE_CODE_WORKING_PATTERN = /\besc to interrupt\b/iu
+const CLAUDE_CODE_PROMPT_PATTERN = /^(?:│\s*)?[>❯](?:\s|$)/u
+const CLAUDE_CODE_COMPOSER_REGION_ROWS = 12
 const TERMINAL_ESCAPE = String.fromCharCode(27)
 const TERMINAL_BELL = String.fromCharCode(7)
 const OSC_TERMINAL_SEQUENCE = new RegExp(
@@ -32,7 +35,7 @@ function stripTerminalSequences(value) {
 }
 
 function screenRows(screen) {
-  if (typeof screen !== 'string') throw new TypeError('Pi terminal screen must be a string')
+  if (typeof screen !== 'string') throw new TypeError('terminal screen must be a string')
   return stripTerminalSequences(screen)
     .split(/\r?\n/u)
     .map((line) => line.replace(/[ \t]+$/u, ''))
@@ -92,16 +95,49 @@ export function piTerminalScreenState(screen) {
 }
 
 /**
- * Wait until Pi has rendered a ready composer after an action.
+ * Classify the visible state of Claude Code's interactive terminal.
+ *
+ * Claude Code renders `esc to interrupt` beside its spinner while a turn runs,
+ * and its ready composer is a `>` (or `❯`) prompt row near the bottom.
+ */
+export function claudeCodeTerminalScreenState(screen) {
+  const rows = screenRows(screen)
+  if (rows.some((line) => CLAUDE_CODE_WORKING_PATTERN.test(line)))
+    return { state: 'working', reason: 'interrupt-hint-visible' }
+  const prompt = rows
+    .slice(-CLAUDE_CODE_COMPOSER_REGION_ROWS)
+    .findIndex((line) => CLAUDE_CODE_PROMPT_PATTERN.test(line.trim()))
+  if (prompt < 0) return { state: 'unknown', reason: 'composer-not-visible' }
+  return { state: 'ready', composer: { row: rows.length - CLAUDE_CODE_COMPOSER_REGION_ROWS + prompt } }
+}
+
+const HARNESS_SCREEN_STATES = Object.freeze({
+  pi: piTerminalScreenState,
+  'claude-code': claudeCodeTerminalScreenState,
+})
+
+/** The screen classifier for a harness whose native terminal LIVE-08 can drive. */
+export function harnessScreenState(runner) {
+  const classify = HARNESS_SCREEN_STATES[runner]
+  if (classify === undefined)
+    throw new RangeError(
+      `No native terminal readiness check for runner '${runner}'; supported: ${Object.keys(HARNESS_SCREEN_STATES).join(', ')}`,
+    )
+  return classify
+}
+
+/**
+ * Wait until a harness has rendered a ready composer after an action.
  *
  * A quiet renderer is necessary but insufficient: a static `Working...` line
  * can remain after its spinner stops, and a stale ready screen can precede a
  * delayed remote render. The optional baseline requires a visible transition
  * before readiness is accepted.
  */
-export async function waitForPiTerminalReady({
+export async function waitForHarnessTerminalReady({
   tracker,
   readScreen,
+  screenState = piTerminalScreenState,
   timeoutMs,
   afterRevision,
   beforeScreen,
@@ -115,9 +151,9 @@ export async function waitForPiTerminalReady({
   ) {
     throw new TypeError('terminal output tracker is required')
   }
-  if (typeof readScreen !== 'function') throw new TypeError('Pi terminal screen reader is required')
+  if (typeof readScreen !== 'function') throw new TypeError('terminal screen reader is required')
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
-    throw new RangeError('Pi terminal readiness timeout must be positive')
+    throw new RangeError('terminal readiness timeout must be positive')
   }
   if (afterRevision !== undefined && (!Number.isSafeInteger(afterRevision) || afterRevision < 0)) {
     throw new RangeError('terminal output revision must be a non-negative safe integer')
@@ -130,7 +166,7 @@ export async function waitForPiTerminalReady({
   let lastState = { state: 'unknown', reason: 'not-observed' }
   for (;;) {
     const screen = readScreen()
-    const state = piTerminalScreenState(screen)
+    const state = screenState(screen)
     lastState = state
     if (state.state === 'working') sawWorking = true
     if (baseline !== undefined && normalizedScreen(screen) !== baseline) sawScreenChange = true
@@ -143,7 +179,7 @@ export async function waitForPiTerminalReady({
     }
     if (now() >= deadline) {
       throw new Error(
-        `Pi terminal did not become ready after ${timeoutMs}ms: ${JSON.stringify({
+        `Harness terminal did not become ready after ${timeoutMs}ms: ${JSON.stringify({
           ...snapshot,
           state: lastState.state,
           reason: lastState.reason,
