@@ -1,3 +1,4 @@
+import { join } from 'node:path'
 import { performance } from 'node:perf_hooks'
 import type { HeadlessKeySource } from '../adapters/credentials/headless-key.js'
 import { createOperatingSystemCredentialStore } from '../adapters/credentials/os.js'
@@ -91,6 +92,10 @@ export async function createDurableBraidApplication(
             ...(options.workspaceRoot === undefined
               ? {}
               : { workspaceRoot: options.workspaceRoot }),
+            // Retained runs journal beside this workspace's state, where agent-runtime-top reads.
+            ...(options.storageRoot === undefined
+              ? {}
+              : { runtimeJournalRoot: join(options.storageRoot, 'runtime-journal') }),
           },
           credentialStore,
         )

@@ -66,6 +66,8 @@ export interface TangleRetainedInteractiveExecutionOptions {
   readonly holderId?: string
   readonly workspaceBranchingProvider?: AgentWorkspaceBranchingProvider
   readonly confidentialAttestationVerifier?: ConfidentialAttestationVerifier
+  /** Runtime observer-journal root; each run appends `<journalRoot>/<runId>/observer.jsonl`. */
+  readonly journalRoot?: string
 }
 
 interface PreparedInteractiveConnection {
@@ -80,6 +82,7 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
   readonly #recover: TangleRetainedInteractiveExecutionOptions['recover']
   readonly #broker: Pick<NativeInteractiveRunBroker, 'open' | 'settle'>
   readonly #holderId: string
+  readonly #journalRoot: string | undefined
   readonly #prepared = new Map<string, PreparedInteractiveConnection>()
   readonly #starting = new Map<string, Promise<RetainedInteractiveRunHandle>>()
   readonly #handles = new Map<string, RetainedInteractiveRunHandle>()
@@ -94,6 +97,7 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
     this.#recover = options.recover
     this.#broker = options.broker
     this.#holderId = options.holderId ?? 'braid'
+    this.#journalRoot = options.journalRoot
     if (options.workspaceBranchingProvider !== undefined)
       this.workspaceBranchingProvider = options.workspaceBranchingProvider
     if (options.confidentialAttestationVerifier !== undefined)
@@ -421,6 +425,7 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
       ...(input.text.trim() === '' ? {} : { initialPrompt: input.text }),
       // workspaceRoot identifies Braid's local checkout. The provider owns its remote cwd.
       onAdmission,
+      ...(this.#journalRoot === undefined ? {} : { journalRoot: this.#journalRoot }),
       signal: input.signal,
     })
   }
