@@ -16,8 +16,7 @@ const PI_WIDGET_REGION_ROWS = 10
 const PI_ACTIVE_STATUS_ROW_PATTERN =
   /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\s+(?:Working(?:\.\.\.|…)|Retrying\b|Compacting\b|Auto-compacting\b|Context overflow detected,\s+Auto-compacting\b|Summarizing branch\b)/iu
 const CLAUDE_CODE_WORKING_PATTERN = /\besc to interrupt\b/iu
-const CLAUDE_CODE_PROMPT_PATTERN = /^(?:│\s*)?[>❯](?:\s|$)/u
-const CLAUDE_CODE_COMPOSER_REGION_ROWS = 12
+const CLAUDE_CODE_RULE_PATTERN = /^─{20,}$/u
 const TERMINAL_ESCAPE = String.fromCharCode(27)
 const TERMINAL_BELL = String.fromCharCode(7)
 const OSC_TERMINAL_SEQUENCE = new RegExp(
@@ -98,20 +97,18 @@ export function piTerminalScreenState(screen) {
  * Classify the visible state of Claude Code's interactive terminal.
  *
  * Claude Code renders `esc to interrupt` beside its spinner while a turn runs,
- * and its ready composer is a `>` (or `❯`) prompt row near the bottom.
+ * and draws its ready composer as one input row between two horizontal rules. The
+ * rules, not the prompt glyph, identify it: a terminal without UTF-8 (tmux in a
+ * Sandbox box) shows `❯` as `_`, and the composer need not sit near the bottom.
  */
 export function claudeCodeTerminalScreenState(screen) {
   const rows = screenRows(screen)
   if (rows.some((line) => CLAUDE_CODE_WORKING_PATTERN.test(line)))
     return { state: 'working', reason: 'interrupt-hint-visible' }
-  const prompt = rows
-    .slice(-CLAUDE_CODE_COMPOSER_REGION_ROWS)
-    .findIndex((line) => CLAUDE_CODE_PROMPT_PATTERN.test(line.trim()))
-  if (prompt < 0) return { state: 'unknown', reason: 'composer-not-visible' }
-  return {
-    state: 'ready',
-    composer: { row: rows.length - CLAUDE_CODE_COMPOSER_REGION_ROWS + prompt },
-  }
+  const rule = (line) => line !== undefined && CLAUDE_CODE_RULE_PATTERN.test(line.trim())
+  const below = rows.findLastIndex((line, index) => rule(line) && rule(rows[index - 2]))
+  if (below < 0) return { state: 'unknown', reason: 'composer-not-visible' }
+  return { state: 'ready', composer: { row: below - 1 } }
 }
 
 const HARNESS_SCREEN_STATES = Object.freeze({
