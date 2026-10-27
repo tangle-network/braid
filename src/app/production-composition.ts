@@ -70,6 +70,8 @@ export interface ProductionCompositionConfig {
   readonly connectionId: string
   /** Canonical workspace root used by provider environment creation. */
   readonly workspaceRoot?: string
+  /** Directory where retained runs append agent-runtime observer journals for agent-runtime-top. */
+  readonly runtimeJournalRoot?: string
   /** Provider-neutral remote workspace request. Separate from workspaceRoot. */
   readonly workspaceRequest?: Readonly<WorkspaceRequest>
   /** Protected headless SQLite key-file path, absolute or relative to the config directory. */
@@ -373,9 +375,7 @@ export function createProductionComposition(
     ) {
       return new ProviderRetainedExecutionPort({
         ...(workspaceBranchingProvider === undefined ? {} : { workspaceBranchingProvider }),
-        ...(scopedOptions.confidentialAttestationVerifier === undefined
-          ? {}
-          : { confidentialAttestationVerifier: scopedOptions.confidentialAttestationVerifier }),
+        ...verifierOption(scopedOptions),
         resolve: (input) => resolveProductionRegisteredRetainedConnection(scopedOptions, input),
         recover: ({ runId, providerSessionId, signal, ...recovery }) =>
           resolveProductionRegisteredRetainedConnection(
@@ -408,18 +408,15 @@ export function createProductionComposition(
             recoveryInput(runId, providerSessionId, recovery, signal),
           ),
         ...(workspaceBranchingProvider === undefined ? {} : { workspaceBranchingProvider }),
-        ...(scopedOptions.confidentialAttestationVerifier === undefined
-          ? {}
-          : { confidentialAttestationVerifier: scopedOptions.confidentialAttestationVerifier }),
+        ...verifierOption(scopedOptions),
       })
       const interactive = new TangleRetainedInteractiveExecutionPort({
         resolve: (input) => resolveProductionTangleRetainedConnection(scopedOptions, input),
         recover: (input) => resolveProductionTangleRetainedConnection(scopedOptions, input),
         broker,
+        ...(config.runtimeJournalRoot && { journalRoot: config.runtimeJournalRoot }),
         ...(workspaceBranchingProvider === undefined ? {} : { workspaceBranchingProvider }),
-        ...(scopedOptions.confidentialAttestationVerifier === undefined
-          ? {}
-          : { confidentialAttestationVerifier: scopedOptions.confidentialAttestationVerifier }),
+        ...verifierOption(scopedOptions),
       })
       return new ModeRoutingExecutionPort({ headless, interactive })
     }
@@ -429,9 +426,7 @@ export function createProductionComposition(
       {
         context,
         ...(workspaceBranchingProvider === undefined ? {} : { workspaceBranchingProvider }),
-        ...(scopedOptions.confidentialAttestationVerifier === undefined
-          ? {}
-          : { confidentialAttestationVerifier: scopedOptions.confidentialAttestationVerifier }),
+        ...verifierOption(scopedOptions),
       },
     )
   }
@@ -483,4 +478,13 @@ function retainedAdmissionTurnId(
     default:
       return undefined
   }
+}
+
+/** The attestation verifier option each retained port receives, when one is configured. */
+function verifierOption(
+  options: ProductionBackendResolverOptions,
+): Pick<ProductionBackendResolverOptions, 'confidentialAttestationVerifier'> {
+  return options.confidentialAttestationVerifier === undefined
+    ? {}
+    : { confidentialAttestationVerifier: options.confidentialAttestationVerifier }
 }
