@@ -1,9 +1,9 @@
 // The packed Braid terminal driven in a PTY: screen, recording, input, readiness and exit.
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
+import { writeFile } from 'node:fs/promises'
 import xterm from '@xterm/headless'
 import * as pty from 'node-pty'
-import { castFor } from '../live-demo/terminal.mjs'
 import { sleep } from '../live-bridge/process.mjs'
 import {
   processTreeEnvironment,
@@ -11,6 +11,7 @@ import {
   trackProcessTree,
   waitForTreeGone,
 } from '../live-bridge/process-tree.mjs'
+import { castFor } from '../live-demo/terminal.mjs'
 import { countProtectedWork } from '../proof-tools.mjs'
 import { safeMessage } from './contracts.mjs'
 import {
@@ -21,6 +22,13 @@ import {
 } from './terminal-quiescence.mjs'
 
 const SUBMIT_PAUSE_MS = 250
+// Each harness's own composer prefix for a shell command without a model turn; Pi's is `!!`.
+const SHELL_PREFIX = Object.freeze({ pi: '!!', 'claude-code': '!' })
+
+/** Rewrites the Pi-form `!!` shell command of the frozen LIVE-08 sequence for the runner. */
+export function harnessCommand(command, runner) {
+  return command.startsWith('!!') ? `${SHELL_PREFIX[runner]}${command.slice(2)}` : command
+}
 
 export function terminalText(terminal) {
   let text = ''
@@ -142,7 +150,11 @@ export function createPty(binary, config, statePath, exitTimeoutMs, runner) {
     cast(title) {
       return castFor({ events, columns: 120, rows: 36 }, title, 'braid --inline')
     },
-    waitForHarnessTerminalReady(timeoutMs, afterRevision, beforeScreen) {
+    // Braid's composer footer is on screen whatever the profile is named.
+    waitForComposer(timeoutMs) {
+      return waitForValue('packed Braid TUI startup', () => /type \/ for/iu.test(this.screen), timeoutMs)
+    },
+    waitForReady(timeoutMs, afterRevision, beforeScreen) {
       return waitForHarnessTerminalReady({
         tracker: outputTracker,
         readScreen: () => terminalText(terminal),
@@ -178,7 +190,11 @@ export function createPty(binary, config, statePath, exitTimeoutMs, runner) {
         exitTimeoutMs,
       )
       child.write('\u0003')
-      const result = await waitForValue('Braid terminal exit', () => exited && exitResult, exitTimeoutMs)
+      const result = await waitForValue(
+        'Braid terminal exit',
+        () => exited && exitResult,
+        exitTimeoutMs,
+      )
       return { ...result, processCleanup: await waitForProcessCleanup() }
     },
     async forceClose() {
@@ -200,4 +216,16 @@ export function createPty(binary, config, statePath, exitTimeoutMs, runner) {
       terminal.dispose()
     },
   }
+}
+
+/** Keeps the recording on failure too, and withholds it if it ever carries the Sandbox key. */
+export async function writeRecording(runtime, castPath, credential, proofError) {
+  const cast = runtime.cast('Braid LIVE-08')
+  if (cast.includes(credential))
+    return proofError ?? new Error('LIVE-08 terminal recording contained the Sandbox credential')
+  // A failed write must not skip the cleanup that follows.
+  return writeFile(castPath, cast, { mode: 0o600 }).then(
+    () => proofError,
+    (error) => proofError ?? error,
+  )
 }

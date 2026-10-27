@@ -108,7 +108,10 @@ export function claudeCodeTerminalScreenState(screen) {
     .slice(-CLAUDE_CODE_COMPOSER_REGION_ROWS)
     .findIndex((line) => CLAUDE_CODE_PROMPT_PATTERN.test(line.trim()))
   if (prompt < 0) return { state: 'unknown', reason: 'composer-not-visible' }
-  return { state: 'ready', composer: { row: rows.length - CLAUDE_CODE_COMPOSER_REGION_ROWS + prompt } }
+  return {
+    state: 'ready',
+    composer: { row: rows.length - CLAUDE_CODE_COMPOSER_REGION_ROWS + prompt },
+  }
 }
 
 const HARNESS_SCREEN_STATES = Object.freeze({

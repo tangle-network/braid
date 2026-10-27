@@ -29,7 +29,13 @@ import {
   rpcRequest,
   rpcState,
 } from './headless.mjs'
-import { createPty, terminalText, waitForValue } from './interactive-terminal.mjs'
+import {
+  createPty,
+  harnessCommand,
+  terminalText,
+  waitForValue,
+  writeRecording,
+} from './interactive-terminal.mjs'
 import { DEFAULT_TANGLE_ROUTER_MODEL, releaseProofRouting } from './model-defaults.mjs'
 import {
   assertProviderObservationDeadline,
@@ -125,7 +131,7 @@ const SECRET_ENVIRONMENT_NAMES = [
   'TANGLE_API_KEY',
 ]
 
-export function sandboxConfiguration(environment, runner = 'pi') {
+export function sandboxConfiguration(environment) {
   return {
     ...connectionConfiguration(configurationEnvironment(environment), {
       prefix: 'BRAID_TANGLE_SANDBOX',
@@ -140,9 +146,9 @@ export function sandboxConfiguration(environment, runner = 'pi') {
       fallbackRunner: 'pi',
       fallbackModelProvider: 'tangle-router',
     }),
-    // LIVE-07 may set BRAID_TANGLE_SANDBOX_RUNNER=opencode for its own cohort, so LIVE-08 takes
-    // its runner only from --runner or --profile; the release collector keeps Pi.
-    runner,
+    // The canonical interaction and native terminal proofs use different runners.
+    // LIVE-07 may set BRAID_TANGLE_SANDBOX_RUNNER=opencode for its own cohort.
+    runner: 'pi',
   }
 }
 
@@ -156,10 +162,7 @@ export function stoppedRunFromState(response, runId) {
   return run !== undefined && RUN_STATUS_AFTER_STOP.has(run.status) ? run : undefined
 }
 
-// Each harness's own prefix that runs a shell command from its composer without a model turn.
-const SHELL_PREFIX = Object.freeze({ pi: '!!', 'claude-code': '!' })
-
-export function interactiveProofCommandSequence(markers, runner = 'pi') {
+export function interactiveProofCommandSequence(markers) {
   const input = markers.input ?? markers.inputSeed?.toUpperCase()
   const reconnect = markers.reconnect ?? markers.reconnectSeed?.toUpperCase()
   const proofId = markers.proofId ?? `interactive-${markers.outputSeed ?? 'proof'}`
@@ -167,11 +170,11 @@ export function interactiveProofCommandSequence(markers, runner = 'pi') {
   const reconnectPath = markers.reconnectPath ?? `.braid-live/${proofId}/native-reconnect.txt`
   return [
     `/interactive Use the current Tangle Sandbox workspace and reply with exactly the uppercase version of ${markers.outputSeed}.`,
-    interactiveShellMutationCommand(input, inputPath, SHELL_PREFIX[runner]),
+    interactiveShellMutationCommand(input, inputPath),
     DETACH,
     '/help',
     '/attach',
-    interactiveShellMutationCommand(reconnect, reconnectPath, SHELL_PREFIX[runner]),
+    interactiveShellMutationCommand(reconnect, reconnectPath),
     DETACH,
     '/help',
   ]
@@ -181,8 +184,8 @@ function shellLiteral(value) {
   return `'${String(value).replaceAll("'", "'\"'\"'")}'`
 }
 
-function interactiveShellMutationCommand(value, path, prefix) {
-  return `${prefix}mkdir -p -- ${shellLiteral(dirname(path))} && printf '%s\\n' ${shellLiteral(value)} >> ${shellLiteral(path)}`
+function interactiveShellMutationCommand(value, path) {
+  return `!!mkdir -p -- ${shellLiteral(dirname(path))} && printf '%s\\n' ${shellLiteral(value)} >> ${shellLiteral(path)}`
 }
 
 function occurrences(value, marker) {
@@ -1276,15 +1279,6 @@ function proofMarkers() {
   }
 }
 
-/** Keeps the recording on failure too, and withholds it if it ever carries the Sandbox key. */
-async function writeRecording(runtime, castPath, values, proofError) {
-  const cast = runtime.cast(`Braid LIVE-08 ${values.runner}`)
-  if (cast.includes(values.credentialValue))
-    return proofError ?? new Error('LIVE-08 terminal recording contained the Sandbox credential')
-  // A failed write must not skip the cleanup that follows.
-  return writeFile(castPath, cast, { mode: 0o600 }).then(() => proofError, (error) => proofError ?? error)
-}
-
 async function runProof({
   repository: targetRepository = repository,
   environment = process.env,
@@ -1306,9 +1300,7 @@ async function runProof({
     'BRAID_TANGLE_SANDBOX_INTERACTIVE_IDLE_TTL_SECONDS',
     DEFAULT_IDLE_TTL_SECONDS,
   )
-  const values = sandboxConfiguration(environment, runner)
-  if (profile !== undefined)
-    assert.equal(profile.harness, runner, 'LIVE-08 --profile harness must match --runner')
+  const values = { ...sandboxConfiguration(environment), runner }
   if (!values.credentialValue) {
     throw protectedUnavailable(
       'SANDBOX_OBSERVATION_CREDENTIAL_REQUIRED',
@@ -1391,12 +1383,12 @@ async function runProof({
     }
     recordPath = join(config.root, 'interactive-state.json')
     runtime = createPty(packed.binary, config, recordPath, exitTimeoutMs, values.runner)
-    await waitForValue('packed Braid TUI startup', () => /type \/ for/iu.test(runtime.screen), timeoutMs)
+    await runtime.waitForComposer(timeoutMs)
 
     const markers = proofMarkers()
 
     const [interactiveCommand, inputCommand, detach, , attach, reconnectCommand] =
-      interactiveProofCommandSequence(markers, values.runner)
+      interactiveProofCommandSequence(markers).map((command) => harnessCommand(command, runner))
     const promptCount = occurrences(runtime.output, markers.output)
     const interactiveBeforeScreen = runtime.screen
     const interactiveActionRevision = runtime.terminalOutputRevision
@@ -1414,7 +1406,7 @@ async function runProof({
       },
       timeoutMs,
     )
-    await runtime.waitForHarnessTerminalReady(
+    await runtime.waitForReady(
       timeoutMs,
       interactiveActionRevision,
       interactiveBeforeScreen,
@@ -1451,14 +1443,14 @@ async function runProof({
       timeoutMs,
       'interactive input',
     )
-    await runtime.waitForHarnessTerminalReady(timeoutMs, inputActionRevision, inputBeforeScreen)
+    await runtime.waitForReady(timeoutMs, inputActionRevision, inputBeforeScreen)
 
     runtime.write(detach)
     await proveTuiReturned(runtime, timeoutMs, 'native interactive detach')
     const attachOutputRevision = runtime.terminalOutputRevision
     const attachBeforeScreen = runtime.screen
     await submitBraidCommand(runtime, attach, timeoutMs)
-    await runtime.waitForHarnessTerminalReady(timeoutMs, attachOutputRevision, attachBeforeScreen)
+    await runtime.waitForReady(timeoutMs, attachOutputRevision, attachBeforeScreen)
     const resizeOutputRevision = runtime.terminalOutputRevision
     runtime.resize(100, 30)
     await runtime.waitForTerminalQuiescence(timeoutMs, resizeOutputRevision)
@@ -1496,7 +1488,7 @@ async function runProof({
       timeoutMs,
       'interactive reconnect input',
     )
-    await runtime.waitForHarnessTerminalReady(timeoutMs, reconnectActionRevision, reconnectBeforeScreen)
+    await runtime.waitForReady(timeoutMs, reconnectActionRevision, reconnectBeforeScreen)
     runtime.write(detach)
     await proveTuiReturned(runtime, timeoutMs, 'native interactive reconnect detach')
     const exit = await runtime.close()
@@ -1586,7 +1578,7 @@ async function runProof({
     proofError = new AggregateError(failures, 'Braid native interactive flow failed')
   }
   if (castPath !== undefined && runtime !== undefined)
-    proofError = await writeRecording(runtime, castPath, values, proofError)
+    proofError = await writeRecording(runtime, castPath, values.credentialValue, proofError)
 
   let cleanup
   let cleanupError
@@ -1876,22 +1868,23 @@ export async function runInteractiveProof({
   }
 }
 
-async function jsonFile(path) {
-  return path === undefined ? undefined : JSON.parse(await readFile(path, 'utf8'))
-}
-
 export async function main(argv = process.argv, environment = process.env) {
   const outputPath = argument('output', argv)
+  // --profile is an AgentProfile file; --provider-options is a tangle-sandbox connection's
+  // providerOptions, such as the retained recipe in docs/05-profiles-and-connections.md.
+  const jsonFile = async (name) =>
+    argument(name, argv) && JSON.parse(await readFile(argument(name, argv), 'utf8'))
   try {
     if (outputPath) await rm(outputPath, { force: true })
-    // --profile is an AgentProfile file; --provider-options is a tangle-sandbox connection's
-    // providerOptions, such as the retained recipe in docs/05-profiles-and-connections.md.
-    const profile = await jsonFile(argument('profile', argv))
+    const profile = (await jsonFile('profile')) || undefined
+    const runner = argument('runner', argv) ?? profile?.harness ?? 'pi'
+    if (profile !== undefined)
+      assert.equal(profile.harness, runner, 'LIVE-08 --profile harness must match --runner')
     const result = await runProof({
       environment,
-      runner: argument('runner', argv) ?? profile?.harness ?? 'pi',
+      runner,
       profile,
-      providerOptions: await jsonFile(argument('provider-options', argv)),
+      providerOptions: (await jsonFile('provider-options')) || undefined,
       castPath: argument('cast', argv),
     })
     if (outputPath) await writeFile(outputPath, `${safeJson(result, environment)}\n`)
