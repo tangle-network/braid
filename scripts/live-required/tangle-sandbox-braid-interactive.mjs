@@ -40,6 +40,7 @@ import { DEFAULT_TANGLE_ROUTER_MODEL, releaseProofRouting } from './model-defaul
 import {
   assertProviderObservationDeadline,
   createProviderObservationDeadline,
+  listAllSandboxes,
   waitForProviderObservation,
 } from './provider-observation.mjs'
 import { runCloudInteractionProof } from './tangle-sandbox-braid-cloud-interaction.mjs'
@@ -72,7 +73,6 @@ const repository = resolve(dirname(scriptPath), '../..')
 const DEFAULT_TIMEOUT_MS = 180_000
 const DEFAULT_IDLE_TTL_SECONDS = 1_800
 const DEFAULT_PROCESS_EXIT_TIMEOUT_MS = 10_000
-const SANDBOX_LIST_PAGE_SIZE = 100
 const DETACH = '\u001d'
 const RUN_STATUS_AFTER_STOP = new Set(['aborted', 'cancelled'])
 const CANCELLABLE_INTERACTIVE_RUN_STATUSES = new Set([
@@ -384,34 +384,10 @@ function sameNameInteractiveResources(resources, expectedName, predicate) {
 
 async function listAllSandboxResources(
   client,
-  {
-    deadline: providedDeadline,
-    timeoutMs = DEFAULT_TIMEOUT_MS,
-    label = 'Sandbox resource list',
-  } = {},
+  { deadline: providedDeadline, timeoutMs = DEFAULT_TIMEOUT_MS, label = 'Sandbox resource list' } = {},
 ) {
   const deadline = providedDeadline ?? createProviderObservationDeadline(label, timeoutMs)
-  const resources = []
-  const seenIds = new Set()
-  let offset = 0
-  for (;;) {
-    const page = await waitForProviderObservation(
-      `${label} page ${offset}`,
-      () => client.list({ limit: SANDBOX_LIST_PAGE_SIZE, offset }),
-      timeoutMs,
-      { deadline },
-    )
-    if (!Array.isArray(page)) throw new Error('Sandbox list returned an invalid page')
-    for (const resource of page) {
-      if (typeof resource?.id === 'string') {
-        if (seenIds.has(resource.id)) throw new Error(`Sandbox list repeated ${resource.id}`)
-        seenIds.add(resource.id)
-      }
-      resources.push(resource)
-    }
-    if (page.length < SANDBOX_LIST_PAGE_SIZE) return resources
-    offset += page.length
-  }
+  return waitForProviderObservation(label, () => listAllSandboxes(client), timeoutMs, { deadline })
 }
 
 async function observeInteractiveResource(
