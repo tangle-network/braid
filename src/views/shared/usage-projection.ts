@@ -294,11 +294,11 @@ function totalsForWorkers(workers: readonly BraidState['workers'][number][]): Us
     tokenStatus:
       totals.tokenStatus === 'unknown' && usage.some((row) => row.tokenStatus !== 'unknown')
         ? 'observed-floor'
-        : totals.tokenStatus,
+        : (totals.tokenStatus ?? 'unknown'),
     costStatus:
       totals.costStatus === 'unknown' && totals.costUsd !== undefined
         ? 'observed-floor'
-        : totals.costStatus,
+        : (totals.costStatus ?? 'unknown'),
   }
 }
 
