@@ -49,6 +49,6 @@ function redactedSpan(span: ToolSpan): ToolSpan {
     ...(span.error === undefined ? {} : { error: safeAnalysisText(span.error) }),
     ...(span.attributes === undefined
       ? {}
-      : { attributes: safeAnalysisValue(span.attributes) as ToolSpan['attributes'] }),
+      : { attributes: safeAnalysisValue(span.attributes) as Record<string, unknown> }),
   }
 }

@@ -190,7 +190,7 @@ async function rpc(
       },
     },
   )
-  return responses.filter((response) => response.requestId !== 'req-0')
+  return responses.filter((response) => !('requestId' in response) || response.requestId !== 'req-0')
 }
 
 function result(responses: readonly BraidResponse[]) {
