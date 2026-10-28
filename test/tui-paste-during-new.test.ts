@@ -101,7 +101,13 @@ test('a prompt pasted while /new is still opening is admitted and the frame keep
 // composer, and branch B's pasted prompt went into A's form. The request can also land while
 // `/new` is still opening, before the screen's conversation changes. Focusing the asking run from
 // the activity browser, as LIVE-07 does, must leave its form open or waiting, never lost.
-for (const timing of ['after /new', 'while /new opens', 'focus from activity'] as const) {
+const TIMINGS = [
+  'after /new',
+  'while /new opens',
+  'focus from activity',
+  'under the activity browser',
+] as const
+for (const timing of TIMINGS) {
   test(`another conversation's request waits in the status line (${timing})`, async () => {
     const held = heldFixtureExecution()
     let ask!: () => void
@@ -172,6 +178,22 @@ for (const timing of ['after /new', 'while /new opens', 'focus from activity'] a
       await waitUntil('run A start', () => app.state().activeRuns.length === 1, screen)
       const form = () => /Allow tool "bash"\?/u.test(screen().join('\n'))
       const waiting = () => /permission waiting/u.test(screen().join('\n'))
+      if (timing === 'under the activity browser') {
+        // LIVE-07's Ctrl+C for run B landed in B's form that had just opened, and denied bash.
+        terminal.sendInput('\u001bOQ')
+        await waitUntil(
+          'the activity browser',
+          () => /activity/iu.test(screen().join('\n')),
+          screen,
+        )
+        ask()
+        await waitUntil('the request', () => app.state().runs[0]?.interactions.length === 1, screen)
+        await new Promise((resolve) => setTimeout(resolve, 500))
+        assert.ok(!form(), `the form took the activity browser:\n${screen().join('\n')}`)
+        terminal.sendInput('\u001b')
+        await waitUntil('the form after the browser closes', form, screen)
+        return
+      }
       const first = app.state().conversationId
       for (const character of '/new B conversation') terminal.sendInput(character)
       terminal.sendInput('\r')
