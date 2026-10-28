@@ -286,9 +286,10 @@ export class BraidTerminalApp {
     this.#tui.requestRender()
   }
 
-  /** A focused composer with an unsent draft, or one typed into within the last 1.5 s. */
+  /** A switch still opening, or a focused composer with a draft or a keystroke in the last 1.5 s. */
   #composerBusy(): boolean {
     const editor = this.#shell.editor
+    if (this.#commands.switching) return true
     if (!editor.focused) return false
     return editor.getText().length > 0 || Date.now() - this.#lastComposerEditAt < 1_500
   }

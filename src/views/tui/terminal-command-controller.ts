@@ -70,9 +70,19 @@ export class TerminalCommandController {
       .catch(() => undefined)
   }
 
+  /** True while /new or another switch is still opening its target. */
+  switching = false
+
   dispatchCommand(command: CommandName, args: readonly string[]): void {
     const dispatched = this.#dispatchCommandValue(command, args)
-    if (TARGET_COMMANDS.has(command)) this.#targetChange = dispatched.catch(() => undefined)
+    if (!TARGET_COMMANDS.has(command)) return
+    this.switching = true
+    const settled: Promise<void> = dispatched
+      .catch(() => undefined)
+      .then(() => {
+        if (this.#targetChange === settled) this.switching = false
+      })
+    this.#targetChange = settled
   }
 
   async #submitValue(rawText: string): Promise<void> {

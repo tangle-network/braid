@@ -64,7 +64,7 @@ export class TerminalInteractionController {
   }
 
   sync(view: BraidViewModel): void {
-    const interaction = view.interactions[0]
+    const interaction = focused(view)
     const interactionKey = interaction ? keyFor(interaction) : undefined
     if (!interaction) {
       this.#clearDeferred()
@@ -90,28 +90,28 @@ export class TerminalInteractionController {
       // LIVE-07 lost 547 typed characters to a form that opened mid-prompt: a request that arrives
       // while the user is composing waits in the status line until they ask for it or go idle.
       // A request from another conversation waits too; it took branch B's prompt right after /new.
-      const owner = view.runs.find((run) => run.id === interaction.runId)?.conversationId
-      if (this.#composerBusy() || (owner ?? view.conversationId) !== view.conversationId) {
-        this.#defer(interaction)
-      } else this.#openInteraction(interaction)
+      const elsewhere = foreign(view, interaction)
+      if (this.#composerBusy() || elsewhere) this.#defer(interaction, !elsewhere)
+      else this.#openInteraction(interaction)
     }
   }
 
   /** Opens the interaction held back from the composer; false when none is waiting. */
   openDeferred(): boolean {
-    const interaction = this.#currentView().interactions[0]
+    const interaction = focused(this.#currentView())
     if (this.#open || this.#deferredKey === undefined || interaction === undefined) return false
     this.#openInteraction(interaction)
     return true
   }
 
-  #defer(interaction: InteractionView): void {
+  /** Rechecks while the composer is busy; a switch back to the request's conversation re-syncs. */
+  #defer(interaction: InteractionView, recheck: boolean): void {
     const notice = `${interaction.kind} waiting · alt+p`
     if (this.#deferredKey !== keyFor(interaction)) {
       this.#deferredKey = keyFor(interaction)
       this.#setDeferred(notice)
     }
-    if (this.#recheck !== undefined) return
+    if (!recheck || this.#recheck !== undefined) return
     this.#recheck = setTimeout(() => {
       this.#recheck = undefined
       if (this.#isStopped()) return
@@ -152,7 +152,7 @@ export class TerminalInteractionController {
           response,
         }).then((result) => {
           if (this.#isStopped()) return
-          const current = this.#currentView().interactions[0]
+          const current = focused(this.#currentView())
           if (result.kind !== 'accepted' && current && keyFor(current) === pendingKey) {
             this.#pendingInteractionKey = undefined
             this.#openInteraction(current)
@@ -185,7 +185,7 @@ export class TerminalInteractionController {
     this.#pendingInteractionKey = undefined
     this.#shell = undefined
     this.#stopRefresh()
-    const current = this.#currentView().interactions[0]
+    const current = focused(this.#currentView())
     if (current !== undefined && keyFor(current) === keyFor(previous))
       this.#openInteraction(current)
   }
@@ -221,4 +221,16 @@ export class TerminalInteractionController {
 
 function keyFor(interaction: InteractionView): string {
   return `${interaction.runId}:${interaction.interactionId}`
+}
+
+/** A request for the conversation on screen comes first; another conversation's waits. */
+function focused(view: BraidViewModel): InteractionView | undefined {
+  return (
+    view.interactions.find((interaction) => !foreign(view, interaction)) ?? view.interactions[0]
+  )
+}
+
+function foreign(view: BraidViewModel, interaction: InteractionView): boolean {
+  const owner = view.runs.find((run) => run.id === interaction.runId)?.conversationId
+  return owner !== undefined && owner !== view.conversationId
 }
