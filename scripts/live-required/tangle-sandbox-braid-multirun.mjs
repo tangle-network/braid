@@ -736,7 +736,7 @@ export function assertFrameHasConcurrentRuns(frame, runIds) {
     const { stateRun } = runFromFrame(frame, runId)
     assert.ok(isActive(stateRun.status), `run ${runId} is not active`)
     // The recorded state omits provider sequences; a run streamed once it has events or transcript.
-    const streamed = eventIdsForRun(frame, runId).length > 0 || assistantTranscriptForRun(frame, runId)
+    const streamed = eventIdsForRun(frame, runId).length || assistantTranscriptForRun(frame, runId)
     assert.ok(streamed, `run ${runId} has no streamed events`)
   }
   const activeOwnership = frame.state?.activeRuns?.filter((entry) => runIds.includes(entry.runId))
