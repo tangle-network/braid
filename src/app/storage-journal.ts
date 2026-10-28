@@ -293,7 +293,8 @@ export class StorageJournal implements JournalPort, EffectStoragePort {
         this.#storageId = record.storageId
         this.#runSequences.set(record.runId, record.sequence)
         if (record.terminal) this.#terminalRuns.add(record.runId)
-        if (record.terminal || record.kind === 'run.detached') this.runOwnership?.release(record.runId)
+        if (record.terminal || record.kind === 'run.detached')
+          this.runOwnership?.release(record.runId)
         if (this.#ownEvents.delete(record.eventId)) continue
         const [envelope] = envelopesFromStored([record])
         if (envelope === undefined) continue

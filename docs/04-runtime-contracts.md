@@ -848,3 +848,10 @@ the foreground receipt, not the provider send. A late `accepted` settles the dur
 steer uncertainty never changes run status. Closing the control process drains late settlement
 before closing storage. Repeating the same operation identifier returns the committed receipt
 and Runtime journals exactly one `agent.turn`.
+
+Attached-TUI steering remains unavailable in the current live provider flow.
+The terminal's active control lease refuses a different control holder; Runtime then reports a
+non-advancing generation. [Runtime issue 2230](https://github.com/tangle-network/agent-runtime/issues/2230)
+records the exact LIVE-08 reproduction and required coordination proof. Braid does not share or
+replace provider authority through a second local protocol. A passing port integration test does
+not satisfy attached-TUI provider acceptance.

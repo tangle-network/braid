@@ -137,7 +137,10 @@ function effectResult(value: ControlAcknowledgement) {
   if (value.outcome === 'already-applied')
     return { status: 'terminal' as const, detail: 'CONTROL_ALREADY_APPLIED' }
   if (value.outcome === 'rejected') return { status: 'failed' as const, detail: 'CONTROL_REJECTED' }
-  return { status: 'unknown' as const, detail: safeDiagnostic(value.detail, 'CONTROL_OUTCOME_UNKNOWN') }
+  return {
+    status: 'unknown' as const,
+    detail: safeDiagnostic(value.detail, 'CONTROL_OUTCOME_UNKNOWN'),
+  }
 }
 
 function acknowledgementFromEffect(

@@ -103,10 +103,13 @@ Reconnect never reuses a stale local control result as a new effect.
 Steer appears only when the runtime reports steer support for that worker.
 
 A retained interactive Braid run steers through Runtime `sendPrompt` from any process; each accepted steer is one turn on the `agent-runtime-top` canvas ([runtime contracts](../04-runtime-contracts.md)).
-The observing TUI retains its stream while another process reads and steers the same run.
+The observing TUI retains its stream while another process reads and requests steering for the same run.
 Startup and implicit shutdown leave another live process's observations alone. Journal transitions
 synchronize foreign receipts before the owner's next event. Steer has a separate acknowledgement
 deadline; a late acceptance settles its receipt without aborting delivery or changing run status.
+The current live provider refuses steering from a different holder while a terminal lease is
+active; [Runtime issue 2230](https://github.com/tangle-network/agent-runtime/issues/2230) blocks the
+attached-TUI acceptance case. A request or local integration result is not proof of delivery.
 
 Cancel appears only when the runtime reports cancellation support.
 

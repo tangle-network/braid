@@ -24,8 +24,9 @@ export async function steerTwiceThroughBraid(packed, config, identity) {
       const run = runFromState(state, params.runId)
       return {
         outcome,
-        acknowledgement: initialized.session.responses.filter((entry) =>
-          entry.type === 'event' && JSON.stringify(entry).includes(operationId)).at(-1),
+        acknowledgement: initialized.session.responses
+          .filter((entry) => entry.type === 'event' && JSON.stringify(entry).includes(operationId))
+          .at(-1),
         elapsedMs: Date.now() - startedAt,
         initialStatus: runFromState(initialized.state.state, params.runId)?.status,
         run: { status: run?.status, controls: run?.controls, lastError: run?.lastError },

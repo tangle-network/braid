@@ -108,13 +108,19 @@ process.on(
         await app.shutdown({ operationId: input.operationId }).completion
         await app.close()
       } else if (input.command === 'conditional') {
-      const at = new Date().toISOString()
-      await app.configuration.requestOperation({
-        expectedRevision: app.state().revision,
-        operation: { id: createOperationId(input.operationId), kind: 'connection-change',
-          requestDigest: parseDigestValue(canonicalDigest(input)), status: 'pending', createdAt: at, updatedAt: at },
-      })
-    } else if (input.command === 'state') result = app.state()
+        const at = new Date().toISOString()
+        await app.configuration.requestOperation({
+          expectedRevision: app.state().revision,
+          operation: {
+            id: createOperationId(input.operationId),
+            kind: 'connection-change',
+            requestDigest: parseDigestValue(canonicalDigest(input)),
+            status: 'pending',
+            createdAt: at,
+            updatedAt: at,
+          },
+        })
+      } else if (input.command === 'state') result = app.state()
       else throw new Error(`Unknown command: ${input.command}`)
       await app.whenDurable()
       process.send?.({ id: input.id, result, state: app.state(), events: app.events() })
