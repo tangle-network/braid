@@ -65,7 +65,9 @@ export class TerminalCommandController {
 
   /** Submissions run in order, so a message typed after /new never reads the old target. */
   submit(rawText: string): void {
-    this.#submissions = this.#submissions.then(() => this.#submitValue(rawText)).catch(() => undefined)
+    this.#submissions = this.#submissions
+      .then(() => this.#submitValue(rawText))
+      .catch(() => undefined)
   }
 
   dispatchCommand(command: CommandName, args: readonly string[]): void {

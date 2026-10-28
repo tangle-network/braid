@@ -77,9 +77,10 @@ test('a prompt pasted while /new is still opening is admitted and the frame keep
     const drawn = screen.filter((line) => line.trim().length > 0)
     assert.ok(drawn.length > 3, `frame drew only:\n${drawn.join('\n')}`)
     assert.ok(
-      !drawn.some((line) => line.includes('Write the marker file and report it.')),
-      `submitted prompt stayed in the composer:\n${drawn.join('\n')}`,
+      !drawn.some((line) => /queued \d+\./u.test(line)),
+      `the prompt was queued behind the old run:\n${drawn.join('\n')}`,
     )
+    assert.equal(app.state().queuedInputs.length, 0)
   } finally {
     release()
     view.stop()
