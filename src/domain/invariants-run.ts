@@ -276,7 +276,8 @@ export function assertAnalysisRecord(record: AnalysisRecord): void {
   if (record.source.runId !== undefined)
     assertEntityId('run', record.source.runId, 'analysis.source.runId')
   if (record.source.runtimeRun !== undefined) {
-    if (record.source.runId !== undefined) fail('analysis.source names both a Braid and a Runtime run')
+    if (record.source.runId !== undefined)
+      fail('analysis.source names both a Braid and a Runtime run')
     nonEmpty(record.source.runtimeRun.runId, 'analysis.source.runtimeRun.runId')
     nonEmpty(record.source.runtimeRun.runDir, 'analysis.source.runtimeRun.runDir')
   }

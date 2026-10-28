@@ -336,7 +336,8 @@ export function freezeAnalysisSource(input: FreezeAnalysisSourceInput): FrozenAn
   if (conversationId === null || branchId === null) {
     throw new AnalysisSourceError('Analysis requires an open conversation and branch')
   }
-  if (input.runtime !== undefined) return freezeRuntimeSource(conversationId, branchId, input.runtime)
+  if (input.runtime !== undefined)
+    return freezeRuntimeSource(conversationId, branchId, input.runtime)
 
   const run = sourceRun(input.state, input.runId)
   if (run !== undefined) {
@@ -391,7 +392,10 @@ function freezeRuntimeSource(
       complete: runtime.settled,
     },
     { runtime: cloneAndFreeze(runtime), events: [], messages: [], messageParts: [] },
-    { id: `runtime-${runtime.runId}`, reference: `runtime-run://${encodeURIComponent(runtime.runId)}` },
+    {
+      id: `runtime-${runtime.runId}`,
+      reference: `runtime-run://${encodeURIComponent(runtime.runId)}`,
+    },
   )
 }
 

@@ -167,7 +167,10 @@ export function resolveEvidenceRef(
     const spanId = decodePart(match[2] ?? '', 'span id')
     if (evidence.runtime !== undefined) {
       const span = runtimeSpan(evidence, traceId, spanId)
-      if (ref.excerpt !== undefined && !scalarStrings(span).some((v) => v.includes(ref.excerpt ?? ''))) {
+      if (
+        ref.excerpt !== undefined &&
+        !scalarStrings(span).some((v) => v.includes(ref.excerpt ?? ''))
+      ) {
         throw new AnalysisCitationError(`Citation excerpt does not occur in Runtime span ${spanId}`)
       }
       return {
