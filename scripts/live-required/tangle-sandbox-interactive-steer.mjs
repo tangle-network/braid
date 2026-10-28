@@ -2,7 +2,8 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { initializedSession, rpcRequest } from './headless.mjs'
+import { runFromState } from '../live-bridge/protocol.mjs'
+import { initializedSession, rpcRequest, rpcState } from './headless.mjs'
 import { closeBraidWithProof } from './tangle-sandbox-braid-stress.mjs'
 
 /**
@@ -16,18 +17,29 @@ export async function steerTwiceThroughBraid(packed, config, identity) {
   const steerOnce = async () => {
     const initialized = await initializedSession(packed.binary, config)
     try {
-      return (await rpcRequest(initialized.session, 'steer', params, operationId)).outcome
+      const startedAt = Date.now()
+      const { outcome } = await rpcRequest(initialized.session, 'steer', params, operationId)
+      // The ack carries only the outcome; the steering process's run row names the rest.
+      const { state } = await rpcState(initialized.session)
+      const run = runFromState(state, params.runId)
+      return {
+        outcome,
+        elapsedMs: Date.now() - startedAt,
+        initialStatus: runFromState(initialized.state.state, params.runId)?.status,
+        run: { status: run?.status, controls: run?.controls, lastError: run?.lastError },
+      }
     } finally {
       await closeBraidWithProof(initialized.session, 'Braid interactive steer RPC process')
     }
   }
-  const outcomes = [await steerOnce(), await steerOnce()]
-  assert.equal(outcomes[0], 'accepted', 'the first steer was not accepted')
+  const attempts = [await steerOnce(), await steerOnce()]
+  const evidence = JSON.stringify(attempts)
+  assert.equal(attempts[0].outcome, 'accepted', `the first steer was not accepted: ${evidence}`)
   assert.ok(
-    outcomes[1] === 'replayed' || outcomes[1] === 'already-applied',
-    `the repeated steer was ${outcomes[1]}, not a replay`,
+    attempts[1].outcome === 'replayed' || attempts[1].outcome === 'already-applied',
+    `the repeated steer was not a replay: ${evidence}`,
   )
-  return { operationId, outcomes }
+  return { operationId, attempts }
 }
 
 /** Count Runtime's `agent.turn` records per steer operation in the run's observer journal. */
