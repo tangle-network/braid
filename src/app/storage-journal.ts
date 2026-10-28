@@ -261,7 +261,8 @@ export class StorageJournal implements JournalPort, EffectStoragePort {
         }
         this.#runSequences.set(runId, sequence)
         if (record.terminal === true) this.#terminalRuns.add(runId)
-        if (record.terminal || envelope.event.kind === 'run.detached') this.runOwnership?.release(runId)
+        if (record.terminal || envelope.event.kind === 'run.detached')
+          this.runOwnership?.release(runId)
         this.#ownEvents.add(eventId)
         this.#events.push({ ...envelope, eventId })
         if (this.#events.length > MAX_IN_MEMORY_EVENTS) this.#events.shift()

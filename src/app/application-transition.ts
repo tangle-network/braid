@@ -123,14 +123,18 @@ function commitEventsInternal(
   const task = predecessor.then(async () => {
     const failure = host.storageFailure()
     if (!recovery && failure !== undefined) throw failure
-    await commitApplicationEventsAsync({
-      state: host.state(),
-      journal: host.journal,
-      clock: host.clock,
-      providerEventKeys: host.providerEventKeys,
-      publishState: host.setState,
-      subscribers: host.subscribers,
-    }, events, (state) => assertExpectedRevision(state, expectedRevision))
+    await commitApplicationEventsAsync(
+      {
+        state: host.state(),
+        journal: host.journal,
+        clock: host.clock,
+        providerEventKeys: host.providerEventKeys,
+        publishState: host.setState,
+        subscribers: host.subscribers,
+      },
+      events,
+      (state) => assertExpectedRevision(state, expectedRevision),
+    )
   })
   const next = task.catch((error: unknown) => {
     if (!isRevisionError(error)) host.markStorageFailure(error)

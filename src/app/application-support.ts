@@ -525,7 +525,9 @@ export function commitApplicationEvent(input: CommitApplicationEventInput): Brai
   return nextState
 }
 
-export function commitApplicationEventAsync(input: CommitApplicationEventInput): Promise<BraidState> {
+export function commitApplicationEventAsync(
+  input: CommitApplicationEventInput,
+): Promise<BraidState> {
   return commitApplicationEventsAsync(input, [input.event])
 }
 
@@ -543,10 +545,13 @@ export async function commitApplicationEventsAsync(
     }
     if (foreign.length > 0) input.publishState(state)
     validate(state)
-    for (const event of events) state = await commitApplicationEventUnlocked({ ...input, state, event })
+    for (const event of events)
+      state = await commitApplicationEventUnlocked({ ...input, state, event })
     return state
   }
-  return input.journal.withTransition === undefined ? commit([]) : input.journal.withTransition(commit)
+  return input.journal.withTransition === undefined
+    ? commit([])
+    : input.journal.withTransition(commit)
 }
 
 async function commitApplicationEventUnlocked(
@@ -592,7 +597,3 @@ export function isEffectStorage(value: unknown): value is EffectStoragePort {
     typeof candidate.history === 'function'
   )
 }
-
-
-
-

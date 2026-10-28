@@ -88,7 +88,8 @@ async function dispatchControl(
     const { control, recovery, ...fields } = request
     const command = { ...fields, ...recovery, signal }
     if (control === 'cancel') {
-      if (!execution.cancelRun) return unknown(request.operationId, 'CONTROL_CANCELLATION_UNCONFIRMED')
+      if (!execution.cancelRun)
+        return unknown(request.operationId, 'CONTROL_CANCELLATION_UNCONFIRMED')
       return normalize(request.operationId, await execution.cancelRun(command))
     }
     if (control === 'steer') {

@@ -15,6 +15,7 @@ const profile = defineAgentProfile({
   model: { default: 'anthropic/claude-sonnet-4-5', provider: 'anthropic' },
 })
 const provider = networkInteractiveProvider(process.env.STEER_TEST_ENDPOINT ?? '')
+const broker = new NativeInteractiveRunBroker()
 const execution = new TangleRetainedInteractiveExecutionPort({
   resolve: async () =>
     ({
@@ -39,7 +40,7 @@ const execution = new TangleRetainedInteractiveExecutionPort({
         }),
       },
     }) as unknown as PreparedTangleRetainedConnection,
-  broker: new NativeInteractiveRunBroker(),
+  broker,
   journalRoot: join(root, 'runtime-journal'),
 })
 const { app } = await createDurableBraidApplication({
@@ -48,7 +49,7 @@ const { app } = await createDurableBraidApplication({
   profile,
   execution,
   credentialStore: new FileCredentialStore(join(root, 'credentials')),
-  cancelTimeoutMs: 30,
+  cancelTimeoutMs: Number(process.env.STEER_TEST_TIMEOUT ?? 5_000) < 1_000 ? 30 : 5_000,
   ...{ steerTimeoutMs: Number(process.env.STEER_TEST_TIMEOUT ?? 5_000) },
 })
 await app.whenDurable()
@@ -93,10 +94,10 @@ process.on(
         await receipt.completion
         result = { acknowledgement: receipt.acknowledgement }
       } else if (input.command === 'reconnect') {
-        await new Promise<void>((resolve, reject) => {
-          void app.reconnectRun({ ...input, onAttached: resolve }).catch(reject)
-        })
-      } else if (input.command === 'shutdown') {
+      const completion = app.reconnectRun(input)
+      await Promise.race([broker.waitForHandle(input.runId), completion.then(() => { throw new Error('Reconnect ended before handle publication') })])
+      void completion.catch(() => undefined)
+    } else if (input.command === 'shutdown') {
         await app.shutdown({ operationId: input.operationId }).completion
         await app.close()
       } else if (input.command === 'state') result = app.state()

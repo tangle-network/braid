@@ -171,15 +171,7 @@ async function control(
           completion: previous.completion,
         }
       const reconciled = await context.executeControl(request)
-      const durable = context.commitAndWait({
-        kind: 'run.control.acknowledged',
-        runId: request.runId,
-        operationId: request.operationId,
-        control: controlKind,
-        outcome: reconciled.outcome,
-        ...(reconciled.detail === undefined ? {} : { detail: reconciled.detail }),
-      })
-      if (durable !== undefined) await durable
+      await persistControlAcknowledgement(context, request, controlKind, reconciled)
       context.ledger.setControl(request.operationId, {
         ...previous,
         acknowledgement: Promise.resolve(reconciled),
@@ -195,15 +187,7 @@ async function control(
         completion: Promise.resolve(context.currentState()),
       }
     }
-    return {
-      operationId: request.operationId,
-      runId: request.runId,
-      control: controlKind,
-      replayed: true,
-      acknowledgement,
-      status: context.findRun(request.runId).status,
-      completion: previous.completion,
-    }
+    return existingControlReceipt(context, request.operationId, controlKind, previous)
   }
 
   if (controlKind === 'cancel') {
@@ -280,8 +264,7 @@ async function control(
         context.ledger.setCancelStatus(request.runId, cancelStatus ?? 'cancelled')
       }
     } else {
-      const durable = context.commitAndWait(requested)
-      if (durable !== undefined) await durable
+      await context.commitAndWait(requested)
       if (controlKind === 'detach') context.ledger.markDetached(request.runId)
     }
   } catch (error) {
@@ -320,15 +303,7 @@ async function control(
       ack = { operationId: request.operationId, outcome: 'unknown', detail: 'CONTROL_UNKNOWN' }
     }
     resolveAcknowledgement(ack)
-    const acknowledged = context.commitAndWait({
-      kind: 'run.control.acknowledged',
-      runId: request.runId,
-      operationId: request.operationId,
-      control: controlKind,
-      outcome: ack.outcome,
-      ...(ack.detail === undefined ? {} : { detail: ack.detail }),
-    })
-    if (acknowledged !== undefined) await acknowledged
+    await persistControlAcknowledgement(context, request, controlKind, ack)
     if (ack.outcome === 'accepted' || ack.outcome === 'already-applied') {
       if (controlKind === 'cancel') {
         await applyAcceptedCancellation(context, request, run, cancelStatus ?? 'cancelled', ack)
@@ -537,8 +512,7 @@ async function commitControlRequestBatch(
     return
   }
   for (const event of events) {
-    const durable = context.commitAndWait(event)
-    if (durable !== undefined) await durable
+    await context.commitAndWait(event)
   }
 }
 
@@ -548,7 +522,7 @@ async function persistControlAcknowledgement(
   control: 'cancel' | 'steer' | 'detach',
   acknowledgement: ControlAcknowledgement,
 ): Promise<void> {
-  const durable = context.commitAndWait({
+  await context.commitAndWait({
     kind: 'run.control.acknowledged',
     runId: request.runId,
     operationId: request.operationId,
@@ -556,7 +530,6 @@ async function persistControlAcknowledgement(
     outcome: acknowledgement.outcome,
     ...(acknowledgement.detail === undefined ? {} : { detail: acknowledgement.detail }),
   })
-  if (durable !== undefined) await durable
 }
 
 async function existingControlReceipt(

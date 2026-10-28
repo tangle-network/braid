@@ -165,7 +165,7 @@ test('live owner survives a second process steer, replay, duplicate event, disco
     })
     assert.equal(duplicate.state.runs[0]?.lastProviderSequence, 1)
     const cancelled = await recovered.request('cancel', { runId: run.id })
-    assert.equal(cancelled.result?.acknowledgement?.outcome, 'accepted')
+    assert.equal(cancelled.result?.acknowledgement?.outcome, 'accepted', JSON.stringify({ result: cancelled.result, run: cancelled.state.runs[0], calls: server.calls }))
     assert.equal(cancelled.state.runs[0]?.status, 'cancelled')
     assert.equal((await turns(root, run.providerSessionId, params.operationId)).length, 1)
     assert.equal(server.fixture.creates, 1, 'recovery creates no replacement environment')

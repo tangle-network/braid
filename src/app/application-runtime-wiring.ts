@@ -7,10 +7,7 @@ import type { PortViews } from './application-port-builder.js'
 import { buildApplicationPortRuntime } from './application-port-runtime.js'
 import type { ControlDispatchOptions, ControlEffectRequest } from './application-ports.js'
 import type { ApplicationJournal } from './application-support.js'
-import {
-  commitEventsAndWaitAtRevision,
-  type TransitionHost,
-} from './application-transition.js'
+import { commitEventsAndWaitAtRevision, type TransitionHost } from './application-transition.js'
 import type { AppSubscriber, SendInput, SendReceipt } from './application-types.js'
 import type { SerializedEffectCoordinator } from './effect-coordinator.js'
 import type { RunLedger } from './run-ledger.js'
