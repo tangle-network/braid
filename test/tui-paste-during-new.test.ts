@@ -10,10 +10,18 @@ import { VirtualTerminal } from './support/virtual-terminal.js'
 
 const PROMPT = `This turn is part of Braid's live release test. ${'Write the marker file and report it. '.repeat(20)}`
 
-async function waitUntil(condition: () => boolean, timeoutMs = 10_000): Promise<void> {
+async function waitUntil(
+  label: string,
+  condition: () => boolean,
+  screen: () => readonly string[],
+  timeoutMs = 10_000,
+): Promise<void> {
   const deadline = Date.now() + timeoutMs
   while (!condition()) {
-    if (Date.now() > deadline) throw new Error('condition was not met in time')
+    if (Date.now() > deadline) {
+      const drawn = screen().filter((line) => line.trim().length > 0)
+      throw new Error(`${label} did not happen in time; screen:\n${drawn.join('\n')}`)
+    }
     await new Promise((resolve) => setTimeout(resolve, 20))
   }
 }
@@ -43,12 +51,12 @@ test('a prompt pasted while /new is still opening is admitted and the frame keep
   try {
     await terminal.waitForRender()
     terminal.sendInput('run A\r')
-    await waitUntil(() => app.state().activeRuns.length === 1)
+    await waitUntil('run A start', () => app.state().activeRuns.length === 1, () => terminal.getViewport())
 
     terminal.sendInput('/new B conversation\r')
     terminal.sendInput(`\u001b[200~${PROMPT}\u001b[201~`)
     terminal.sendInput('\r')
-    await waitUntil(() => app.state().activeRuns.length === 2)
+    await waitUntil('run B admission', () => app.state().activeRuns.length === 2, () => terminal.getViewport(), 20_000)
     await terminal.waitForRender()
 
     const screen = terminal.getViewport()
