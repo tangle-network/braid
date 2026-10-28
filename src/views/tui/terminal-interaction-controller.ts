@@ -44,6 +44,8 @@ export class TerminalInteractionController {
   #refresh: ReturnType<typeof setInterval> | undefined
   #deferredKey: string | undefined
   #recheck: ReturnType<typeof setTimeout> | undefined
+  /** A form another overlay closed; it waits behind Alt+P instead of taking that overlay back. */
+  #dismissedKey: string | undefined
 
   constructor(options: TerminalInteractionControllerOptions) {
     this.#theme = options.theme
@@ -90,8 +92,8 @@ export class TerminalInteractionController {
       // LIVE-07 lost 547 typed characters to a form that opened mid-prompt: a request that arrives
       // while the user is composing waits in the status line until they ask for it or go idle.
       // A request from another conversation waits too; it took branch B's prompt right after /new.
-      const elsewhere = foreign(view, interaction)
-      if (this.#composerBusy() || elsewhere) this.#defer(interaction, !elsewhere)
+      const held = foreign(view, interaction) || interactionKey === this.#dismissedKey
+      if (this.#composerBusy() || held) this.#defer(interaction, !held)
       else this.#openInteraction(interaction)
     }
   }
@@ -131,6 +133,7 @@ export class TerminalInteractionController {
 
   #openInteraction(interaction: InteractionView): void {
     this.#clearDeferred()
+    this.#dismissedKey = undefined
     this.#open = true
     this.#interactionKey = keyFor(interaction)
     const shell = new InteractionShell(
@@ -174,6 +177,16 @@ export class TerminalInteractionController {
       maxHeight: '100%',
       margin: 0,
       fullScreenBelow: Number.MAX_SAFE_INTEGER,
+      // LIVE-07 opened the activity browser over B's form; the form vanished unanswered and unlisted.
+      onClose: () => {
+        if (this.#shell !== shell) return
+        this.#open = false
+        this.#interactionKey = undefined
+        this.#shell = undefined
+        this.#stopRefresh()
+        this.#dismissedKey = keyFor(interaction)
+        this.sync(this.#currentView())
+      },
     })
     this.#syncRefresh(interaction)
   }

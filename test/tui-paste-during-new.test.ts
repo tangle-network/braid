@@ -99,8 +99,9 @@ test('a prompt pasted while /new is still opening is admitted and the frame keep
 
 // LIVE-07 again: run A asked for a permission right after `/new`, its form opened over the empty
 // composer, and branch B's pasted prompt went into A's form. The request can also land while
-// `/new` is still opening, before the screen's conversation changes.
-for (const timing of ['after /new', 'while /new opens'] as const) {
+// `/new` is still opening, before the screen's conversation changes. A form another overlay covers
+// must wait in the status line too: the activity browser closed B's form and it expired unanswered.
+for (const timing of ['after /new', 'while /new opens', 'covered by F2'] as const) {
   test(`another conversation's request waits in the status line (${timing})`, async () => {
     const held = heldFixtureExecution()
     let ask!: () => void
@@ -169,6 +170,19 @@ for (const timing of ['after /new', 'while /new opens'] as const) {
       for (const character of 'run A') terminal.sendInput(character)
       terminal.sendInput('\r')
       await waitUntil('run A start', () => app.state().activeRuns.length === 1, screen)
+      const form = () => /Allow tool "bash"\?/u.test(screen().join('\n'))
+      const waiting = () => /permission waiting/u.test(screen().join('\n'))
+      if (timing === 'covered by F2') {
+        ask()
+        await waitUntil('the form', form, screen)
+        terminal.sendInput('\u001bOQ')
+        await waitUntil('the activity browser', () => !form(), screen)
+        terminal.sendInput('\u001b')
+        await waitUntil('the deferred request', waiting, screen)
+        terminal.sendInput('\u001bp')
+        await waitUntil('the reopened form', form, screen)
+        return
+      }
       const first = app.state().conversationId
       for (const character of '/new B conversation') terminal.sendInput(character)
       terminal.sendInput('\r')
@@ -176,11 +190,7 @@ for (const timing of ['after /new', 'while /new opens'] as const) {
         await waitUntil('/new', () => app.state().conversationId !== first, screen)
       } else await waitUntil('/new to start opening', () => creating, screen)
       ask()
-      await waitUntil(
-        'the deferred request',
-        () => /permission waiting/u.test(screen().join('\n')),
-        screen,
-      )
+      await waitUntil('the deferred request', waiting, screen)
       await waitUntil('/new', () => app.state().conversationId !== first, screen)
       terminal.sendInput(`\u001b[200~${PROMPT}\u001b[201~`)
       terminal.sendInput('\r')
@@ -189,11 +199,7 @@ for (const timing of ['after /new', 'while /new opens'] as const) {
       const runA = app.state().runs.find((run) => run.conversationId === first)
       assert.equal(runA?.interactions[0]?.status, 'pending')
       terminal.sendInput('\u001bp')
-      await waitUntil(
-        'the opened form',
-        () => /Allow tool "bash"\?/u.test(screen().join('\n')),
-        screen,
-      )
+      await waitUntil('the opened form', form, screen)
     } finally {
       held.release()
       view.stop()
