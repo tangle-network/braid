@@ -99,6 +99,9 @@ export class AnalysisPromotionService {
       conversationId: analysis.source.conversationId,
       branchId: analysis.source.branchId,
       ...(analysis.source.runId === undefined ? {} : { runId: analysis.source.runId }),
+      ...(analysis.source.runtimeRun === undefined
+        ? {}
+        : { runtimeRun: analysis.source.runtimeRun }),
       ...(analysis.source.throughMessageId === undefined
         ? {}
         : { throughMessageId: analysis.source.throughMessageId }),

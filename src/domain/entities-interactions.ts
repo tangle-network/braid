@@ -65,10 +65,17 @@ export interface TraceReference {
   readonly digest: Digest
 }
 
+/** A Runtime durable run in Runtime's own coordinates; it is never a Braid run. */
+export interface RuntimeRunReference {
+  readonly runId: string
+  readonly runDir: string
+}
+
 export interface FrozenAnalysisSource {
   readonly conversationId: ConversationId
   readonly branchId: BranchId
   readonly runId?: RunId
+  readonly runtimeRun?: RuntimeRunReference
   readonly throughMessageId?: MessageId
   readonly trace?: TraceReference
   readonly digest: Digest
@@ -79,6 +86,8 @@ export interface FrozenAnalysisSource {
 export interface AnalysisCitation {
   readonly id: CitationId
   readonly eventId?: EventId
+  /** A span in a frozen Runtime run trace, named by its Runtime node and span ids. */
+  readonly span?: { readonly traceId: string; readonly spanId: string }
   readonly messageId?: MessageId
   readonly partId?: MessagePartId
   readonly start?: number

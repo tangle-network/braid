@@ -91,8 +91,3 @@ export function managedAnalysisRunner(
     runtimeProbeArgs: [...environment, '-c', RUNTIME_PROBE],
   }
 }
-
-export const MANAGED_AGENT_EVAL_RPC_VERSION = AGENT_EVAL_RPC_VERSION
-export const MANAGED_ANALYSIS_PYTHON_VERSION = PYTHON_VERSION
-export const MANAGED_ANALYSIS_RUNTIME_PROBE = RUNTIME_PROBE
-export const MANAGED_ANALYSIS_RESOLUTION_CUTOFF = RESOLUTION_CUTOFF

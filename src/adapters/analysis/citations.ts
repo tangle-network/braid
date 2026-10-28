@@ -1,4 +1,5 @@
 import type { AnalystFinding, EvidenceRef } from '@tangle-network/agent-eval'
+import type { ToolSpan } from '@tangle-network/agent-eval/traces'
 import type { FrozenAnalysisEvent, FrozenAnalysisEvidence } from '../../app/analysis-types.js'
 import { AnalysisCitationError } from '../../app/analysis-types.js'
 import { canonicalDigest } from '../../domain/canonical.js'
@@ -43,6 +44,16 @@ function scalarStrings(value: unknown, seen = new Set<object>()): readonly strin
 
 function eventText(event: FrozenAnalysisEvent): string {
   return scalarStrings(event.event).join('\n')
+}
+
+function runtimeSpan(evidence: FrozenAnalysisEvidence, traceId: string, spanId: string): ToolSpan {
+  const span = evidence.runtime?.spans.find(
+    (candidate) => candidate.runId === traceId && candidate.spanId === spanId,
+  )
+  if (span === undefined) {
+    throw new AnalysisCitationError(`Citation references missing Runtime span ${traceId}/${spanId}`)
+  }
+  return span
 }
 
 function eventContainsExcerpt(event: FrozenAnalysisEvent, excerpt: string): boolean {
@@ -154,6 +165,20 @@ export function resolveEvidenceRef(
     if (match === null) throw new AnalysisCitationError(`Citation span URI is invalid: ${ref.uri}`)
     const traceId = decodePart(match[1] ?? '', 'trace id')
     const spanId = decodePart(match[2] ?? '', 'span id')
+    if (evidence.runtime !== undefined) {
+      const span = runtimeSpan(evidence, traceId, spanId)
+      if (
+        ref.excerpt !== undefined &&
+        !scalarStrings(span).some((v) => v.includes(ref.excerpt ?? ''))
+      ) {
+        throw new AnalysisCitationError(`Citation excerpt does not occur in Runtime span ${spanId}`)
+      }
+      return {
+        id: createCitationId(`citation-${canonicalDigest({ traceId, spanId, ref }).slice(0, 40)}`),
+        span: { traceId, spanId },
+        ...(ref.excerpt === undefined ? {} : { quote: ref.excerpt }),
+      }
+    }
     if (!traceMatches(evidence, traceId)) {
       throw new AnalysisCitationError(
         `Citation references trace ${traceId} outside the frozen source`,
@@ -209,20 +234,17 @@ export function mapAnalystFinding(
   }
 }
 
-export function mapAnalystFindings(
-  evidence: FrozenAnalysisEvidence,
-  bundle: AnalysisTraceBundle,
-  findings: readonly AnalystFinding[],
-): readonly AnalysisFinding[] {
-  return findings.map((finding) => mapAnalystFinding(evidence, bundle, finding))
-}
-
 /** Re-checks a persisted citation against the exact evidence that produced it. */
 export function validateAnalysisCitation(
   evidence: FrozenAnalysisEvidence,
   citation: AnalysisCitation,
 ): void {
   let text: string | undefined
+  if (citation.span !== undefined) {
+    text = scalarStrings(runtimeSpan(evidence, citation.span.traceId, citation.span.spanId)).join(
+      '\n',
+    )
+  }
   if (citation.eventId !== undefined) {
     text = eventText(sourceEvent(evidence, String(citation.eventId)))
   }

@@ -1,11 +1,13 @@
+import { isAbsolute } from 'node:path'
 import { canonicalDigest } from '../domain/canonical.js'
 import type {
+  FrozenAnalysisSource,
   MessagePartRecord,
   MessageRecord,
   MissingHistoryRange,
   RunRecord,
 } from '../domain/entities.js'
-import type { BraidEvent, BraidEventEnvelope, JournalEventEnvelope } from '../domain/events.js'
+import type { BraidEvent, BraidEventEnvelope } from '../domain/events.js'
 import { eventRunId } from '../domain/events.js'
 import {
   type BranchId,
@@ -26,15 +28,17 @@ import {
   type AnalysisSourceRequest,
   type FrozenAnalysisEvent,
   type FrozenAnalysisEvidence,
+  type RuntimeRunEvidence,
 } from './analysis-types.js'
 import { messagesVisibleOnBranch } from './conversation-context.js'
 
 export interface FreezeAnalysisSourceInput extends AnalysisSourceRequest {
   readonly state: BraidState
   readonly events: readonly BraidEventEnvelope[]
+  readonly runtime?: RuntimeRunEvidence
 }
 
-export type AnalysisSourceKind = 'run' | 'branch'
+export type AnalysisSourceKind = 'run' | 'branch' | 'runtime'
 
 export interface AnalysisSourceReference {
   readonly kind: AnalysisSourceKind
@@ -61,12 +65,18 @@ export async function loadFrozenAnalysisSources(
 ): Promise<readonly FrozenAnalysisEvidence[]> {
   const histories = await Promise.all(
     sources.map(async (source) => {
+      if (source.runtimeRun !== undefined) {
+        if (host.loadRuntimeRun === undefined) {
+          throw new AnalysisSourceError('This Braid host cannot read Runtime runs')
+        }
+        return { events: [], runtime: await host.loadRuntimeRun(source.runtimeRun) }
+      }
       const events = await loadAnalysisSourceEvents(host, source)
-      return events.filter((envelope) => envelope.sequence <= state.sequence)
+      return { events: events.filter((envelope) => envelope.sequence <= state.sequence) }
     }),
   )
   return sources.map((source, index) =>
-    freezeAnalysisSource({ ...source, state, events: histories[index] ?? [] }),
+    freezeAnalysisSource({ ...source, state, ...(histories[index] ?? { events: [] }) }),
   )
 }
 
@@ -84,7 +94,7 @@ export async function loadFrozenAnalysisSource(
 /** Parses the stable command token without resolving it against current state. */
 export function parseAnalysisSourceReference(value: string): AnalysisSourceReference | undefined {
   const normalized = value.trim()
-  for (const kind of ['run', 'branch'] as const) {
+  for (const kind of ['run', 'branch', 'runtime'] as const) {
     const prefix = `${kind}:`
     if (!normalized.startsWith(prefix)) continue
     const id = normalized.slice(prefix.length).trim()
@@ -93,17 +103,15 @@ export function parseAnalysisSourceReference(value: string): AnalysisSourceRefer
   return undefined
 }
 
-export function formatAnalysisSourceReference(reference: AnalysisSourceReference): string {
-  return `${reference.kind}:${reference.id}`
-}
-
-export function analysisSourceReference(source: {
-  readonly branchId: string
-  readonly runId?: string
-}): AnalysisSourceReference {
-  return source.runId === undefined
-    ? { kind: 'branch', id: source.branchId }
-    : { kind: 'run', id: source.runId }
+/** `runtime:<runId>@<runDir>` names a Runtime durable run; Braid verifies the pair when it reads. */
+function runtimeProjection(reference: AnalysisSourceReference): AnalysisSourceProjection {
+  const separator = reference.id.indexOf('@')
+  const runId = reference.id.slice(0, separator)
+  const runDir = reference.id.slice(separator + 1)
+  if (separator <= 0 || !isAbsolute(runDir)) {
+    throw new AnalysisSourceError('A Runtime source is runtime:<runId>@<absolute runDir>')
+  }
+  return { reference, request: { runtimeRun: { runId, runDir } } }
 }
 
 /** Resolves one command source and retains whether the user named a run or branch. */
@@ -125,6 +133,7 @@ export function projectAnalysisSource(
   }
 
   const parsed = parseAnalysisSourceReference(normalized)
+  if (parsed?.kind === 'runtime') return runtimeProjection(parsed)
   if (parsed?.kind === 'run') {
     const run = state.runs.find((candidate) => String(candidate.id) === parsed.id)
     return run === undefined ? undefined : projectionForRun(run)
@@ -142,14 +151,14 @@ export function projectAnalysisSource(
 
 function projectionForRun(run: RunRecord): AnalysisSourceProjection {
   return {
-    reference: analysisSourceReference({ branchId: String(run.branchId), runId: String(run.id) }),
+    reference: { kind: 'run', id: String(run.id) },
     request: { conversationId: run.conversationId, branchId: run.branchId, runId: run.id },
   }
 }
 
 function projectionForBranch(branch: BraidState['branches'][number]): AnalysisSourceProjection {
   return {
-    reference: analysisSourceReference({ branchId: String(branch.id) }),
+    reference: { kind: 'branch', id: String(branch.id) },
     request: { conversationId: branch.conversationId, branchId: branch.id },
   }
 }
@@ -295,30 +304,30 @@ function sourceEvents(
 }
 
 function sourceDigestForEvidence(evidence: FrozenAnalysisEvidence): Digest {
-  const evidenceDigest = digestOfEvidence({
-    run: evidence.run,
-    events: evidence.events,
-    messages: evidence.messages,
-    messageParts: evidence.messageParts,
-  })
-  return canonicalDigest({
-    conversationId: evidence.source.conversationId,
-    branchId: evidence.source.branchId,
-    runId: evidence.source.runId,
-    throughMessageId: evidence.source.throughMessageId,
-    evidenceDigest,
-    complete: evidence.source.complete,
-    missingHistory: evidence.source.missingHistory,
-  })
+  return sourceDigest(evidence.source, evidence)
 }
 
-function digestOfEvidence(input: {
-  readonly run: RunRecord | undefined
-  readonly events: readonly FrozenAnalysisEvent[]
-  readonly messages: readonly MessageRecord[]
-  readonly messageParts: readonly MessagePartRecord[]
-}): Digest {
-  return canonicalDigest(input)
+/** Braid-only sources keep the digest shape they had before Runtime sources existed. */
+function sourceDigest(
+  source: Omit<FrozenAnalysisSource, 'digest' | 'trace'>,
+  evidence: Omit<FrozenAnalysisEvidence, 'source'>,
+): Digest {
+  return canonicalDigest({
+    conversationId: source.conversationId,
+    branchId: source.branchId,
+    runId: source.runId,
+    ...(source.runtimeRun === undefined ? {} : { runtimeRun: source.runtimeRun }),
+    throughMessageId: source.throughMessageId,
+    evidenceDigest: canonicalDigest({
+      run: evidence.run,
+      events: evidence.events,
+      messages: evidence.messages,
+      messageParts: evidence.messageParts,
+      ...(evidence.runtime === undefined ? {} : { runtime: evidence.runtime }),
+    }),
+    complete: source.complete,
+    missingHistory: source.missingHistory,
+  })
 }
 
 export function freezeAnalysisSource(input: FreezeAnalysisSourceInput): FrozenAnalysisEvidence {
@@ -327,6 +336,8 @@ export function freezeAnalysisSource(input: FreezeAnalysisSourceInput): FrozenAn
   if (conversationId === null || branchId === null) {
     throw new AnalysisSourceError('Analysis requires an open conversation and branch')
   }
+  if (input.runtime !== undefined)
+    return freezeRuntimeSource(conversationId, branchId, input.runtime)
 
   const run = sourceRun(input.state, input.runId)
   if (run !== undefined) {
@@ -342,54 +353,73 @@ export function freezeAnalysisSource(input: FreezeAnalysisSourceInput): FrozenAn
   const throughSequence = boundarySequence(input.events, throughMessageId)
   const missingHistory = matchingMissingHistory(input.state, run?.id)
   const messages = branchMessages(input.state, conversationId, branchId, throughMessageId)
-  const parts = messageParts(input.state, messages)
-  const events = sourceEvents(input.events, run?.id)
-  const evidenceDigest = digestOfEvidence({
-    run: run === undefined ? undefined : redactedClone(run),
-    events,
+  const evidence = {
+    ...(run === undefined ? {} : { run: redactedClone(run) }),
+    events: sourceEvents(input.events, run?.id),
     messages,
-    messageParts: parts,
-  })
+    messageParts: messageParts(input.state, messages),
+  }
   const complete =
     missingHistory === undefined &&
     (run === undefined ||
       (run.complete && (throughMessageId === undefined || throughSequence !== undefined)))
-  const sourceDigest = canonicalDigest({
-    conversationId,
-    branchId,
-    runId: run?.id,
-    throughMessageId,
-    evidenceDigest,
-    complete,
-    missingHistory,
-  })
-  const source = cloneAndFreeze({
+  const unsigned = {
     conversationId,
     branchId,
     ...(run === undefined ? {} : { runId: run.id }),
     ...(throughMessageId === undefined ? {} : { throughMessageId }),
-    ...(run === undefined
+    complete,
+    ...(missingHistory === undefined ? {} : { missingHistory }),
+  }
+  return signedEvidence(
+    unsigned,
+    evidence,
+    run === undefined ? undefined : { id: String(run.id), reference: `braid://run/${run.id}` },
+  )
+}
+
+/** A Runtime run is analyzed in the open Braid conversation's journal scope, never as a Braid run. */
+function freezeRuntimeSource(
+  conversationId: ConversationId,
+  branchId: BranchId,
+  runtime: RuntimeRunEvidence,
+): FrozenAnalysisEvidence {
+  return signedEvidence(
+    {
+      conversationId,
+      branchId,
+      runtimeRun: { runId: runtime.runId, runDir: runtime.runDir },
+      complete: runtime.settled,
+    },
+    { runtime: cloneAndFreeze(runtime), events: [], messages: [], messageParts: [] },
+    {
+      id: `runtime-${runtime.runId}`,
+      reference: `runtime-run://${encodeURIComponent(runtime.runId)}`,
+    },
+  )
+}
+
+function signedEvidence(
+  unsigned: Omit<FrozenAnalysisSource, 'digest' | 'trace'>,
+  evidence: Omit<FrozenAnalysisEvidence, 'source'>,
+  trace: { readonly id: string; readonly reference: string } | undefined,
+): FrozenAnalysisEvidence {
+  const digest = sourceDigest(unsigned, evidence)
+  const source = cloneAndFreeze({
+    ...unsigned,
+    ...(trace === undefined
       ? {}
       : {
           trace: {
-            id: createTraceId(`trace-${String(run.id).replace(/[^A-Za-z0-9._:-]/gu, '-')}`),
+            id: createTraceId(`trace-${trace.id.replace(/[^A-Za-z0-9._:-]/gu, '-')}`),
             provider: 'runtime' as const,
-            reference: `braid://run/${run.id}`,
-            digest: sourceDigest,
+            reference: trace.reference,
+            digest,
           },
         }),
-    digest: sourceDigest,
-    complete,
-    ...(missingHistory === undefined ? {} : { missingHistory }),
+    digest,
   })
-
-  return cloneAndFreeze({
-    source,
-    ...(run === undefined ? {} : { run: redactedClone(run) }),
-    events,
-    messages,
-    messageParts: parts,
-  })
+  return cloneAndFreeze({ source, ...evidence })
 }
 
 export function verifyFrozenAnalysisSource(evidence: FrozenAnalysisEvidence): void {
@@ -402,15 +432,4 @@ export function verifyFrozenAnalysisSource(evidence: FrozenAnalysisEvidence): vo
   if (evidence.source.trace !== undefined && evidence.source.trace.digest !== expected) {
     throw new AnalysisSourceError('Frozen trace reference digest does not match the source digest')
   }
-}
-
-export function sourceEventForId(
-  evidence: FrozenAnalysisEvidence,
-  eventId: EventId,
-): FrozenAnalysisEvent | undefined {
-  return evidence.events.find((event) => event.id === eventId)
-}
-
-export function sourceEventIdForEnvelope(envelope: JournalEventEnvelope): EventId {
-  return safeEventId(envelope, envelope.event)
 }

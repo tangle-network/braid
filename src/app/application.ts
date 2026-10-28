@@ -312,6 +312,10 @@ export class BraidApplication {
           source.runId === undefined || this.#journal.loadEvents === undefined
             ? Promise.resolve(this.#journal.all())
             : this.#journal.loadEvents({ runId: source.runId }),
+        loadRuntimeRun: async (reference) =>
+          (await import('../adapters/analysis/runtime-run-evidence.js')).readRuntimeRunEvidence(
+            reference,
+          ),
         commit: (event) => this.#commit(event),
         commitAndWait: (event) => {
           if (this.#asynchronousJournal) return this.#commitAndWait(event)

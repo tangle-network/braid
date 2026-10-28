@@ -60,12 +60,9 @@ export function capabilityMap(
   const completedRuns = state.runs.filter(
     (run) => run.complete && (run.status === 'completed' || run.status === 'failed'),
   )
+  // Source resolution refuses a missing Braid run; a Runtime durable run needs none.
   const analysisReason =
-    state.workspace === null
-      ? 'Initialize a workspace before analyzing a run'
-      : completedRuns.length === 0
-        ? 'Complete or fail a run before analyzing it'
-        : undefined
+    state.workspace === null ? 'Initialize a workspace before analyzing a run' : undefined
   capabilities['analysis.ask'] = analysisReason
     ? { available: false, source: 'application', reason: analysisReason }
     : { available: true, source: 'application' }

@@ -102,13 +102,3 @@ export function compareFrozenRuns(input: AnalysisComparisonRequest): AnalysisCom
     },
   }
 }
-
-export function comparisonIdentity(result: AnalysisComparisonResult): string {
-  return canonicalDigest({
-    baselineSourceDigest: result.baselineSourceDigest,
-    candidateSourceDigest: result.candidateSourceDigest,
-    fields: result.fields,
-    rows: result.rows,
-    paired: result.paired,
-  })
-}

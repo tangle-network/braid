@@ -155,6 +155,9 @@ function analysisData(terminal: AnalysisTerminal) {
       ...(terminal.evidence.source.runId === undefined
         ? {}
         : { runId: terminal.evidence.source.runId }),
+      ...(terminal.evidence.source.runtimeRun === undefined
+        ? {}
+        : { runtimeRun: terminal.evidence.source.runtimeRun }),
       complete: terminal.evidence.source.complete,
       eventCount: terminal.evidence.events.length,
       messageCount: terminal.evidence.messages.length,

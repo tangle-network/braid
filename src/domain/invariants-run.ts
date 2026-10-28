@@ -275,6 +275,12 @@ export function assertAnalysisRecord(record: AnalysisRecord): void {
   assertEntityId('branch', record.source.branchId, 'analysis.source.branchId')
   if (record.source.runId !== undefined)
     assertEntityId('run', record.source.runId, 'analysis.source.runId')
+  if (record.source.runtimeRun !== undefined) {
+    if (record.source.runId !== undefined)
+      fail('analysis.source names both a Braid and a Runtime run')
+    nonEmpty(record.source.runtimeRun.runId, 'analysis.source.runtimeRun.runId')
+    nonEmpty(record.source.runtimeRun.runDir, 'analysis.source.runtimeRun.runDir')
+  }
   if (record.source.throughMessageId !== undefined)
     assertEntityId('message', record.source.throughMessageId, 'analysis.source.throughMessageId')
   assertDigest(record.source.digest, 'analysis.source.digest')
@@ -436,6 +442,10 @@ function assertAnalysisCitation(
   assertEntityId('citation', citation.id, 'analysis.citation.id')
   if (citation.eventId !== undefined)
     assertEntityId('event', citation.eventId, 'analysis.citation.eventId')
+  if (citation.span !== undefined) {
+    nonEmpty(citation.span.traceId, 'analysis.citation.span.traceId')
+    nonEmpty(citation.span.spanId, 'analysis.citation.span.spanId')
+  }
   if (citation.messageId !== undefined)
     assertEntityId('message', citation.messageId, 'analysis.citation.messageId')
   if (citation.partId !== undefined)
