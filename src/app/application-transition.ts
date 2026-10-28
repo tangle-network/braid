@@ -4,7 +4,7 @@ import type { Clock } from '../ports/clock.js'
 import {
   type ApplicationJournal,
   commitApplicationEvent,
-  commitApplicationEventAsync,
+  commitApplicationEventsAsync,
 } from './application-support.js'
 import type { AppSubscriber } from './application-types.js'
 import { storageUnavailable } from './application-guards.js'
@@ -23,27 +23,6 @@ export interface TransitionHost {
   readonly setTransitionTail: (tail: Promise<void>) => void
   readonly storageFailure: () => unknown
   readonly markStorageFailure: (error: unknown) => void
-}
-
-export function createTransitionHost(
-  input: Omit<
-    TransitionHost,
-    | 'state'
-    | 'setState'
-    | 'transitionTail'
-    | 'setTransitionTail'
-    | 'storageFailure'
-    | 'markStorageFailure'
-  > & {
-    readonly state: () => BraidState
-    readonly setState: (state: BraidState) => void
-    readonly transitionTail: () => Promise<void>
-    readonly setTransitionTail: (tail: Promise<void>) => void
-    readonly storageFailure: () => unknown
-    readonly markStorageFailure: (error: unknown) => void
-  },
-): TransitionHost {
-  return input
 }
 
 export function commitEvent(host: TransitionHost, event: BraidEvent): void {
@@ -65,7 +44,7 @@ function commitEventInternal(host: TransitionHost, event: BraidEvent, recovery: 
   if (!recovery && host.storageFailure() !== undefined)
     throw storageUnavailable(host.storageFailure())
   if (host.asynchronous) {
-    void commitEventAndWaitInternal(host, event, recovery).catch(() => undefined)
+    void commitEventsInternal(host, [event], recovery).catch(() => undefined)
     return
   }
   try {
@@ -85,11 +64,11 @@ function commitEventInternal(host: TransitionHost, event: BraidEvent, recovery: 
 }
 
 export function commitEventAndWait(host: TransitionHost, event: BraidEvent): Promise<void> {
-  return commitEventAndWaitInternal(host, event, false)
+  return commitEventsInternal(host, [event], false)
 }
 
 export function commitEventAndWaitRecovery(host: TransitionHost, event: BraidEvent): Promise<void> {
-  return commitEventAndWaitInternal(host, event, true)
+  return commitEventsInternal(host, [event], true)
 }
 
 export function commitEventsAndWaitAtRevision(
@@ -99,33 +78,7 @@ export function commitEventsAndWaitAtRevision(
 ): Promise<void> {
   if (events.length === 0) return Promise.resolve()
   assertExpectedRevision(host.state(), expectedRevision)
-  if (!host.asynchronous) {
-    for (const event of events) commitEvent(host, event)
-    return Promise.resolve()
-  }
-
-  const predecessor = host.transitionTail()
-  const task = predecessor.then(async () => {
-    const failure = host.storageFailure()
-    if (failure !== undefined) throw failure
-    assertExpectedRevision(host.state(), expectedRevision)
-    for (const event of events) {
-      await commitApplicationEventAsync({
-        state: host.state(),
-        event,
-        journal: host.journal,
-        clock: host.clock,
-        providerEventKeys: host.providerEventKeys,
-        publishState: host.setState,
-        subscribers: host.subscribers,
-      })
-    }
-  })
-  const next = task.catch((error: unknown) => {
-    if (!isRevisionError(error)) host.markStorageFailure(error)
-  })
-  host.setTransitionTail(next)
-  return task
+  return commitEventsInternal(host, events, false, expectedRevision)
 }
 
 function assertExpectedRevision(state: BraidState, expectedRevision: number | undefined): void {
@@ -151,14 +104,17 @@ function isRevisionError(error: unknown): boolean {
   )
 }
 
-function commitEventAndWaitInternal(
+function commitEventsInternal(
   host: TransitionHost,
-  event: BraidEvent,
+  events: readonly BraidEvent[],
   recovery: boolean,
+  expectedRevision?: number,
 ): Promise<void> {
   if (!host.asynchronous) {
-    if (recovery) commitEventRecovery(host, event)
-    else commitEvent(host, event)
+    for (const event of events) {
+      if (recovery) commitEventRecovery(host, event)
+      else commitEvent(host, event)
+    }
     return Promise.resolve()
   }
   const predecessor = recovery
@@ -167,19 +123,21 @@ function commitEventAndWaitInternal(
   const task = predecessor.then(async () => {
     const failure = host.storageFailure()
     if (!recovery && failure !== undefined) throw failure
-    await commitApplicationEventAsync({
-      state: host.state(),
-      event,
-      journal: host.journal,
-      clock: host.clock,
-      providerEventKeys: host.providerEventKeys,
-      publishState: host.setState,
-      subscribers: host.subscribers,
-    })
+    await commitApplicationEventsAsync(
+      {
+        state: host.state(),
+        journal: host.journal,
+        clock: host.clock,
+        providerEventKeys: host.providerEventKeys,
+        publishState: host.setState,
+        subscribers: host.subscribers,
+      },
+      events,
+      (state) => assertExpectedRevision(state, expectedRevision),
+    )
   })
   const next = task.catch((error: unknown) => {
-    host.markStorageFailure(error)
-    throw error
+    if (!isRevisionError(error)) host.markStorageFailure(error)
   })
   host.setTransitionTail(next)
   return task

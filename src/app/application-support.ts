@@ -9,7 +9,7 @@ import { reduceEvent } from '../domain/reducer.js'
 import { usageSnapshotForRun } from '../domain/run-usage.js'
 import { type BraidState, isLiveRunStatus } from '../domain/state.js'
 import type { Clock } from '../ports/clock.js'
-import type { EffectStoragePort } from '../ports/effect-storage.js'
+import type { EffectStoragePort, JournalPort } from '../ports/effect-storage.js'
 import type { ControlAcknowledgement } from '../ports/execution.js'
 import type {
   ExecutionRunPort,
@@ -27,6 +27,7 @@ import {
 } from './operation-ledger.js'
 import { snapshotFailure } from './provider-snapshot.js'
 import { runtimeFailure } from './provider-values.js'
+import { isTerminal } from './run-status.js'
 import { RUN_EFFECT_KIND, runEffectRequest } from './run-admission.js'
 import { executeRun } from './run-execution.js'
 import type { RunExecutionSnapshot } from './run-execution-snapshot.js'
@@ -59,6 +60,8 @@ export interface ApplicationJournal {
   readonly declines?: (event: BraidEvent) => boolean
   readonly envelope?: (state: BraidState, event: BraidEvent) => BraidEventEnvelope
   readonly flush?: () => Promise<void>
+  readonly withTransition?: JournalPort['withTransition']
+  readonly runOwnership?: JournalPort['runOwnership']
   readonly close?: () => Promise<void>
 }
 
@@ -71,6 +74,8 @@ export function startApplicationRun(input: {
   readonly abort: AbortController
   readonly requestDigest: string
 }): Promise<EffectDispatchResult> {
+  if (input.journal.runOwnership?.claim(input.admission.runId) === false)
+    throw new AppError('RUN_OWNED', 'Another live Braid process owns this run')
   const request = runEffectRequest(input.runInput)
   const handle = input.effects.start(
     {
@@ -266,20 +271,20 @@ export function restoreApplicationOperations(
   }
 }
 
-export function reconcileRestartRun(context: RestartPort): Promise<void> {
+export async function reconcileRestartRun(
+  context: RestartPort,
+  claim: (runId: string) => boolean = () => true,
+): Promise<void> {
   const runIds = context
     .currentState()
-    .runs.filter((run) => isLiveRunStatus(run.status))
+    .runs.filter((run) => isLiveRunStatus(run.status) && claim(run.id))
     .map((run) => run.id)
-  if (runIds.length === 0) return Promise.resolve()
-  return Promise.all(runIds.map((runId) => reconcileRestartRunFor(context, runId))).then(
-    () => undefined,
-  )
+  await Promise.all(runIds.map((runId) => reconcileRestartRunFor(context, runId)))
 }
 
 async function reconcileRestartRunFor(context: RestartPort, runId: string): Promise<void> {
   const run = context.currentState().runs.find((candidate) => candidate.id === runId)
-  if (!run || isProvenTerminalStatus(run.status)) return
+  if (!run || (isTerminal(run.status) && run.status !== 'unknown')) return
   if (!context.execution.status) {
     if (canReplayAfterRestart(context, run)) return markRestartReconnecting(context, runId)
     const unknown = context.commitAndWait({
@@ -361,7 +366,7 @@ async function reconcileSnapshot(
     evidence,
     ...(snapshot.detail === undefined ? {} : { detail: snapshot.detail }),
   })
-  if (isTerminalStatus(snapshot.status)) {
+  if (isTerminal(snapshot.status)) {
     await commitRequired(context, {
       kind: 'run.finished',
       runId,
@@ -392,8 +397,7 @@ async function markRestartReconnecting(context: RestartPort, runId: string): Pro
 }
 
 async function commitRequired(context: JournalWriter, event: BraidEvent): Promise<void> {
-  const result = context.commitAndWait(event)
-  if (result !== undefined) await result
+  await context.commitAndWait(event)
 }
 
 export function admitPersistedSend(input: {
@@ -517,7 +521,36 @@ export function commitApplicationEvent(input: CommitApplicationEventInput): Brai
   return nextState
 }
 
-export async function commitApplicationEventAsync(
+export function commitApplicationEventAsync(
+  input: CommitApplicationEventInput,
+): Promise<BraidState> {
+  return commitApplicationEventsAsync(input, [input.event])
+}
+
+export async function commitApplicationEventsAsync(
+  input: Omit<CommitApplicationEventInput, 'event'>,
+  events: readonly BraidEvent[],
+  validate: (state: BraidState) => void = () => {},
+): Promise<BraidState> {
+  const commit = async (foreign: readonly BraidEventEnvelope[]) => {
+    let state = input.state
+    for (const envelope of foreign) {
+      state = reduceEvent(state, envelope)
+      const key = providerEventKey(envelope.event)
+      if (key) input.providerEventKeys.addProviderEvent(key)
+    }
+    if (foreign.length > 0) input.publishState(state)
+    validate(state)
+    for (const event of events)
+      state = await commitApplicationEventUnlocked({ ...input, state, event })
+    return state
+  }
+  return input.journal.withTransition === undefined
+    ? commit([])
+    : input.journal.withTransition(commit)
+}
+
+async function commitApplicationEventUnlocked(
   input: CommitApplicationEventInput,
 ): Promise<BraidState> {
   const key = providerEventKey(input.event)
@@ -559,25 +592,4 @@ export function isEffectStorage(value: unknown): value is EffectStoragePort {
     typeof candidate.appendEffect === 'function' &&
     typeof candidate.history === 'function'
   )
-}
-
-function isTerminalStatus(
-  status: BraidState['runs'][number]['status'],
-): status is Extract<
-  BraidState['runs'][number]['status'],
-  'completed' | 'failed' | 'aborted' | 'cancelled' | 'blocked' | 'expired' | 'unknown'
-> {
-  return (
-    status === 'completed' ||
-    status === 'failed' ||
-    status === 'aborted' ||
-    status === 'cancelled' ||
-    status === 'blocked' ||
-    status === 'expired' ||
-    status === 'unknown'
-  )
-}
-
-function isProvenTerminalStatus(status: BraidState['runs'][number]['status']): boolean {
-  return isTerminalStatus(status) && status !== 'unknown'
 }

@@ -3,6 +3,7 @@ import { readlinkSync } from 'node:fs'
 import koffi from 'koffi'
 
 interface PosixAtBindings {
+  readonly flock: (fd: number, operation: number) => number
   readonly fcntl: (
     fileDescriptor: number,
     command: number,
@@ -48,6 +49,7 @@ function bindings(): PosixAtBindings {
 
   const libc = koffi.load(null)
   cachedBindings = {
+    flock: libc.func('int flock(int fd, int operation)') as PosixAtBindings['flock'],
     fcntl: libc.func('int fcntl(int fileDescriptor, int command, ...)') as PosixAtBindings['fcntl'],
     linkAt: libc.func(
       'int linkat(int sourceDirectory, const char *source, int targetDirectory, const char *target, int flags)',
@@ -154,4 +156,12 @@ export function linkAt(
   if (bindings().linkAt(sourceDirectory, source, targetDirectory, target, 0) < 0) {
     throw syscallError('linkat', target)
   }
+}
+
+/** Kernel-owned locks stay on the same inode; close or process death releases ownership. */
+export function tryLock(fileDescriptor: number): boolean {
+  if (bindings().flock(fileDescriptor, 2 | 4) === 0) return true
+  const error = syscallError('flock', String(fileDescriptor))
+  if (error.code === 'EAGAIN' || error.code === 'EWOULDBLOCK') return false
+  throw error
 }

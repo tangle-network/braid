@@ -7,6 +7,17 @@ import type { BraidState } from '../domain/state.js'
  * A production adapter must make append durable before returning.
  */
 export interface JournalPort {
+  /** Local observation ownership; controls may still target runs owned by another process. */
+  readonly runOwnership?:
+    | {
+        claim(runId: string): boolean
+        owns(runId: string): boolean
+        release(runId: string): void
+        transition<T>(action: () => Promise<T>): Promise<T>
+        close(): void
+      }
+    | undefined
+  withTransition?<T>(action: (events: readonly BraidEventEnvelope[]) => Promise<T>): Promise<T>
   envelope(state: BraidState, event: BraidEvent): BraidEventEnvelope
   append(
     envelope: BraidEventEnvelope,

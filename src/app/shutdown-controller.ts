@@ -9,6 +9,7 @@ export interface ShutdownControllerInput {
   readonly operationId: string
   readonly mode?: 'wait' | 'detach' | 'cancel'
   readonly state: () => BraidState
+  readonly ownsRun?: (runId: string) => boolean
   readonly ledger: RunLedger
   readonly commit: (event: BraidEvent) => void
   readonly cancelRun: (input: {
@@ -43,7 +44,9 @@ export function shutdownApplication(input: ShutdownControllerInput): ShutdownRec
   }
   input.commit({ kind: 'application.shutdown.requested', operationId: input.operationId })
   const state = input.state()
-  const activeRuns = state.runs.filter((candidate) => isLiveRunStatus(candidate.status))
+  const activeRuns = state.runs.filter(
+    (candidate) => isLiveRunStatus(candidate.status) && input.ownsRun?.(candidate.id) !== false,
+  )
   const runId = state.activeRunId ?? activeRuns[0]?.id
   const completion = completeShutdown(input, activeRuns)
   input.ledger.setShutdown(input.operationId, { digest, completion })

@@ -28,6 +28,7 @@ export interface BraidApplicationOptions {
   readonly effectCoordinator?: SerializedEffectCoordinator
   readonly conversationId?: import('../domain/ids.js').ConversationId
   readonly branchId?: import('../domain/ids.js').BranchId
+  readonly steerTimeoutMs?: number
   readonly cancelTimeoutMs?: number
   readonly interactionResponseTimeoutMs?: number
   readonly conversationStorage?: Pick<StoragePort, 'destroyConversation'>

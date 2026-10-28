@@ -18,6 +18,7 @@ export interface CompositionOptions {
   readonly journal?: JournalPort
   readonly effectStorage?: EffectStoragePort
   readonly effectCoordinator?: SerializedEffectCoordinator
+  readonly steerTimeoutMs?: number
   readonly cancelTimeoutMs?: number
   readonly interactionResponseTimeoutMs?: number
   readonly execution?: ExecutionPort

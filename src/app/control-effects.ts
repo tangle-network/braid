@@ -7,7 +7,7 @@ import type {
 } from '../ports/execution.js'
 import type { ControlDispatchOptions, ControlEffectRequest } from './application-ports.js'
 import type { SerializedEffectCoordinator } from './effect-coordinator.js'
-import { safeDiagnostic } from './provider-values.js'
+import { safeDiagnostic, runtimeFailureDiagnostic } from './provider-values.js'
 
 export async function executeControlEffect(input: {
   readonly effects: SerializedEffectCoordinator
@@ -16,10 +16,12 @@ export async function executeControlEffect(input: {
   readonly owner: string
   readonly timeoutMs: number
   readonly whenDurable: () => Promise<void>
+  readonly trackLateSettlement?: (task: Promise<void>) => void
   readonly canSettleLate?: () => boolean
   readonly onLateSettlement?: ControlDispatchOptions['onLateSettlement']
 }): Promise<ControlAcknowledgement> {
   const { request } = input
+  const { recovery: _recovery, ...durable } = request
   let providerResult: Promise<ControlAcknowledgement> | undefined
   let foregroundTimedOut = false
   const effect = input.effects.start(
@@ -27,7 +29,7 @@ export async function executeControlEffect(input: {
       operationId: request.operationId,
       effectKind: `run.control.${request.control}`,
       request: {
-        ...durableControlRequest(request),
+        ...durable,
         providerSessionId: request.providerSessionId ?? null,
         reason: request.reason ?? null,
         text: request.text ?? null,
@@ -45,7 +47,11 @@ export async function executeControlEffect(input: {
       dispatch: async () => {
         const controller = new AbortController()
         providerResult = dispatchControl(input.execution, request, controller.signal)
-        const result = await controlDeadline(providerResult, controller, input.timeoutMs)
+        const result = await controlDeadline(
+          providerResult,
+          request.control === 'steer' ? undefined : controller,
+          input.timeoutMs,
+        )
         foregroundTimedOut = result.timedOut
         return effectResult(result.acknowledgement)
       },
@@ -56,7 +62,7 @@ export async function executeControlEffect(input: {
   await input.whenDurable()
   if (foregroundTimedOut && providerResult !== undefined && input.onLateSettlement !== undefined) {
     const lateResult = providerResult
-    void lateResult
+    const settlement = lateResult
       .then(async (acknowledgement) => {
         if (input.canSettleLate?.() === false) return
         const settled = input.effects.settle(
@@ -69,6 +75,7 @@ export async function executeControlEffect(input: {
         await input.onLateSettlement?.(acknowledgement)
       })
       .catch(() => undefined)
+    input.trackLateSettlement?.(settlement)
   }
   return acknowledgementFromEffect(request.operationId, record.status, record.detail)
 }
@@ -79,52 +86,21 @@ async function dispatchControl(
   signal: AbortSignal,
 ): Promise<ControlAcknowledgement> {
   try {
-    if (request.control === 'cancel') {
+    const { control, recovery, ...fields } = request
+    const command = { ...fields, ...recovery, signal }
+    if (control === 'cancel') {
       if (!execution.cancelRun)
         return unknown(request.operationId, 'CONTROL_CANCELLATION_UNCONFIRMED')
-      return normalize(
-        request.operationId,
-        await execution.cancelRun({
-          runId: request.runId,
-          operationId: request.operationId,
-          ...(request.providerSessionId === undefined
-            ? {}
-            : { providerSessionId: request.providerSessionId }),
-          ...(request.controlRef === undefined ? {} : { controlRef: request.controlRef }),
-          ...(request.recovery ?? {}),
-          signal,
-          ...(request.reason === undefined ? {} : { reason: request.reason }),
-        }),
-      )
+      return normalize(request.operationId, await execution.cancelRun(command))
     }
-    if (request.control === 'steer') {
+    if (control === 'steer') {
       if (!execution.steerRun) return unknown(request.operationId, 'CONTROL_STEERING_UNCONFIRMED')
-      return execution.steerRun({
-        runId: request.runId,
-        operationId: request.operationId,
-        text: request.text ?? '',
-        ...(request.providerSessionId === undefined
-          ? {}
-          : { providerSessionId: request.providerSessionId }),
-        ...(request.controlRef === undefined ? {} : { controlRef: request.controlRef }),
-        ...(request.recovery ?? {}),
-        signal,
-      })
+      return await execution.steerRun({ ...command, text: request.text ?? '' })
     }
     if (!execution.detachRun) return unknown(request.operationId, 'CONTROL_DETACH_UNCONFIRMED')
-    return execution.detachRun({
-      runId: request.runId,
-      operationId: request.operationId,
-      ...(request.providerSessionId === undefined
-        ? {}
-        : { providerSessionId: request.providerSessionId }),
-      ...(request.controlRef === undefined ? {} : { controlRef: request.controlRef }),
-      ...(request.recovery ?? {}),
-      signal,
-      ...(request.cursor === undefined ? {} : { cursor: request.cursor }),
-    })
-  } catch {
-    return unknown(request.operationId, 'CONTROL_DISPATCH_UNKNOWN')
+    return await execution.detachRun(command)
+  } catch (error) {
+    return unknown(request.operationId, runtimeFailureDiagnostic(error, 'CONTROL_DISPATCH_UNKNOWN'))
   }
 }
 
@@ -135,14 +111,7 @@ async function reconcileControl(
   if (request.control === 'steer' || !execution.status) return undefined
   let snapshot: ProviderRunSnapshot | null
   try {
-    snapshot = await execution.status({
-      runId: request.runId,
-      ...(request.providerSessionId === undefined
-        ? {}
-        : { providerSessionId: request.providerSessionId }),
-      ...(request.controlRef === undefined ? {} : { controlRef: request.controlRef }),
-      ...(request.recovery ?? {}),
-    })
+    snapshot = await execution.status({ ...request, ...request.recovery })
   } catch {
     return undefined
   }
@@ -159,13 +128,6 @@ async function reconcileControl(
   return { status: 'terminal', detail: 'CONTROL_RECONCILED_TERMINAL' }
 }
 
-function durableControlRequest(
-  request: ControlEffectRequest,
-): Omit<ControlEffectRequest, 'recovery'> {
-  const { recovery: _recovery, ...durable } = request
-  return durable
-}
-
 function effectResult(value: ControlAcknowledgement) {
   if (value.outcome === 'accepted')
     return {
@@ -175,7 +137,10 @@ function effectResult(value: ControlAcknowledgement) {
   if (value.outcome === 'already-applied')
     return { status: 'terminal' as const, detail: 'CONTROL_ALREADY_APPLIED' }
   if (value.outcome === 'rejected') return { status: 'failed' as const, detail: 'CONTROL_REJECTED' }
-  return { status: 'unknown' as const, detail: 'CONTROL_OUTCOME_UNKNOWN' }
+  return {
+    status: 'unknown' as const,
+    detail: safeDiagnostic(value.detail, 'CONTROL_OUTCOME_UNKNOWN'),
+  }
 }
 
 function acknowledgementFromEffect(
@@ -188,7 +153,7 @@ function acknowledgementFromEffect(
   if (status === 'terminal')
     return { operationId, outcome: 'already-applied', ...(detail ? { detail } : {}) }
   if (status === 'failed') return { operationId, outcome: 'rejected', detail: 'CONTROL_REJECTED' }
-  return { operationId, outcome: 'unknown', detail: 'CONTROL_OUTCOME_UNKNOWN' }
+  return { operationId, outcome: 'unknown', detail: detail ?? 'CONTROL_OUTCOME_UNKNOWN' }
 }
 
 function normalize(
@@ -218,7 +183,7 @@ function unknown(operationId: string, detail: string): ControlAcknowledgement {
 
 async function controlDeadline(
   action: Promise<ControlAcknowledgement>,
-  controller: AbortController,
+  controller: AbortController | undefined,
   timeoutMs: number,
 ): Promise<{ readonly acknowledgement: ControlAcknowledgement; readonly timedOut: boolean }> {
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -226,7 +191,7 @@ async function controlDeadline(
   const timeout = new Promise<ControlAcknowledgement>((resolve) => {
     timer = setTimeout(() => {
       timedOut = true
-      controller.abort(new Error('Control acknowledgement deadline elapsed'))
+      controller?.abort(new Error('Control acknowledgement deadline elapsed'))
       resolve({
         operationId: 'unknown',
         outcome: 'unknown',
