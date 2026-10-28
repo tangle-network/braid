@@ -173,12 +173,16 @@ export interface ExecutionPort {
       readonly signal?: AbortSignal
     } & RetainedExecutionRecoveryContext,
   ): Promise<ControlAcknowledgement>
-  steerRun?(input: {
-    readonly runId: string
-    readonly operationId: string
-    readonly text: string
-    readonly signal?: AbortSignal
-  }): Promise<ControlAcknowledgement>
+  steerRun?(
+    input: {
+      readonly runId: string
+      readonly operationId: string
+      readonly text: string
+      readonly providerSessionId?: string
+      readonly controlRef?: AgentExactRunControlRef
+      readonly signal?: AbortSignal
+    } & RetainedExecutionRecoveryContext,
+  ): Promise<ControlAcknowledgement>
   status?(
     input: {
       readonly runId: string

@@ -71,6 +71,7 @@ export async function steerRun(
     text: input.text,
     ...(providerSessionId === undefined ? {} : { providerSessionId }),
     ...(run.controlRef === undefined ? {} : { controlRef: run.controlRef }),
+    recovery: retainedExecutionRecoveryContext(run, context.currentState().workspace),
   }
   return control(context, request, 'steer')
 }

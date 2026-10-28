@@ -5,6 +5,7 @@ import type {
   ConfidentialAttestationVerifier,
 } from '@tangle-network/agent-interface'
 import {
+  agentInteractiveSessionPromptRequestDigest,
   agentInteractiveSessionStopRequestDigest,
   canonicalCandidateDigest,
 } from '@tangle-network/agent-interface'
@@ -66,7 +67,7 @@ export interface TangleRetainedInteractiveExecutionOptions {
   readonly holderId?: string
   readonly workspaceBranchingProvider?: AgentWorkspaceBranchingProvider
   readonly confidentialAttestationVerifier?: ConfidentialAttestationVerifier
-  /** Runtime observer-journal root; each run appends `<journalRoot>/<runId>/observer.jsonl`. */
+  /** Runtime observer-journal root; each run appends `<journalRoot>/<sessionId>/observer.jsonl`. */
   readonly journalRoot?: string
 }
 
@@ -413,6 +414,67 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
     }
   }
 
+  /**
+   * Deliver one prompt to the live process. A fresh `braid rpc` process reconnects the handle from
+   * the started admission; the provider replays an operation id it already holds.
+   */
+  async steerRun(
+    input: {
+      readonly runId: string
+      readonly operationId: string
+      readonly text: string
+      readonly providerSessionId?: string
+      readonly controlRef?: AgentExactRunControlRef
+      readonly signal?: AbortSignal
+    } & TangleInteractiveRecoveryInput,
+  ): Promise<ControlAcknowledgement> {
+    if (
+      !this.#handles.has(input.runId) &&
+      !this.#starting.has(input.runId) &&
+      input.retainedAdmission?.phase !== 'interactive_started'
+    ) {
+      return {
+        operationId: input.operationId,
+        outcome: 'rejected',
+        detail: 'interactive-run-not-started',
+      }
+    }
+    const handle = await this.#handleFor(input)
+    if (handle === null) {
+      return { operationId: input.operationId, outcome: 'rejected', detail: 'interactive-run-missing' }
+    }
+    const options = input.signal === undefined ? undefined : { signal: input.signal }
+    const control = await claimRetainedInteractiveControl({
+      handle,
+      holderId: this.#holderId,
+      ...options,
+    })
+    const material = {
+      operationId: input.operationId,
+      ref: handle.ref,
+      control,
+      prompt: input.text,
+    }
+    const acknowledgement = await handle.sendPrompt(
+      { ...material, requestDigest: agentInteractiveSessionPromptRequestDigest(material) },
+      options,
+    )
+    switch (acknowledgement.status) {
+      case 'accepted':
+        return { operationId: input.operationId, outcome: 'accepted', detail: 'steered' }
+      case 'replayed':
+        return { operationId: input.operationId, outcome: 'already-applied', detail: 'steered' }
+      case 'conflict':
+        return { operationId: input.operationId, outcome: 'rejected', detail: 'operation-conflict' }
+      case 'unknown':
+        return {
+          operationId: input.operationId,
+          outcome: 'unknown',
+          detail: acknowledgement.message ?? 'interactive-prompt-unknown',
+        }
+    }
+  }
+
   async #start(
     prepared: PreparedTangleRetainedConnection,
     input: ExecuteTurnInput,
@@ -425,7 +487,7 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
       ...(input.text.trim() === '' ? {} : { initialPrompt: input.text }),
       // workspaceRoot identifies Braid's local checkout. The provider owns its remote cwd.
       onAdmission,
-      ...(this.#journalRoot === undefined ? {} : { journalRoot: this.#journalRoot }),
+      ...this.#journal(),
       signal: input.signal,
     })
   }
@@ -475,6 +537,7 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
         provider: prepared.provider,
         ref: admission.ref,
         ...(input.signal === undefined ? {} : { signal: input.signal }),
+        ...this.#journal(),
       })
     }
     const onAdmission = requireAdmissionRecorder(input.onRetainedAdmission)
@@ -484,6 +547,7 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
         admission,
         onAdmission,
         ...(input.signal === undefined ? {} : { signal: input.signal }),
+        ...this.#journal(),
       })
     }
     const receipt = requireRecoveryReceipt(input.receipt)
@@ -503,7 +567,12 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
       },
       onAdmission,
       ...(input.signal === undefined ? {} : { signal: input.signal }),
+      ...this.#journal(),
     })
+  }
+
+  #journal(): { readonly journalRoot?: string } {
+    return this.#journalRoot === undefined ? {} : { journalRoot: this.#journalRoot }
   }
 
   async #handleFor(
