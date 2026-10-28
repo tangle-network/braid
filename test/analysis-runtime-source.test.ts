@@ -227,52 +227,59 @@ test('a Runtime durable run is analyzed, cited and replayed without a Braid run'
     operationId,
     params: { source, recipe: 'failure' },
   })
-  let durable = await createDurableBraidApplication(options)
+  // Ending an RPC session closes Braid, so each step reopens the durable app: a restart per step.
+  let initialized = false
+  async function step(command: Record<string, unknown>) {
+    const durable = await createDurableBraidApplication(options)
+    try {
+      if (!initialized) {
+        durable.app.initialize(root)
+        await durable.app.whenDurable()
+        initialized = true
+      }
+      return { responses: await rpc(durable.app, [command]), runs: durable.app.state().runs.length }
+    } finally {
+      await durable.storage.close()
+    }
+  }
   try {
-    durable.app.initialize(root)
-    await durable.app.whenDurable()
-
-    const first = result(await rpc(durable.app, [analyze(`runtime:${runId}@${runDir}`, 'op-1')]))
+    const opened = await step(analyze(`runtime:${runId}@${runDir}`, 'op-1'))
+    const first = result(opened.responses)
     assert.equal(first.status, 'completed')
     assert.deepEqual(first.source.runtimeRun, { runId, runDir })
     assert.equal(first.source.runId, undefined)
     assert.equal(first.source.complete, true)
-    assert.equal(durable.app.state().runs.length, 0)
+    assert.equal(opened.runs, 0)
     const [finding] = first.analysis.findings
     assert.equal(finding?.supported, true)
     assert.deepEqual(finding?.citations[0]?.span, { traceId: `${runId}:s0`, spanId: 'edit-1' })
     assert.equal(analyst.requests.length, 1)
 
-    const promoted = await rpc(durable.app, [
-      {
-        command: 'promote_analysis',
-        operationId: 'op-promote',
-        params: { analysisId: first.analysis.id, findingIds: ['finding-runtime'] },
-      },
-    ])
+    const promoted = await step({
+      command: 'promote_analysis',
+      operationId: 'op-promote',
+      params: { analysisId: first.analysis.id, findingIds: ['finding-runtime'] },
+    })
     assert(
-      promoted.some((item) => item.type === 'ack'),
-      JSON.stringify(promoted),
+      promoted.responses.some((item) => item.type === 'ack'),
+      JSON.stringify(promoted.responses),
     )
 
-    const wrongRun = await rpc(durable.app, [analyze(`runtime:run:other@${runDir}`, 'op-2')])
-    assert(wrongRun.some((item) => item.type === 'error' || item.type === 'ack'))
-    assert.match(JSON.stringify(wrongRun), /not recorded in/u)
+    const wrongRun = await step(analyze(`runtime:run:other@${runDir}`, 'op-2'))
+    assert(wrongRun.responses.some((item) => item.type === 'error'))
+    assert.match(JSON.stringify(wrongRun.responses), /not recorded in/u)
     assert.equal(analyst.requests.length, 1)
 
-    await durable.storage.close()
-    durable = await createDurableBraidApplication(options)
-    const replay = result(await rpc(durable.app, [analyze(`runtime:${runId}@${runDir}`, 'op-1')]))
+    const replay = result((await step(analyze(`runtime:${runId}@${runDir}`, 'op-1'))).responses)
     assert.equal(replay.analysis.id, first.analysis.id)
     assert.equal(replay.source.digest, first.source.digest)
     assert.equal(analyst.requests.length, 1)
 
     for (const name of await readdir(join(runDir, 'blobs'))) await rm(join(runDir, 'blobs', name))
-    const lost = await rpc(durable.app, [analyze(`runtime:${runId}@${runDir}`, 'op-3')])
-    assert.match(JSON.stringify(lost), /trace blob .* is missing/u)
+    const lost = await step(analyze(`runtime:${runId}@${runDir}`, 'op-3'))
+    assert.match(JSON.stringify(lost.responses), /trace blob .* is missing/u)
     assert.equal(analyst.requests.length, 1)
   } finally {
-    await durable.storage.close()
     await rm(root, { recursive: true, force: true })
   }
 })
