@@ -45,6 +45,11 @@ import {
   withoutEnvironment,
 } from './tangle-sandbox-braid-stress-support.mjs'
 import { createTerminalOutputTracker, waitForTerminalQuiescence } from './terminal-quiescence.mjs'
+import {
+  activityBrowserOpen,
+  renderedWorkStripCount,
+  transcriptSurfaceReady,
+} from './terminal-screen.mjs'
 import { workspaceRequestFor } from './workspace-request.mjs'
 
 const scriptPath = fileURLToPath(import.meta.url)
@@ -128,8 +133,6 @@ export function terminalRecordPath(basePath, instance) {
 function normalizeScreen(screen) {
   return screen.replace(/\s+/gu, ' ').trim()
 }
-
-const TRANSCRIPT_FOOTER = 'type / for commands ·'
 
 function createTerminal(
   binary,
@@ -309,16 +312,6 @@ async function waitFor(label, predicate, timeoutMs) {
   }
 }
 
-export function activityBrowserOpen(screen) {
-  return typeof screen === 'string' && screen.split('\n').some((line) => /^\s*runs ›/u.test(line))
-}
-
-export function transcriptSurfaceReady(screen) {
-  return (
-    typeof screen === 'string' && !activityBrowserOpen(screen) && screen.includes(TRANSCRIPT_FOOTER)
-  )
-}
-
 export async function waitForActivityBrowserDismissal(runtime, label, timeoutMs) {
   return waitFor(
     `${label} activity browser dismissal`,
@@ -366,22 +359,31 @@ async function openActivityBrowser(runtime, label, timeoutMs) {
 /**
  * Focus one run from the activity browser's runs list, as a user does: F2, Tab, one arrow, Enter.
  * The runs list keeps every run's row in admission order, newest first, and Tab starts on the
- * focused run (#169), so one arrow reaches the other run. Success is the frame focusing runId.
+ * focused run (#169), so one arrow reaches the other run. Braid holds a permission form while the
+ * browser is open, so each try closes the browser (never a form: Escape there denies it) and the
+ * next try answers the held form first. Success is the frame focusing runId.
  */
 async function focusRunFromActivityBrowser(runtime, runId, direction, label, timeoutMs) {
-  await openActivityBrowser(runtime, label, timeoutMs)
-  runtime.input('\t')
-  await pause(100)
-  runtime.input(`${direction}\r`)
-  const frame = await waitForFrame(
-    runtime,
+  return waitFor(
     `${label} focus`,
-    (candidate) => candidate.view.focusedRunId === runId,
+    async () => {
+      await openActivityBrowser(runtime, label, timeoutMs)
+      runtime.input('\t')
+      await pause(100)
+      runtime.input(`${direction}\r`)
+      const focused = async () => {
+        const frame = await runtime.captureState(timeoutMs)
+        return frame.view.focusedRunId === runId ? frame : undefined
+      }
+      const frame = await waitFor(`${label} focus try`, focused, 5_000).catch(() => undefined)
+      for (let back = 0; back < 4 && activityBrowserOpen(runtime.screen()); back += 1) {
+        runtime.input('\u001b')
+        await runtime.waitForStable(500).catch(() => undefined)
+      }
+      return frame
+    },
     timeoutMs,
   )
-  if (!transcriptSurfaceReady(runtime.screen())) runtime.input('\u001b')
-  await waitForActivityBrowserDismissal(runtime, label, timeoutMs)
-  return frame
 }
 
 /**
@@ -718,16 +720,6 @@ export function cancellationDispatchVisible(frame, unaffectedRunId, targetRunId)
 
 export function assertSuccessfulTerminalExit(exit, label) {
   assert.equal(exit?.exitCode, 0, `${label} Braid terminal process exited with a non-zero status`)
-}
-
-export function renderedWorkStripCount(screen) {
-  return screen
-    .split('\n')
-    .filter((line) =>
-      /^(?:focus|work) .+ · (?:queued|starting|running|waiting|detached|reconnecting|cancelling)(?: ·|\s|$)/u.test(
-        line.trimStart(),
-      ),
-    ).length
 }
 
 export function assertFrameHasConcurrentRuns(frame, runIds) {
