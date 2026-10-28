@@ -351,8 +351,7 @@ test('retained analysis preserves requested route and measured usage without inv
         messages: [{ role: 'user', content: 'Return the boundary fixture response.' }],
       },
     })
-    assert.equal(result.succeeded, true)
-    if (!result.succeeded) throw new Error(result.error)
+    if (!result.succeeded) assert.fail(result.error)
     const admission = JSON.parse(await readFile(join(root, 'admission.json'), 'utf8'))
     assert(admission.controlRef.runId)
     assert.equal(bridge.requests.length, 1)

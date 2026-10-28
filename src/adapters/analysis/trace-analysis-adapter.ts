@@ -480,11 +480,10 @@ function registerSystemOne(
           throw new Error(
             'System One is unavailable: the native retained-result contract does not report served model identity. Existing failure, cost, tools and improvement recipes remain available.',
           )
-        const page = await store.queryTraces({ limit: 4 }, { signal: context.signal })
+        const readContext = context.signal === undefined ? {} : { signal: context.signal }
+        const page = await store.queryTraces({ limit: 4 }, readContext)
         const traces = await Promise.all(
-          page.traces.map((trace) =>
-            store.viewTrace({ trace_id: trace.trace_id }, { signal: context.signal }),
-          ),
+          page.traces.map((trace) => store.viewTrace({ trace_id: trace.trace_id }, readContext)),
         )
         evidence.set(
           context,
