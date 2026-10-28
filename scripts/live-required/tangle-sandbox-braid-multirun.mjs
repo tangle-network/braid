@@ -26,6 +26,7 @@ import { liveEvidenceBindingFromEnvironment } from '../release/live-evidence-bin
 import { connectionConfiguration } from './configuration.mjs'
 import { safeJson, safeMessage } from './contracts.mjs'
 import { configEvidence, prepareProductionWorkspace, resolveBinary } from './headless.mjs'
+import { terminalText } from './interactive-terminal.mjs'
 import { DEFAULT_TANGLE_ROUTER_MODEL, releaseProofRouting } from './model-defaults.mjs'
 import { MULTIRUN_PROOF_SCHEMA } from './multirun-contract.mjs'
 import {
@@ -117,15 +118,6 @@ export function promptFor(marker, holdSeconds) {
   ].join(' ')
 }
 
-function screenFrom(terminal) {
-  let text = ''
-  for (let row = 0; row < terminal.rows; row += 1) {
-    text += terminal.buffer.active.getLine(row)?.translateToString(true) ?? ''
-    text += '\n'
-  }
-  return text
-}
-
 export function terminalRecordPath(basePath, instance) {
   if (!Number.isSafeInteger(instance) || instance < 0) {
     throw new Error('Terminal record instance must be a non-negative safe integer')
@@ -162,7 +154,7 @@ function createTerminal(
   }
   for (const name of SECRET_ENVIRONMENT_NAMES) delete environment[name]
   const tracked = processTreeEnvironment(environment)
-  const child = pty.spawn(process.execPath, [binary, '--inline', '--record-state', recordPath], {
+  const child = pty.spawn(process.execPath, [binary, '--record-state', recordPath], {
     cwd: config.workspace,
     env: tracked.environment,
     name: 'xterm-256color',
@@ -228,7 +220,7 @@ function createTerminal(
     }
     child.write('\u0003')
     const deadline = performance.now() + 10_000
-    while (!normalizeScreen(screenFrom(terminal)).includes('Ctrl+C again to quit')) {
+    while (!normalizeScreen(terminalText(terminal)).includes('Ctrl+C again to quit')) {
       if (performance.now() >= deadline) throw new Error('safe quit prompt was not rendered')
       await pause(25)
     }
@@ -271,8 +263,8 @@ function createTerminal(
     get lastFrameError() {
       return lastFrameError
     },
-    screen: () => screenFrom(terminal),
-    snapshot: () => ({ screen: screenFrom(terminal), outputBytes: Buffer.byteLength(output) }),
+    screen: () => terminalText(terminal),
+    snapshot: () => ({ screen: terminalText(terminal), outputBytes: Buffer.byteLength(output) }),
     /** Receipts for the permissions this terminal answered, in order. */
     permissions: [],
     waitForStable,
@@ -664,10 +656,6 @@ export function frameRunIds(frame) {
   return (frame.view?.runs ?? []).map((run) => run.id)
 }
 
-export function frameEventIds(frame, runId) {
-  return eventIdsForRun(frame, runId)
-}
-
 function eventKind(event) {
   return event?.kind ?? event?.event?.kind ?? event?.type
 }
@@ -747,7 +735,9 @@ export function assertFrameHasConcurrentRuns(frame, runIds) {
   for (const runId of runIds) {
     const { stateRun } = runFromFrame(frame, runId)
     assert.ok(isActive(stateRun.status), `run ${runId} is not active`)
-    assert.ok(stateRun.lastProviderSequence > 0, `run ${runId} has no streamed events`)
+    // The recorded state omits provider sequences; a run streamed once it has events or transcript.
+    const streamed = eventIdsForRun(frame, runId).length || assistantTranscriptForRun(frame, runId)
+    assert.ok(streamed, `run ${runId} has no streamed events`)
   }
   const activeOwnership = frame.state?.activeRuns?.filter((entry) => runIds.includes(entry.runId))
   assert.equal(activeOwnership?.length, 2, 'frame did not expose two active run ownership records')

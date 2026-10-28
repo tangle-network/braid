@@ -44,6 +44,8 @@ export class TerminalInteractionController {
   #refresh: ReturnType<typeof setInterval> | undefined
   #deferredKey: string | undefined
   #recheck: ReturnType<typeof setTimeout> | undefined
+  /** A form another overlay closed; it waits behind Alt+P instead of taking that overlay back. */
+  #dismissedKey: string | undefined
 
   constructor(options: TerminalInteractionControllerOptions) {
     this.#theme = options.theme
@@ -64,7 +66,7 @@ export class TerminalInteractionController {
   }
 
   sync(view: BraidViewModel): void {
-    const interaction = view.interactions[0]
+    const interaction = focused(view)
     const interactionKey = interaction ? keyFor(interaction) : undefined
     if (!interaction) {
       this.#clearDeferred()
@@ -89,26 +91,29 @@ export class TerminalInteractionController {
     ) {
       // LIVE-07 lost 547 typed characters to a form that opened mid-prompt: a request that arrives
       // while the user is composing waits in the status line until they ask for it or go idle.
-      if (this.#composerBusy()) this.#defer(interaction)
+      // A request from another conversation waits too; it took branch B's prompt right after /new.
+      const held = foreign(view, interaction) || interactionKey === this.#dismissedKey
+      if (this.#composerBusy() || held) this.#defer(interaction, !held)
       else this.#openInteraction(interaction)
     }
   }
 
   /** Opens the interaction held back from the composer; false when none is waiting. */
   openDeferred(): boolean {
-    const interaction = this.#currentView().interactions[0]
+    const interaction = focused(this.#currentView())
     if (this.#open || this.#deferredKey === undefined || interaction === undefined) return false
     this.#openInteraction(interaction)
     return true
   }
 
-  #defer(interaction: InteractionView): void {
+  /** Rechecks while the composer is busy; a switch back to the request's conversation re-syncs. */
+  #defer(interaction: InteractionView, recheck: boolean): void {
     const notice = `${interaction.kind} waiting · alt+p`
     if (this.#deferredKey !== keyFor(interaction)) {
       this.#deferredKey = keyFor(interaction)
       this.#setDeferred(notice)
     }
-    if (this.#recheck !== undefined) return
+    if (!recheck || this.#recheck !== undefined) return
     this.#recheck = setTimeout(() => {
       this.#recheck = undefined
       if (this.#isStopped()) return
@@ -128,6 +133,7 @@ export class TerminalInteractionController {
 
   #openInteraction(interaction: InteractionView): void {
     this.#clearDeferred()
+    this.#dismissedKey = undefined
     this.#open = true
     this.#interactionKey = keyFor(interaction)
     const shell = new InteractionShell(
@@ -149,7 +155,7 @@ export class TerminalInteractionController {
           response,
         }).then((result) => {
           if (this.#isStopped()) return
-          const current = this.#currentView().interactions[0]
+          const current = focused(this.#currentView())
           if (result.kind !== 'accepted' && current && keyFor(current) === pendingKey) {
             this.#pendingInteractionKey = undefined
             this.#openInteraction(current)
@@ -171,6 +177,16 @@ export class TerminalInteractionController {
       maxHeight: '100%',
       margin: 0,
       fullScreenBelow: Number.MAX_SAFE_INTEGER,
+      // LIVE-07 opened the activity browser over B's form; the form vanished unanswered and unlisted.
+      onClose: () => {
+        if (this.#shell !== shell) return
+        this.#open = false
+        this.#interactionKey = undefined
+        this.#shell = undefined
+        this.#stopRefresh()
+        this.#dismissedKey = keyFor(interaction)
+        this.sync(this.#currentView())
+      },
     })
     this.#syncRefresh(interaction)
   }
@@ -182,7 +198,7 @@ export class TerminalInteractionController {
     this.#pendingInteractionKey = undefined
     this.#shell = undefined
     this.#stopRefresh()
-    const current = this.#currentView().interactions[0]
+    const current = focused(this.#currentView())
     if (current !== undefined && keyFor(current) === keyFor(previous))
       this.#openInteraction(current)
   }
@@ -218,4 +234,16 @@ export class TerminalInteractionController {
 
 function keyFor(interaction: InteractionView): string {
   return `${interaction.runId}:${interaction.interactionId}`
+}
+
+/** A request for the conversation on screen comes first; another conversation's waits. */
+function focused(view: BraidViewModel): InteractionView | undefined {
+  return (
+    view.interactions.find((interaction) => !foreign(view, interaction)) ?? view.interactions[0]
+  )
+}
+
+function foreign(view: BraidViewModel, interaction: InteractionView): boolean {
+  const owner = view.runs.find((run) => run.id === interaction.runId)?.conversationId
+  return owner !== undefined && owner !== view.conversationId
 }

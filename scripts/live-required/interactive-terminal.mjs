@@ -30,10 +30,12 @@ export function harnessCommand(command, runner) {
   return command.startsWith('!!') ? `${SHELL_PREFIX[runner]}${command.slice(2)}` : command
 }
 
+/** The rows on screen; buffer rows above the viewport are scrollback the user cannot see. */
 export function terminalText(terminal) {
+  const buffer = terminal.buffer.active
   let text = ''
   for (let row = 0; row < terminal.rows; row += 1) {
-    text += terminal.buffer.active.getLine(row)?.translateToString(true) ?? ''
+    text += buffer.getLine(buffer.viewportY + row)?.translateToString(true) ?? ''
     text += '\n'
   }
   return text

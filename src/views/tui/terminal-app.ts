@@ -13,7 +13,7 @@ import { sanitizeTitle } from '../shared/sanitize.js'
 import { GuardedAutocompleteProvider } from './autocomplete-guard.js'
 import type { TerminalConfigurationOptions } from './configuration-wizard-options.js'
 import { DynamicAutocompleteProvider } from './dynamic-autocomplete.js'
-import { type BraidKeymap, isTextInputSequence, resolveKeymap } from './keyboard.js'
+import { type BraidKeymap, resolveKeymap } from './keyboard.js'
 import { ModalCoordinator } from './modal-coordinator.js'
 import { TerminalCommandController } from './terminal-command-controller.js'
 import { installTerminalOutputPolicy, keyboardCompatibility } from './terminal-compatibility.js'
@@ -58,7 +58,7 @@ export class BraidTerminalApp {
   readonly #unsubscribe: () => void
   #removeInputListener: (() => void) | undefined
   #stopped = false
-  #lastComposerEditAt = 0
+  #lastInputAt = 0
   #started = false
   #suspended = false
   #openConfigurationOnStart = false
@@ -286,23 +286,22 @@ export class BraidTerminalApp {
     this.#tui.requestRender()
   }
 
-  /** A focused composer with an unsent draft, or one typed into within the last 1.5 s. */
+  /** A switch opening, another overlay in use, an unsent draft, or any key in the last 1.5 s. */
   #composerBusy(): boolean {
-    const editor = this.#shell.editor
-    if (!editor.focused) return false
-    return editor.getText().length > 0 || Date.now() - this.#lastComposerEditAt < 1_500
+    if (this.#commands.switching || this.#tui.hasOverlay()) return true
+    return this.#shell.editor.getText().length > 0 || Date.now() - this.#lastInputAt < 1_500
   }
 
   #submit(rawText: string): void {
     // A sent message is not a draft in progress, so an interaction may take focus at once.
-    this.#lastComposerEditAt = 0
+    this.#lastInputAt = 0
     this.#commands.submit(rawText)
   }
 
   #handleInput(data: string): { consume?: boolean } | undefined {
-    // Keystrokes, not onChange: restoring a saved draft also fires onChange without any typing.
-    if (this.#shell.editor.focused && isComposerKeystroke(data))
-      this.#lastComposerEditAt = Date.now()
+    // Keystrokes, not onChange: restoring a saved draft also fires onChange without any typing. Any
+    // key counts: LIVE-07's Ctrl+C for run B landed in a form that had just opened and denied bash.
+    this.#lastInputAt = Date.now()
     return this.#input.handle(data)
   }
 
@@ -326,10 +325,4 @@ export class BraidTerminalApp {
       return result
     })
   }
-}
-
-/** Printable text, Backspace (0x7f) or a paste; never Enter, an escape sequence or a chord. */
-function isComposerKeystroke(data: string): boolean {
-  if (isTextInputSequence(data)) return true
-  return data.length > 0 && [...data].every((char) => (char.codePointAt(0) ?? 0) >= 0x20)
 }

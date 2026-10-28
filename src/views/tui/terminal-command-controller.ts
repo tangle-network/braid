@@ -18,6 +18,9 @@ import { executionTargetFor } from './execution-target.js'
 import type { TerminalDraftController } from './terminal-drafts.js'
 import type { TerminalOverlayController } from './terminal-overlays.js'
 
+/** Commands that change the conversation or branch the composer sends to. */
+const TARGET_COMMANDS: ReadonlySet<string> = new Set(['new', 'open', 'branch', 'clone', 'fork'])
+
 export interface TerminalCommandControllerOptions {
   readonly controller: BraidUiController
   readonly editor: Editor
@@ -57,12 +60,29 @@ export class TerminalCommandController {
     this.#nativeInteractive = options.nativeInteractive
   }
 
+  #targetChange: Promise<void> = Promise.resolve()
+  #submissions: Promise<void> = Promise.resolve()
+
+  /** Submissions run in order, so a message typed after /new never reads the old target. */
   submit(rawText: string): void {
-    void this.#submitValue(rawText)
+    this.#submissions = this.#submissions
+      .then(() => this.#submitValue(rawText))
+      .catch(() => undefined)
   }
 
+  /** True while /new or another switch is still opening its target. */
+  switching = false
+
   dispatchCommand(command: CommandName, args: readonly string[]): void {
-    void this.#dispatchCommandValue(command, args)
+    const dispatched = this.#dispatchCommandValue(command, args)
+    if (!TARGET_COMMANDS.has(command)) return
+    this.switching = true
+    const settled: Promise<void> = dispatched
+      .catch(() => undefined)
+      .then(() => {
+        if (this.#targetChange === settled) this.switching = false
+      })
+    this.#targetChange = settled
   }
 
   async #submitValue(rawText: string): Promise<void> {
@@ -81,9 +101,12 @@ export class TerminalCommandController {
       this.#drafts.setText('')
       await this.#drafts.flush('')
       this.dispatchCommand(parsed.name, parsed.args)
+      await this.#targetChange
       return
     }
 
+    // A message typed while /new or another switch is still opening belongs to the new target.
+    await this.#targetChange
     const view = this.#controller.view()
     const active = view.activeRunId !== undefined
     const queueCapability = view.capabilities['run.queue']
@@ -171,7 +194,7 @@ export class TerminalCommandController {
         return
       }
     }
-    if (['new', 'open', 'branch', 'clone', 'fork'].includes(command)) await this.#drafts.flush()
+    if (TARGET_COMMANDS.has(command)) await this.#drafts.flush()
     if (command === 'open') {
       this.#overlays.openConversationSelector(args.join(' ').trim())
       return
@@ -224,7 +247,7 @@ export class TerminalCommandController {
               : intelligenceSourceContext(analysisCommand, args, this.#controller.view()),
           )
         : undefined
-    void this.#dispatch(intent).then((result) => {
+    const settled = this.#dispatch(intent).then((result) => {
       if (result.kind !== 'accepted' || this.#isStopped()) return
       if (command === 'feedback' && args[0] === 'list') this.#overlays.openFeedback(result.data)
       else if (command === 'fork') this.#overlays.openSurface('fork')
@@ -238,6 +261,7 @@ export class TerminalCommandController {
         intelligenceProgress?.complete(result.data)
       }
     })
+    if (TARGET_COMMANDS.has(command)) await settled
   }
 
   async #runNativeInteractive(
