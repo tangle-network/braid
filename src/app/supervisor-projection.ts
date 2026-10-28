@@ -236,7 +236,7 @@ function projectSnapshot(input: SupervisorSnapshotRequest, raw: TopSnapshot): Su
     }
     seenSupervisors.add(runtimeSupervisorId)
     const id = supervisorId(input, runtimeSupervisorId)
-    const accounting = raw.pursuit?.runs.find((run) => run.runId === runtimeSupervisorId)
+    const accounting = raw.pursuit?.runs.filter((run) => run.runId === view.id).at(-1)
     const createdAt = validIso(view.startedAt, at)
     const rootRunId = bindings.get(runtimeSupervisorId)
     supervisors.push({

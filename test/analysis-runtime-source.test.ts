@@ -66,6 +66,8 @@ async function recordRuntimeRun(
   runDir: string,
   runId: string,
   observation?: { readonly ready: () => void; readonly release: Promise<void> },
+  estimate = 0.125,
+  failAfterWorker = false,
 ): Promise<void> {
   const span: ToolSpan = {
     spanId: 'edit-1',
@@ -80,6 +82,10 @@ async function recordRuntimeRun(
     status: 'ok',
   }
   let drives = 0
+  let workerSettled = () => {}
+  const settled = new Promise<void>((resolve) => {
+    workerSettled = resolve
+  })
   await supervisePursuit(profile('root', ['spawn_worker', 'stop']), 'delegate once', {
     pursuitId: 'pursuit:braid-analysis',
     signal: AbortSignal.timeout(45_000),
@@ -95,6 +101,10 @@ async function recordRuntimeRun(
           task: 'deliver',
           label: 'worker',
         })
+        if (failAfterWorker) {
+          await settled
+          throw new Error('first attempt failed after worker settlement')
+        }
         observation?.ready()
         await observation?.release
       } else {
@@ -115,14 +125,18 @@ async function recordRuntimeRun(
               yield { kind: 'tokens', input: 5, output: 5 }
               yield {
                 kind: 'cost',
-                usd: 0.125,
+                usd: estimate,
                 usdKnown: false,
-                usdEstimated: 0.125,
+                usdEstimated: estimate,
                 provenance: 'catalog-estimate',
               }
+              await observation?.release
             })(),
           traceSource: () => ({ onSpan: () => () => {}, collect: async () => [span] }),
-          teardown: async () => ({ destroyed: true }),
+          teardown: async () => {
+            workerSettled()
+            return { destroyed: true }
+          },
           resultArtifact: () => ({
             outRef: 'record:worker',
             out: { worker: 'worker' },
@@ -130,9 +144,9 @@ async function recordRuntimeRun(
             spent: {
               iterations: 1,
               tokens: { input: 5, output: 5 },
-              usd: 0.125,
+              usd: estimate,
               usdKnown: false,
-              usdEstimated: 0.125,
+              usdEstimated: estimate,
               ms: 0,
             },
           }),
@@ -353,6 +367,12 @@ test('built JSONL selects a Runtime-written durable run without granting control
   const started = new Promise<void>((resolveReady) => {
     ready = resolveReady
   })
+  await assert.rejects(
+    recordRuntimeRun(runDir, runId, undefined, 0.5, true),
+    /first attempt failed after worker settlement/u,
+  )
+  const failed = await loadTopSnapshot(runDir, { runDir })
+  assert.equal(failed.pursuit?.runs.at(-1)?.totals.inclusive.usdEstimated, 0.5)
   const recording = recordRuntimeRun(runDir, runId, { ready: () => ready(), release: held })
   try {
     await Promise.race([
@@ -396,6 +416,21 @@ test('built JSONL selects a Runtime-written durable run without granting control
     assert(view.graphEdges.length > 0)
     assert(view.supervisors.every((row) => row.runDir === runDir && row.rootRunId === undefined))
     assert(!view.supervisors.some((row) => String(row.id) === row.runtimeId))
+    const supervisor = view.supervisors[0]!
+    const worker = view.workers[0]!
+    assert.equal(worker.status, 'running')
+    await assert.rejects(
+      rpc.request(
+        'steer_worker',
+        { supervisorId: supervisor.id, workerId: worker.id, text: 'must not reach Runtime' },
+        'op-readonly-worker',
+      ),
+      /not present/u,
+    )
+    await assert.rejects(
+      rpc.request('cancel_supervisor', { supervisorId: supervisor.id }, 'op-readonly-root'),
+      /not present/u,
+    )
     release()
     await recording
     const before = await runBytes(runDir)
@@ -405,9 +440,11 @@ test('built JSONL selects a Runtime-written durable run without granting control
         (row) => row.status !== 'running',
       ),
     )
-    const supervisor = view.supervisors[0]!
-    const worker = view.workers[0]!
     const settledSnapshot = await loadTopSnapshot(runDir, { runDir })
+    const attempts = settledSnapshot.pursuit?.runs.filter((row) => row.runId === runId)
+    assert.equal(attempts?.length, 2)
+    assert.equal(attempts?.[0]?.totals.inclusive.usdEstimated, 0.5)
+    assert.equal(attempts?.at(-1)?.totals.inclusive.usdEstimated, 0.125)
     const canonicalWorker = settledSnapshot.supervisors[0]?.workers.find(
       (row) => row.id === worker.runtimeId,
     )
@@ -420,18 +457,6 @@ test('built JSONL selects a Runtime-written durable run without granting control
     assert.equal(
       (settled.response.result.supervisors as SupervisorRecord[])[0]?.totalUsage?.spendUsd,
       undefined,
-    )
-    await assert.rejects(
-      rpc.request(
-        'steer_worker',
-        { supervisorId: supervisor.id, workerId: worker.id, text: 'must not reach Runtime' },
-        'op-readonly-worker',
-      ),
-      /not present/u,
-    )
-    await assert.rejects(
-      rpc.request('cancel_supervisor', { supervisorId: supervisor.id }, 'op-readonly-root'),
-      /not present/u,
     )
     const graph = await rpc.request('get_graph', {})
     assert(JSON.stringify(graph.response.result).includes(String(worker.id)))
