@@ -161,31 +161,16 @@ async function control(
     const acknowledgement = await previous.acknowledgement
     if (acknowledgement.outcome === 'unknown') {
       if (!context.currentEffect(request.operationId))
-        return {
-          operationId: request.operationId,
-          runId: request.runId,
-          control: controlKind,
-          replayed: true,
-          acknowledgement,
-          status: context.findRun(request.runId).status,
-          completion: previous.completion,
-        }
+        return existingControlReceipt(context, request.operationId, controlKind, previous)
       const reconciled = await context.executeControl(request)
       await persistControlAcknowledgement(context, request, controlKind, reconciled)
-      context.ledger.setControl(request.operationId, {
+      const next = {
         ...previous,
         acknowledgement: Promise.resolve(reconciled),
         completion: Promise.resolve(context.currentState()),
-      })
-      return {
-        operationId: request.operationId,
-        runId: request.runId,
-        control: controlKind,
-        replayed: true,
-        acknowledgement: reconciled,
-        status: context.findRun(request.runId).status,
-        completion: Promise.resolve(context.currentState()),
       }
+      context.ledger.setControl(request.operationId, next)
+      return existingControlReceipt(context, request.operationId, controlKind, next)
     }
     return existingControlReceipt(context, request.operationId, controlKind, previous)
   }
@@ -196,20 +181,9 @@ async function control(
       return existingControlReceipt(context, request.operationId, controlKind, existing)
   }
 
-  let resolveAcknowledgement!: (value: ControlAcknowledgement) => void
-  const acknowledgement = new Promise<ControlAcknowledgement>((resolve) => {
-    resolveAcknowledgement = resolve
-  })
-  let resolveCompletion!: (value: import('../domain/state.js').BraidState) => void
-  let rejectCompletion!: (error: unknown) => void
-  const completion = new Promise<import('../domain/state.js').BraidState>((resolve, reject) => {
-    resolveCompletion = resolve
-    rejectCompletion = reject
-  })
-  let resolveLateSettlementReady!: () => void
-  const lateSettlementReady = new Promise<void>((resolve) => {
-    resolveLateSettlementReady = resolve
-  })
+  const { promise: acknowledgement, resolve: resolveAcknowledgement } = Promise.withResolvers<ControlAcknowledgement>()
+  const { promise: completion, resolve: resolveCompletion, reject: rejectCompletion } = Promise.withResolvers<import('../domain/state.js').BraidState>()
+  const { promise: lateSettlementReady, resolve: resolveLateSettlementReady } = Promise.withResolvers<void>()
   context.ledger.setControl(request.operationId, {
     digest,
     runId: request.runId,

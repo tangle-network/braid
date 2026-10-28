@@ -17,10 +17,11 @@ export class RunOwnership {
   }
   async transition<T>(action: () => Promise<T>): Promise<T> {
     const deadline = Date.now() + 30_000
-    let fd: number | undefined
-    while ((fd = this.#acquire('transition')) === undefined) {
+    let fd = this.#acquire('transition')
+    while (fd === undefined) {
       if (Date.now() >= deadline) throw new Error('State journal is busy in another Braid process')
       await new Promise((resolve) => setTimeout(resolve, 10))
+      fd = this.#acquire('transition')
     }
     try {
       return await action()

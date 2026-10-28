@@ -1,6 +1,9 @@
 import type { BraidState } from '../domain/state.js'
 import type { PortViews } from './application-port-builder.js'
-import { buildApplicationPortRuntime, type ApplicationPortRuntimeInput } from './application-port-runtime.js'
+import {
+  buildApplicationPortRuntime,
+  type ApplicationPortRuntimeInput,
+} from './application-port-runtime.js'
 import { commitEventsAndWaitAtRevision, type TransitionHost } from './application-transition.js'
 import type { AppSubscriber } from './application-types.js'
 
