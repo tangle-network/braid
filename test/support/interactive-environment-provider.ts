@@ -2,8 +2,8 @@ import {
   type AgentInteractiveSessionControlClaim,
   type AgentInteractiveSessionPromptAcknowledgement,
   type AgentInteractiveSessionRef,
-  type AgentInteractiveSessionStart,
   AgentInteractiveSessionRefSchema,
+  type AgentInteractiveSessionStart,
   canonicalCandidateDigest,
 } from '@tangle-network/agent-interface'
 import type {
@@ -88,7 +88,6 @@ export class InteractiveEnvironmentFixture {
   }
 
   #environment(): AgentEnvironment {
-    const fixture = this
     return {
       id: this.#environmentId,
       provider: 'tangle-sandbox',
@@ -98,42 +97,42 @@ export class InteractiveEnvironmentFixture {
         throw new Error('an interactive run never dispatches a headless turn')
       },
       startInteractive: async (request: AgentInteractiveSessionStart) => {
-        fixture.#ref ??= AgentInteractiveSessionRefSchema.parse({
+        this.#ref ??= AgentInteractiveSessionRefSchema.parse({
           run: request.run,
           preparationReceipt: preparationReceipt(request),
           incarnationId: 'interactive-fixture-incarnation',
           startedAt: '2026-10-28T00:00:00.000Z',
         })
-        return fixture.#ref
+        return this.#ref
       },
       interactive: () => {
-        const ref = fixture.#ref
+        const ref = this.#ref
         if (ref === undefined) throw new Error('the interactive process has not started')
         return {
           ref,
           claimControl: async (request, options) => {
             options?.signal?.throwIfAborted()
-            if (request.expectedGeneration !== fixture.#generation) {
+            if (request.expectedGeneration !== this.#generation) {
               return {
                 operationId: request.operationId,
                 requestDigest: request.requestDigest,
                 ref,
                 status: 'conflict' as const,
                 conflictReason: 'generation_mismatch' as const,
-                currentGeneration: fixture.#generation,
+                currentGeneration: this.#generation,
               }
             }
-            fixture.#generation += 1
+            this.#generation += 1
             return {
               operationId: request.operationId,
               requestDigest: request.requestDigest,
               ref,
               status: 'accepted' as const,
-              control: fixture.#control(ref),
+              control: this.#control(ref),
             }
           },
           status: async () =>
-            fixture.#running
+            this.#running
               ? { state: 'running' as const, ref }
               : {
                   state: 'exited' as const,
@@ -146,7 +145,7 @@ export class InteractiveEnvironmentFixture {
           },
           sendPrompt: async (command, options) => {
             options?.signal?.throwIfAborted()
-            const held = fixture.#promptLedger.get(command.operationId)
+            const held = this.#promptLedger.get(command.operationId)
             if (held !== undefined) {
               return held.requestDigest === command.requestDigest
                 ? { ...held, control: command.control, status: 'replayed' as const }
@@ -159,7 +158,7 @@ export class InteractiveEnvironmentFixture {
                     existingRequestDigest: held.requestDigest,
                   }
             }
-            if (command.control.generation !== fixture.#generation) {
+            if (command.control.generation !== this.#generation) {
               throw new Error('Interactive control claim is stale')
             }
             const acknowledgement = {
@@ -169,12 +168,12 @@ export class InteractiveEnvironmentFixture {
               control: command.control,
               status: 'accepted' as const,
             }
-            fixture.#promptLedger.set(command.operationId, acknowledgement)
-            fixture.prompts.push(command.prompt)
+            this.#promptLedger.set(command.operationId, acknowledgement)
+            this.prompts.push(command.prompt)
             return acknowledgement
           },
           stop: async (command) => {
-            fixture.#running = false
+            this.#running = false
             return {
               operationId: command.operationId,
               requestDigest: command.requestDigest,

@@ -1425,8 +1425,8 @@ async function runProof({
       'native reconnect provider control reference',
     )
     verifiedIdentity = reconnectedIdentity
-    // A second process steers while this TUI holds the terminal; the TUI input below must still work.
-    const steerAttached = await steerTwiceThroughBraid(packed.binary, config, initialIdentity.run.id)
+    // A second process steers while this TUI holds the terminal; the TUI input below must work.
+    const steerAttached = await steerTwiceThroughBraid(packed, config, initialIdentity)
     const reconnectBeforeScreen = runtime.screen
     const reconnectActionRevision = runtime.terminalOutputRevision
     await runtime.submit(reconnectCommand)
@@ -1457,7 +1457,7 @@ async function runProof({
       identity.controlRef,
       'final TUI state provider control reference',
     )
-    const steerDetached = await steerTwiceThroughBraid(packed.binary, config, identity.run.id)
+    const steerDetached = await steerTwiceThroughBraid(packed, config, identity)
     const steer = await steerTurnsFromJournal(
       config,
       interactiveAdmissionIdentity(record, identity.run).admission.ref.run.sessionId,

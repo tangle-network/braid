@@ -9,10 +9,11 @@ import { closeBraidWithProof } from './tangle-sandbox-braid-stress.mjs'
  * Steer the live run twice with one operation id from a second `braid rpc` process. The first
  * delivers the prompt; the second must replay it, so Runtime journals exactly one turn.
  */
-export async function steerTwiceThroughBraid(binary, config, runId) {
+export async function steerTwiceThroughBraid(packed, config, identity) {
+  const runId = identity.run.id
   const text = 'Reply with one short sentence and change no files.'
   const operationId = `op-live-interactive-steer-${randomUUID()}`
-  const initialized = await initializedSession(binary, config)
+  const initialized = await initializedSession(packed.binary, config)
   try {
     const first = await rpcRequest(initialized.session, 'steer', { runId, text }, operationId)
     const second = await rpcRequest(initialized.session, 'steer', { runId, text }, operationId)
