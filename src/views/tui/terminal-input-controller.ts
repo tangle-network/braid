@@ -124,6 +124,11 @@ export class TerminalInputController {
       }
       return { consume: true }
     }
+    // pi-tui also reads Alt+P's ESC p as a legacy Alt+Up, so the named binding is checked first.
+    if (matchesKeyAction(data, this.#keymap, 'openInteraction')) {
+      this.#openDeferredInteraction()
+      return { consume: true }
+    }
     if (!this.#tui.hasOverlay() && matchesKeyAction(data, this.#keymap, 'previousBranch')) {
       void this.#drafts.flush().then(() => this.#overlays.openAdjacentBranch(-1))
       return { consume: true }
@@ -140,10 +145,6 @@ export class TerminalInputController {
     }
     if (matchesKeyAction(data, this.#keymap, 'switcher')) {
       this.#overlays.openSwitcher()
-      return { consume: true }
-    }
-    if (matchesKeyAction(data, this.#keymap, 'openInteraction')) {
-      this.#openDeferredInteraction()
       return { consume: true }
     }
     if (matchesKeyAction(data, this.#keymap, 'activity')) {
