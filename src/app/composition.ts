@@ -3,7 +3,6 @@ import { AgentRuntimeExecutionPort } from '../adapters/runtime/agent-runtime-exe
 import { UnavailableExecutionPort } from '../adapters/runtime/unavailable-execution.js'
 import { FixedClock, SystemClock } from '../ports/clock.js'
 import { type CredentialPort, credentialRef } from '../ports/credentials.js'
-import type { JournalPort } from '../ports/effect-storage.js'
 import { RandomIds, SequenceIds } from '../ports/ids.js'
 import {
   type DeterministicBackendOptions,
