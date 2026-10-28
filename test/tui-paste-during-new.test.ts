@@ -168,7 +168,11 @@ test("another conversation's request waits in the status line instead of taking 
     const runA = app.state().runs.find((run) => run.conversationId === first)
     assert.equal(runA?.interactions[0]?.status, 'pending')
     terminal.sendInput('\u001bp')
-    await waitUntil('the opened form', () => /Allow tool "bash"\?/u.test(screen().join('\n')), screen)
+    await waitUntil(
+      'the opened form',
+      () => /Allow tool "bash"\?/u.test(screen().join('\n')),
+      screen,
+    )
   } finally {
     held.release()
     view.stop()
