@@ -452,23 +452,27 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
       }
     }
     const options = input.signal === undefined ? undefined : { signal: input.signal }
-    const control = await this.#steerControl(input.runId, handle, options)
-    const material = {
-      operationId: input.operationId,
-      ref: handle.ref,
-      control,
-      prompt: input.text,
-    }
-    let acknowledgement: Awaited<ReturnType<RetainedInteractiveRunHandle['sendPrompt']>>
-    try {
-      acknowledgement = await handle.sendPrompt(
+    const send = async () => {
+      const material = {
+        operationId: input.operationId,
+        ref: handle.ref,
+        control: await this.#steerControl(input.runId, handle, options),
+        prompt: input.text,
+      }
+      return handle.sendPrompt(
         { ...material, requestDigest: agentInteractiveSessionPromptRequestDigest(material) },
         options,
       )
+    }
+    let acknowledgement: Awaited<ReturnType<typeof send>>
+    try {
+      acknowledgement = await send()
     } catch (error) {
-      // A superseded claim fails here; the next attempt claims a current generation.
+      // An attached TUI's newer claim supersedes the cached one. One resend under a current claim
+      // is safe: a prompt the provider already holds answers conflict, never a second delivery.
       this.#steerControls.delete(input.runId)
-      throw error
+      if (input.signal?.aborted) throw error
+      acknowledgement = await send()
     }
     switch (acknowledgement.status) {
       case 'accepted':
@@ -492,7 +496,12 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
     options: { readonly signal: AbortSignal } | undefined,
   ): Promise<AgentInteractiveSessionControlClaim> {
     const held = this.#steerControls.get(runId)
-    if (held !== undefined && Date.parse(held.expiresAt) > Date.now() + 5_000) return held
+    if (
+      held !== undefined &&
+      held.refDigest === canonicalCandidateDigest(handle.ref) &&
+      Date.parse(held.expiresAt) > Date.now() + 5_000
+    )
+      return held
     const control = await claimRetainedInteractiveControl({
       handle,
       holderId: this.#holderId,

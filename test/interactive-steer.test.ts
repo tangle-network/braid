@@ -125,6 +125,9 @@ test('steers reconnect from the started admission and deliver each operation onc
     outcome: 'rejected',
     detail: 'operation-conflict',
   })
+  // An attached TUI's newer claim supersedes this process's claim; the steer resends once.
+  fixture.supersedeControl()
+  assert.equal((await steer(steering, 'steer-3', 'Explain the failure.')).outcome, 'accepted')
   // Duplicate events: two processes race one new operation; the provider delivers it once.
   const raced = await Promise.all(
     [0, 1].map(() =>
@@ -136,8 +139,8 @@ test('steers reconnect from the started admission and deliver each operation onc
   )
   assert.equal(raced.filter((outcome) => outcome === 'accepted').length, 1)
 
-  assert.deepEqual(fixture.prompts, ['Run the tests.', 'Summarize.'])
-  assert.deepEqual(await turnOperations(journalRoot, sessionId), ['steer-1', 'steer-2'])
+  assert.deepEqual(fixture.prompts, ['Run the tests.', 'Explain the failure.', 'Summarize.'])
+  assert.deepEqual(await turnOperations(journalRoot, sessionId), ['steer-1', 'steer-3', 'steer-2'])
 })
 
 test('a cancelled steer delivers nothing and applies once on retry', async () => {

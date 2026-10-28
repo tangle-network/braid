@@ -64,6 +64,11 @@ export class InteractiveEnvironmentFixture {
   readonly #promptLedger = new Map<string, AgentInteractiveSessionPromptAcknowledgement>()
   readonly #environmentId = 'interactive-fixture-environment'
 
+  /** Another coordinator, such as an attached TUI, claims a newer control generation. */
+  supersedeControl(): void {
+    this.#generation += 1
+  }
+
   provider(): AgentEnvironmentProvider {
     const environment = this.#environment()
     return {

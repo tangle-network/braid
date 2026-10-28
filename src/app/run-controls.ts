@@ -60,6 +60,8 @@ export async function steerRun(
 ): Promise<ControlReceipt> {
   const previous = context.ledger.getControl(input.operationId)
   const run = resolveRunTarget(context.currentState(), input, previous?.runId)
+  if (previous === undefined && isTerminal(run.status))
+    throw new AppError('UNKNOWN_RUN', `Run ${run.id} is not active`)
   if (!run.capabilities.controls.steer || !context.execution.steerRun)
     throw new AppError('CAPABILITY_UNAVAILABLE', 'Live steering is not supported by this run')
   const providerSessionId =
