@@ -26,6 +26,7 @@ import { liveEvidenceBindingFromEnvironment } from '../release/live-evidence-bin
 import { connectionConfiguration } from './configuration.mjs'
 import { safeJson, safeMessage } from './contracts.mjs'
 import { configEvidence, prepareProductionWorkspace, resolveBinary } from './headless.mjs'
+import { terminalText } from './interactive-terminal.mjs'
 import { DEFAULT_TANGLE_ROUTER_MODEL, releaseProofRouting } from './model-defaults.mjs'
 import { MULTIRUN_PROOF_SCHEMA } from './multirun-contract.mjs'
 import {
@@ -115,15 +116,6 @@ export function promptFor(marker, holdSeconds) {
     `Run sleep ${holdSeconds} before the final response, so the test can observe this run and the other conversation's run active at the same time.`,
     `After sleep, reply with exactly ${marker} on its own line.`,
   ].join(' ')
-}
-
-function screenFrom(terminal) {
-  let text = ''
-  for (let row = 0; row < terminal.rows; row += 1) {
-    text += terminal.buffer.active.getLine(row)?.translateToString(true) ?? ''
-    text += '\n'
-  }
-  return text
 }
 
 export function terminalRecordPath(basePath, instance) {
@@ -228,7 +220,7 @@ function createTerminal(
     }
     child.write('\u0003')
     const deadline = performance.now() + 10_000
-    while (!normalizeScreen(screenFrom(terminal)).includes('Ctrl+C again to quit')) {
+    while (!normalizeScreen(terminalText(terminal)).includes('Ctrl+C again to quit')) {
       if (performance.now() >= deadline) throw new Error('safe quit prompt was not rendered')
       await pause(25)
     }
@@ -271,8 +263,8 @@ function createTerminal(
     get lastFrameError() {
       return lastFrameError
     },
-    screen: () => screenFrom(terminal),
-    snapshot: () => ({ screen: screenFrom(terminal), outputBytes: Buffer.byteLength(output) }),
+    screen: () => terminalText(terminal),
+    snapshot: () => ({ screen: terminalText(terminal), outputBytes: Buffer.byteLength(output) }),
     /** Receipts for the permissions this terminal answered, in order. */
     permissions: [],
     waitForStable,

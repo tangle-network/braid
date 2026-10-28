@@ -89,8 +89,11 @@ export class TerminalInteractionController {
     ) {
       // LIVE-07 lost 547 typed characters to a form that opened mid-prompt: a request that arrives
       // while the user is composing waits in the status line until they ask for it or go idle.
-      if (this.#composerBusy()) this.#defer(interaction)
-      else this.#openInteraction(interaction)
+      // A request from another conversation waits too; it took branch B's prompt right after /new.
+      const owner = view.runs.find((run) => run.id === interaction.runId)?.conversationId
+      if (this.#composerBusy() || (owner ?? view.conversationId) !== view.conversationId) {
+        this.#defer(interaction)
+      } else this.#openInteraction(interaction)
     }
   }
 
