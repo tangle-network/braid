@@ -61,9 +61,11 @@ export class TerminalCommandController {
   }
 
   #targetChange: Promise<void> = Promise.resolve()
+  #submissions: Promise<void> = Promise.resolve()
 
+  /** Submissions run in order, so a message typed after /new never reads the old target. */
   submit(rawText: string): void {
-    void this.#submitValue(rawText)
+    this.#submissions = this.#submissions.then(() => this.#submitValue(rawText)).catch(() => undefined)
   }
 
   dispatchCommand(command: CommandName, args: readonly string[]): void {
@@ -87,6 +89,7 @@ export class TerminalCommandController {
       this.#drafts.setText('')
       await this.#drafts.flush('')
       this.dispatchCommand(parsed.name, parsed.args)
+      await this.#targetChange
       return
     }
 
