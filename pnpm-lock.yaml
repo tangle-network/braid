@@ -37,8 +37,8 @@ importers:
         specifier: 4.5.0
         version: 4.5.0(@tangle-network/sandbox@1.0.33)
       '@tangle-network/agent-runtime':
-        specifier: 2.0.1
-        version: 2.0.1(@tangle-network/agent-eval@1.0.0)(@tangle-network/agent-interface@5.10.2)(@tangle-network/sandbox@1.0.33)
+        specifier: 2.2.1
+        version: 2.2.1(@tangle-network/agent-eval@1.0.0)(@tangle-network/agent-interface@5.10.2)(@tangle-network/sandbox@1.0.33)
       '@tangle-network/sandbox':
         specifier: 1.0.33
         version: 1.0.33
@@ -550,6 +550,14 @@ packages:
       '@modelcontextprotocol/sdk':
         optional: true
 
+  '@tangle-network/agent-core@1.0.1':
+    resolution: {integrity: sha512-crp4uGjCbMnmeAJ/hd2mHHP7rx5iSeoRWKfB3jft6c1mcl8iSXzPigaybklSgKuiJroPfd6tJP99OGr+rjxwug==}
+    peerDependencies:
+      '@modelcontextprotocol/sdk': ^1.30.0
+    peerDependenciesMeta:
+      '@modelcontextprotocol/sdk':
+        optional: true
+
   '@tangle-network/agent-eval@1.0.0':
     resolution: {integrity: sha512-Yy3iHAHpRhjXCJWfmIN2wNCdXkhnUC+vTW850nSqGj60VMYbIJwms/GGLF7Y4NdZSL0ssGK4uDgck5jDgGs7RQ==}
     engines: {node: '>=20.19.0'}
@@ -591,13 +599,13 @@ packages:
     peerDependencies:
       '@tangle-network/sandbox': '>=0.60.88 <2.0.0'
 
-  '@tangle-network/agent-runtime@2.0.1':
-    resolution: {integrity: sha512-Tl8MeVEC6hz/zbYbAcv1NLgOLUT//Nb/8EsddDZ4G78QDWCSWpdFi3oLKlc6qfKICEcGxCPqPb6/qk/tKnQx7A==}
+  '@tangle-network/agent-runtime@2.2.1':
+    resolution: {integrity: sha512-YwryObFrPVQoHwLu1jCgjLkBRhC3mPdMEqrAdl38Sj4Hd5QZijYLZ/c4L9iMtHWoaEwsvaXwxPCuogQ2x9Glyg==}
     engines: {node: '>=22.19.0'}
     hasBin: true
     peerDependencies:
       '@tangle-network/agent-eval': ^1.0.0
-      '@tangle-network/agent-interface': ^5.9.0
+      '@tangle-network/agent-interface': ^5.10.2
       '@tangle-network/sandbox': ^1.0.1
 
   '@tangle-network/agent-trace-contract@2.1.0':
@@ -970,11 +978,6 @@ packages:
     resolution: {integrity: sha512-+fdndUTwBP86cVjihTp21hZHo7d6oj1c/47XPA3lL8mM0XHs+C4EkcjmgRsFnFk2f/UONGDy9ItBItmXsLOQHw==}
     engines: {node: '>=22.19.0'}
 
-  yaml@2.9.0:
-    resolution: {integrity: sha512-2AvhNX3mb8zd6Zy7INTtSpl1F15HW6Wnqj0srWlkKLcpYl/gMIMJiyuGq2KeI2YFxUPjdlB+3Lc10seMLtL4cA==}
-    engines: {node: '>= 14.6'}
-    hasBin: true
-
   yaml@2.9.1:
     resolution: {integrity: sha512-3NxN8+78OdzbT7C/WjGsyfPAtJaN3FNDsWxv7Y7mcDsT/oOmgW8BpyQQFFBnvZE3j9Y2Sdz1ULFLezL7Eb2yFw==}
     engines: {node: '>= 14.6'}
@@ -1266,6 +1269,12 @@ snapshots:
       '@tangle-network/agent-trace-contract': 2.1.0
       zod: 4.6.7
 
+  '@tangle-network/agent-core@1.0.1':
+    dependencies:
+      '@tangle-network/agent-interface': 5.10.2
+      '@tangle-network/agent-trace-contract': 2.2.0
+      zod: 4.6.7
+
   '@tangle-network/agent-eval@1.0.0':
     dependencies:
       '@asteasolutions/zod-to-openapi': 9.1.0(zod@4.6.7)
@@ -1320,10 +1329,10 @@ snapshots:
       '@tangle-network/agent-interface': 5.8.0
       '@tangle-network/sandbox': 1.0.33
 
-  '@tangle-network/agent-runtime@2.0.1(@tangle-network/agent-eval@1.0.0)(@tangle-network/agent-interface@5.10.2)(@tangle-network/sandbox@1.0.33)':
+  '@tangle-network/agent-runtime@2.2.1(@tangle-network/agent-eval@1.0.0)(@tangle-network/agent-interface@5.10.2)(@tangle-network/sandbox@1.0.33)':
     dependencies:
       '@earendil-works/pi-codemode': 1.4.0
-      '@tangle-network/agent-core': 1.0.0
+      '@tangle-network/agent-core': 1.0.1
       '@tangle-network/agent-eval': 1.0.0
       '@tangle-network/agent-interface': 5.10.2
       '@tangle-network/agent-knowledge': 23.0.0(@tangle-network/agent-eval@1.0.0)(@tangle-network/agent-interface@5.10.2)
@@ -1468,7 +1477,7 @@ snapshots:
 
   bare-stream@2.13.4(bare-events@2.9.2):
     dependencies:
-      b4a: 1.8.1
+      b4a: 1.9.0
       streamx: 2.28.1
       teex: 1.0.1
     optionalDependencies:
@@ -1608,7 +1617,7 @@ snapshots:
 
   openapi3-ts@4.6.1:
     dependencies:
-      yaml: 2.9.0
+      yaml: 2.9.1
 
   proper-lockfile@4.1.2:
     dependencies:
@@ -1675,7 +1684,7 @@ snapshots:
 
   text-decoder@1.2.7:
     dependencies:
-      b4a: 1.8.1
+      b4a: 1.9.0
     transitivePeerDependencies:
       - react-native-b4a
 
@@ -1705,8 +1714,6 @@ snapshots:
   undici-types@8.9.0: {}
 
   undici@8.12.3: {}
-
-  yaml@2.9.0: {}
 
   yaml@2.9.1: {}
 
