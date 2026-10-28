@@ -181,9 +181,15 @@ async function control(
       return existingControlReceipt(context, request.operationId, controlKind, existing)
   }
 
-  const { promise: acknowledgement, resolve: resolveAcknowledgement } = Promise.withResolvers<ControlAcknowledgement>()
-  const { promise: completion, resolve: resolveCompletion, reject: rejectCompletion } = Promise.withResolvers<import('../domain/state.js').BraidState>()
-  const { promise: lateSettlementReady, resolve: resolveLateSettlementReady } = Promise.withResolvers<void>()
+  const { promise: acknowledgement, resolve: resolveAcknowledgement } =
+    Promise.withResolvers<ControlAcknowledgement>()
+  const {
+    promise: completion,
+    resolve: resolveCompletion,
+    reject: rejectCompletion,
+  } = Promise.withResolvers<import('../domain/state.js').BraidState>()
+  const { promise: lateSettlementReady, resolve: resolveLateSettlementReady } =
+    Promise.withResolvers<void>()
   context.ledger.setControl(request.operationId, {
     digest,
     runId: request.runId,
