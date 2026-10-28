@@ -96,10 +96,11 @@ export interface CheckpointRecord {
 export interface RuntimeUsageRecord {
   readonly inputTokens: number
   readonly outputTokens: number
-  readonly spendUsd: number
+  readonly spendUsd?: number
+  readonly estimatedSpendUsd?: number
   readonly latencyMs: number
   readonly iterations?: number
-  /** Runtime's current monitor omits completeness flags, so these totals are an observed floor. */
+  /** Completeness qualifies captured quantities; an absent dollar amount remains unknown. */
   readonly completeness: 'complete' | 'observed-floor' | 'unknown'
 }
 
@@ -109,6 +110,8 @@ export interface SupervisorRecord {
   readonly runtimeId: string
   /** Workspace root used to read and control this runtime supervisor. */
   readonly runtimeRoot: string
+  /** An explicitly selected durable source is read-only, even inside this workspace. */
+  readonly runDir?: string
   /** Present only when Braid has an explicit runtime-supervisor to run binding. */
   readonly rootRunId?: RunId
   /** Explicit conversation binding for a remote read-only Runtime tree. */
@@ -149,6 +152,7 @@ export interface WorkerRecord {
   readonly role?: 'manager' | 'worker'
   readonly streamStatus?: string
   readonly spendUsd?: number
+  readonly estimatedSpendUsd?: number
   readonly inputTokens?: number
   readonly outputTokens?: number
   readonly latencyMs?: number

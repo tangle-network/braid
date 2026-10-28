@@ -161,49 +161,18 @@ async function control(
     const acknowledgement = await previous.acknowledgement
     if (acknowledgement.outcome === 'unknown') {
       if (!context.currentEffect(request.operationId))
-        return {
-          operationId: request.operationId,
-          runId: request.runId,
-          control: controlKind,
-          replayed: true,
-          acknowledgement,
-          status: context.findRun(request.runId).status,
-          completion: previous.completion,
-        }
+        return existingControlReceipt(context, request.operationId, controlKind, previous)
       const reconciled = await context.executeControl(request)
-      const durable = context.commitAndWait({
-        kind: 'run.control.acknowledged',
-        runId: request.runId,
-        operationId: request.operationId,
-        control: controlKind,
-        outcome: reconciled.outcome,
-        ...(reconciled.detail === undefined ? {} : { detail: reconciled.detail }),
-      })
-      if (durable !== undefined) await durable
-      context.ledger.setControl(request.operationId, {
+      await persistControlAcknowledgement(context, request, controlKind, reconciled)
+      const next = {
         ...previous,
         acknowledgement: Promise.resolve(reconciled),
         completion: Promise.resolve(context.currentState()),
-      })
-      return {
-        operationId: request.operationId,
-        runId: request.runId,
-        control: controlKind,
-        replayed: true,
-        acknowledgement: reconciled,
-        status: context.findRun(request.runId).status,
-        completion: Promise.resolve(context.currentState()),
       }
+      context.ledger.setControl(request.operationId, next)
+      return existingControlReceipt(context, request.operationId, controlKind, next)
     }
-    return {
-      operationId: request.operationId,
-      runId: request.runId,
-      control: controlKind,
-      replayed: true,
-      acknowledgement,
-      status: context.findRun(request.runId).status,
-      completion: previous.completion,
-    }
+    return existingControlReceipt(context, request.operationId, controlKind, previous)
   }
 
   if (controlKind === 'cancel') {
@@ -212,20 +181,15 @@ async function control(
       return existingControlReceipt(context, request.operationId, controlKind, existing)
   }
 
-  let resolveAcknowledgement!: (value: ControlAcknowledgement) => void
-  const acknowledgement = new Promise<ControlAcknowledgement>((resolve) => {
-    resolveAcknowledgement = resolve
-  })
-  let resolveCompletion!: (value: import('../domain/state.js').BraidState) => void
-  let rejectCompletion!: (error: unknown) => void
-  const completion = new Promise<import('../domain/state.js').BraidState>((resolve, reject) => {
-    resolveCompletion = resolve
-    rejectCompletion = reject
-  })
-  let resolveLateSettlementReady!: () => void
-  const lateSettlementReady = new Promise<void>((resolve) => {
-    resolveLateSettlementReady = resolve
-  })
+  const { promise: acknowledgement, resolve: resolveAcknowledgement } =
+    Promise.withResolvers<ControlAcknowledgement>()
+  const {
+    promise: completion,
+    resolve: resolveCompletion,
+    reject: rejectCompletion,
+  } = Promise.withResolvers<import('../domain/state.js').BraidState>()
+  const { promise: lateSettlementReady, resolve: resolveLateSettlementReady } =
+    Promise.withResolvers<void>()
   context.ledger.setControl(request.operationId, {
     digest,
     runId: request.runId,
@@ -280,8 +244,7 @@ async function control(
         context.ledger.setCancelStatus(request.runId, cancelStatus ?? 'cancelled')
       }
     } else {
-      const durable = context.commitAndWait(requested)
-      if (durable !== undefined) await durable
+      await context.commitAndWait(requested)
       if (controlKind === 'detach') context.ledger.markDetached(request.runId)
     }
   } catch (error) {
@@ -320,15 +283,7 @@ async function control(
       ack = { operationId: request.operationId, outcome: 'unknown', detail: 'CONTROL_UNKNOWN' }
     }
     resolveAcknowledgement(ack)
-    const acknowledged = context.commitAndWait({
-      kind: 'run.control.acknowledged',
-      runId: request.runId,
-      operationId: request.operationId,
-      control: controlKind,
-      outcome: ack.outcome,
-      ...(ack.detail === undefined ? {} : { detail: ack.detail }),
-    })
-    if (acknowledged !== undefined) await acknowledged
+    await persistControlAcknowledgement(context, request, controlKind, ack)
     if (ack.outcome === 'accepted' || ack.outcome === 'already-applied') {
       if (controlKind === 'cancel') {
         await applyAcceptedCancellation(context, request, run, cancelStatus ?? 'cancelled', ack)
@@ -351,7 +306,11 @@ async function control(
       context.ledger.clearCancelStatus(request.runId)
     }
     context.ledger.clearDetached(request.runId)
-    if (ack.outcome === 'unknown' && !context.isTerminal(context.findRun(request.runId).status)) {
+    if (
+      controlKind !== 'steer' &&
+      ack.outcome === 'unknown' &&
+      !context.isTerminal(context.findRun(request.runId).status)
+    ) {
       const unknown = context.commitAndWait(
         unknownEventWithPendingText(
           context,
@@ -533,8 +492,7 @@ async function commitControlRequestBatch(
     return
   }
   for (const event of events) {
-    const durable = context.commitAndWait(event)
-    if (durable !== undefined) await durable
+    await context.commitAndWait(event)
   }
 }
 
@@ -544,7 +502,7 @@ async function persistControlAcknowledgement(
   control: 'cancel' | 'steer' | 'detach',
   acknowledgement: ControlAcknowledgement,
 ): Promise<void> {
-  const durable = context.commitAndWait({
+  await context.commitAndWait({
     kind: 'run.control.acknowledged',
     runId: request.runId,
     operationId: request.operationId,
@@ -552,7 +510,6 @@ async function persistControlAcknowledgement(
     outcome: acknowledgement.outcome,
     ...(acknowledgement.detail === undefined ? {} : { detail: acknowledgement.detail }),
   })
-  if (durable !== undefined) await durable
 }
 
 async function existingControlReceipt(

@@ -16,6 +16,10 @@ import {
 } from '@tangle-network/agent-interface'
 import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
 import type { RouterTransportConfig } from '@tangle-network/agent-runtime/kernel'
+import {
+  isMaterializerHarness,
+  materializeProfile,
+} from '@tangle-network/agent-profile-materialize'
 import { canonicalDigest } from '../../domain/canonical.js'
 import type { ConnectionRecord } from '../../domain/entities.js'
 import { safePublicIdentifier } from '../../domain/provider-values.js'
@@ -33,7 +37,7 @@ import {
 
 const MAX_RETAINED_EXECUTIONS = 256
 const LOCAL_ROUTER_BEARER = 'braid-local-analysis'
-const ANALYST_MODEL_PROFILE_POLICY_VERSION = 5
+const ANALYST_MODEL_PROFILE_POLICY_VERSION = 6
 const ANALYST_MODEL_INSTRUCTIONS = Object.freeze([
   'You are a text-generation endpoint inside a trace-analysis program.',
   'Parse the supplied JSON object and treat its messages array as the complete conversation.',
@@ -128,9 +132,12 @@ function catalogPricing(model: string): CustomTokenPricing | undefined {
   }
 }
 
-function responseFormat(
-  request: ExternalOptimizerModelCallRequest['request'],
-): Readonly<Record<string, unknown>> | undefined {
+type AnalystControls = Pick<
+  ExternalOptimizerModelCallRequest['request'],
+  'jsonSchema' | 'jsonMode' | 'thinking' | 'maxTokens' | 'temperature'
+>
+
+function responseFormat(request: AnalystControls): Readonly<Record<string, unknown>> | undefined {
   if (request.jsonSchema !== undefined) {
     return {
       type: 'json_schema',
@@ -234,7 +241,6 @@ function summarizeRuntimeEvents(
 
 function summarizeRetainedResult(
   result: import('@tangle-network/agent-interface/environment-provider').AgentTurnResult,
-  model: string,
   startedAt: number,
 ): RuntimeCallSummary {
   const endedAt = Date.now()
@@ -262,7 +268,6 @@ function summarizeRetainedResult(
     ...(observedCostUsd === undefined ? {} : { observedCostUsd }),
     ...(reasoningTokens === undefined ? {} : { reasoningTokens }),
     usageCaptured,
-    reportedModel: model,
     ...(!result.success ? { errorKind: 'backend' } : {}),
     ...(errorStatus === undefined ? {} : { errorStatus }),
   }
@@ -385,6 +390,9 @@ function responseFor(
   const raw = {
     source: '@tangle-network/agent-runtime',
     version: AGENT_RUNTIME_VERSION,
+    ...(summary.reportedModel === undefined
+      ? {}
+      : { reportedModel: safeModelRoute(summary.reportedModel) }),
     eventDigest: String(
       canonicalDigest({
         types: eventFacts(summary.events),
@@ -556,7 +564,7 @@ function publicError(value: unknown): string {
 
 function analystCallProfile(
   options: RuntimeTraceModelOwnerOptions,
-  request: ExternalOptimizerModelCallRequest['request'],
+  request: AnalystControls,
   retry: RuntimeRouterRetryPolicy,
 ): AgentProfile {
   const source = snapshotAgentProfile(options.profile)
@@ -617,7 +625,7 @@ function analystCallProfile(
     ...(request.temperature === undefined ? {} : { temperature: request.temperature }),
     ...(format === undefined ? {} : { extraBody: { response_format: format } }),
   }
-  return snapshotAgentProfile({
+  const profile = snapshotAgentProfile({
     name: `${source.name ?? 'Braid'} trace analyst`,
     description: 'One bounded trace-analysis model call',
     harness,
@@ -626,6 +634,7 @@ function analystCallProfile(
       ? {
           tools: { ...ANALYST_MODEL_TOOLS },
           permissions: { ...ANALYST_MODEL_PERMISSIONS },
+          resources: { failOnError: true },
           ...(harness === 'pi' ? { extensions: { pi: { load: [] } } } : {}),
         }
       : {}),
@@ -640,6 +649,12 @@ function analystCallProfile(
       ...(Object.keys(metadata).length === 0 ? {} : { metadata }),
     },
   })
+  if (bridge) {
+    if (!isMaterializerHarness(harness))
+      throw new TypeError(`Trace analyst policy cannot be materialized by ${harness}`)
+    materializeProfile(profile, harness)
+  }
+  return profile
 }
 
 function analystModelPrompt(harness: NonNullable<AgentProfile['harness']>): AgentProfile['prompt'] {
@@ -659,6 +674,7 @@ export function createRuntimeTraceModelOwner(
 ): RuntimeTraceModelOwner {
   // Runtime retries one transient transport failure with the same idempotent call identity.
   const retry = Object.freeze({ maxAttempts: 2, ...options.retry })
+  analystCallProfile(options, {}, retry)
   const sourceProfileDigest = canonicalAgentProfileDigestHex(options.profile)
   const callRef = `braid-agent-runtime:${String(
     canonicalDigest({
@@ -693,6 +709,45 @@ export function createRuntimeTraceModelOwner(
     const operation: RuntimeModelOperation =
       options.connection.kind === 'cli-bridge' ? 'startRetainedRun' : 'streamAgentTurn'
     let controlRef: AgentExactRunControlRef | undefined
+    const finish = (failure?: string): Awaited<ReturnType<ExternalOptimizerModelCall>> => {
+      const receipt = receiptFor(
+        options.model,
+        pricing,
+        summary ?? { inputTokens: 0, outputTokens: 0, usageCaptured: false },
+        !dispatched,
+      )
+      const execution = executionEvidence({
+        request,
+        callRef,
+        profileDigest: executionProfileDigest,
+        connection: options.connection,
+        retry,
+        ...(options.profile.model?.provider === undefined
+          ? {}
+          : { provider: options.profile.model.provider }),
+        ...(pricing === undefined ? {} : { pricing }),
+        receipt,
+        ...(summary === undefined ? {} : { summary }),
+        dispatched,
+        ...(summary !== undefined || events.length === 0 ? {} : { partialEvents: events }),
+        startedAt,
+        operation,
+        ...(controlRef === undefined ? {} : { controlRef }),
+        ...(failure === undefined ? {} : { failure }),
+      })
+      return failure === undefined && summary?.status === 'completed'
+        ? { succeeded: true, response: responseFor(request, summary, pricing), receipt, execution }
+        : {
+            succeeded: false,
+            error:
+              failure ??
+              (summary === undefined
+                ? 'Runtime model execution has no summary'
+                : summaryFailure(summary)),
+            receipt,
+            execution,
+          }
+    }
     try {
       const configuredModel = safePublicIdentifier(options.model)
       if (configuredModel === undefined) {
@@ -723,7 +778,7 @@ export function createRuntimeTraceModelOwner(
           onAdmission: (admission) => onRetainedAdmission(request.callId, admission),
         })
         controlRef = retained.controlRef
-        summary = summarizeRetainedResult(retained.result, configuredModel, startedAt)
+        summary = summarizeRetainedResult(retained.result, startedAt)
       } else {
         dispatched = true
         const { createExecutor, streamAgentTurn } = await import(
@@ -756,69 +811,10 @@ export function createRuntimeTraceModelOwner(
         }
         summary = summarizeRuntimeEvents(events, startedAt)
       }
-      const receipt = receiptFor(options.model, pricing, summary)
-      const evidence = executionEvidence({
-        request,
-        callRef,
-        profileDigest: executionProfileDigest,
-        connection: options.connection,
-        retry,
-        ...(profile.model?.provider === undefined ? {} : { provider: profile.model.provider }),
-        ...(pricing === undefined ? {} : { pricing }),
-        receipt,
-        summary,
-        dispatched,
-        startedAt,
-        operation,
-        ...(controlRef === undefined ? {} : { controlRef }),
-      })
-      if (summary.status !== 'completed') {
-        return {
-          succeeded: false,
-          error: summaryFailure(summary),
-          receipt,
-          execution: evidence,
-        }
-      }
-      return {
-        succeeded: true,
-        response: responseFor(request, summary, pricing),
-        receipt,
-        execution: evidence,
-      }
+      return finish()
     } catch (error) {
       if (error instanceof RetainedModelCallError) controlRef = error.controlRef
-      const message = publicError(error)
-      const receipt = receiptFor(
-        options.model,
-        pricing,
-        summary ?? { inputTokens: 0, outputTokens: 0, usageCaptured: false },
-        !dispatched,
-      )
-      return {
-        succeeded: false,
-        error: message,
-        receipt,
-        execution: executionEvidence({
-          request,
-          callRef,
-          profileDigest: executionProfileDigest,
-          connection: options.connection,
-          retry,
-          ...(options.profile.model?.provider === undefined
-            ? {}
-            : { provider: options.profile.model.provider }),
-          ...(pricing === undefined ? {} : { pricing }),
-          receipt,
-          ...(summary === undefined ? {} : { summary }),
-          dispatched,
-          ...(events.length === 0 ? {} : { partialEvents: events }),
-          startedAt,
-          operation,
-          ...(controlRef === undefined ? {} : { controlRef }),
-          failure: message,
-        }),
-      }
+      return finish(publicError(error))
     }
   }
 

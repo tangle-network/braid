@@ -12,6 +12,8 @@ import {
   isMessagePartId,
 } from '../../domain/ids-values.js'
 import type { AnalysisTraceBundle, AnalysisTraceSpanReference } from './trace-store.js'
+import { safeAnalysisText, safeAnalysisValue } from './trace-event-projection.js'
+import { assertJsonValue } from '../../domain/invariants-base.js'
 
 function decodePart(value: string, label: string): string {
   try {
@@ -212,10 +214,6 @@ export function resolveEvidenceRef(
   throw new AnalysisCitationError(`Citation kind '${ref.kind}' has no resolvable frozen source`)
 }
 
-function severity(value: AnalystFinding['severity']): AnalysisFinding['severity'] | undefined {
-  return value === undefined ? undefined : value
-}
-
 export function mapAnalystFinding(
   evidence: FrozenAnalysisEvidence,
   bundle: AnalysisTraceBundle,
@@ -223,10 +221,19 @@ export function mapAnalystFinding(
 ): AnalysisFinding {
   const refs = finding.evidence_refs ?? []
   const citations = refs.map((ref) => resolveEvidenceRef(evidence, bundle, ref))
-  const findingSeverity = severity(finding.severity)
+  const findingSeverity = finding.severity
+  const metadata = safeAnalysisValue(finding.metadata ?? null)
+  assertJsonValue(metadata)
   return {
     id: finding.finding_id,
     text: finding.claim,
+    ...(finding.recommended_action === undefined
+      ? {}
+      : { recommendedAction: safeAnalysisText(finding.recommended_action) }),
+    ...(finding.validation_plan === undefined
+      ? {}
+      : { validationPlan: safeAnalysisText(finding.validation_plan) }),
+    ...(finding.metadata === undefined ? {} : { metadata }),
     ...(findingSeverity === undefined ? {} : { severity: findingSeverity }),
     ...(finding.confidence === undefined ? {} : { confidence: finding.confidence }),
     citations,

@@ -173,6 +173,13 @@ function analysisData(terminal: AnalysisTerminal) {
   return data
 }
 
+function analysisBounds(params: Readonly<Record<string, unknown>>) {
+  return {
+    ...(typeof params.budgetUsd === 'number' ? { budgetUsd: params.budgetUsd } : {}),
+    ...(typeof params.totalTimeoutMs === 'number' ? { totalTimeoutMs: params.totalTimeoutMs } : {}),
+  }
+}
+
 async function runAnalysis(
   context: IntelligenceDispatchContext,
   request: AnalysisRequest,
@@ -243,11 +250,6 @@ function analysisRequestForCommand(
   invalid('INVALID_PARAMS', '/compare requires two source references')
 }
 
-function supervisorRoot(state: BraidState): { readonly rootDir: string } | undefined {
-  if (state.workspace === null) return undefined
-  return { rootDir: state.workspace }
-}
-
 function supervisorData(
   projection: Awaited<ReturnType<BraidApplication['intelligence']['supervisor']['snapshot']>>,
 ) {
@@ -264,19 +266,20 @@ async function dispatchSupervisorQuery(
   context: IntelligenceDispatchContext,
   params: Readonly<Record<string, unknown>> = {},
 ): Promise<UiDispatchResult> {
-  const root = supervisorRoot(context.app.state())
-  if (root === undefined) {
+  const rootDir = context.app.state().workspace
+  if (rootDir === null) {
     return unavailable('Supervisor snapshots require an initialized workspace')
   }
   try {
     const hadSavedSupervision =
       context.app.state().supervisors.length > 0 || context.app.state().workers.length > 0
     const request = {
-      ...root,
+      rootDir,
       ...(typeof params.remoteEndpointEnv === 'string'
         ? { remoteEndpointEnv: params.remoteEndpointEnv }
         : {}),
       ...(typeof params.workerId === 'string' ? { workerId: params.workerId } : {}),
+      ...(typeof params.runDir === 'string' ? { runDir: params.runDir } : {}),
     }
     const projection =
       command === 'snapshot'
@@ -301,6 +304,7 @@ function runtimeSupervisorReference(
   if (
     supervisor === undefined ||
     supervisor.remoteEndpointEnv !== undefined ||
+    supervisor.runDir !== undefined ||
     state.workspace !== supervisor.runtimeRoot
   )
     return undefined
@@ -517,7 +521,12 @@ export async function dispatchIntelligenceIntent(
       }
       return runAnalysis(
         context,
-        { ...sourceRequest(context.app.state(), source), question, recipe: 'ask' },
+        {
+          ...sourceRequest(context.app.state(), source),
+          question,
+          recipe: 'ask',
+          ...analysisBounds(intent.params),
+        },
         intent.operationId,
       )
     }
@@ -542,6 +551,7 @@ export async function dispatchIntelligenceIntent(
           ...sourceRequest(context.app.state(), source),
           ...(recipe === undefined ? {} : { recipe }),
           ...(analystIds === undefined ? {} : { analystIds }),
+          ...analysisBounds(intent.params),
         },
         intent.operationId,
       )

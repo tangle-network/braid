@@ -1,5 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { createRuntimeTraceModelOwner } from '../src/adapters/analysis/runtime-model-owner.js'
+import { analysisModelCallRecords } from '../src/app/analysis-model-call-records.js'
 import type { AgentProfile } from '@tangle-network/agent-interface'
 import { CliBridgeRetainedExecutionPort } from '../src/adapters/runtime/cli-bridge-retained-execution.js'
 import {
@@ -311,5 +316,97 @@ test('production CLI Bridge cancellation keeps a Runtime provider error unknown'
     }
   } finally {
     await bridge.close()
+  }
+})
+
+test('retained analysis preserves requested route and measured usage without inventing reported identity', {
+  timeout: 30_000,
+}, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-native-model-observation-'))
+  const bridge = await startRuntimeBridgeServer({ responseText: 'NATIVE_CONTRACT_REPLY' })
+  try {
+    for (const harness of ['codex', 'kimi-code'] as const) {
+      assert.throws(
+        () =>
+          createRuntimeTraceModelOwner({
+            profile: {
+              name: 'Unsupported native analysis policy',
+              harness,
+              model: { default: 'default' },
+            },
+            connection: {
+              id: createConnectionId('connection-native-policy'),
+              kind: 'cli-bridge',
+              updatedAt: at,
+            },
+            baseUrl: bridge.endpoint,
+            model: `${harness}/default`,
+          }),
+        /tools|permissions/u,
+      )
+    }
+    assert.equal(
+      bridge.requests.length,
+      0,
+      'unsupported native policy must refuse before admission',
+    )
+    assert.equal(bridge.sessions.length, 0)
+    const route = 'pi/openai/gpt-5'
+    const owner = createRuntimeTraceModelOwner({
+      profile: {
+        name: 'Native observation proof',
+        harness: 'pi',
+        model: { provider: 'openai', default: 'openai/gpt-5' },
+      },
+      connection: {
+        id: createConnectionId('connection-native-observation'),
+        kind: 'cli-bridge',
+        updatedAt: at,
+      },
+      baseUrl: bridge.endpoint,
+      model: route,
+      onRetainedAdmission: async (_callId, admission) => {
+        await writeFile(join(root, 'admission.json'), JSON.stringify(admission), { mode: 0o600 })
+      },
+    })
+    const result = await owner.call({
+      callId: 'native-observation-call',
+      signal: AbortSignal.timeout(20_000),
+      request: {
+        model: route,
+        messages: [{ role: 'user', content: 'Return the boundary fixture response.' }],
+      },
+    })
+    if (!result.succeeded) assert.fail(result.error)
+    const admission = JSON.parse(await readFile(join(root, 'admission.json'), 'utf8'))
+    assert(admission.controlRef.runId)
+    assert.equal(bridge.requests.length, 1)
+    assert.equal(bridge.closedSessions.length, 1)
+    assert.equal(result.response.content, 'NATIVE_CONTRACT_REPLY')
+    assert.equal(result.response.model, route, 'this is the requested route, not an observation')
+    const raw = result.response.raw as { reportedModel?: string }
+    const execution = result.execution as { usage: { captured: boolean; reportedModel?: string } }
+    assert.equal(raw.reportedModel, undefined)
+    assert.equal(execution.usage.reportedModel, undefined)
+    assert.equal(execution.usage.captured, true)
+    const [record] = analysisModelCallRecords([
+      {
+        sequence: 1,
+        callId: 'native-observation-call',
+        callRef: owner.callRef,
+        path: '/v1/chat/completions',
+        model: route,
+        succeeded: true,
+        responseStatus: 200,
+        execution: result.execution,
+      },
+    ])
+    assert.equal(record?.model, route)
+    assert.equal(record?.reportedModel, undefined)
+    assert.equal(record?.tokensKnown, true)
+    assert.notEqual(record?.cost.status, 'observed', 'unknown billed cost is never measured free')
+  } finally {
+    await bridge.close()
+    await rm(root, { recursive: true, force: true })
   }
 })

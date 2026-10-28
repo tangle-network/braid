@@ -13,7 +13,6 @@ import {
   MAX_RPC_LINE_BYTES,
 } from './protocol-limits.js'
 import {
-  AUTOMATION_PARAMETER_KEYS,
   AUTOMATION_PARAMETER_TYPES,
   AUTOMATION_REQUIRED_PARAMETERS,
 } from './rpc-automation-commands.js'
@@ -22,96 +21,6 @@ import { validateInteractionParameters } from './rpc-interaction-commands.js'
 import type { RpcInput } from './rpc-types.js'
 
 export { RpcParseError } from './rpc-errors.js'
-
-const PARAMETER_KEYS: Readonly<Record<HeadlessCommandName, readonly string[]>> = {
-  initialize: ['workspace', 'subscribe'],
-  get_state: ['projection'],
-  subscribe: [],
-  unsubscribe: [],
-  list_profiles: ['query'],
-  select_profile: ['ref', 'expectedRevision'],
-  validate_profile: ['ref'],
-  save_profile: ['ref', 'profile', 'expectedRevision', 'createOnly'],
-  learn_profile: [],
-  runner_advice: ['task', 'source'],
-  list_connections: ['query'],
-  upsert_connection: ['record', 'expectedRevision'],
-  test_connection: ['connectionId'],
-  select_connection: ['connectionId', 'expectedRevision'],
-  remove_connection: ['connectionId', 'expectedRevision'],
-  set_run_override: ['runner', 'model', 'effort', 'mode', 'clear'],
-  new_conversation: ['title', 'profileRef', 'connectionId'],
-  list_conversations: ['query', 'workspace', 'status'],
-  open_conversation: ['conversationId', 'branchId'],
-  rename_conversation: ['conversationId', 'title'],
-  archive_conversation: ['conversationId', 'archived'],
-  delete_conversation: ['conversationId'],
-  set_draft: ['conversationId', 'branchId', 'text'],
-  import_conversation: ['content', 'source', 'title'],
-  send: ['conversationId', 'branchId', 'text'],
-  queue: ['runId', 'conversationId', 'branchId', 'text'],
-  remove_queued: ['conversationId', 'branchId', 'queueId'],
-  steer: ['runId', 'conversationId', 'branchId', 'text'],
-  cancel: ['runId', 'conversationId', 'branchId', 'reason'],
-  detach: ['runId', 'conversationId', 'branchId'],
-  reconnect: ['runId'],
-  reconcile: ['runId'],
-  record_feedback: ['runId', 'outcome', 'reason'],
-  list_feedback: ['scope', 'conversationId', 'runId'],
-  respond_interaction: ['runId', 'interactionId', 'response'],
-  cancel_interaction: ['runId', 'interactionId'],
-  ...AUTOMATION_PARAMETER_KEYS,
-  cancel_run: ['runId', 'conversationId', 'branchId', 'reason'],
-  branch: ['conversationId', 'branchId', 'messageId', 'text'],
-  clone: ['conversationId', 'branchId', 'title'],
-  plan_fork: [
-    'workspaceRequest',
-    'connectionId',
-    'profileRef',
-    'conversationId',
-    'branchId',
-    'messageId',
-    'workspace',
-    'runner',
-    'model',
-    'effort',
-    'text',
-    'destinationProvider',
-    'confidential',
-  ],
-  execute_fork: [
-    'workspaceRequest',
-    'connectionId',
-    'profileRef',
-    'planDigest',
-    'conversationId',
-    'branchId',
-    'messageId',
-    'workspace',
-    'runner',
-    'model',
-    'effort',
-    'text',
-    'acceptedDigest',
-    'destinationProvider',
-    'confidential',
-  ],
-  ask: ['source', 'question', 'profileRef', 'connectionId'],
-  analyze: ['source', 'recipe', 'analystIds', 'profileRef', 'connectionId'],
-  compare: ['left', 'right', 'profileRef', 'connectionId'],
-  promote_analysis: ['analysisId', 'findingIds', 'conversationId', 'branchId'],
-  cancel_analysis: ['analysisId', 'reason'],
-  get_graph: ['conversationId', 'branchId', 'query'],
-  get_activity: ['conversationId', 'branchId', 'runId'],
-  get_details: ['entityType', 'entityId'],
-  refresh_supervision: ['remoteEndpointEnv', 'workerId'],
-  steer_worker: ['supervisorId', 'workerId', 'text'],
-  cancel_worker: ['supervisorId', 'workerId', 'reason'],
-  cancel_supervisor: ['supervisorId', 'reason'],
-  attach_worker: ['supervisorId', 'workerId'],
-  export: ['target', 'format', 'includeRaw', 'destination'],
-  shutdown: ['mode'],
-}
 
 type ParameterType = 'string' | 'boolean' | 'string-or-boolean' | 'number' | 'record' | 'string[]'
 
@@ -201,11 +110,20 @@ const PARAMETER_TYPES: Readonly<
     destinationProvider: 'string',
     confidential: 'record',
   },
-  ask: { source: 'string', question: 'string', profileRef: 'string', connectionId: 'string' },
+  ask: {
+    source: 'string',
+    question: 'string',
+    profileRef: 'string',
+    connectionId: 'string',
+    budgetUsd: 'number',
+    totalTimeoutMs: 'number',
+  },
   analyze: {
     source: 'string',
     recipe: 'string',
     analystIds: 'string[]',
+    budgetUsd: 'number',
+    totalTimeoutMs: 'number',
     profileRef: 'string',
     connectionId: 'string',
   },
@@ -220,7 +138,7 @@ const PARAMETER_TYPES: Readonly<
   get_graph: { conversationId: 'string', branchId: 'string', query: 'string' },
   get_activity: { conversationId: 'string', branchId: 'string', runId: 'string' },
   get_details: { entityType: 'string', entityId: 'string' },
-  refresh_supervision: { remoteEndpointEnv: 'string', workerId: 'string' },
+  refresh_supervision: { remoteEndpointEnv: 'string', workerId: 'string', runDir: 'string' },
   steer_worker: { supervisorId: 'string', workerId: 'string', text: 'string' },
   cancel_worker: { supervisorId: 'string', workerId: 'string', reason: 'string' },
   cancel_supervisor: { supervisorId: 'string', reason: 'string' },
@@ -337,7 +255,7 @@ function assertParameterTypes(command: HeadlessCommandName, params: Record<strin
 }
 
 function isIdentifierParameter(key: string): boolean {
-  return /(?:ids|id|ref|digest|cursor|workspace|connection|session|profile|queue|runner|model)$/iu.test(
+  return /(?:ids|id|ref|digest|cursor|workspace|rundir|connection|session|profile|queue|runner|model)$/iu.test(
     key,
   )
 }
@@ -351,27 +269,6 @@ function assertString(value: unknown, label: string): string {
 
 function assertCommand(value: unknown): value is RpcCommandName {
   return typeof value === 'string' && (HEADLESS_COMMAND_NAMES as readonly string[]).includes(value)
-}
-
-function genericRequest(
-  value: Record<string, unknown>,
-  command: Exclude<RpcCommandName, 'initialize' | 'get_state' | 'send' | 'shutdown'>,
-  params: Record<string, unknown>,
-): BraidRequest {
-  const operationId = value.operationId
-  if (operationId !== undefined && (typeof operationId !== 'string' || operationId.length === 0)) {
-    throw new RpcParseError('INVALID_OPERATION_ID', 'operationId must be a non-empty string')
-  }
-  if (isMutatingHeadlessCommand(command) && operationId === undefined) {
-    throw new RpcParseError('OPERATION_ID_REQUIRED', `${command} requires operationId`)
-  }
-  return {
-    version: 1,
-    requestId: value.requestId as string,
-    command,
-    params,
-    ...(typeof operationId === 'string' ? { operationId } : {}),
-  } as BraidRequest
 }
 
 export function parseRequest(line: string): BraidRequest {
@@ -411,7 +308,11 @@ export function parseRequest(line: string): BraidRequest {
     throw new RpcParseError('INVALID_PARAMS', 'params must be an object')
   }
   const params = parsed.params ?? {}
-  assertAllowedKeys(params, PARAMETER_KEYS[command], `${command}.params`)
+  assertAllowedKeys(
+    params,
+    command === 'shutdown' ? ['mode'] : Object.keys(PARAMETER_TYPES[command]),
+    `${command}.params`,
+  )
   if (isMutatingHeadlessCommand(command) && typeof parsed.operationId !== 'string') {
     throw new RpcParseError('OPERATION_ID_REQUIRED', `${command} requires operationId`)
   }
@@ -435,24 +336,10 @@ export function parseRequest(line: string): BraidRequest {
       if (typeof params.workspace !== 'string') {
         throw new RpcParseError('INVALID_PARAMS', 'initialize.params.workspace must be a string')
       }
-      if (params.subscribe !== undefined && typeof params.subscribe !== 'boolean') {
-        throw new RpcParseError('INVALID_PARAMS', 'initialize.params.subscribe must be a boolean')
-      }
-      return {
-        version: 1,
-        requestId,
-        command,
-        params: {
-          workspace: params.workspace,
-          ...(typeof params.subscribe === 'boolean' ? { subscribe: params.subscribe } : {}),
-        },
-      }
+      break
     case 'get_state':
       if (parsed.operationId !== undefined) {
         throw new RpcParseError('INVALID_PARAMS', 'get_state does not accept operationId')
-      }
-      if (params.projection !== undefined && typeof params.projection !== 'string') {
-        throw new RpcParseError('INVALID_PARAMS', 'get_state.params.projection must be a string')
       }
       if (
         params.projection !== undefined &&
@@ -464,45 +351,13 @@ export function parseRequest(line: string): BraidRequest {
           'get_state.params.projection must be full or summary',
         )
       }
-      return {
-        version: 1,
-        requestId,
-        command,
-        params:
-          params.projection === 'full' || params.projection === 'summary'
-            ? { projection: params.projection }
-            : {},
-      }
+      break
     case 'send':
-      if (typeof parsed.operationId !== 'string' || parsed.operationId.length === 0) {
-        throw new RpcParseError('OPERATION_ID_REQUIRED', 'send requires operationId')
-      }
       if (typeof params.text !== 'string') {
         throw new RpcParseError('INVALID_PARAMS', 'send.params.text must be a string')
       }
-      if (params.conversationId !== undefined && typeof params.conversationId !== 'string') {
-        throw new RpcParseError('INVALID_PARAMS', 'send.params.conversationId must be a string')
-      }
-      if (params.branchId !== undefined && typeof params.branchId !== 'string') {
-        throw new RpcParseError('INVALID_PARAMS', 'send.params.branchId must be a string')
-      }
-      return {
-        version: 1,
-        requestId,
-        operationId: parsed.operationId,
-        command,
-        params: {
-          text: params.text,
-          ...(typeof params.conversationId === 'string'
-            ? { conversationId: params.conversationId }
-            : {}),
-          ...(typeof params.branchId === 'string' ? { branchId: params.branchId } : {}),
-        },
-      }
+      break
     case 'shutdown':
-      if (typeof parsed.operationId !== 'string' || parsed.operationId.length === 0) {
-        throw new RpcParseError('OPERATION_ID_REQUIRED', 'shutdown requires operationId')
-      }
       if (
         params.mode !== undefined &&
         params.mode !== 'wait' &&
@@ -514,18 +369,18 @@ export function parseRequest(line: string): BraidRequest {
           'shutdown.params.mode must be wait, detach, or cancel',
         )
       }
-      return {
-        version: 1,
-        requestId,
-        operationId: parsed.operationId,
-        command,
-        params: typeof params.mode === 'string' ? { mode: params.mode } : {},
-      }
-    default:
-      if (command === 'respond_interaction' || command === 'cancel_interaction')
-        validateInteractionParameters(command, params)
-      return genericRequest(parsed, command, normalizedParams)
+      break
+    case 'respond_interaction':
+    case 'cancel_interaction':
+      validateInteractionParameters(command, params)
   }
+  return {
+    version: 1,
+    requestId,
+    command,
+    ...(parsed.operationId === undefined ? {} : { operationId: parsed.operationId }),
+    params: normalizedParams,
+  } as BraidRequest
 }
 
 function normalizeForkParameters(

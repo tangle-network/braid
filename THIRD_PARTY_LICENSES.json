@@ -54,27 +54,17 @@
     {
       "license": "MIT",
       "name": "@tangle-network/agent-core",
-      "version": "1.0.0"
-    },
-    {
-      "license": "MIT",
-      "name": "@tangle-network/agent-core",
       "version": "1.0.1"
     },
     {
       "license": "MIT",
       "name": "@tangle-network/agent-eval",
-      "version": "1.0.0"
+      "version": "1.0.1"
     },
     {
       "license": "MIT",
       "name": "@tangle-network/agent-interface",
       "version": "5.10.2"
-    },
-    {
-      "license": "MIT",
-      "name": "@tangle-network/agent-interface",
-      "version": "5.8.0"
     },
     {
       "license": "MIT",
@@ -84,7 +74,7 @@
     {
       "license": "Unknown",
       "name": "@tangle-network/agent-profile-materialize",
-      "version": "1.1.2"
+      "version": "1.1.4"
     },
     {
       "license": "MIT",
@@ -105,11 +95,6 @@
       "license": "MIT",
       "name": "@tangle-network/agent-runtime",
       "version": "2.3.7"
-    },
-    {
-      "license": "MIT",
-      "name": "@tangle-network/agent-trace-contract",
-      "version": "2.1.0"
     },
     {
       "license": "MIT",
@@ -144,22 +129,12 @@
     {
       "license": "Apache-2.0",
       "name": "b4a",
-      "version": "1.8.1"
-    },
-    {
-      "license": "Apache-2.0",
-      "name": "b4a",
       "version": "1.9.0"
     },
     {
       "license": "Apache-2.0",
       "name": "bare-events",
       "version": "2.9.2"
-    },
-    {
-      "license": "Apache-2.0",
-      "name": "bare-fs",
-      "version": "4.8.1"
     },
     {
       "license": "Apache-2.0",

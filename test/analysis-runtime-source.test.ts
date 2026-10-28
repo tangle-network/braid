@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, readdir, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
+import { randomBytes } from 'node:crypto'
+import { pathToFileURL } from 'node:url'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import test from 'node:test'
 import type {
   AnalystFinding,
@@ -9,7 +11,8 @@ import type {
   ExactAnalystRunResult,
 } from '@tangle-network/agent-eval'
 import type { ToolSpan } from '@tangle-network/agent-eval/traces'
-import { defineAgentProfile } from '@tangle-network/agent-interface'
+import { canonicalAgentProfileDigest, defineAgentProfile } from '@tangle-network/agent-interface'
+import { loadTopSnapshot } from '@tangle-network/agent-runtime/tui'
 import { supervisePursuit } from '@tangle-network/agent-runtime/durable'
 import type { EvalAnalystRequest } from '../src/adapters/analysis/eval-analyst.js'
 import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
@@ -23,6 +26,8 @@ import {
 } from '../src/app/composition.js'
 import type { BraidResponse } from '../src/views/headless/protocol.js'
 import { runRpc } from '../src/views/headless/rpc.js'
+import type { SupervisorRecord, WorkerRecord } from '../src/domain/entities.js'
+import { startRuntimeBridgeServer } from './support/runtime-bridge-server.js'
 
 const MARKER = 'RUNTIME-SPAN-MARKER wrote primes.txt'
 const CREDENTIAL = 'sk-ant-api03-runtimesourcecanary0123456789abcdefghijklmnop'
@@ -57,7 +62,13 @@ async function coordinate(url: string, name: string, args: Record<string, unknow
 }
 
 /** A settled Runtime run whose one worker recorded a tool span, written by Runtime itself. */
-async function recordRuntimeRun(runDir: string, runId: string): Promise<void> {
+async function recordRuntimeRun(
+  runDir: string,
+  runId: string,
+  observation?: { readonly ready: () => void; readonly release: Promise<void> },
+  estimate = 0.125,
+  reopen = false,
+): Promise<void> {
   const span: ToolSpan = {
     spanId: 'edit-1',
     runId: 'worker',
@@ -73,10 +84,20 @@ async function recordRuntimeRun(runDir: string, runId: string): Promise<void> {
   let drives = 0
   await supervisePursuit(profile('root', ['spawn_worker', 'stop']), 'delegate once', {
     pursuitId: 'pursuit:braid-analysis',
+    signal: AbortSignal.timeout(45_000),
     runId,
     runDir,
     budget: { maxIterations: 100, maxTokens: 100_000 },
     perWorker: { maxIterations: 4, maxTokens: 1_000 },
+    ...(reopen
+      ? {
+          reopen: {
+            operator: 'braid-durable-inspection-proof',
+            reason: 'Record a distinct assignment and accounting segment under the same run id',
+            operationId: 'braid-inspection-reopen',
+          },
+        }
+      : {}),
     driveHarness: async ({ coordinationMcpUrl }) => {
       drives += 1
       if (drives === 1) {
@@ -84,7 +105,10 @@ async function recordRuntimeRun(runDir: string, runId: string): Promise<void> {
           profile: profile('worker'),
           task: 'deliver',
           label: 'worker',
+          key: `worker:${estimate}`,
         })
+        observation?.ready()
+        await observation?.release
       } else {
         await coordinate(coordinationMcpUrl, 'stop', {})
       }
@@ -101,6 +125,14 @@ async function recordRuntimeRun(runDir: string, runId: string): Promise<void> {
             (async function* () {
               yield { kind: 'iteration' }
               yield { kind: 'tokens', input: 5, output: 5 }
+              yield {
+                kind: 'cost',
+                usd: estimate,
+                usdKnown: false,
+                usdEstimated: estimate,
+                provenance: 'catalog-estimate',
+              }
+              await observation?.release
             })(),
           traceSource: () => ({ onSpan: () => () => {}, collect: async () => [span] }),
           teardown: async () => ({ destroyed: true }),
@@ -108,7 +140,14 @@ async function recordRuntimeRun(runDir: string, runId: string): Promise<void> {
             outRef: 'record:worker',
             out: { worker: 'worker' },
             verdict: { valid: true, score: 1 },
-            spent: { iterations: 1, tokens: { input: 5, output: 5 }, usd: 0, ms: 0 },
+            spent: {
+              iterations: 1,
+              tokens: { input: 5, output: 5 },
+              usd: estimate,
+              usdKnown: false,
+              usdEstimated: estimate,
+              ms: 0,
+            },
           }),
         },
       },
@@ -254,6 +293,17 @@ test('a Runtime durable run is analyzed, cited and replayed without a Braid run'
     assert.equal(finding?.supported, true)
     assert.deepEqual(finding?.citations[0]?.span, { traceId: `${runId}:s0`, spanId: 'edit-1' })
     assert.equal(analyst.requests.length, 1)
+    const details = await step({
+      command: 'get_details',
+      params: { entityType: 'analysis', entityId: first.analysis.id },
+    })
+    const detail = details.responses.find((row) => row.type === 'ack')
+    assert(detail?.type === 'ack')
+    assert.deepEqual(
+      (detail.result as { data: { findings: { citations: { span?: unknown }[] }[] } }).data
+        .findings[0]?.citations[0]?.span,
+      { traceId: `${runId}:s0`, spanId: 'edit-1' },
+    )
 
     const promoted = await step({
       command: 'promote_analysis',
@@ -280,6 +330,285 @@ test('a Runtime durable run is analyzed, cited and replayed without a Braid run'
     assert.match(JSON.stringify(lost.responses), /trace blob .* is missing/u)
     assert.equal(analyst.requests.length, 1)
   } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+async function runBytes(runDir: string) {
+  const entries = await readdir(runDir, { recursive: true, withFileTypes: true })
+  const files = await Promise.all(
+    entries
+      .filter((entry) => entry.isFile())
+      .map(async (entry) => {
+        const path = join(entry.parentPath, entry.name)
+        return {
+          path,
+          mode: (await stat(path)).mode,
+          bytes: (await readFile(path)).toString('base64'),
+        }
+      }),
+  )
+  return files.sort((left, right) => left.path.localeCompare(right.path))
+}
+
+test('built JSONL selects a Runtime-written durable run without granting control or mutating it', {
+  timeout: 90_000,
+}, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-durable-jsonl-'))
+  const runDir = join(root, 'run')
+  const runId = 'run:durable-jsonl'
+  let session: { forceStop(): Promise<unknown> } | undefined
+  let release = () => {}
+  const held = new Promise<void>((resolveRelease) => {
+    release = resolveRelease
+  })
+  let ready = () => {}
+  const started = new Promise<void>((resolveReady) => {
+    ready = resolveReady
+  })
+  let recording: Promise<void> | undefined
+  try {
+    recording = recordRuntimeRun(runDir, runId, { ready: () => ready(), release: held })
+    await Promise.race([
+      started,
+      recording.then(() => {
+        throw new Error('Runtime settled before live inspection')
+      }),
+    ])
+    const expected = await loadTopSnapshot(runDir, { runDir })
+    assert(expected.supervisors.length > 0)
+    const keyFile = join(root, 'database.key')
+    await writeFile(keyFile, randomBytes(32), { mode: 0o600 })
+    const { RpcSession } = await import(
+      pathToFileURL(resolve('scripts/live-core/rpc-session.mjs')).href
+    )
+    const rpc = new RpcSession(
+      resolve('dist/bin/braid.js'),
+      runDir,
+      keyFile,
+      'http://127.0.0.1:1',
+      15_000,
+      ['--fixture', 'deterministic'],
+    )
+    session = rpc
+    await rpc.request('initialize', { workspace: runDir })
+    const { response } = await rpc.request('refresh_supervision', { runDir })
+    const view = response.result as {
+      supervisors: SupervisorRecord[]
+      workers: WorkerRecord[]
+      graphEdges: unknown[]
+    }
+    assert.deepEqual(
+      view.supervisors.map((row) => row.runtimeId),
+      expected.supervisors.map((row) => row.id),
+    )
+    assert(
+      view.supervisors.some((row) => row.status === 'running'),
+      'the held Runtime root must be observed live',
+    )
+    assert(view.workers.length > 0)
+    assert(view.graphEdges.length > 0)
+    assert(view.supervisors.every((row) => row.runDir === runDir && row.rootRunId === undefined))
+    assert(!view.supervisors.some((row) => String(row.id) === row.runtimeId))
+    const supervisor = view.supervisors[0]!
+    const worker = view.workers[0]!
+    assert.equal(worker.status, 'running')
+    await assert.rejects(
+      rpc.request(
+        'steer_worker',
+        { supervisorId: supervisor.id, workerId: worker.id, text: 'must not reach Runtime' },
+        'op-readonly-worker',
+      ),
+      /not present/u,
+    )
+    await assert.rejects(
+      rpc.request('cancel_supervisor', { supervisorId: supervisor.id }, 'op-readonly-root'),
+      /not present/u,
+    )
+    release()
+    await recording
+    const before = await runBytes(runDir)
+    const settled = await rpc.request('refresh_supervision', { runDir })
+    assert(
+      (settled.response.result.supervisors as SupervisorRecord[]).every(
+        (row) => row.status !== 'running',
+      ),
+    )
+    const settledSnapshot = await loadTopSnapshot(runDir, { runDir })
+    const canonicalWorker = settledSnapshot.supervisors[0]?.workers.find(
+      (row) => row.id === worker.runtimeId,
+    )
+    assert.equal(canonicalWorker?.spend.usdKnown, false)
+    const settledWorker = (settled.response.result.workers as WorkerRecord[]).find(
+      (row) => row.id === worker.id,
+    )
+    assert.equal(settledWorker?.spendUsd, undefined)
+    assert.equal(settledWorker?.estimatedSpendUsd, 0.125)
+    assert.equal(
+      (settled.response.result.supervisors as SupervisorRecord[])[0]?.totalUsage?.spendUsd,
+      undefined,
+    )
+    const graph = await rpc.request('get_graph', {})
+    assert(JSON.stringify(graph.response.result).includes(String(worker.id)))
+    const workerNode = (graph.response.result.nodes as { id: string; costUsd?: number }[]).find(
+      (row) => row.id === worker.id,
+    )
+    assert(workerNode)
+    assert.equal(
+      workerNode.costUsd,
+      undefined,
+      'estimated dollars must not become an observed graph cost',
+    )
+    const details = await rpc.request('get_details', { entityType: 'worker', entityId: worker.id })
+    assert(JSON.stringify(details.response.result).includes(worker.runtimeId))
+    assert.equal(details.response.result.data.spendUsd, undefined)
+    assert.equal(details.response.result.data.estimatedSpendUsd, 0.125)
+    const state = await rpc.state()
+    assert.equal(state.state.runs.length, 0, 'Runtime identifiers must not manufacture Braid runs')
+    await assert.rejects(
+      rpc.request('refresh_supervision', { runDir, remoteEndpointEnv: 'TEST_REMOTE' }),
+      /cannot be combined/u,
+    )
+    await assert.rejects(
+      rpc.request('refresh_supervision', { runDir, extra: true }),
+      /unknown field extra/u,
+    )
+    await assert.rejects(rpc.request('get_state', { projection: 3 }), /must be string/u)
+    await assert.rejects(rpc.request('send', { text: 'must not run' }), /requires operationId/u)
+    await assert.rejects(
+      rpc.request('shutdown', { mode: 'invalid' }, 'op-invalid-shutdown'),
+      /must be wait, detach, or cancel/u,
+    )
+    assert.deepEqual(await runBytes(runDir), before)
+    await recordRuntimeRun(runDir, runId, undefined, 0.5, true)
+    const reopened = await loadTopSnapshot(runDir, { runDir })
+    const attempts = reopened.pursuit?.runs.filter((row) => row.runId === runId)
+    assert.equal(attempts?.length, 2)
+    assert.equal(attempts?.[0]?.totals.inclusive.usdEstimated, 0.125)
+    const latestEstimate = attempts?.at(-1)?.totals.inclusive.usdEstimated
+    assert.equal(typeof latestEstimate, 'number')
+    assert.notEqual(latestEstimate, 0.125)
+    const afterReopen = await runBytes(runDir)
+    const refreshed = await rpc.request('refresh_supervision', { runDir })
+    const latestView = (refreshed.response.result.supervisors as SupervisorRecord[]).find(
+      (row) => row.runtimeId === runId,
+    )
+    assert.equal(latestView?.totalUsage?.estimatedSpendUsd, latestEstimate)
+    assert.equal(latestView?.totalUsage?.spendUsd, undefined)
+    await rpc.shutdown()
+    assert.equal((await rpc.exit).code, 0)
+    assert(!rpc.stdout.includes(CREDENTIAL))
+    assert.deepEqual(await runBytes(runDir), afterReopen)
+  } finally {
+    release()
+    await recording?.catch(() => {})
+    await session?.forceStop()
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('production JSONL retains native System One unavailability and exact selected analysis bounds without a model call', {
+  timeout: 90_000,
+}, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-systemone-jsonl-'))
+  const runDir = join(root, 'runtime')
+  const workspace = join(root, 'workspace')
+  const runId = 'run:systemone-source'
+  const bridge = await startRuntimeBridgeServer({
+    advertisedModels: [{ id: 'pi/openai/gpt-5', backend: 'pi' }],
+  })
+  let session: { forceStop(): Promise<unknown> } | undefined
+  try {
+    await mkdir(workspace)
+    await recordRuntimeRun(runDir, runId)
+    const before = await runBytes(runDir)
+    const selected = defineAgentProfile({
+      name: 'Native analysis proof',
+      harness: 'pi',
+      model: { provider: 'openai', default: 'openai/gpt-5' },
+    })
+    const keyFile = join(root, 'database.key')
+    const config = join(root, 'config.json')
+    const at = new Date().toISOString()
+    await writeFile(keyFile, randomBytes(32), { mode: 0o600 })
+    await writeFile(
+      config,
+      JSON.stringify({
+        format: 'braid-startup-config',
+        schemaVersion: 2,
+        profile: selected,
+        connectionId: 'connection-native-analysis',
+        connections: [
+          {
+            id: 'connection-native-analysis',
+            name: 'Native analysis',
+            kind: 'cli-bridge',
+            endpoint: bridge.endpoint,
+            providerOptions: { transport: 'local' },
+            createdAt: at,
+            updatedAt: at,
+            lastHealth: { status: 'unknown' },
+          },
+        ],
+      }),
+      { mode: 0o600 },
+    )
+    const { RpcSession } = await import(
+      pathToFileURL(resolve('scripts/live-core/rpc-session.mjs')).href
+    )
+    const rpc = new RpcSession(
+      resolve('dist/bin/braid.js'),
+      workspace,
+      keyFile,
+      bridge.endpoint,
+      60_000,
+      ['--config', config],
+    )
+    session = rpc
+    await rpc.request('initialize', { workspace })
+    const { response } = await rpc.request(
+      'analyze',
+      {
+        source: `runtime:${runId}@${runDir}`,
+        recipe: 'systemone',
+        budgetUsd: 1,
+        totalTimeoutMs: 30_000,
+      },
+      'op-systemone-native',
+    )
+    const result = response.result
+    assert.equal(result.status, 'failed')
+    assert.match(
+      result.error,
+      /native retained-result contract does not report served model identity/u,
+    )
+    assert.equal(result.analysis.request.budgetUsd, 1)
+    assert.equal(result.analysis.request.totalTimeoutMs, 30_000)
+    assert.deepEqual(result.source.runtimeRun, { runId, runDir })
+    assert.equal(result.source.runId, undefined)
+    assert.equal(
+      result.analysis.provenance.profileDigest,
+      canonicalAgentProfileDigest(selected).replace(/^sha256:/u, ''),
+    )
+    assert.equal(result.analysis.provenance.connectionId, 'connection-native-analysis')
+    assert(
+      result.analysis.analysts.some(
+        (row: { analystId: string; status: string; detail?: string }) =>
+          row.analystId === 'systemone' &&
+          row.status === 'failed' &&
+          row.detail?.includes('served model identity'),
+      ),
+    )
+    assert.deepEqual(result.analysis.modelCalls, [])
+    assert.equal(result.analysis.costUsd, undefined)
+    assert.equal(bridge.requests.length, 0)
+    assert.equal(bridge.sessions.length, 0)
+    await rpc.shutdown()
+    assert.equal((await rpc.exit).code, 0)
+    assert.deepEqual(await runBytes(runDir), before)
+  } finally {
+    await session?.forceStop()
+    await bridge.close()
     await rm(root, { recursive: true, force: true })
   }
 })

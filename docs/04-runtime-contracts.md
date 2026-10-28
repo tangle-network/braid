@@ -832,3 +832,26 @@ Runtime attaches the provider-owned receipt environment through its authoritativ
 A pending handoff reconstructs its original plan and verifies the retained operation digest before receipt lookup.
 Changes to fresh-transfer capabilities do not prevent recovery of that operation.
 New handoffs still pass current capability preflight, and a pending retry cannot change its accepted plan, acceptance, destination connection, or request identity.
+
+### Local run observation ownership
+
+One live Braid process observes a run in a shared state directory. Durable admission claims
+observation before publishing `run.requested`; recovery claims only unowned runs. Kernel-held
+locks release on process exit, including crashes. A second RPC process reads the committed run
+without reconciling it, opening its stream, or changing it to `reconnecting` or `unknown`.
+Explicit controls still resolve the exact retained Runtime handle. Implicit shutdown affects
+only that process's owned observations. Journal transitions synchronize committed events across
+processes before allocating sequences, so a steer receipt cannot break the TUI's next event.
+
+Steer uses its own acknowledgement deadline, independent of cancellation. Its deadline bounds
+the foreground receipt, not the provider send. A late `accepted` settles the durable operation;
+steer uncertainty never changes run status. Closing the control process drains late settlement
+before closing storage. Repeating the same operation identifier returns the committed receipt
+and Runtime journals exactly one `agent.turn`.
+
+Attached-TUI steering remains unavailable in the current live provider flow.
+The terminal's active control lease refuses a different control holder; Runtime then reports a
+non-advancing generation. [Runtime issue 2230](https://github.com/tangle-network/agent-runtime/issues/2230)
+records the exact LIVE-08 reproduction and required coordination proof. Braid does not share or
+replace provider authority through a second local protocol. A passing port integration test does
+not satisfy attached-TUI provider acceptance.

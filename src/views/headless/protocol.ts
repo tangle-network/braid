@@ -167,6 +167,8 @@ export interface AskRequest extends RunControlRequestBase {
   readonly params: UnsupportedAnalysisRouting & {
     readonly source: string
     readonly question: string
+    readonly budgetUsd?: number
+    readonly totalTimeoutMs?: number
   }
 }
 
@@ -176,6 +178,8 @@ export interface AnalyzeRequest extends RunControlRequestBase {
     readonly source: string
     readonly recipe?: string
     readonly analystIds?: readonly string[]
+    readonly budgetUsd?: number
+    readonly totalTimeoutMs?: number
   }
 }
 

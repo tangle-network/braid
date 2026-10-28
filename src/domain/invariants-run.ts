@@ -291,6 +291,8 @@ export function assertAnalysisRecord(record: AnalysisRecord): void {
   for (const finding of record.findings) {
     nonEmpty(finding.id, 'analysis.finding.id')
     nonEmpty(finding.text, 'analysis.finding.text')
+    if (finding.metadata !== undefined)
+      assertJsonValue(finding.metadata, 'analysis.finding.metadata')
     if (finding.confidence !== undefined)
       finiteRatio(finding.confidence, 'analysis.finding.confidence')
     for (const citation of finding.citations) assertAnalysisCitation(citation)
@@ -345,6 +347,8 @@ function assertAnalysisModelCall(record: AnalysisModelCallRecord): void {
   if (!['/v1/chat/completions', '/v1/responses', 'unknown-path'].includes(record.path))
     fail('analysis.modelCalls.path is invalid')
   assertPublicIdentifier(record.model, 'analysis.modelCalls.model')
+  if (record.reportedModel !== undefined)
+    assertPublicIdentifier(record.reportedModel, 'analysis.modelCalls.reportedModel')
   if (record.provider !== undefined)
     assertPublicIdentifier(record.provider, 'analysis.modelCalls.provider')
   if (record.route !== undefined) assertPublicIdentifier(record.route, 'analysis.modelCalls.route')

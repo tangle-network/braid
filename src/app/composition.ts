@@ -3,12 +3,12 @@ import { AgentRuntimeExecutionPort } from '../adapters/runtime/agent-runtime-exe
 import { UnavailableExecutionPort } from '../adapters/runtime/unavailable-execution.js'
 import { FixedClock, SystemClock } from '../ports/clock.js'
 import { type CredentialPort, credentialRef } from '../ports/credentials.js'
-import type { EffectStoragePort, JournalPort } from '../ports/effect-storage.js'
 import { RandomIds, SequenceIds } from '../ports/ids.js'
 import {
   type DeterministicBackendOptions,
   deterministicBackend,
 } from '../testing/deterministic-backend.js'
+import { isEffectStorage } from './application-support.js'
 import { BraidApplication } from './application.js'
 import type { CompositionOptions } from './composition-options.js'
 import { DETERMINISTIC_PROFILE, STARTER_PROFILE } from './default-profiles.js'
@@ -32,16 +32,6 @@ export type { CompositionOptions } from './composition-options.js'
 export { DETERMINISTIC_PROFILE, STARTER_PROFILE } from './default-profiles.js'
 
 export type ProductionBraidApplicationOptions = Omit<CompositionOptions, 'fixture'>
-
-function isEffectStorage(value: JournalPort): value is JournalPort & EffectStoragePort {
-  return (
-    typeof (value as Partial<EffectStoragePort>).reserveEffect === 'function' &&
-    typeof (value as Partial<EffectStoragePort>).current === 'function' &&
-    typeof (value as Partial<EffectStoragePort>).latest === 'function' &&
-    typeof (value as Partial<EffectStoragePort>).appendEffect === 'function' &&
-    typeof (value as Partial<EffectStoragePort>).history === 'function'
-  )
-}
 
 function withProductionCredentialOptions(
   config: ProductionCompositionConfig,
@@ -132,6 +122,7 @@ export function createBraidApplication(options: CompositionOptions = {}): BraidA
     ...(options.effectCoordinator === undefined
       ? {}
       : { effectCoordinator: options.effectCoordinator }),
+    ...(options.steerTimeoutMs === undefined ? {} : { steerTimeoutMs: options.steerTimeoutMs }),
     ...(options.cancelTimeoutMs === undefined ? {} : { cancelTimeoutMs: options.cancelTimeoutMs }),
     ...(options.interactionResponseTimeoutMs === undefined
       ? {}

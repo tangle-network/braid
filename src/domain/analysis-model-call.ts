@@ -20,7 +20,9 @@ export interface AnalysisModelCallRecord {
   readonly callId: string
   readonly callRef: string
   readonly path: '/v1/chat/completions' | '/v1/responses' | 'unknown-path'
+  /** Requested route; a reported model is present only when independently observed. */
   readonly model: string
+  readonly reportedModel?: string
   readonly provider?: string
   readonly route?: string
   readonly inputTokens?: number

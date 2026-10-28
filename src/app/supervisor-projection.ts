@@ -22,6 +22,7 @@ export interface SupervisorRunBinding {
 
 export interface SupervisorSnapshotRequest {
   readonly rootDir: string
+  readonly runDir?: string
   readonly remoteEndpointEnv?: string
   readonly workerId?: string
   /** Binds only named runtime supervisors. An omitted binding never implies ownership. */
@@ -60,6 +61,7 @@ export function runtimeWorkerReference(
   if (
     supervisor === undefined ||
     supervisor.remoteEndpointEnv !== undefined ||
+    supervisor.runDir !== undefined ||
     state.workspace !== supervisor.runtimeRoot
   )
     return undefined
@@ -131,9 +133,9 @@ function workerStatus(value: string): WorkerRecord['status'] {
   }
 }
 
-function supervisorId(rootDir: string, rawId: string): SupervisorId {
+function supervisorId(input: SupervisorSnapshotRequest, rawId: string): SupervisorId {
   return createSupervisorId(
-    `supervisor-runtime-${canonicalDigest({ rootDir, rawId }).slice(0, 40)}`,
+    `supervisor-runtime-${canonicalDigest({ rootDir: input.rootDir, rawId, ...(input.runDir === undefined ? {} : { runDir: input.runDir }) }).slice(0, 40)}`,
   )
 }
 
@@ -145,18 +147,31 @@ function finite(value: number | undefined): number | undefined {
   return value === undefined || !Number.isFinite(value) || value < 0 ? undefined : value
 }
 
-function observedUsage(input: {
-  readonly tokensInput: number
-  readonly tokensOutput: number
-  readonly usd: number
-  readonly ms?: number
-  readonly latencyMs?: number
-  readonly iterations?: number
-}): NonNullable<SupervisorRecord['totalUsage']> {
+function costFields(usd: number | undefined, estimate: number | undefined) {
+  const spendUsd = finite(usd)
+  const estimatedSpendUsd = finite(estimate)
+  return {
+    ...(spendUsd === undefined ? {} : { spendUsd }),
+    ...(estimatedSpendUsd === undefined ? {} : { estimatedSpendUsd }),
+  }
+}
+
+function observedUsage(
+  input: {
+    readonly tokensInput: number
+    readonly tokensOutput: number
+    readonly usd: number
+    readonly usdKnown?: boolean
+    readonly ms?: number
+    readonly latencyMs?: number
+    readonly iterations?: number
+  },
+  estimate?: number,
+): NonNullable<SupervisorRecord['totalUsage']> {
   return {
     inputTokens: finite(input.tokensInput) ?? 0,
     outputTokens: finite(input.tokensOutput) ?? 0,
-    spendUsd: finite(input.usd) ?? 0,
+    ...costFields(input.usdKnown === false ? undefined : input.usd, estimate),
     latencyMs: finite(input.latencyMs ?? input.ms) ?? 0,
     ...(finite(input.iterations) === undefined ? {} : { iterations: input.iterations }),
     completeness: 'observed-floor',
@@ -220,13 +235,15 @@ function projectSnapshot(input: SupervisorSnapshotRequest, raw: TopSnapshot): Su
       throw new Error(`Runtime snapshot contains duplicate supervisor id ${runtimeSupervisorId}`)
     }
     seenSupervisors.add(runtimeSupervisorId)
-    const id = supervisorId(input.rootDir, runtimeSupervisorId)
+    const id = supervisorId(input, runtimeSupervisorId)
+    const accounting = raw.pursuit?.runs.filter((run) => run.runId === view.id).at(-1)
     const createdAt = validIso(view.startedAt, at)
     const rootRunId = bindings.get(runtimeSupervisorId)
     supervisors.push({
       id,
       runtimeId: runtimeSupervisorId,
       runtimeRoot: input.rootDir,
+      ...(input.runDir === undefined ? {} : { runDir: input.runDir }),
       ...(rootRunId === undefined ? {} : { rootRunId }),
       status: supervisorStatus(view.status),
       ...(view.task.trim().length === 0 ? {} : { title: redactSensitiveText(view.task) }),
@@ -236,8 +253,11 @@ function projectSnapshot(input: SupervisorSnapshotRequest, raw: TopSnapshot): Su
       ...(view.workerModel === undefined || view.workerModel.trim().length === 0
         ? {}
         : { workerModel: redactSensitiveText(view.workerModel) }),
-      driverUsage: observedUsage(view.driverSpend),
-      totalUsage: observedUsage(view.totals),
+      driverUsage: observedUsage(
+        view.driverSpend,
+        accounting?.totals.exclusiveByNode[runtimeSupervisorId]?.usdEstimated,
+      ),
+      totalUsage: observedUsage(view.totals, accounting?.totals.inclusive.usdEstimated),
       workerCount: view.totals.workers,
       createdAt,
       updatedAt: validIso(view.completedAt, at),
@@ -254,7 +274,7 @@ function projectSnapshot(input: SupervisorSnapshotRequest, raw: TopSnapshot): Su
       const createdWorkerAt = validIso(worker.startedAt, createdAt)
       const parentRuntimeRef = worker.parent?.trim() || undefined
       const parentWorkerId =
-        parentRuntimeRef === undefined
+        parentRuntimeRef === undefined || parentRuntimeRef === runtimeSupervisorId
           ? undefined
           : (references.byId.get(parentRuntimeRef) ??
             references.byUniqueLabel.get(parentRuntimeRef))
@@ -269,7 +289,10 @@ function projectSnapshot(input: SupervisorSnapshotRequest, raw: TopSnapshot): Su
           : { parentRuntimeRef: redactSensitiveText(parentRuntimeRef) }),
         ...(parentWorkerId === undefined ? {} : { parentWorkerId }),
         status: workerStatus(worker.status),
-        ...(finite(worker.spend.usd) === undefined ? {} : { spendUsd: worker.spend.usd }),
+        ...costFields(
+          worker.spend.usdKnown === false ? undefined : worker.spend.usd,
+          accounting?.totals.exclusiveByNode[worker.id]?.usdEstimated,
+        ),
         ...(finite(worker.spend.tokensInput) === undefined
           ? {}
           : { inputTokens: worker.spend.tokensInput }),
@@ -289,7 +312,11 @@ function projectSnapshot(input: SupervisorSnapshotRequest, raw: TopSnapshot): Su
       const workerReference = { kind: 'worker' as const, id: workerDomainId }
       const workerNode = graphNode(workerReference, createdWorkerAt, title)
       graphNodes.push({ ...workerNode, status: workerStatus(worker.status) })
-      if (parentRuntimeRef === undefined || parentWorkerId !== undefined) {
+      if (
+        parentRuntimeRef === undefined ||
+        parentRuntimeRef === runtimeSupervisorId ||
+        parentWorkerId !== undefined
+      ) {
         graphEdges.push(
           graphEdge({
             kind: 'spawned',
@@ -363,7 +390,12 @@ function reconcileSupervisors(
   const output = observed.map((record) => mergeSupervisor(existing.get(String(record.id)), record))
   const observedIds = new Set(output.map((record) => String(record.id)))
   for (const record of state.supervisors) {
-    if (record.runtimeRoot !== input.rootDir || observedIds.has(String(record.id))) continue
+    if (
+      record.runtimeRoot !== input.rootDir ||
+      record.runDir !== input.runDir ||
+      observedIds.has(String(record.id))
+    )
+      continue
     if (record.remoteEndpointEnv !== undefined) {
       output.push(record)
       continue

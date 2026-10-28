@@ -74,9 +74,12 @@ export async function recoverPendingFinalResults(
     | ((input: { readonly runId?: RunId }) => Promise<readonly BraidEventEnvelope[]>)
     | undefined,
   timeoutMs = PENDING_FINAL_RECOVERY_TIMEOUT_MS,
+  claim: (runId: string) => boolean = () => true,
 ): Promise<void> {
   if (loadEvents === undefined || context.execution.reconnect === undefined) return
-  const candidates = context.currentState().runs.filter(mayAwaitFinalResult)
+  const candidates = context
+    .currentState()
+    .runs.filter((run) => mayAwaitFinalResult(run) && claim(run.id))
   await Promise.all(
     candidates.map(async (candidate) => {
       if (!awaitsFinalResult(candidate, await loadEvents({ runId: candidate.id }))) return
