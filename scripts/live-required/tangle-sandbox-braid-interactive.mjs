@@ -71,10 +71,7 @@ import {
   withoutEnvironment,
 } from './tangle-sandbox-braid-stress-support.mjs'
 import { assertSameInteractiveRef } from './tangle-sandbox-interactive-continuity.mjs'
-import {
-  steerTurnsFromJournal,
-  steerTwiceThroughBraid,
-} from './tangle-sandbox-interactive-steer.mjs'
+import { steerTurnsFromJournal, steerTwiceThroughBraid } from './interactive-steer.mjs'
 import { workspaceRequestFor } from './workspace-request.mjs'
 
 const scriptPath = fileURLToPath(import.meta.url)
@@ -1240,6 +1237,7 @@ async function runProof({
   profile,
   providerOptions = {},
   castPath,
+  steer = false, // opt-in until braid#188: a second process cannot yet steer a TUI-held run
   requireZeroActiveResourceDelta = true, // false on a shared key: the exact census is the proof
 } = {}) {
   const timeoutMs = positiveEnvironment(
@@ -1425,8 +1423,7 @@ async function runProof({
       'native reconnect provider control reference',
     )
     verifiedIdentity = reconnectedIdentity
-    // A second process steers while this TUI holds the terminal; the TUI input below must work.
-    const steerAttached = await steerTwiceThroughBraid(packed, config, initialIdentity)
+    const steerAttached = steer && (await steerTwiceThroughBraid(packed, config, initialIdentity))
     const reconnectBeforeScreen = runtime.screen
     const reconnectActionRevision = runtime.terminalOutputRevision
     await runtime.submit(reconnectCommand)
@@ -1457,8 +1454,8 @@ async function runProof({
       identity.controlRef,
       'final TUI state provider control reference',
     )
-    const steerDetached = await steerTwiceThroughBraid(packed, config, identity)
-    const steer = await steerTurnsFromJournal(
+    const steerDetached = steer && (await steerTwiceThroughBraid(packed, config, identity))
+    const steerJournal = steer && await steerTurnsFromJournal(
       config,
       interactiveAdmissionIdentity(record, identity.run).admission.ref.run.sessionId,
       [steerAttached.operationId, steerDetached.operationId],
@@ -1491,7 +1488,7 @@ async function runProof({
       recordState: record.state,
       inputEvidence,
       reconnectEvidence,
-      steer: { attached: steerAttached, detached: steerDetached, journal: steer },
+      steer: steer && { attached: steerAttached, detached: steerDetached, journal: steerJournal },
       providerExecution,
       ...identityContinuityEvidence(initialIdentity, reconnectedIdentity, identity),
     }
@@ -1657,7 +1654,7 @@ async function runProof({
       reconnect: true,
       providerBoundInput: proofData.inputEvidence?.matched === true,
       providerBoundReconnect: proofData.reconnectEvidence?.matched === true,
-      steerOncePerOperation: proofData.steer.journal.once,
+      ...(proofData.steer && { steerOncePerOperation: proofData.steer.journal.once }),
       singleProviderExecution: proofData.providerExecution?.matched === true,
       terminalResize:
         proofData.resized.geometry?.cols === 100 && proofData.resized.geometry?.rows === 30,
@@ -1828,6 +1825,7 @@ export async function main(argv = process.argv, environment = process.env) {
       requireZeroActiveResourceDelta: false,
       providerOptions: (await jsonFile('provider-options')) || undefined,
       castPath: argument('cast', argv),
+      steer: argv.includes('--steer'),
     })
     if (outputPath) await writeFile(outputPath, `${safeJson(result, environment)}\n`)
     process.stdout.write(`${safeJson(result, environment)}\n`)
