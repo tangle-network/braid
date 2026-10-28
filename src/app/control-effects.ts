@@ -103,6 +103,11 @@ async function dispatchControl(
         runId: request.runId,
         operationId: request.operationId,
         text: request.text ?? '',
+        ...(request.providerSessionId === undefined
+          ? {}
+          : { providerSessionId: request.providerSessionId }),
+        ...(request.controlRef === undefined ? {} : { controlRef: request.controlRef }),
+        ...(request.recovery ?? {}),
         signal,
       })
     }

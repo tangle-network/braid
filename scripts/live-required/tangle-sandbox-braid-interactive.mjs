@@ -36,6 +36,11 @@ import {
   waitForValue,
   writeRecording,
 } from './interactive-terminal.mjs'
+import {
+  interactiveResourceName,
+  isOwnedInteractiveResource,
+  sameNameInteractiveResources,
+} from './interactive-resource-ownership.mjs'
 import { DEFAULT_TANGLE_ROUTER_MODEL, releaseProofRouting } from './model-defaults.mjs'
 import {
   assertProviderObservationDeadline,
@@ -66,6 +71,10 @@ import {
   withoutEnvironment,
 } from './tangle-sandbox-braid-stress-support.mjs'
 import { assertSameInteractiveRef } from './tangle-sandbox-interactive-continuity.mjs'
+import {
+  steerTurnsFromJournal,
+  steerTwiceThroughBraid,
+} from './tangle-sandbox-interactive-steer.mjs'
 import { workspaceRequestFor } from './workspace-request.mjs'
 
 const scriptPath = fileURLToPath(import.meta.url)
@@ -348,38 +357,6 @@ export function interactiveMaterializationEvidence(record) {
         ? 'before-interactive_environment'
         : 'unknown',
   }
-}
-
-function interactiveResourceName(runId) {
-  if (typeof runId !== 'string' || !/^[A-Za-z0-9._:-]{1,95}$/u.test(runId)) {
-    throw new Error('Interactive run-derived cleanup requires a bounded Braid run identity')
-  }
-  return `braid-interactive-${runId}`
-}
-
-function isOwnedInteractiveResource(box, expectedName) {
-  return (
-    typeof box?.id === 'string' &&
-    box.name === expectedName &&
-    box.metadata?.owner === 'braid' &&
-    box.metadata?.lifecycle === 'retained' &&
-    box.metadata?.surface === 'interactive-agent'
-  )
-}
-
-function sameNameInteractiveResources(resources, expectedName, predicate) {
-  const matches = resources.filter((resource) => resource?.name === expectedName)
-  if (matches.length > 1) {
-    throw new Error(
-      `Interactive run-derived cleanup found ${String(matches.length)} same-name Sandbox resources; cleanup refused`,
-    )
-  }
-  if (matches.length === 1 && !predicate(matches[0])) {
-    throw new Error(
-      `Interactive run-derived resource ${String(matches[0]?.id ?? 'without-id')} failed exact ownership validation`,
-    )
-  }
-  return matches
 }
 
 async function observeInteractiveResource(
@@ -1234,6 +1211,26 @@ function proofMarkers() {
   }
 }
 
+/** The local run and provider control reference stay the same across attach, reconnect and stop. */
+function identityContinuityEvidence(initial, reconnected, final) {
+  return {
+    sameLocalRun: initial.run.id === reconnected.run.id && initial.run.id === final.run.id,
+    sameProviderControlRef: CONTROL_REF_FIELDS.every(
+      (field) =>
+        initial.controlRef[field] === reconnected.controlRef[field] &&
+        initial.controlRef[field] === final.controlRef[field],
+    ),
+    identityContinuity: {
+      initialLocalRunId: initial.run.id,
+      reconnectedLocalRunId: reconnected.run.id,
+      finalLocalRunId: final.run.id,
+      initialControlRef: initial.controlRef,
+      reconnectedControlRef: reconnected.controlRef,
+      finalControlRef: final.controlRef,
+    },
+  }
+}
+
 async function runProof({
   repository: targetRepository = repository,
   environment = process.env,
@@ -1428,6 +1425,8 @@ async function runProof({
       'native reconnect provider control reference',
     )
     verifiedIdentity = reconnectedIdentity
+    // A second process steers while this TUI holds the terminal; the TUI input below must work.
+    const steerAttached = await steerTwiceThroughBraid(packed, config, initialIdentity)
     const reconnectBeforeScreen = runtime.screen
     const reconnectActionRevision = runtime.terminalOutputRevision
     await runtime.submit(reconnectCommand)
@@ -1458,13 +1457,11 @@ async function runProof({
       identity.controlRef,
       'final TUI state provider control reference',
     )
-    const sameLocalRun =
-      initialIdentity.run.id === reconnectedIdentity.run.id &&
-      initialIdentity.run.id === identity.run.id
-    const sameProviderControlRef = CONTROL_REF_FIELDS.every(
-      (field) =>
-        initialIdentity.controlRef[field] === reconnectedIdentity.controlRef[field] &&
-        initialIdentity.controlRef[field] === identity.controlRef[field],
+    const steerDetached = await steerTwiceThroughBraid(packed, config, identity)
+    const steer = await steerTurnsFromJournal(
+      config,
+      interactiveAdmissionIdentity(record, identity.run).admission.ref.run.sessionId,
+      [steerAttached.operationId, steerDetached.operationId],
     )
     const beforeStopObservation = await observeSandbox(
       client,
@@ -1494,17 +1491,9 @@ async function runProof({
       recordState: record.state,
       inputEvidence,
       reconnectEvidence,
+      steer: { attached: steerAttached, detached: steerDetached, journal: steer },
       providerExecution,
-      sameLocalRun,
-      sameProviderControlRef,
-      identityContinuity: {
-        initialLocalRunId: initialIdentity.run.id,
-        reconnectedLocalRunId: reconnectedIdentity.run.id,
-        finalLocalRunId: identity.run.id,
-        initialControlRef: initialIdentity.controlRef,
-        reconnectedControlRef: reconnectedIdentity.controlRef,
-        finalControlRef: identity.controlRef,
-      },
+      ...identityContinuityEvidence(initialIdentity, reconnectedIdentity, identity),
     }
   } catch (error) {
     const failures = [error]
@@ -1668,6 +1657,7 @@ async function runProof({
       reconnect: true,
       providerBoundInput: proofData.inputEvidence?.matched === true,
       providerBoundReconnect: proofData.reconnectEvidence?.matched === true,
+      steerOncePerOperation: proofData.steer.journal.once,
       singleProviderExecution: proofData.providerExecution?.matched === true,
       terminalResize:
         proofData.resized.geometry?.cols === 100 && proofData.resized.geometry?.rows === 30,
@@ -1703,6 +1693,7 @@ async function runProof({
       cleanup: cleanup.cleanup,
     },
     identityContinuity: proofData.identityContinuity,
+    steer: proofData.steer,
     processCleanup: cleanup.processCleanup,
     providerEvidence: {
       input: proofData.inputEvidence,

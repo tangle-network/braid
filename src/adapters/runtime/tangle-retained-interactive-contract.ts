@@ -44,10 +44,11 @@ export function interactiveRunCapabilities(
   prepared: PreparedTangleRetainedConnection,
 ): RunCapabilities {
   const { interactions: _interactions, ...environment } = prepared.capabilities
+  const steer = prepared.capabilities.interactiveAgent?.sendPrompt === true
   return Object.freeze({
     streaming: { live: true, replay: true, detach: true, turnIdempotency: true },
     sessions: { continue: true, messages: false },
-    controls: { cancel: true, steer: false, queue: false, status: true, recreate: true },
+    controls: { cancel: true, steer, queue: false, status: true, recreate: true },
     events: { stableIdentity: true, sequence: true, cursor: true },
     usage: false,
     environment,

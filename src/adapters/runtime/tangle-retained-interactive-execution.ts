@@ -1,10 +1,12 @@
 import type {
   AgentExactRunControlRef,
+  AgentInteractiveSessionControlClaim,
   AgentProfile,
   AgentWorkspaceBranchingProvider,
   ConfidentialAttestationVerifier,
 } from '@tangle-network/agent-interface'
 import {
+  agentInteractiveSessionPromptRequestDigest,
   agentInteractiveSessionStopRequestDigest,
   canonicalCandidateDigest,
 } from '@tangle-network/agent-interface'
@@ -66,7 +68,7 @@ export interface TangleRetainedInteractiveExecutionOptions {
   readonly holderId?: string
   readonly workspaceBranchingProvider?: AgentWorkspaceBranchingProvider
   readonly confidentialAttestationVerifier?: ConfidentialAttestationVerifier
-  /** Runtime observer-journal root; each run appends `<journalRoot>/<runId>/observer.jsonl`. */
+  /** Runtime observer-journal root; each run appends `<journalRoot>/<sessionId>/observer.jsonl`. */
   readonly journalRoot?: string
 }
 
@@ -89,6 +91,7 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
   readonly #activeRuns = new Set<string>()
   readonly #detachRequested = new Set<string>()
   readonly #cancelledRuns = new Set<string>()
+  readonly #steerControls = new Map<string, AgentInteractiveSessionControlClaim>()
   readonly workspaceBranchingProvider?: AgentWorkspaceBranchingProvider
   readonly confidentialAttestationVerifier?: ConfidentialAttestationVerifier
 
@@ -413,6 +416,101 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
     }
   }
 
+  /**
+   * Deliver one prompt to the live process. A fresh `braid rpc` process reconnects the handle from
+   * the started admission. The prompt digest binds the control claim, so the provider replays an
+   * operation id only under the claim that sent it: this process reuses its claim until expiry,
+   * and Braid's durable control ledger answers a repeat from another process.
+   */
+  async steerRun(
+    input: {
+      readonly runId: string
+      readonly operationId: string
+      readonly text: string
+      readonly providerSessionId?: string
+      readonly controlRef?: AgentExactRunControlRef
+      readonly signal?: AbortSignal
+    } & TangleInteractiveRecoveryInput,
+  ): Promise<ControlAcknowledgement> {
+    if (
+      !this.#handles.has(input.runId) &&
+      !this.#starting.has(input.runId) &&
+      input.retainedAdmission?.phase !== 'interactive_started'
+    ) {
+      return {
+        operationId: input.operationId,
+        outcome: 'rejected',
+        detail: 'interactive-run-not-started',
+      }
+    }
+    const handle = await this.#handleFor(input)
+    if (handle === null) {
+      return {
+        operationId: input.operationId,
+        outcome: 'rejected',
+        detail: 'interactive-run-missing',
+      }
+    }
+    const options = input.signal === undefined ? undefined : { signal: input.signal }
+    const send = async () => {
+      const material = {
+        operationId: input.operationId,
+        ref: handle.ref,
+        control: await this.#steerControl(input.runId, handle, options),
+        prompt: input.text,
+      }
+      return handle.sendPrompt(
+        { ...material, requestDigest: agentInteractiveSessionPromptRequestDigest(material) },
+        options,
+      )
+    }
+    let acknowledgement: Awaited<ReturnType<typeof send>>
+    try {
+      acknowledgement = await send()
+    } catch (error) {
+      // An attached TUI's newer claim supersedes the cached one. One resend under a current claim
+      // is safe: a prompt the provider already holds answers conflict, never a second delivery.
+      this.#steerControls.delete(input.runId)
+      if (input.signal?.aborted) throw error
+      acknowledgement = await send()
+    }
+    switch (acknowledgement.status) {
+      case 'accepted':
+        return { operationId: input.operationId, outcome: 'accepted', detail: 'steered' }
+      case 'replayed':
+        return { operationId: input.operationId, outcome: 'already-applied', detail: 'steered' }
+      case 'conflict':
+        return { operationId: input.operationId, outcome: 'rejected', detail: 'operation-conflict' }
+      case 'unknown':
+        return {
+          operationId: input.operationId,
+          outcome: 'unknown',
+          detail: acknowledgement.message ?? 'interactive-prompt-unknown',
+        }
+    }
+  }
+
+  async #steerControl(
+    runId: string,
+    handle: RetainedInteractiveRunHandle,
+    options: { readonly signal: AbortSignal } | undefined,
+  ): Promise<AgentInteractiveSessionControlClaim> {
+    const held = this.#steerControls.get(runId)
+    if (
+      held !== undefined &&
+      held.refDigest === canonicalCandidateDigest(handle.ref) &&
+      Date.parse(held.expiresAt) > Date.now() + 5_000
+    )
+      return held
+    const control = await claimRetainedInteractiveControl({
+      handle,
+      holderId: this.#holderId,
+      ...options,
+    })
+    this.#steerControls.set(runId, control)
+    return control
+  }
+
   async #start(
     prepared: PreparedTangleRetainedConnection,
     input: ExecuteTurnInput,
@@ -425,7 +523,7 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
       ...(input.text.trim() === '' ? {} : { initialPrompt: input.text }),
       // workspaceRoot identifies Braid's local checkout. The provider owns its remote cwd.
       onAdmission,
-      ...(this.#journalRoot === undefined ? {} : { journalRoot: this.#journalRoot }),
+      ...this.#journal(),
       signal: input.signal,
     })
   }
@@ -475,6 +573,7 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
         provider: prepared.provider,
         ref: admission.ref,
         ...(input.signal === undefined ? {} : { signal: input.signal }),
+        ...this.#journal(),
       })
     }
     const onAdmission = requireAdmissionRecorder(input.onRetainedAdmission)
@@ -484,6 +583,7 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
         admission,
         onAdmission,
         ...(input.signal === undefined ? {} : { signal: input.signal }),
+        ...this.#journal(),
       })
     }
     const receipt = requireRecoveryReceipt(input.receipt)
@@ -503,7 +603,12 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
       },
       onAdmission,
       ...(input.signal === undefined ? {} : { signal: input.signal }),
+      ...this.#journal(),
     })
+  }
+
+  #journal(): { readonly journalRoot?: string } {
+    return this.#journalRoot === undefined ? {} : { journalRoot: this.#journalRoot }
   }
 
   async #handleFor(
@@ -630,6 +735,7 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
 
   #forgetHandle(runId: string): void {
     this.#handles.delete(runId)
+    this.#steerControls.delete(runId)
     this.#prepared.delete(runId)
     if (!this.#activeRuns.has(runId)) this.#cancelledRuns.delete(runId)
   }

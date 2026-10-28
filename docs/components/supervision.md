@@ -102,6 +102,8 @@ Reconnect never reuses a stale local control result as a new effect.
 
 Steer appears only when the runtime reports steer support for that worker.
 
+A retained interactive Braid run steers through Runtime `sendPrompt` from any process; each accepted steer is one turn on the `agent-runtime-top` canvas ([runtime contracts](../04-runtime-contracts.md)).
+
 Cancel appears only when the runtime reports cancellation support.
 
 Attach appears in the interactive TUI when at least one projected worker is running.

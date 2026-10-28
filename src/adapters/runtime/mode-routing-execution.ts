@@ -108,7 +108,7 @@ export class ModeRoutingExecutionPort implements ExecutionPort {
   }
 
   async steerRun(input: SteerInput) {
-    const port = this.#portForRun(input.runId)
+    const port = this.#portForInput(input)
     if (port.steerRun === undefined) {
       throw new Error('The selected execution port does not support steering')
     }
