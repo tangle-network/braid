@@ -166,3 +166,25 @@ export async function waitForProviderObservation(
     )
   }
 }
+
+export async function listAllSandboxes(client) {
+  // An unpaginated SDK list is one complete inventory. Offset pages over a
+  // changing shared account can repeat or omit resources between requests.
+  const boxes = await client.list({
+    status: ['pending', 'provisioning', 'running', 'stopped', 'failed', 'expired'],
+  })
+  if (!Array.isArray(boxes)) throw new Error('Sandbox list returned an invalid inventory')
+  const seenIds = new Set()
+  for (const box of boxes) {
+    if (typeof box?.id === 'string') {
+      if (seenIds.has(box.id)) throw new Error(`Sandbox list repeated ${box.id}`)
+      seenIds.add(box.id)
+    }
+  }
+  return boxes
+}
+
+/** One complete Sandbox inventory, observed within the caller's deadline. */
+export function observeSandboxInventory(client, { deadline, timeoutMs, label }) {
+  return waitForProviderObservation(label, () => listAllSandboxes(client), timeoutMs, { deadline })
+}

@@ -40,6 +40,7 @@ import { DEFAULT_TANGLE_ROUTER_MODEL, releaseProofRouting } from './model-defaul
 import {
   assertProviderObservationDeadline,
   createProviderObservationDeadline,
+  observeSandboxInventory,
   waitForProviderObservation,
 } from './provider-observation.mjs'
 import { runCloudInteractionProof } from './tangle-sandbox-braid-cloud-interaction.mjs'
@@ -72,7 +73,6 @@ const repository = resolve(dirname(scriptPath), '../..')
 const DEFAULT_TIMEOUT_MS = 180_000
 const DEFAULT_IDLE_TTL_SECONDS = 1_800
 const DEFAULT_PROCESS_EXIT_TIMEOUT_MS = 10_000
-const SANDBOX_LIST_PAGE_SIZE = 100
 const DETACH = '\u001d'
 const RUN_STATUS_AFTER_STOP = new Set(['aborted', 'cancelled'])
 const CANCELLABLE_INTERACTIVE_RUN_STATUSES = new Set([
@@ -382,38 +382,6 @@ function sameNameInteractiveResources(resources, expectedName, predicate) {
   return matches
 }
 
-async function listAllSandboxResources(
-  client,
-  {
-    deadline: providedDeadline,
-    timeoutMs = DEFAULT_TIMEOUT_MS,
-    label = 'Sandbox resource list',
-  } = {},
-) {
-  const deadline = providedDeadline ?? createProviderObservationDeadline(label, timeoutMs)
-  const resources = []
-  const seenIds = new Set()
-  let offset = 0
-  for (;;) {
-    const page = await waitForProviderObservation(
-      `${label} page ${offset}`,
-      () => client.list({ limit: SANDBOX_LIST_PAGE_SIZE, offset }),
-      timeoutMs,
-      { deadline },
-    )
-    if (!Array.isArray(page)) throw new Error('Sandbox list returned an invalid page')
-    for (const resource of page) {
-      if (typeof resource?.id === 'string') {
-        if (seenIds.has(resource.id)) throw new Error(`Sandbox list repeated ${resource.id}`)
-        seenIds.add(resource.id)
-      }
-      resources.push(resource)
-    }
-    if (page.length < SANDBOX_LIST_PAGE_SIZE) return resources
-    offset += page.length
-  }
-}
-
 async function observeInteractiveResource(
   client,
   controlRef,
@@ -441,7 +409,7 @@ async function observeInteractiveResource(
     )
   }
   const matches = sameNameInteractiveResources(
-    await listAllSandboxResources(client, {
+    await observeSandboxInventory(client, {
       deadline,
       timeoutMs,
       label: 'Interactive Sandbox resource census',
@@ -475,7 +443,7 @@ async function cleanupInteractiveByRunId(
   const expectedName = interactiveResourceName(runId)
   const predicate = (resource) => isOwnedInteractiveResource(resource, expectedName)
   const listed = sameNameInteractiveResources(
-    await listAllSandboxResources(client, {
+    await observeSandboxInventory(client, {
       deadline,
       timeoutMs,
       label: 'Interactive Sandbox cleanup resource census',
@@ -537,7 +505,7 @@ async function cleanupInteractiveByRunId(
     })
   }
   const remaining = sameNameInteractiveResources(
-    await listAllSandboxResources(client, {
+    await observeSandboxInventory(client, {
       deadline,
       timeoutMs,
       label: 'Interactive Sandbox cleanup final census',
@@ -1275,6 +1243,7 @@ async function runProof({
   profile,
   providerOptions = {},
   castPath,
+  requireZeroActiveResourceDelta = true, // false on a shared key: the exact census is the proof
 } = {}) {
   const timeoutMs = positiveEnvironment(
     environment,
@@ -1619,11 +1588,9 @@ async function runProof({
         afterUsage?.value !== null &&
         usageDelta.activeSandboxes !== null
       assert.equal(usageObservationComplete, true, 'interactive usage telemetry was unavailable')
-      assert.equal(
-        usageDelta.activeSandboxes,
-        0,
-        'interactive resource cleanup changed active usage',
-      )
+      if (requireZeroActiveResourceDelta) {
+        assert.equal(usageDelta.activeSandboxes, 0, 'interactive cleanup changed active usage')
+      }
       const accountIdentityConsistency = assertStableAccountIdentity(identityRecords)
       const telemetry = telemetryDisclosure(
         proofData.stop.run,
@@ -1867,6 +1834,7 @@ export async function main(argv = process.argv, environment = process.env) {
       environment,
       runner,
       profile,
+      requireZeroActiveResourceDelta: false,
       providerOptions: (await jsonFile('provider-options')) || undefined,
       castPath: argument('cast', argv),
     })
