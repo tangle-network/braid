@@ -480,6 +480,7 @@ export interface AnalysisModelCallView {
   readonly sequence: number
   readonly provider?: string
   readonly model: string
+  readonly reportedModel?: string
   readonly inputTokens?: number
   readonly outputTokens?: number
   readonly tokensKnown: boolean

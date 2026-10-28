@@ -203,6 +203,7 @@ export function assertSupervisorRecord(record: SupervisorRecord): void {
   nonEmpty(record.runtimeId, 'supervisor.runtimeId')
   if (record.runtimeId.length > 1_024) fail('supervisor.runtimeId is too long')
   nonEmpty(record.runtimeRoot, 'supervisor.runtimeRoot')
+  if (record.runDir !== undefined) nonEmpty(record.runDir, 'supervisor.runDir')
   if (record.rootRunId !== undefined)
     assertEntityId('run', record.rootRunId, 'supervisor.rootRunId')
   if (record.title !== undefined) nonEmpty(record.title, 'supervisor.title')

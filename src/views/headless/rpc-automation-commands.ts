@@ -10,42 +10,6 @@ export type AutomationRpcCommand = Extract<
   | 'automation_list'
 >
 
-export const AUTOMATION_PARAMETER_KEYS: Readonly<Record<AutomationRpcCommand, readonly string[]>> =
-  {
-    automation_create: [
-      'ruleId',
-      'runId',
-      'interactionId',
-      'request',
-      'answer',
-      'responseScope',
-      'matcher',
-      'context',
-      'expiresAt',
-      'maximumUses',
-      'confirmPersistent',
-      'creationSource',
-    ],
-    automation_update: [
-      'ruleId',
-      'runId',
-      'interactionId',
-      'request',
-      'answer',
-      'responseScope',
-      'matcher',
-      'context',
-      'expiresAt',
-      'maximumUses',
-      'confirmPersistent',
-      'creationSource',
-    ],
-    automation_dry_run: ['runId', 'interactionId', 'context'],
-    automation_disable: ['ruleId'],
-    automation_delete: ['ruleId'],
-    automation_list: [],
-  }
-
 export type AutomationParameterType = 'string' | 'boolean' | 'number' | 'record'
 
 export const AUTOMATION_PARAMETER_TYPES: Readonly<

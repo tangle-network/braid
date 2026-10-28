@@ -234,7 +234,6 @@ function summarizeRuntimeEvents(
 
 function summarizeRetainedResult(
   result: import('@tangle-network/agent-interface/environment-provider').AgentTurnResult,
-  model: string,
   startedAt: number,
 ): RuntimeCallSummary {
   const endedAt = Date.now()
@@ -262,7 +261,6 @@ function summarizeRetainedResult(
     ...(observedCostUsd === undefined ? {} : { observedCostUsd }),
     ...(reasoningTokens === undefined ? {} : { reasoningTokens }),
     usageCaptured,
-    reportedModel: model,
     ...(!result.success ? { errorKind: 'backend' } : {}),
     ...(errorStatus === undefined ? {} : { errorStatus }),
   }
@@ -385,6 +383,9 @@ function responseFor(
   const raw = {
     source: '@tangle-network/agent-runtime',
     version: AGENT_RUNTIME_VERSION,
+    ...(summary.reportedModel === undefined
+      ? {}
+      : { reportedModel: safeModelRoute(summary.reportedModel) }),
     eventDigest: String(
       canonicalDigest({
         types: eventFacts(summary.events),
@@ -693,6 +694,45 @@ export function createRuntimeTraceModelOwner(
     const operation: RuntimeModelOperation =
       options.connection.kind === 'cli-bridge' ? 'startRetainedRun' : 'streamAgentTurn'
     let controlRef: AgentExactRunControlRef | undefined
+    const finish = (failure?: string): Awaited<ReturnType<ExternalOptimizerModelCall>> => {
+      const receipt = receiptFor(
+        options.model,
+        pricing,
+        summary ?? { inputTokens: 0, outputTokens: 0, usageCaptured: false },
+        !dispatched,
+      )
+      const execution = executionEvidence({
+        request,
+        callRef,
+        profileDigest: executionProfileDigest,
+        connection: options.connection,
+        retry,
+        ...(options.profile.model?.provider === undefined
+          ? {}
+          : { provider: options.profile.model.provider }),
+        ...(pricing === undefined ? {} : { pricing }),
+        receipt,
+        ...(summary === undefined ? {} : { summary }),
+        dispatched,
+        ...(summary !== undefined || events.length === 0 ? {} : { partialEvents: events }),
+        startedAt,
+        operation,
+        ...(controlRef === undefined ? {} : { controlRef }),
+        ...(failure === undefined ? {} : { failure }),
+      })
+      return failure === undefined && summary?.status === 'completed'
+        ? { succeeded: true, response: responseFor(request, summary, pricing), receipt, execution }
+        : {
+            succeeded: false,
+            error:
+              failure ??
+              (summary === undefined
+                ? 'Runtime model execution has no summary'
+                : summaryFailure(summary)),
+            receipt,
+            execution,
+          }
+    }
     try {
       const configuredModel = safePublicIdentifier(options.model)
       if (configuredModel === undefined) {
@@ -723,7 +763,7 @@ export function createRuntimeTraceModelOwner(
           onAdmission: (admission) => onRetainedAdmission(request.callId, admission),
         })
         controlRef = retained.controlRef
-        summary = summarizeRetainedResult(retained.result, configuredModel, startedAt)
+        summary = summarizeRetainedResult(retained.result, startedAt)
       } else {
         dispatched = true
         const { createExecutor, streamAgentTurn } = await import(
@@ -756,69 +796,10 @@ export function createRuntimeTraceModelOwner(
         }
         summary = summarizeRuntimeEvents(events, startedAt)
       }
-      const receipt = receiptFor(options.model, pricing, summary)
-      const evidence = executionEvidence({
-        request,
-        callRef,
-        profileDigest: executionProfileDigest,
-        connection: options.connection,
-        retry,
-        ...(profile.model?.provider === undefined ? {} : { provider: profile.model.provider }),
-        ...(pricing === undefined ? {} : { pricing }),
-        receipt,
-        summary,
-        dispatched,
-        startedAt,
-        operation,
-        ...(controlRef === undefined ? {} : { controlRef }),
-      })
-      if (summary.status !== 'completed') {
-        return {
-          succeeded: false,
-          error: summaryFailure(summary),
-          receipt,
-          execution: evidence,
-        }
-      }
-      return {
-        succeeded: true,
-        response: responseFor(request, summary, pricing),
-        receipt,
-        execution: evidence,
-      }
+      return finish()
     } catch (error) {
       if (error instanceof RetainedModelCallError) controlRef = error.controlRef
-      const message = publicError(error)
-      const receipt = receiptFor(
-        options.model,
-        pricing,
-        summary ?? { inputTokens: 0, outputTokens: 0, usageCaptured: false },
-        !dispatched,
-      )
-      return {
-        succeeded: false,
-        error: message,
-        receipt,
-        execution: executionEvidence({
-          request,
-          callRef,
-          profileDigest: executionProfileDigest,
-          connection: options.connection,
-          retry,
-          ...(options.profile.model?.provider === undefined
-            ? {}
-            : { provider: options.profile.model.provider }),
-          ...(pricing === undefined ? {} : { pricing }),
-          receipt,
-          ...(summary === undefined ? {} : { summary }),
-          dispatched,
-          ...(events.length === 0 ? {} : { partialEvents: events }),
-          startedAt,
-          operation,
-          ...(controlRef === undefined ? {} : { controlRef }),
-          failure: message,
-        }),
-      }
+      return finish(publicError(error))
     }
   }
 

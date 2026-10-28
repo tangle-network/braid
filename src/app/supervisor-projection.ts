@@ -22,6 +22,7 @@ export interface SupervisorRunBinding {
 
 export interface SupervisorSnapshotRequest {
   readonly rootDir: string
+  readonly runDir?: string
   readonly remoteEndpointEnv?: string
   readonly workerId?: string
   /** Binds only named runtime supervisors. An omitted binding never implies ownership. */
@@ -60,6 +61,7 @@ export function runtimeWorkerReference(
   if (
     supervisor === undefined ||
     supervisor.remoteEndpointEnv !== undefined ||
+    supervisor.runDir !== undefined ||
     state.workspace !== supervisor.runtimeRoot
   )
     return undefined
@@ -131,9 +133,9 @@ function workerStatus(value: string): WorkerRecord['status'] {
   }
 }
 
-function supervisorId(rootDir: string, rawId: string): SupervisorId {
+function supervisorId(input: SupervisorSnapshotRequest, rawId: string): SupervisorId {
   return createSupervisorId(
-    `supervisor-runtime-${canonicalDigest({ rootDir, rawId }).slice(0, 40)}`,
+    `supervisor-runtime-${canonicalDigest({ rootDir: input.rootDir, rawId, ...(input.runDir === undefined ? {} : { runDir: input.runDir }) }).slice(0, 40)}`,
   )
 }
 
@@ -220,13 +222,14 @@ function projectSnapshot(input: SupervisorSnapshotRequest, raw: TopSnapshot): Su
       throw new Error(`Runtime snapshot contains duplicate supervisor id ${runtimeSupervisorId}`)
     }
     seenSupervisors.add(runtimeSupervisorId)
-    const id = supervisorId(input.rootDir, runtimeSupervisorId)
+    const id = supervisorId(input, runtimeSupervisorId)
     const createdAt = validIso(view.startedAt, at)
     const rootRunId = bindings.get(runtimeSupervisorId)
     supervisors.push({
       id,
       runtimeId: runtimeSupervisorId,
       runtimeRoot: input.rootDir,
+      ...(input.runDir === undefined ? {} : { runDir: input.runDir }),
       ...(rootRunId === undefined ? {} : { rootRunId }),
       status: supervisorStatus(view.status),
       ...(view.task.trim().length === 0 ? {} : { title: redactSensitiveText(view.task) }),
@@ -363,7 +366,12 @@ function reconcileSupervisors(
   const output = observed.map((record) => mergeSupervisor(existing.get(String(record.id)), record))
   const observedIds = new Set(output.map((record) => String(record.id)))
   for (const record of state.supervisors) {
-    if (record.runtimeRoot !== input.rootDir || observedIds.has(String(record.id))) continue
+    if (
+      record.runtimeRoot !== input.rootDir ||
+      record.runDir !== input.runDir ||
+      observedIds.has(String(record.id))
+    )
+      continue
     if (record.remoteEndpointEnv !== undefined) {
       output.push(record)
       continue

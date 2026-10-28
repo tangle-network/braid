@@ -1,7 +1,6 @@
 import type { ExternalOptimizerModelExecutionObservation } from '@tangle-network/agent-eval/campaign'
 import type { AnalysisAnalyst } from '../../app/analysis-execution-session.js'
 import type { AnalysisExecutionTarget } from '../../app/analysis-types.js'
-import { profileModelSettings } from '../../app/profile-model-settings.js'
 import type { ProductionConnectionOptions } from '../connections/production-connections.js'
 import type { EvalAnalystRequest, EvalAnalystStreamEvent } from './eval-analyst.js'
 import {
@@ -39,20 +38,10 @@ export class ProductionAnalysisAnalyst implements AnalysisAnalyst {
             'The captured analysis route has no matching connection record.',
           )
         }
-        const modelSettings = profileModelSettings(target.profile)
         return createTraceAnalysisAnalyst(
           await createTraceAnalysisAdapter({
             profile: target.profile,
             connection: target.connection,
-            ...(modelSettings.maxVisibleOutputTokens === undefined
-              ? {}
-              : { maxOutputTokens: modelSettings.maxVisibleOutputTokens }),
-            ...(modelSettings.maxReasoningTokens === undefined
-              ? {}
-              : { maxReasoningTokens: modelSettings.maxReasoningTokens }),
-            ...(modelSettings.maxTotalOutputTokens === undefined
-              ? {}
-              : { maxTotalOutputTokens: modelSettings.maxTotalOutputTokens }),
             ...connectionOptions,
             managedRuntimeReadiness: 'complete',
             ...(request.onRetainedAdmission === undefined

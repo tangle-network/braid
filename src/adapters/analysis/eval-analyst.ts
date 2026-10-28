@@ -134,7 +134,7 @@ export class AgentEvalAnalystAdapter {
     if (recipes.includes('all')) {
       const selected = available
         .map((entry) => entry.id)
-        .filter((id) => id !== BRAID_QUESTION_ANALYST_ID)
+        .filter((id) => id !== BRAID_QUESTION_ANALYST_ID && id !== 'systemone')
       if (selected.length === 0) throw unavailable('all', available)
       return selected
     }

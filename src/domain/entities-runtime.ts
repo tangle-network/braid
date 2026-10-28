@@ -109,6 +109,8 @@ export interface SupervisorRecord {
   readonly runtimeId: string
   /** Workspace root used to read and control this runtime supervisor. */
   readonly runtimeRoot: string
+  /** An explicitly selected durable source is read-only, even inside this workspace. */
+  readonly runDir?: string
   /** Present only when Braid has an explicit runtime-supervisor to run binding. */
   readonly rootRunId?: RunId
   /** Explicit conversation binding for a remote read-only Runtime tree. */

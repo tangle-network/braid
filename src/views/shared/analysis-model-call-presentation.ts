@@ -8,7 +8,9 @@ export function analysisExecutionView(record: AnalysisRecord): AnalysisExecution
   const observedModels = new Set<string>()
   const aggregateModel = safeModel(record.usage?.model)
   if (aggregateModel !== undefined) observedModels.add(aggregateModel)
-  for (const call of modelCalls ?? []) observedModels.add(call.model)
+  for (const call of modelCalls ?? []) {
+    if (call.reportedModel !== undefined) observedModels.add(call.reportedModel)
+  }
   const configuredModel = safeModel(record.provenance?.model)
   const runner = safeModel(record.provenance?.runner)
   return {
@@ -22,10 +24,12 @@ export function analysisExecutionView(record: AnalysisRecord): AnalysisExecution
 
 export function analysisModelCallView(record: AnalysisModelCallRecord): AnalysisModelCallView {
   const provider = safeModel(record.provider)
+  const reportedModel = safeModel(record.reportedModel)
   return {
     sequence: record.sequence,
     ...(provider === undefined ? {} : { provider }),
     model: safeModel(record.model) ?? 'unknown-model',
+    ...(reportedModel === undefined ? {} : { reportedModel }),
     ...(record.inputTokens === undefined ? {} : { inputTokens: record.inputTokens }),
     ...(record.outputTokens === undefined ? {} : { outputTokens: record.outputTokens }),
     tokensKnown: record.tokensKnown,

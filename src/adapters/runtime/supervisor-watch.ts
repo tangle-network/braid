@@ -6,18 +6,22 @@ import {
 } from '@tangle-network/agent-runtime/tui'
 
 export interface SupervisorWatchOptions {
+  readonly runDir?: string
   readonly intervalMs?: number
   readonly signal?: AbortSignal
   readonly now?: () => number
 }
 
 export interface RuntimeSupervisorSnapshotPort {
-  readonly snapshot: (rootDir: string, now?: number) => TopSnapshot
+  snapshot(rootDir: string, now?: number): TopSnapshot
+  snapshot(
+    rootDir: string,
+    options: { readonly runDir: string; readonly now?: number },
+  ): Promise<TopSnapshot>
   readonly watch: (
     rootDir: string,
     options?: SupervisorWatchOptions,
   ) => AsyncGenerator<TopSnapshot, void, void>
-  readonly reconnect: (rootDir: string, now?: number) => TopSnapshot
 }
 
 function waitForNextSnapshot(ms: number, signal: AbortSignal | undefined): Promise<boolean> {
@@ -43,12 +47,16 @@ export class RuntimeSupervisorWatcher implements RuntimeSupervisorSnapshotPort {
     this.#load = load
   }
 
-  snapshot(rootDir: string, now?: number): TopSnapshot {
-    return this.#load(rootDir, now)
-  }
-
-  reconnect(rootDir: string, now?: number): TopSnapshot {
-    return this.snapshot(rootDir, now)
+  snapshot(rootDir: string, now?: number): TopSnapshot
+  snapshot(
+    rootDir: string,
+    options: { readonly runDir: string; readonly now?: number },
+  ): Promise<TopSnapshot>
+  snapshot(
+    rootDir: string,
+    input?: number | { readonly runDir: string; readonly now?: number },
+  ): TopSnapshot | Promise<TopSnapshot> {
+    return typeof input === 'object' ? loadTopSnapshot(rootDir, input) : this.#load(rootDir, input)
   }
 
   async *watch(
@@ -57,7 +65,13 @@ export class RuntimeSupervisorWatcher implements RuntimeSupervisorSnapshotPort {
   ): AsyncGenerator<TopSnapshot, void, void> {
     const intervalMs = Math.max(25, options.intervalMs ?? 250)
     while (!options.signal?.aborted) {
-      yield this.snapshot(rootDir, options.now?.())
+      const now = options.now?.()
+      yield options.runDir === undefined
+        ? this.snapshot(rootDir, now)
+        : await this.snapshot(rootDir, {
+            runDir: options.runDir,
+            ...(now === undefined ? {} : { now }),
+          })
       if (!(await waitForNextSnapshot(intervalMs, options.signal))) return
     }
   }

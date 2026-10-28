@@ -98,6 +98,9 @@ export interface AnalysisCitation {
 export interface AnalysisFinding {
   readonly id: string
   readonly text: string
+  readonly recommendedAction?: string
+  readonly validationPlan?: string
+  readonly metadata?: JsonValue
   readonly severity?: 'info' | 'low' | 'medium' | 'high' | 'critical'
   readonly confidence?: number
   readonly citations: readonly AnalysisCitation[]
