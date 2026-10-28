@@ -95,10 +95,10 @@ async function dispatchControl(
     }
     if (control === 'steer') {
       if (!execution.steerRun) return unknown(request.operationId, 'CONTROL_STEERING_UNCONFIRMED')
-      return execution.steerRun({ ...command, text: request.text ?? '' })
+      return await execution.steerRun({ ...command, text: request.text ?? '' })
     }
     if (!execution.detachRun) return unknown(request.operationId, 'CONTROL_DETACH_UNCONFIRMED')
-    return execution.detachRun(command)
+    return await execution.detachRun(command)
   } catch (error) {
     return unknown(request.operationId, runtimeFailureDiagnostic(error, 'CONTROL_DISPATCH_UNKNOWN'))
   }
