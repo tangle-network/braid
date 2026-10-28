@@ -9,7 +9,6 @@ import type { ControlDispatchOptions, ControlEffectRequest } from './application
 import type { ApplicationJournal } from './application-support.js'
 import {
   commitEventsAndWaitAtRevision,
-  createTransitionHost,
   type TransitionHost,
 } from './application-transition.js'
 import type { AppSubscriber, SendInput, SendReceipt } from './application-types.js'
@@ -76,7 +75,7 @@ export function wireApplicationRuntime(
       stateWaiters.add(wake)
       signal.addEventListener('abort', wake, { once: true })
     })
-  const transition = createTransitionHost({
+  const transition: TransitionHost = {
     state: input.currentState,
     setState,
     journal: input.journal,
@@ -88,7 +87,7 @@ export function wireApplicationRuntime(
     setTransitionTail: input.setTransitionTail,
     storageFailure: input.storageFailure,
     markStorageFailure: input.markStorageFailure,
-  })
+  }
   const ports = buildApplicationPortRuntime({
     currentState: input.currentState,
     profile: input.profile,

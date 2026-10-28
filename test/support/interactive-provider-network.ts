@@ -1,6 +1,9 @@
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import type { AgentEnvironment, AgentEnvironmentProvider } from '@tangle-network/agent-interface/environment-provider'
+import type {
+  AgentEnvironment,
+  AgentEnvironmentProvider,
+} from '@tangle-network/agent-interface/environment-provider'
 import { InteractiveEnvironmentFixture } from './interactive-environment-provider.js'
 
 /** HTTP transport to one stateful provider process, shared by independent Braid children. */
@@ -22,7 +25,8 @@ export async function interactiveProviderServer() {
       else if (method === 'create') {
         environment = await provider.create(args[0] as Parameters<typeof provider.create>[0])
         result = { id: environment.id }
-      } else if (method === 'get') result = environment === undefined ? null : { id: environment.id }
+      } else if (method === 'get')
+        result = environment === undefined ? null : { id: environment.id }
       else {
         if (environment === undefined) throw new Error('No environment')
         if (method === 'startInteractive') {
@@ -49,45 +53,58 @@ export async function interactiveProviderServer() {
     fixture,
     calls,
     endpoint: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
-    delayPrompts: (ms: number) => { promptDelayMs = ms },
-    close: () => new Promise<void>((resolve, reject) => {
-      server.closeAllConnections()
-      server.close((error) => error ? reject(error) : resolve())
-    }),
+    delayPrompts: (ms: number) => {
+      promptDelayMs = ms
+    },
+    close: () =>
+      new Promise<void>((resolve, reject) => {
+        server.closeAllConnections()
+        server.close((error) => (error ? reject(error) : resolve()))
+      }),
   }
 }
 
 export function networkInteractiveProvider(endpoint: string): AgentEnvironmentProvider {
   const call = async (method: string, args: unknown[], signal?: AbortSignal) => {
     const response = await fetch(`${endpoint}/${method}`, {
-      method: 'POST', body: JSON.stringify(args), ...(signal === undefined ? {} : { signal }),
+      method: 'POST',
+      body: JSON.stringify(args),
+      ...(signal === undefined ? {} : { signal }),
     })
-    const body = await response.json() as { result?: unknown; error?: string }
+    const body = (await response.json()) as { result?: unknown; error?: string }
     if (!response.ok) throw new Error(body.error)
     return body.result
   }
-  const environment = (id: string): AgentEnvironment => ({
-    id, provider: 'tangle-sandbox',
-    status: async () => 'running',
-    async *stream() {},
-    destroy: async () => {},
-    startInteractive: (request, options) => call('startInteractive', [request], options?.signal) as never,
-    interactive: (ref) => ({
-      ref,
-      attach: async () => { throw new Error('Network steer test opens no terminal') },
-      status: (_options) => call('status', [ref]) as never,
-      claimControl: (command, options) => call('claimControl', [ref, command], options?.signal) as never,
-      sendPrompt: (command, options) => call('sendPrompt', [ref, command], options?.signal) as never,
-      stop: (command, options) => call('stop', [ref, command], options?.signal) as never,
-    }) as ReturnType<NonNullable<AgentEnvironment['interactive']>>,
-  }) as AgentEnvironment
+  const environment = (id: string): AgentEnvironment =>
+    ({
+      id,
+      provider: 'tangle-sandbox',
+      status: async () => 'running',
+      async *stream() {},
+      destroy: async () => {},
+      startInteractive: (request, options) =>
+        call('startInteractive', [request], options?.signal) as never,
+      interactive: (ref) =>
+        ({
+          ref,
+          attach: async () => {
+            throw new Error('Network steer test opens no terminal')
+          },
+          status: (_options) => call('status', [ref]) as never,
+          claimControl: (command, options) =>
+            call('claimControl', [ref, command], options?.signal) as never,
+          sendPrompt: (command, options) =>
+            call('sendPrompt', [ref, command], options?.signal) as never,
+          stop: (command, options) => call('stop', [ref, command], options?.signal) as never,
+        }) as ReturnType<NonNullable<AgentEnvironment['interactive']>>,
+    }) as AgentEnvironment
   return {
     name: 'tangle-sandbox',
     capabilities: () => call('capabilities', []) as never,
     create: async (request) => {
-      const result = await call('create', [request]) as { id: string }
+      const result = (await call('create', [request])) as { id: string }
       return environment(result.id)
     },
-    get: async (id) => await call('get', [id]) === null ? null : environment(id),
+    get: async (id) => ((await call('get', [id])) === null ? null : environment(id)),
   }
 }

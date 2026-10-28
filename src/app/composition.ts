@@ -9,6 +9,7 @@ import {
   type DeterministicBackendOptions,
   deterministicBackend,
 } from '../testing/deterministic-backend.js'
+import { isEffectStorage } from './application-support.js'
 import { BraidApplication } from './application.js'
 import type { CompositionOptions } from './composition-options.js'
 import { DETERMINISTIC_PROFILE, STARTER_PROFILE } from './default-profiles.js'
@@ -32,16 +33,6 @@ export type { CompositionOptions } from './composition-options.js'
 export { DETERMINISTIC_PROFILE, STARTER_PROFILE } from './default-profiles.js'
 
 export type ProductionBraidApplicationOptions = Omit<CompositionOptions, 'fixture'>
-
-function isEffectStorage(value: JournalPort): value is JournalPort & EffectStoragePort {
-  return (
-    typeof (value as Partial<EffectStoragePort>).reserveEffect === 'function' &&
-    typeof (value as Partial<EffectStoragePort>).current === 'function' &&
-    typeof (value as Partial<EffectStoragePort>).latest === 'function' &&
-    typeof (value as Partial<EffectStoragePort>).appendEffect === 'function' &&
-    typeof (value as Partial<EffectStoragePort>).history === 'function'
-  )
-}
 
 function withProductionCredentialOptions(
   config: ProductionCompositionConfig,

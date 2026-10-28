@@ -135,7 +135,9 @@ export async function createDurableBraidApplication(
   reportStartupStage(options.startupObserver, 'storage-open', stageStarted)
   try {
     stageStarted = performance.now()
-    const scopedJournal = await StorageJournal.fromStorage(storage, clock, { runOwnership: new RunOwnership(options.path) })
+    const scopedJournal = await StorageJournal.fromStorage(storage, clock, {
+      runOwnership: new RunOwnership(options.path),
+    })
     reportStartupStage(options.startupObserver, 'journal-restore', stageStarted)
     stageStarted = performance.now()
     const configuredIntelligence: IntelligenceActionsOptions = options.intelligence ?? {
@@ -218,9 +220,5 @@ function reportStartupStage(
   name: DurableStartupStage['name'],
   startedAt: number,
 ): void {
-  try {
-    observer?.({ name, durationMs: performance.now() - startedAt })
-  } catch {
-    // Diagnostics cannot change application startup.
-  }
+  reportObservedStartupStage(observer, name, performance.now() - startedAt)
 }

@@ -22,17 +22,30 @@ export class RunOwnership {
       if (Date.now() >= deadline) throw new Error('State journal is busy in another Braid process')
       await new Promise((resolve) => setTimeout(resolve, 10))
     }
-    try { return await action() } finally { closeSync(fd) }
+    try {
+      return await action()
+    } finally {
+      closeSync(fd)
+    }
+  }
+  release = (runId: string): void => {
+    const fd = this.#locks.get(runId)
+    if (fd === undefined) return
+    this.#locks.delete(runId)
+    closeSync(fd)
   }
   close(): void {
-    for (const fd of this.#locks.values()) closeSync(fd)
-    this.#locks.clear()
+    for (const runId of this.#locks.keys()) this.release(runId)
   }
   #acquire(key: string): number | undefined {
     const parent = openParent(`${this.statePath}.${key}.lock`)
     let fd: number | undefined
     try {
-      fd = openLeaf(parent, constants.O_RDWR | constants.O_CREAT | constants.O_NOFOLLOW | constants.O_NONBLOCK, 0o600)
+      fd = openLeaf(
+        parent,
+        constants.O_RDWR | constants.O_CREAT | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+        0o600,
+      )
       requireRegularFile(fd, parent.leafPath)
       if (tryLock(fd)) return fd
       closeSync(fd)
@@ -40,6 +53,8 @@ export class RunOwnership {
     } catch (error) {
       if (fd !== undefined) closeSync(fd)
       throw error
-    } finally { closeSync(parent.fd) }
+    } finally {
+      closeSync(parent.fd)
+    }
   }
 }

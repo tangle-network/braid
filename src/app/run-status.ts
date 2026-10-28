@@ -39,7 +39,10 @@ export async function waitForRun(context: StatusPort, runId: string): Promise<Br
  * Every iteration awaits an unsettled operation or a state transition; re-awaiting a settled
  * promise would loop on microtasks and starve timers.
  */
-export async function waitForIdle(context: StatusPort, owns: (runId: string) => boolean = () => true): Promise<BraidState> {
+export async function waitForIdle(
+  context: StatusPort,
+  owns: (runId: string) => boolean = () => true,
+): Promise<BraidState> {
   await Promise.resolve()
   const settled = new WeakSet<Promise<unknown>>()
   const observed = new WeakSet<Promise<unknown>>()

@@ -46,7 +46,11 @@ export async function executeControlEffect(input: {
       dispatch: async () => {
         const controller = new AbortController()
         providerResult = dispatchControl(input.execution, request, controller.signal)
-        const result = await controlDeadline(providerResult, request.control === 'steer' ? undefined : controller, input.timeoutMs)
+        const result = await controlDeadline(
+          providerResult,
+          request.control === 'steer' ? undefined : controller,
+          input.timeoutMs,
+        )
         foregroundTimedOut = result.timedOut
         return effectResult(result.acknowledgement)
       },
@@ -81,50 +85,18 @@ async function dispatchControl(
   signal: AbortSignal,
 ): Promise<ControlAcknowledgement> {
   try {
-    if (request.control === 'cancel') {
-      if (!execution.cancelRun)
-        return unknown(request.operationId, 'CONTROL_CANCELLATION_UNCONFIRMED')
-      return normalize(
-        request.operationId,
-        await execution.cancelRun({
-          runId: request.runId,
-          operationId: request.operationId,
-          ...(request.providerSessionId === undefined
-            ? {}
-            : { providerSessionId: request.providerSessionId }),
-          ...(request.controlRef === undefined ? {} : { controlRef: request.controlRef }),
-          ...(request.recovery ?? {}),
-          signal,
-          ...(request.reason === undefined ? {} : { reason: request.reason }),
-        }),
-      )
+    const { control, recovery, ...fields } = request
+    const command = { ...fields, ...recovery, signal }
+    if (control === 'cancel') {
+      if (!execution.cancelRun) return unknown(request.operationId, 'CONTROL_CANCELLATION_UNCONFIRMED')
+      return normalize(request.operationId, await execution.cancelRun(command))
     }
-    if (request.control === 'steer') {
+    if (control === 'steer') {
       if (!execution.steerRun) return unknown(request.operationId, 'CONTROL_STEERING_UNCONFIRMED')
-      return execution.steerRun({
-        runId: request.runId,
-        operationId: request.operationId,
-        text: request.text ?? '',
-        ...(request.providerSessionId === undefined
-          ? {}
-          : { providerSessionId: request.providerSessionId }),
-        ...(request.controlRef === undefined ? {} : { controlRef: request.controlRef }),
-        ...(request.recovery ?? {}),
-        signal,
-      })
+      return execution.steerRun({ ...command, text: request.text ?? '' })
     }
     if (!execution.detachRun) return unknown(request.operationId, 'CONTROL_DETACH_UNCONFIRMED')
-    return execution.detachRun({
-      runId: request.runId,
-      operationId: request.operationId,
-      ...(request.providerSessionId === undefined
-        ? {}
-        : { providerSessionId: request.providerSessionId }),
-      ...(request.controlRef === undefined ? {} : { controlRef: request.controlRef }),
-      ...(request.recovery ?? {}),
-      signal,
-      ...(request.cursor === undefined ? {} : { cursor: request.cursor }),
-    })
+    return execution.detachRun(command)
   } catch {
     return unknown(request.operationId, 'CONTROL_DISPATCH_UNKNOWN')
   }

@@ -8,12 +8,15 @@ import type { BraidState } from '../domain/state.js'
  */
 export interface JournalPort {
   /** Local observation ownership; controls may still target runs owned by another process. */
-  readonly runOwnership?: {
-    claim(runId: string): boolean
-    owns(runId: string): boolean
-    transition<T>(action: () => Promise<T>): Promise<T>
-    close(): void
-  } | undefined
+  readonly runOwnership?:
+    | {
+        claim(runId: string): boolean
+        owns(runId: string): boolean
+        release(runId: string): void
+        transition<T>(action: () => Promise<T>): Promise<T>
+        close(): void
+      }
+    | undefined
   withTransition?<T>(action: (events: readonly BraidEventEnvelope[]) => Promise<T>): Promise<T>
   envelope(state: BraidState, event: BraidEvent): BraidEventEnvelope
   append(

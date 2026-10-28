@@ -44,7 +44,9 @@ export function shutdownApplication(input: ShutdownControllerInput): ShutdownRec
   }
   input.commit({ kind: 'application.shutdown.requested', operationId: input.operationId })
   const state = input.state()
-  const activeRuns = state.runs.filter((candidate) => isLiveRunStatus(candidate.status) && input.ownsRun?.(candidate.id) !== false)
+  const activeRuns = state.runs.filter(
+    (candidate) => isLiveRunStatus(candidate.status) && input.ownsRun?.(candidate.id) !== false,
+  )
   const runId = state.activeRunId ?? activeRuns[0]?.id
   const completion = completeShutdown(input, activeRuns)
   input.ledger.setShutdown(input.operationId, { digest, completion })

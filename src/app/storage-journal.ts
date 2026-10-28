@@ -90,7 +90,10 @@ export class StorageJournal implements JournalPort, EffectStoragePort {
   static async fromStorage(
     storage: StoragePort & EffectStoragePort,
     clock: Clock,
-    options: { readonly workspaceId?: WorkspaceId; readonly runOwnership?: JournalPort['runOwnership'] } = {},
+    options: {
+      readonly workspaceId?: WorkspaceId
+      readonly runOwnership?: JournalPort['runOwnership']
+    } = {},
   ): Promise<StorageJournal> {
     let initialState: BraidState | undefined
     let stored: readonly StoredJournalEvent[] | undefined
@@ -258,6 +261,7 @@ export class StorageJournal implements JournalPort, EffectStoragePort {
         }
         this.#runSequences.set(runId, sequence)
         if (record.terminal === true) this.#terminalRuns.add(runId)
+        if (record.terminal || envelope.event.kind === 'run.detached') this.runOwnership?.release(runId)
         this.#ownEvents.add(eventId)
         this.#events.push({ ...envelope, eventId })
         if (this.#events.length > MAX_IN_MEMORY_EVENTS) this.#events.shift()
@@ -275,13 +279,16 @@ export class StorageJournal implements JournalPort, EffectStoragePort {
     return task
   }
 
-  async withTransition<T>(action: (events: readonly BraidEventEnvelope[]) => Promise<T>): Promise<T> {
+  async withTransition<T>(
+    action: (events: readonly BraidEventEnvelope[]) => Promise<T>,
+  ): Promise<T> {
     if (this.runOwnership === undefined) return action([])
     const synchronize = async () => {
       const stored = await this.#storage.events({ afterStorageId: this.#storageId })
       const foreign: BraidEventEnvelope[] = []
       for (const record of stored) {
-        if (record.storageId === undefined) throw new Error('Shared journal requires a storage cursor')
+        if (record.storageId === undefined)
+          throw new Error('Shared journal requires a storage cursor')
         this.#storageId = record.storageId
         this.#runSequences.set(record.runId, record.sequence)
         if (record.terminal) this.#terminalRuns.add(record.runId)
@@ -291,6 +298,7 @@ export class StorageJournal implements JournalPort, EffectStoragePort {
         this.#events.push(envelope)
         foreign.push(envelope)
       }
+      this.#events.splice(0, Math.max(0, this.#events.length - MAX_IN_MEMORY_EVENTS))
       return action(foreign)
     }
     return this.runOwnership.transition(synchronize)

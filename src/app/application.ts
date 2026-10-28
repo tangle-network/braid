@@ -356,7 +356,10 @@ export class BraidApplication {
       state: () => this.#state,
       ledger: this.#ledger,
     })
-    const runReconciliation = reconcileRestartRun(this.#portViews.restart, this.#journal.runOwnership?.claim).then(() =>
+    const runReconciliation = reconcileRestartRun(
+      this.#portViews.restart,
+      this.#journal.runOwnership?.claim,
+    ).then(() =>
       recoverPendingFinalResults(
         this.#portViews.replay,
         this.#journal.loadEvents?.bind(this.#journal),
@@ -719,10 +722,14 @@ export class BraidApplication {
       owner: this.#controlOwner,
       timeoutMs: input.control === 'steer' ? this.#steerTimeoutMs : this.#cancelTimeoutMs,
       whenDurable: () => this.whenDurable(),
-      ...(input.control !== 'steer' ? {} : { trackLateSettlement: (task: Promise<void>) => {
-        this.#lateSteers.add(task)
-        void task.finally(() => this.#lateSteers.delete(task))
-      } }),
+      ...(input.control !== 'steer'
+        ? {}
+        : {
+            trackLateSettlement: (task: Promise<void>) => {
+              this.#lateSteers.add(task)
+              void task.finally(() => this.#lateSteers.delete(task))
+            },
+          }),
       canSettleLate: () => !this.#lifecycle.isClosed(),
       onLateSettlement: options.onLateSettlement,
     })
@@ -914,7 +921,9 @@ export class BraidApplication {
 
   #activeRunIds(): readonly string[] {
     return this.#state.runs
-      .filter((run) => isLiveRunStatus(run.status) && (this.#journal.runOwnership?.owns(run.id) ?? true))
+      .filter(
+        (run) => isLiveRunStatus(run.status) && (this.#journal.runOwnership?.owns(run.id) ?? true),
+      )
       .map((run) => run.id)
   }
 

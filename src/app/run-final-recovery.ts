@@ -77,7 +77,9 @@ export async function recoverPendingFinalResults(
   claim: (runId: string) => boolean = () => true,
 ): Promise<void> {
   if (loadEvents === undefined || context.execution.reconnect === undefined) return
-  const candidates = context.currentState().runs.filter((run) => mayAwaitFinalResult(run) && claim(run.id))
+  const candidates = context
+    .currentState()
+    .runs.filter((run) => mayAwaitFinalResult(run) && claim(run.id))
   await Promise.all(
     candidates.map(async (candidate) => {
       if (!awaitsFinalResult(candidate, await loadEvents({ runId: candidate.id }))) return
