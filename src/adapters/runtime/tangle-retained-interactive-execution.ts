@@ -441,7 +441,11 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
     }
     const handle = await this.#handleFor(input)
     if (handle === null) {
-      return { operationId: input.operationId, outcome: 'rejected', detail: 'interactive-run-missing' }
+      return {
+        operationId: input.operationId,
+        outcome: 'rejected',
+        detail: 'interactive-run-missing',
+      }
     }
     const options = input.signal === undefined ? undefined : { signal: input.signal }
     const control = await claimRetainedInteractiveControl({

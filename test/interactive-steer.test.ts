@@ -90,9 +90,11 @@ async function turnOperations(journalRoot: string, sessionId: string): Promise<s
     join(journalRoot, sessionId, 'observer.jsonl'),
     sessionId,
   ).read()
-  return records.flatMap((record) =>
-    record.event?.target === 'agent.turn' ? [String(record.event.payload?.operationId)] : [],
-  )
+  return records.flatMap((record) => {
+    if (record.event?.target !== 'agent.turn') return []
+    const payload = record.event.payload as { readonly operationId?: unknown } | undefined
+    return [String(payload?.operationId)]
+  })
 }
 
 test('retained interactive runs advertise steering from the provider prompt contract', async () => {
@@ -100,7 +102,7 @@ test('retained interactive runs advertise steering from the provider prompt cont
   assert.equal(interactiveRunCapabilities(await prepared(fixture)).controls.steer, true)
 })
 
-test('fresh processes steer one started run once per operation id and journal one turn each', async () => {
+test('fresh processes steer a started run once per operation id, one turn each', async () => {
   const fixture = new InteractiveEnvironmentFixture()
   const journalRoot = await mkdtemp(join(tmpdir(), 'braid-interactive-steer-'))
   const { sessionId, recovery } = await startedRun(fixture, journalRoot)
@@ -139,7 +141,7 @@ test('fresh processes steer one started run once per operation id and journal on
   assert.deepEqual(await turnOperations(journalRoot, sessionId), ['steer-1', 'steer-2'])
 })
 
-test('a cancelled steer delivers nothing and the same operation applies once on retry', async () => {
+test('a cancelled steer delivers nothing and applies once on retry', async () => {
   const fixture = new InteractiveEnvironmentFixture()
   const journalRoot = await mkdtemp(join(tmpdir(), 'braid-interactive-steer-cancel-'))
   const { sessionId, recovery } = await startedRun(fixture, journalRoot)

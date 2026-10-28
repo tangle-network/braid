@@ -409,6 +409,12 @@ The provider exposes an interactive agent only when the deployment reports the e
 
 Braid maps that surface to Runtime's retained interactive handle and records `surface: interactive-agent` without creating a second Sandbox during admission.
 
+A retained interactive run advertises `controls.steer` exactly when the provider reports `interactiveAgent.sendPrompt`.
+`steer` reconnects the handle from the run's `interactive_started` admission when the process holds no handle, as a fresh `braid rpc` process does, claims control, and calls `sendPrompt` with the ledger operation identifier and `agentInteractiveSessionPromptRequestDigest`.
+The provider's acknowledgement maps to the control receipt: `accepted` to accepted, `replayed` to already-applied, `conflict` to rejected, and `unknown` to unknown.
+A run without a started process refuses the steer and never creates an environment.
+Runtime `2.3.2` journals reconnected and recovered handles under the start's `journalRoot`, keyed by the run's session id, so every accepted steer appears once as an `agent.turn` in `<journalRoot>/<sessionId>/observer.jsonl` for `agent-runtime-top`.
+
 The provider rejects `contextTransfer` and `nativeContinuation` until Sandbox supplies native support for those operations.
 
 Historical snapshot: Runtime `0.135.0` dropped that field in its retained-turn copier before the Tangle provider received it. Runtime `0.143.0` preserves it.
