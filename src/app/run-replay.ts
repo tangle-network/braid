@@ -64,6 +64,12 @@ export async function reconnectRun(
   }
   if (context.findRun(run.id).interactions.some((interaction) => interaction.status === 'pending'))
     attached()
+  // Native attachment can resume without a new stream event. Exact status proves readiness.
+  if (run.receipt?.requested.mode === 'interactive' && context.execution.status) {
+    await reconcileRun(context, input)
+    if (context.isTerminal(context.findRun(run.id).status)) return structuredClone(context.currentState())
+    attached()
+  }
   const abort = context.ledger.getAbort(run.id) ?? new AbortController()
   context.ledger.setAbort(run.id, abort)
   context.ledger.clearDetached(run.id)

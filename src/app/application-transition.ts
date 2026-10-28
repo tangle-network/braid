@@ -138,7 +138,6 @@ function commitEventsInternal(
   })
   const next = task.catch((error: unknown) => {
     if (!isRevisionError(error)) host.markStorageFailure(error)
-    throw error
   })
   host.setTransitionTail(next)
   return task

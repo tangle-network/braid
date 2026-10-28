@@ -271,7 +271,7 @@ export function restoreApplicationOperations(
   }
 }
 
-export function reconcileRestartRun(
+export async function reconcileRestartRun(
   context: RestartPort,
   claim: (runId: string) => boolean = () => true,
 ): Promise<void> {
@@ -279,10 +279,7 @@ export function reconcileRestartRun(
     .currentState()
     .runs.filter((run) => isLiveRunStatus(run.status) && claim(run.id))
     .map((run) => run.id)
-  if (runIds.length === 0) return Promise.resolve()
-  return Promise.all(runIds.map((runId) => reconcileRestartRunFor(context, runId))).then(
-    () => undefined,
-  )
+  await Promise.all(runIds.map((runId) => reconcileRestartRunFor(context, runId)))
 }
 
 async function reconcileRestartRunFor(context: RestartPort, runId: string): Promise<void> {
@@ -400,8 +397,7 @@ async function markRestartReconnecting(context: RestartPort, runId: string): Pro
 }
 
 async function commitRequired(context: JournalWriter, event: BraidEvent): Promise<void> {
-  const result = context.commitAndWait(event)
-  if (result !== undefined) await result
+  await context.commitAndWait(event)
 }
 
 export function admitPersistedSend(input: {

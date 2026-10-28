@@ -7,7 +7,7 @@ import type {
 } from '../ports/execution.js'
 import type { ControlDispatchOptions, ControlEffectRequest } from './application-ports.js'
 import type { SerializedEffectCoordinator } from './effect-coordinator.js'
-import { safeDiagnostic } from './provider-values.js'
+import { safeDiagnostic, runtimeFailureDiagnostic } from './provider-values.js'
 
 export async function executeControlEffect(input: {
   readonly effects: SerializedEffectCoordinator
@@ -21,6 +21,7 @@ export async function executeControlEffect(input: {
   readonly onLateSettlement?: ControlDispatchOptions['onLateSettlement']
 }): Promise<ControlAcknowledgement> {
   const { request } = input
+  const { recovery: _recovery, ...durable } = request
   let providerResult: Promise<ControlAcknowledgement> | undefined
   let foregroundTimedOut = false
   const effect = input.effects.start(
@@ -28,7 +29,7 @@ export async function executeControlEffect(input: {
       operationId: request.operationId,
       effectKind: `run.control.${request.control}`,
       request: {
-        ...durableControlRequest(request),
+        ...durable,
         providerSessionId: request.providerSessionId ?? null,
         reason: request.reason ?? null,
         text: request.text ?? null,
@@ -98,8 +99,8 @@ async function dispatchControl(
     }
     if (!execution.detachRun) return unknown(request.operationId, 'CONTROL_DETACH_UNCONFIRMED')
     return execution.detachRun(command)
-  } catch {
-    return unknown(request.operationId, 'CONTROL_DISPATCH_UNKNOWN')
+  } catch (error) {
+    return unknown(request.operationId, runtimeFailureDiagnostic(error, 'CONTROL_DISPATCH_UNKNOWN'))
   }
 }
 
@@ -110,14 +111,7 @@ async function reconcileControl(
   if (request.control === 'steer' || !execution.status) return undefined
   let snapshot: ProviderRunSnapshot | null
   try {
-    snapshot = await execution.status({
-      runId: request.runId,
-      ...(request.providerSessionId === undefined
-        ? {}
-        : { providerSessionId: request.providerSessionId }),
-      ...(request.controlRef === undefined ? {} : { controlRef: request.controlRef }),
-      ...(request.recovery ?? {}),
-    })
+    snapshot = await execution.status({ ...request, ...request.recovery })
   } catch {
     return undefined
   }
@@ -134,13 +128,6 @@ async function reconcileControl(
   return { status: 'terminal', detail: 'CONTROL_RECONCILED_TERMINAL' }
 }
 
-function durableControlRequest(
-  request: ControlEffectRequest,
-): Omit<ControlEffectRequest, 'recovery'> {
-  const { recovery: _recovery, ...durable } = request
-  return durable
-}
-
 function effectResult(value: ControlAcknowledgement) {
   if (value.outcome === 'accepted')
     return {
@@ -150,7 +137,7 @@ function effectResult(value: ControlAcknowledgement) {
   if (value.outcome === 'already-applied')
     return { status: 'terminal' as const, detail: 'CONTROL_ALREADY_APPLIED' }
   if (value.outcome === 'rejected') return { status: 'failed' as const, detail: 'CONTROL_REJECTED' }
-  return { status: 'unknown' as const, detail: 'CONTROL_OUTCOME_UNKNOWN' }
+  return { status: 'unknown' as const, detail: safeDiagnostic(value.detail, 'CONTROL_OUTCOME_UNKNOWN') }
 }
 
 function acknowledgementFromEffect(
@@ -163,7 +150,7 @@ function acknowledgementFromEffect(
   if (status === 'terminal')
     return { operationId, outcome: 'already-applied', ...(detail ? { detail } : {}) }
   if (status === 'failed') return { operationId, outcome: 'rejected', detail: 'CONTROL_REJECTED' }
-  return { operationId, outcome: 'unknown', detail: 'CONTROL_OUTCOME_UNKNOWN' }
+  return { operationId, outcome: 'unknown', detail: detail ?? 'CONTROL_OUTCOME_UNKNOWN' }
 }
 
 function normalize(

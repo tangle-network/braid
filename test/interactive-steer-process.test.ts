@@ -135,6 +135,8 @@ test('live owner survives a second process steer, replay, duplicate event, disco
     assert.deepEqual(server.fixture.prompts, ['Run the tests.'])
     await replay.request('shutdown')
     await replay.kill()
+    // A stale conditional write refuses after foreign receipt sync; ordinary writes still work.
+    await assert.rejects(owner.request('conditional'), /expected/)
     // The owner's next commit must absorb foreign control events without a sequence collision.
     const detached = await owner.request('detach', { runId: run.id })
     assert.equal(detached.state.runs[0]?.status, 'detached')
