@@ -370,11 +370,11 @@ test('built JSONL selects a Runtime-written durable run without granting control
   let recording: Promise<void> | undefined
   try {
     await assert.rejects(
-    recordRuntimeRun(runDir, runId, undefined, 0.5, true),
-    /first attempt failed after worker settlement/u,
-  )
-  const failed = await loadTopSnapshot(runDir, { runDir })
-  assert.equal(failed.pursuit?.runs.at(-1)?.totals.inclusive.usdEstimated, 0.5)
+      recordRuntimeRun(runDir, runId, undefined, 0.5, true),
+      /first attempt failed after worker settlement/u,
+    )
+    const failed = await loadTopSnapshot(runDir, { runDir })
+    assert.equal(failed.pursuit?.runs.at(-1)?.totals.inclusive.usdEstimated, 0.5)
     recording = recordRuntimeRun(runDir, runId, { ready: () => ready(), release: held })
     await Promise.race([
       started,
