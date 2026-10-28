@@ -1455,10 +1455,10 @@ async function runProof({
       'final TUI state provider control reference',
     )
     const steerDetached = steer && (await steerTwiceThroughBraid(packed, config, identity))
-    const steerJournal = steer && await steerTurnsFromJournal(
+    const steerJournal = await steerTurnsFromJournal(
       config,
       interactiveAdmissionIdentity(record, identity.run).admission.ref.run.sessionId,
-      [steerAttached.operationId, steerDetached.operationId],
+      [steerAttached, steerDetached],
     )
     const beforeStopObservation = await observeSandbox(
       client,
