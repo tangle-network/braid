@@ -745,9 +745,9 @@ export function renderedWorkStripCount(screen) {
 export function assertFrameHasConcurrentRuns(frame, runIds) {
   assert.equal(runIds.length, 2, 'concurrent proof requires exactly two run ids')
   for (const runId of runIds) {
-    assert.ok(frameRunIds(frame).includes(runId), `frame omitted concurrent run ${runId}`)
-    assert.ok(isActive(runStatus(frame, runId)), `run ${runId} is not active`)
-    assert.ok(eventIdsForRun(frame, runId).length > 0, `run ${runId} has no streamed events`)
+    const { stateRun } = runFromFrame(frame, runId)
+    assert.ok(isActive(stateRun.status), `run ${runId} is not active`)
+    assert.ok(stateRun.lastProviderSequence > 0, `run ${runId} has no streamed events`)
   }
   const activeOwnership = frame.state?.activeRuns?.filter((entry) => runIds.includes(entry.runId))
   assert.equal(activeOwnership?.length, 2, 'frame did not expose two active run ownership records')

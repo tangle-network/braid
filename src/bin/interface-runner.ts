@@ -15,6 +15,7 @@ import { runRpc } from '../views/headless/rpc.js'
 import { type CommandName, commandIntent } from '../views/shared/command-registry.js'
 import type { BraidIntent } from '../views/shared/intents.js'
 import type { CliOptions } from './args.js'
+import { holdConsoleWhileRendering } from './console-hold.js'
 import { createInterfaceSignalLifecycle } from './interface-signal-lifecycle.js'
 import { recordInterfaceState } from './interface-state-recorder.js'
 import { createNativeInteractiveUiActions } from './native-interactive-actions.js'
@@ -228,6 +229,7 @@ export async function runInterface(input: InterfaceRunnerInput): Promise<number>
     ...(input.startupPreview === undefined ? {} : { startupPreview: input.startupPreview }),
   })
   nativeLifecycle.signals = signals
+  const restoreConsole = holdConsoleWhileRendering()
   try {
     if (!signals.interrupted()) {
       const startupInput = input.startupPreview?.adopt().input ?? []
@@ -238,6 +240,7 @@ export async function runInterface(input: InterfaceRunnerInput): Promise<number>
     await signals.settle()
     signals.dispose()
     view.stop()
+    restoreConsole()
   }
   if (options.recordState) await recordInterfaceState(options.recordState, controller)
   return signals.exitCode()
