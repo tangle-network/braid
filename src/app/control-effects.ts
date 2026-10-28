@@ -16,6 +16,7 @@ export async function executeControlEffect(input: {
   readonly owner: string
   readonly timeoutMs: number
   readonly whenDurable: () => Promise<void>
+  readonly trackLateSettlement?: (task: Promise<void>) => void
   readonly canSettleLate?: () => boolean
   readonly onLateSettlement?: ControlDispatchOptions['onLateSettlement']
 }): Promise<ControlAcknowledgement> {
@@ -45,7 +46,7 @@ export async function executeControlEffect(input: {
       dispatch: async () => {
         const controller = new AbortController()
         providerResult = dispatchControl(input.execution, request, controller.signal)
-        const result = await controlDeadline(providerResult, controller, input.timeoutMs)
+        const result = await controlDeadline(providerResult, request.control === 'steer' ? undefined : controller, input.timeoutMs)
         foregroundTimedOut = result.timedOut
         return effectResult(result.acknowledgement)
       },
@@ -56,7 +57,7 @@ export async function executeControlEffect(input: {
   await input.whenDurable()
   if (foregroundTimedOut && providerResult !== undefined && input.onLateSettlement !== undefined) {
     const lateResult = providerResult
-    void lateResult
+    const settlement = lateResult
       .then(async (acknowledgement) => {
         if (input.canSettleLate?.() === false) return
         const settled = input.effects.settle(
@@ -69,6 +70,7 @@ export async function executeControlEffect(input: {
         await input.onLateSettlement?.(acknowledgement)
       })
       .catch(() => undefined)
+    input.trackLateSettlement?.(settlement)
   }
   return acknowledgementFromEffect(request.operationId, record.status, record.detail)
 }
@@ -218,7 +220,7 @@ function unknown(operationId: string, detail: string): ControlAcknowledgement {
 
 async function controlDeadline(
   action: Promise<ControlAcknowledgement>,
-  controller: AbortController,
+  controller: AbortController | undefined,
   timeoutMs: number,
 ): Promise<{ readonly acknowledgement: ControlAcknowledgement; readonly timedOut: boolean }> {
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -226,7 +228,7 @@ async function controlDeadline(
   const timeout = new Promise<ControlAcknowledgement>((resolve) => {
     timer = setTimeout(() => {
       timedOut = true
-      controller.abort(new Error('Control acknowledgement deadline elapsed'))
+      controller?.abort(new Error('Control acknowledgement deadline elapsed'))
       resolve({
         operationId: 'unknown',
         outcome: 'unknown',

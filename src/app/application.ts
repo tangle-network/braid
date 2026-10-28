@@ -24,7 +24,7 @@ import type { IdSource } from '../ports/ids.js'
 import { snapshotAnalysisExecutionTarget } from './analysis-execution-target.js'
 import { admissionIsAsync, assertWritable, operationId } from './application-guards.js'
 import { ApplicationInteractionActions } from './application-interaction-actions.js'
-import { ApplicationLifecycle } from './application-lifecycle.js'
+import { ApplicationLifecycle, boundedDrain } from './application-lifecycle.js'
 import type { BraidApplicationOptions, CancelInput, CancelReceipt } from './application-options.js'
 import type { PortViews } from './application-port-builder.js'
 import type {
@@ -110,22 +110,7 @@ export type { BraidApplicationOptions, CancelInput, CancelReceipt } from './appl
 
 const MAX_MESSAGE_BYTES = 1024 * 1024
 const DEFAULT_CANCEL_TIMEOUT_MS = 5_000
-
-interface Deferred<T> {
-  readonly promise: Promise<T>
-  readonly resolve: (value: T | PromiseLike<T>) => void
-  readonly reject: (reason?: unknown) => void
-}
-
-function deferred<T>(): Deferred<T> {
-  let resolve!: Deferred<T>['resolve']
-  let reject!: Deferred<T>['reject']
-  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
-    resolve = resolvePromise
-    reject = rejectPromise
-  })
-  return { promise, resolve, reject }
-}
+const DEFAULT_STEER_TIMEOUT_MS = 60_000
 
 /** Never a real send operation: it only probes the next send's execution snapshot. */
 const SEND_AVAILABILITY_PROBE = 'operation-send-availability-probe'
@@ -161,6 +146,8 @@ export class BraidApplication {
     }
   >()
   readonly #controlOwner = `braid-control-${randomUUID()}`
+  readonly #lateSteers = new Set<Promise<void>>()
+  readonly #steerTimeoutMs: number
   readonly #cancelTimeoutMs: number
   readonly #asynchronousJournal: boolean
   readonly #portViews: PortViews
@@ -202,6 +189,7 @@ export class BraidApplication {
       new SerializedEffectCoordinator(effectStorage, options.clock, {
         onRecord: (record) => this.#recordEffect(record),
       })
+    this.#steerTimeoutMs = options.steerTimeoutMs ?? DEFAULT_STEER_TIMEOUT_MS
     this.#cancelTimeoutMs = options.cancelTimeoutMs ?? DEFAULT_CANCEL_TIMEOUT_MS
 
     const persisted = this.#journal.replay?.() ?? this.#journal.all()
@@ -219,7 +207,7 @@ export class BraidApplication {
     this.#state = replayEvents(baseState, persisted)
     assertBraidState(this.#state)
     this.runtimeSelection.syncFromState(this.#state)
-    const interactionReconciliation = deferred<void>()
+    const interactionReconciliation = Promise.withResolvers<void>()
     // Keep startup failures observable to callers without creating an unhandled rejection when
     // no interaction action consumes the barrier.
     void interactionReconciliation.promise.catch(() => undefined)
@@ -368,10 +356,12 @@ export class BraidApplication {
       state: () => this.#state,
       ledger: this.#ledger,
     })
-    const runReconciliation = reconcileRestartRun(this.#portViews.restart).then(() =>
+    const runReconciliation = reconcileRestartRun(this.#portViews.restart, this.#journal.runOwnership?.claim).then(() =>
       recoverPendingFinalResults(
         this.#portViews.replay,
         this.#journal.loadEvents?.bind(this.#journal),
+        undefined,
+        this.#journal.runOwnership?.claim,
       ),
     )
     this.#restartReconciliation = runReconciliation
@@ -727,8 +717,12 @@ export class BraidApplication {
       execution: this.#execution,
       request: input,
       owner: this.#controlOwner,
-      timeoutMs: this.#cancelTimeoutMs,
+      timeoutMs: input.control === 'steer' ? this.#steerTimeoutMs : this.#cancelTimeoutMs,
       whenDurable: () => this.whenDurable(),
+      ...(input.control !== 'steer' ? {} : { trackLateSettlement: (task: Promise<void>) => {
+        this.#lateSteers.add(task)
+        void task.finally(() => this.#lateSteers.delete(task))
+      } }),
       canSettleLate: () => !this.#lifecycle.isClosed(),
       onLateSettlement: options.onLateSettlement,
     })
@@ -751,6 +745,8 @@ export class BraidApplication {
     let ready = false
     const listeners = new Set<() => void>()
     if (input.onAttached !== undefined) listeners.add(input.onAttached)
+    if (this.#journal.runOwnership?.claim(input.runId) === false)
+      throw new AppError('RUN_OWNED', 'Another live Braid process owns this run')
     const completion = reconnectRun(this.#portViews.replay, {
       ...input,
       onAttached: () => {
@@ -814,6 +810,7 @@ export class BraidApplication {
       operationId: opId,
       ...(input.mode === undefined ? {} : { mode: input.mode }),
       state: () => this.#state,
+      ownsRun: (runId) => this.#journal.runOwnership?.owns(runId) ?? true,
       ledger: this.#ledger,
       commit: (event) => this.#commit(event),
       cancelRun: (value) => this.cancelRun(value),
@@ -823,7 +820,7 @@ export class BraidApplication {
   }
 
   async waitForIdle(): Promise<BraidState> {
-    return waitForIdle(this.#portViews.status)
+    return waitForIdle(this.#portViews.status, (id) => this.#journal.runOwnership?.owns(id) ?? true)
   }
 
   close(): Promise<void> {
@@ -843,6 +840,8 @@ export class BraidApplication {
         cancel: (runId) => this.#cancelForClose(runId),
         markUnknown: (runId) => this.#markRunUnknownAfterCloseDeadline(runId),
       })
+      if (!(await boundedDrain(this.#lateSteers, DEFAULT_STEER_TIMEOUT_MS)))
+        throw new AppError('CONTROL_OUTCOME_UNKNOWN', 'A pending steer did not settle before close')
       await this.#automationReconciliation
       await this.#interactions.whenIdle()
       await this.whenDurable()
@@ -914,20 +913,9 @@ export class BraidApplication {
   }
 
   #activeRunIds(): readonly string[] {
-    const active = this.#lifecycle
-      .activeOperations()
-      .filter((operation) => {
-        const run = this.#state.runs.find((candidate) => candidate.id === operation.runId)
-        return run !== undefined && isLiveRunStatus(run.status)
-      })
-      .map((operation) => operation.runId)
-    const current = this.#state.activeRuns
-      .filter((run) => {
-        const record = this.#state.runs.find((candidate) => candidate.id === run.runId)
-        return record !== undefined && isLiveRunStatus(record.status)
-      })
-      .map((run) => run.runId)
-    return [...new Set([...active, ...current])]
+    return this.#state.runs
+      .filter((run) => isLiveRunStatus(run.status) && (this.#journal.runOwnership?.owns(run.id) ?? true))
+      .map((run) => run.id)
   }
 
   async #cancelForClose(runId: string): Promise<void> {

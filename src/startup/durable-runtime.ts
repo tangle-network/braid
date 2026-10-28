@@ -13,6 +13,7 @@ import {
   type SqliteStartupStage,
   type SqliteStorage,
 } from '../adapters/storage/sqlite.js'
+import { RunOwnership } from '../adapters/storage/run-ownership.js'
 import { BraidApplication } from '../app/application.js'
 import type { CompositionOptions } from '../app/composition-options.js'
 import type { ConnectionRegistry } from '../app/connections.js'
@@ -134,7 +135,7 @@ export async function createDurableBraidApplication(
   reportStartupStage(options.startupObserver, 'storage-open', stageStarted)
   try {
     stageStarted = performance.now()
-    const scopedJournal = await StorageJournal.fromStorage(storage, clock)
+    const scopedJournal = await StorageJournal.fromStorage(storage, clock, { runOwnership: new RunOwnership(options.path) })
     reportStartupStage(options.startupObserver, 'journal-restore', stageStarted)
     stageStarted = performance.now()
     const configuredIntelligence: IntelligenceActionsOptions = options.intelligence ?? {
@@ -178,6 +179,7 @@ export async function createDurableBraidApplication(
       ...(options.effectCoordinator === undefined
         ? {}
         : { effectCoordinator: options.effectCoordinator }),
+      ...(options.steerTimeoutMs === undefined ? {} : { steerTimeoutMs: options.steerTimeoutMs }),
       ...(options.cancelTimeoutMs === undefined
         ? {}
         : { cancelTimeoutMs: options.cancelTimeoutMs }),

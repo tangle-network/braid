@@ -51,6 +51,7 @@ interface EnvelopeContext {
  */
 export class StorageJournal implements JournalPort, EffectStoragePort {
   readonly asynchronous = true
+  runOwnership?: JournalPort['runOwnership']
   readonly #storage: StoragePort & EffectStoragePort
   readonly #clock: Clock
   readonly #events: BraidEventEnvelope[]
@@ -63,6 +64,8 @@ export class StorageJournal implements JournalPort, EffectStoragePort {
   #replayEvents: readonly BraidEventEnvelope[] | undefined
   #pending: Promise<void> = Promise.resolve()
   #failure: unknown
+  #storageId = 0
+  readonly #ownEvents = new Set<string>()
 
   private constructor(
     storage: StoragePort & EffectStoragePort,
@@ -87,7 +90,7 @@ export class StorageJournal implements JournalPort, EffectStoragePort {
   static async fromStorage(
     storage: StoragePort & EffectStoragePort,
     clock: Clock,
-    options: { readonly workspaceId?: WorkspaceId } = {},
+    options: { readonly workspaceId?: WorkspaceId; readonly runOwnership?: JournalPort['runOwnership'] } = {},
   ): Promise<StorageJournal> {
     let initialState: BraidState | undefined
     let stored: readonly StoredJournalEvent[] | undefined
@@ -120,6 +123,8 @@ export class StorageJournal implements JournalPort, EffectStoragePort {
       ...(initialState === undefined ? {} : { initialState }),
       replayEvents: events,
     })
+    journal.runOwnership = options.runOwnership
+    journal.#storageId = stored?.at(-1)?.storageId ?? snapshot?.storageId ?? 0
     const cursors = storage.runSequences === undefined ? [] : await storage.runSequences()
     for (const cursor of cursors) {
       journal.#runSequences.set(cursor.runId, cursor.lastSequence)
@@ -139,6 +144,8 @@ export class StorageJournal implements JournalPort, EffectStoragePort {
   }
 
   envelope(state: BraidState, event: BraidEvent): BraidEventEnvelope {
+    if (event.kind === 'run.requested' && this.runOwnership?.claim(event.runId) === false)
+      throw new Error('Another live Braid process owns this run')
     const workspaceForEvent = event.kind === 'workspace.opened' ? event.workspace : state.workspace
     const workspaceId = workspaceIdForRoot(workspaceForEvent)
     const eventId = createEventId(
@@ -251,6 +258,7 @@ export class StorageJournal implements JournalPort, EffectStoragePort {
         }
         this.#runSequences.set(runId, sequence)
         if (record.terminal === true) this.#terminalRuns.add(runId)
+        this.#ownEvents.add(eventId)
         this.#events.push({ ...envelope, eventId })
         if (this.#events.length > MAX_IN_MEMORY_EVENTS) this.#events.shift()
         this.#contexts.delete(eventId)
@@ -265,6 +273,25 @@ export class StorageJournal implements JournalPort, EffectStoragePort {
       () => undefined,
     )
     return task
+  }
+
+  async withTransition<T>(action: (events: readonly BraidEventEnvelope[]) => Promise<T>): Promise<T> {
+    const synchronize = async () => {
+      const stored = await this.#storage.events({ afterStorageId: this.#storageId })
+      const foreign: BraidEventEnvelope[] = []
+      for (const record of stored) {
+        this.#storageId = record.storageId
+        this.#runSequences.set(record.runId, record.sequence)
+        if (record.terminal) this.#terminalRuns.add(record.runId)
+        if (this.#ownEvents.delete(record.eventId)) continue
+        const [envelope] = envelopesFromStored([record])
+        if (envelope === undefined) continue
+        this.#events.push(envelope)
+        foreign.push(envelope)
+      }
+      return action(foreign)
+    }
+    return this.runOwnership === undefined ? synchronize() : this.runOwnership.transition(synchronize)
   }
 
   all(): readonly BraidEventEnvelope[] {
@@ -304,6 +331,7 @@ export class StorageJournal implements JournalPort, EffectStoragePort {
     } catch (error) {
       failure ??= error
     }
+    this.runOwnership?.close()
     if (failure !== undefined) throw failure
   }
 

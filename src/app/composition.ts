@@ -132,6 +132,7 @@ export function createBraidApplication(options: CompositionOptions = {}): BraidA
     ...(options.effectCoordinator === undefined
       ? {}
       : { effectCoordinator: options.effectCoordinator }),
+    ...(options.steerTimeoutMs === undefined ? {} : { steerTimeoutMs: options.steerTimeoutMs }),
     ...(options.cancelTimeoutMs === undefined ? {} : { cancelTimeoutMs: options.cancelTimeoutMs }),
     ...(options.interactionResponseTimeoutMs === undefined
       ? {}

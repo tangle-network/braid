@@ -351,7 +351,7 @@ async function control(
       context.ledger.clearCancelStatus(request.runId)
     }
     context.ledger.clearDetached(request.runId)
-    if (ack.outcome === 'unknown' && !context.isTerminal(context.findRun(request.runId).status)) {
+    if (controlKind !== 'steer' && ack.outcome === 'unknown' && !context.isTerminal(context.findRun(request.runId).status)) {
       const unknown = context.commitAndWait(
         unknownEventWithPendingText(
           context,

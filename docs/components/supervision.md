@@ -103,6 +103,10 @@ Reconnect never reuses a stale local control result as a new effect.
 Steer appears only when the runtime reports steer support for that worker.
 
 A retained interactive Braid run steers through Runtime `sendPrompt` from any process; each accepted steer is one turn on the `agent-runtime-top` canvas ([runtime contracts](../04-runtime-contracts.md)).
+The observing TUI retains its stream while another process reads and steers the same run.
+Startup and implicit shutdown leave another live process's observations alone. Journal transitions
+synchronize foreign receipts before the owner's next event. Steer has a separate acknowledgement
+deadline; a late acceptance settles its receipt without aborting delivery or changing run status.
 
 Cancel appears only when the runtime reports cancellation support.
 

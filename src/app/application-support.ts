@@ -59,6 +59,8 @@ export interface ApplicationJournal {
   readonly declines?: (event: BraidEvent) => boolean
   readonly envelope?: (state: BraidState, event: BraidEvent) => BraidEventEnvelope
   readonly flush?: () => Promise<void>
+  readonly withTransition?: JournalPort['withTransition']
+  readonly runOwnership?: JournalPort['runOwnership']
   readonly close?: () => Promise<void>
 }
 
@@ -71,6 +73,8 @@ export function startApplicationRun(input: {
   readonly abort: AbortController
   readonly requestDigest: string
 }): Promise<EffectDispatchResult> {
+  if (input.journal.runOwnership?.claim(input.admission.runId) === false)
+    throw new AppError('RUN_OWNED', 'Another live Braid process owns this run')
   const request = runEffectRequest(input.runInput)
   const handle = input.effects.start(
     {
@@ -266,10 +270,13 @@ export function restoreApplicationOperations(
   }
 }
 
-export function reconcileRestartRun(context: RestartPort): Promise<void> {
+export function reconcileRestartRun(
+  context: RestartPort,
+  claim: (runId: string) => boolean = () => true,
+): Promise<void> {
   const runIds = context
     .currentState()
-    .runs.filter((run) => isLiveRunStatus(run.status))
+    .runs.filter((run) => isLiveRunStatus(run.status) && claim(run.id))
     .map((run) => run.id)
   if (runIds.length === 0) return Promise.resolve()
   return Promise.all(runIds.map((runId) => reconcileRestartRunFor(context, runId))).then(
@@ -517,9 +524,21 @@ export function commitApplicationEvent(input: CommitApplicationEventInput): Brai
   return nextState
 }
 
-export async function commitApplicationEventAsync(
-  input: CommitApplicationEventInput,
-): Promise<BraidState> {
+export async function commitApplicationEventAsync(input: CommitApplicationEventInput): Promise<BraidState> {
+  if (input.journal.withTransition === undefined) return commitApplicationEventUnlocked(input)
+  return input.journal.withTransition(async (events) => {
+    let state = input.state
+    for (const envelope of events) {
+      state = reduceEvent(state, envelope)
+      const key = providerEventKey(envelope.event)
+      if (key) input.providerEventKeys.addProviderEvent(key)
+    }
+    if (events.length > 0) input.publishState(state)
+    return commitApplicationEventUnlocked({ ...input, state })
+  })
+}
+
+async function commitApplicationEventUnlocked(input: CommitApplicationEventInput): Promise<BraidState> {
   const key = providerEventKey(input.event)
   if (key && input.providerEventKeys.hasProviderEvent(key)) return input.state
   if (input.journal.declines?.(input.event) === true) return input.state
