@@ -56,12 +56,21 @@ test('a prompt pasted while /new is still opening is admitted and the frame keep
       terminal.sendInput('\r')
     }
     await type('run A')
-    await waitUntil('run A start', () => app.state().activeRuns.length === 1, () => terminal.getViewport())
+    await waitUntil(
+      'run A start',
+      () => app.state().activeRuns.length === 1,
+      () => terminal.getViewport(),
+    )
 
     await type('/new B conversation')
     terminal.sendInput(`\u001b[200~${PROMPT}\u001b[201~`)
     terminal.sendInput('\r')
-    await waitUntil('run B admission', () => app.state().activeRuns.length === 2, () => terminal.getViewport(), 20_000)
+    await waitUntil(
+      'run B admission',
+      () => app.state().activeRuns.length === 2,
+      () => terminal.getViewport(),
+      20_000,
+    )
     await terminal.waitForRender()
 
     const screen = terminal.getViewport()

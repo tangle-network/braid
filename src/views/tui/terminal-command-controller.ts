@@ -232,7 +232,7 @@ export class TerminalCommandController {
               : intelligenceSourceContext(analysisCommand, args, this.#controller.view()),
           )
         : undefined
-    void this.#dispatch(intent).then((result) => {
+    const settled = this.#dispatch(intent).then((result) => {
       if (result.kind !== 'accepted' || this.#isStopped()) return
       if (command === 'feedback' && args[0] === 'list') this.#overlays.openFeedback(result.data)
       else if (command === 'fork') this.#overlays.openSurface('fork')
@@ -246,6 +246,7 @@ export class TerminalCommandController {
         intelligenceProgress?.complete(result.data)
       }
     })
+    if (TARGET_COMMANDS.has(command)) await settled
   }
 
   async #runNativeInteractive(
