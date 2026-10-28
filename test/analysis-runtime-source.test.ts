@@ -250,7 +250,10 @@ test('a Runtime durable run is analyzed, cited and replayed without a Braid run'
         params: { analysisId: first.analysis.id, findingIds: ['finding-runtime'] },
       },
     ])
-    assert(promoted.some((item) => item.type === 'ack'), JSON.stringify(promoted))
+    assert(
+      promoted.some((item) => item.type === 'ack'),
+      JSON.stringify(promoted),
+    )
 
     const wrongRun = await rpc(durable.app, [analyze(`runtime:run:other@${runDir}`, 'op-2')])
     assert(wrongRun.some((item) => item.type === 'error' || item.type === 'ack'))
