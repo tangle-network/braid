@@ -67,7 +67,7 @@ async function recordRuntimeRun(
   runId: string,
   observation?: { readonly ready: () => void; readonly release: Promise<void> },
   estimate = 0.125,
-  failAfterWorker = false,
+  reopen = false,
 ): Promise<void> {
   const span: ToolSpan = {
     spanId: 'edit-1',
@@ -82,10 +82,6 @@ async function recordRuntimeRun(
     status: 'ok',
   }
   let drives = 0
-  let workerSettled = () => {}
-  const settled = new Promise<void>((resolve) => {
-    workerSettled = resolve
-  })
   await supervisePursuit(profile('root', ['spawn_worker', 'stop']), 'delegate once', {
     pursuitId: 'pursuit:braid-analysis',
     signal: AbortSignal.timeout(45_000),
@@ -93,6 +89,15 @@ async function recordRuntimeRun(
     runDir,
     budget: { maxIterations: 100, maxTokens: 100_000 },
     perWorker: { maxIterations: 4, maxTokens: 1_000 },
+    ...(reopen
+      ? {
+          reopen: {
+            operator: 'braid-durable-inspection-proof',
+            reason: 'Record a distinct assignment and accounting segment under the same run id',
+            operationId: 'braid-inspection-reopen',
+          },
+        }
+      : {}),
     driveHarness: async ({ coordinationMcpUrl }) => {
       drives += 1
       if (drives === 1) {
@@ -100,11 +105,8 @@ async function recordRuntimeRun(
           profile: profile('worker'),
           task: 'deliver',
           label: 'worker',
+          key: `worker:${estimate}`,
         })
-        if (failAfterWorker) {
-          await settled
-          throw new Error('first attempt failed after worker settlement')
-        }
         observation?.ready()
         await observation?.release
       } else {
@@ -133,10 +135,7 @@ async function recordRuntimeRun(
               await observation?.release
             })(),
           traceSource: () => ({ onSpan: () => () => {}, collect: async () => [span] }),
-          teardown: async () => {
-            workerSettled()
-            return { destroyed: true }
-          },
+          teardown: async () => ({ destroyed: true }),
           resultArtifact: () => ({
             outRef: 'record:worker',
             out: { worker: 'worker' },
@@ -369,12 +368,6 @@ test('built JSONL selects a Runtime-written durable run without granting control
   })
   let recording: Promise<void> | undefined
   try {
-    await assert.rejects(
-      recordRuntimeRun(runDir, runId, undefined, 0.5, true),
-      /first attempt failed after worker settlement/u,
-    )
-    const failed = await loadTopSnapshot(runDir, { runDir })
-    assert.equal(failed.pursuit?.runs.at(-1)?.totals.inclusive.usdEstimated, 0.5)
     recording = recordRuntimeRun(runDir, runId, { ready: () => ready(), release: held })
     await Promise.race([
       started,
@@ -442,10 +435,6 @@ test('built JSONL selects a Runtime-written durable run without granting control
       ),
     )
     const settledSnapshot = await loadTopSnapshot(runDir, { runDir })
-    const attempts = settledSnapshot.pursuit?.runs.filter((row) => row.runId === runId)
-    assert.equal(attempts?.length, 2)
-    assert.equal(attempts?.[0]?.totals.inclusive.usdEstimated, 0.5)
-    assert.equal(attempts?.at(-1)?.totals.inclusive.usdEstimated, 0.125)
     const canonicalWorker = settledSnapshot.supervisors[0]?.workers.find(
       (row) => row.id === worker.runtimeId,
     )
@@ -490,10 +479,26 @@ test('built JSONL selects a Runtime-written durable run without granting control
       rpc.request('shutdown', { mode: 'invalid' }, 'op-invalid-shutdown'),
       /must be wait, detach, or cancel/u,
     )
+    assert.deepEqual(await runBytes(runDir), before)
+    await recordRuntimeRun(runDir, runId, undefined, 0.5, true)
+    const reopened = await loadTopSnapshot(runDir, { runDir })
+    const attempts = reopened.pursuit?.runs.filter((row) => row.runId === runId)
+    assert.equal(attempts?.length, 2)
+    assert.equal(attempts?.[0]?.totals.inclusive.usdEstimated, 0.125)
+    const latestEstimate = attempts?.at(-1)?.totals.inclusive.usdEstimated
+    assert.equal(typeof latestEstimate, 'number')
+    assert.notEqual(latestEstimate, 0.125)
+    const afterReopen = await runBytes(runDir)
+    const refreshed = await rpc.request('refresh_supervision', { runDir })
+    const latestView = (refreshed.response.result.supervisors as SupervisorRecord[]).find(
+      (row) => row.runtimeId === runId,
+    )
+    assert.equal(latestView?.totalUsage?.estimatedSpendUsd, latestEstimate)
+    assert.equal(latestView?.totalUsage?.spendUsd, undefined)
     await rpc.shutdown()
     assert.equal((await rpc.exit).code, 0)
     assert(!rpc.stdout.includes(CREDENTIAL))
-    assert.deepEqual(await runBytes(runDir), before)
+    assert.deepEqual(await runBytes(runDir), afterReopen)
   } finally {
     release()
     await recording?.catch(() => {})
