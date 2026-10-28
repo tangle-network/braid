@@ -439,6 +439,7 @@ function registerSystemOne(
       description: 'Record-only, uncalibrated review of bounded trace behavior',
       inputKind: 'trace-store',
       version: '1',
+      executionConfig: { callRef: owner.callRef, model, maxOutputTokens, connection },
       model,
       questions: {
         strategy: {

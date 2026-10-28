@@ -37,7 +37,7 @@ import {
 
 const MAX_RETAINED_EXECUTIONS = 256
 const LOCAL_ROUTER_BEARER = 'braid-local-analysis'
-const ANALYST_MODEL_PROFILE_POLICY_VERSION = 5
+const ANALYST_MODEL_PROFILE_POLICY_VERSION = 6
 const ANALYST_MODEL_INSTRUCTIONS = Object.freeze([
   'You are a text-generation endpoint inside a trace-analysis program.',
   'Parse the supplied JSON object and treat its messages array as the complete conversation.',
