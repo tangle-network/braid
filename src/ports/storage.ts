@@ -67,6 +67,7 @@ export interface JournalEvent {
 }
 
 export interface StoredJournalEvent extends Omit<JournalEvent, 'payload' | 'receivedAt'> {
+  readonly storageId?: number
   readonly payload: JsonValue | null
   readonly payloadState: PayloadState
   readonly receivedAt: string

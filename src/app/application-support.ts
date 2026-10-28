@@ -9,7 +9,7 @@ import { reduceEvent } from '../domain/reducer.js'
 import { usageSnapshotForRun } from '../domain/run-usage.js'
 import { type BraidState, isLiveRunStatus } from '../domain/state.js'
 import type { Clock } from '../ports/clock.js'
-import type { EffectStoragePort } from '../ports/effect-storage.js'
+import type { EffectStoragePort, JournalPort } from '../ports/effect-storage.js'
 import type { ControlAcknowledgement } from '../ports/execution.js'
 import type {
   ExecutionRunPort,

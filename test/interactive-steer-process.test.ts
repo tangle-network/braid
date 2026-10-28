@@ -104,7 +104,7 @@ test('live owner survives a second process steer, replay, duplicate event, disco
     const observed = initialEvents.find((entry) => entry.event.kind === 'run.environment.observed')
     assert.ok(observed)
     const duplicate = await recovered.request('duplicate', { runId: run.id, event: observed.event.kind === 'run.environment.observed' ? {
-      runId: run.id, eventId: observed.event.provider.eventId, sequence: observed.event.provider.sequence,
+      runId: run.id, eventId: observed.event.provider.eventId, sequence: observed.event.provider.providerSequence,
       cursor: observed.event.provider.cursor, receivedAt: observed.occurredAt,
       event: { type: 'braid.execution.observed', observation: observed.event.observation, controlRef: observed.event.controlRef, timestamp: observed.occurredAt },
     } : undefined })

@@ -23,7 +23,7 @@ const execution = new TangleRetainedInteractiveExecutionPort({
       cleanup: 'explicit', continuity: 'session', location: 'remote',
       createdAt: '2026-10-28T00:00:00.000Z', observedAt: '2026-10-28T00:00:00.000Z', unavailable: [],
     }) },
-  }) as PreparedTangleRetainedConnection,
+  }) as unknown as PreparedTangleRetainedConnection,
   broker: new NativeInteractiveRunBroker(),
   journalRoot: join(root, 'runtime-journal'),
 })
@@ -72,6 +72,6 @@ process.on('message', (input: { id: number; command: string; operationId: string
     else throw new Error(`Unknown command: ${input.command}`)
     await app.whenDurable()
     process.send?.({ id: input.id, result, state: app.state(), events: app.events() })
-    if (input.command === 'shutdown') process.disconnect()
+    if (input.command === 'shutdown') process.disconnect?.()
   })().catch((error: unknown) => process.send?.({ id: input.id, error: String(error) }))
 })

@@ -68,9 +68,13 @@ export function networkInteractiveProvider(endpoint: string): AgentEnvironmentPr
   }
   const environment = (id: string): AgentEnvironment => ({
     id, provider: 'tangle-sandbox',
+    status: async () => 'running',
+    async *stream() {},
+    destroy: async () => {},
     startInteractive: (request, options) => call('startInteractive', [request], options?.signal) as never,
     interactive: (ref) => ({
       ref,
+      attach: async () => { throw new Error('Network steer test opens no terminal') },
       status: (_options) => call('status', [ref]) as never,
       claimControl: (command, options) => call('claimControl', [ref, command], options?.signal) as never,
       sendPrompt: (command, options) => call('sendPrompt', [ref, command], options?.signal) as never,

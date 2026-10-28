@@ -48,6 +48,7 @@ export abstract class SqliteContentStorage extends SqliteStorageBase {
   ): Promise<StoredJournalEvent> {
     const conversationId = parseConversationId(asString(row.conversation_id, 'conversation_id'))
     const base = {
+      storageId: asNumber(row.storage_id, 'storage_id'),
       workspaceId: parseWorkspaceId(asString(row.workspace_id, 'workspace_id')),
       conversationId,
       runId: parseRunId(asString(row.run_id, 'run_id')),

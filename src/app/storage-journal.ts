@@ -276,10 +276,12 @@ export class StorageJournal implements JournalPort, EffectStoragePort {
   }
 
   async withTransition<T>(action: (events: readonly BraidEventEnvelope[]) => Promise<T>): Promise<T> {
+    if (this.runOwnership === undefined) return action([])
     const synchronize = async () => {
       const stored = await this.#storage.events({ afterStorageId: this.#storageId })
       const foreign: BraidEventEnvelope[] = []
       for (const record of stored) {
+        if (record.storageId === undefined) throw new Error('Shared journal requires a storage cursor')
         this.#storageId = record.storageId
         this.#runSequences.set(record.runId, record.sequence)
         if (record.terminal) this.#terminalRuns.add(record.runId)
@@ -291,7 +293,7 @@ export class StorageJournal implements JournalPort, EffectStoragePort {
       }
       return action(foreign)
     }
-    return this.runOwnership === undefined ? synchronize() : this.runOwnership.transition(synchronize)
+    return this.runOwnership.transition(synchronize)
   }
 
   all(): readonly BraidEventEnvelope[] {

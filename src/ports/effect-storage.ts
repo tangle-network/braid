@@ -13,7 +13,7 @@ export interface JournalPort {
     owns(runId: string): boolean
     transition<T>(action: () => Promise<T>): Promise<T>
     close(): void
-  }
+  } | undefined
   withTransition?<T>(action: (events: readonly BraidEventEnvelope[]) => Promise<T>): Promise<T>
   envelope(state: BraidState, event: BraidEvent): BraidEventEnvelope
   append(
