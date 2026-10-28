@@ -162,7 +162,7 @@ function createTerminal(
   }
   for (const name of SECRET_ENVIRONMENT_NAMES) delete environment[name]
   const tracked = processTreeEnvironment(environment)
-  const child = pty.spawn(process.execPath, [binary, '--inline', '--record-state', recordPath], {
+  const child = pty.spawn(process.execPath, [binary, '--record-state', recordPath], {
     cwd: config.workspace,
     env: tracked.environment,
     name: 'xterm-256color',
