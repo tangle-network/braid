@@ -18,6 +18,9 @@ import { executionTargetFor } from './execution-target.js'
 import type { TerminalDraftController } from './terminal-drafts.js'
 import type { TerminalOverlayController } from './terminal-overlays.js'
 
+/** Commands that change the conversation or branch the composer sends to. */
+const TARGET_COMMANDS: ReadonlySet<string> = new Set(['new', 'open', 'branch', 'clone', 'fork'])
+
 export interface TerminalCommandControllerOptions {
   readonly controller: BraidUiController
   readonly editor: Editor
@@ -57,12 +60,15 @@ export class TerminalCommandController {
     this.#nativeInteractive = options.nativeInteractive
   }
 
+  #targetChange: Promise<void> = Promise.resolve()
+
   submit(rawText: string): void {
     void this.#submitValue(rawText)
   }
 
   dispatchCommand(command: CommandName, args: readonly string[]): void {
-    void this.#dispatchCommandValue(command, args)
+    const dispatched = this.#dispatchCommandValue(command, args)
+    if (TARGET_COMMANDS.has(command)) this.#targetChange = dispatched.catch(() => undefined)
   }
 
   async #submitValue(rawText: string): Promise<void> {
@@ -84,6 +90,8 @@ export class TerminalCommandController {
       return
     }
 
+    // A message typed while /new or another switch is still opening belongs to the new target.
+    await this.#targetChange
     const view = this.#controller.view()
     const active = view.activeRunId !== undefined
     const queueCapability = view.capabilities['run.queue']
@@ -171,7 +179,7 @@ export class TerminalCommandController {
         return
       }
     }
-    if (['new', 'open', 'branch', 'clone', 'fork'].includes(command)) await this.#drafts.flush()
+    if (TARGET_COMMANDS.has(command)) await this.#drafts.flush()
     if (command === 'open') {
       this.#overlays.openConversationSelector(args.join(' ').trim())
       return
