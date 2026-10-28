@@ -87,6 +87,9 @@ test('a prompt pasted while /new is still opening is admitted and the frame keep
       `the prompt was queued behind the old run:\n${drawn.join('\n')}`,
     )
     assert.equal(app.state().queuedInputs.length, 0)
+    // LIVE-07 waits for both runs in the work strip; its frame listed two while the screen drew none.
+    const work = drawn.filter((line) => /^(?:focus|work) .+ · running/u.test(line.trimStart()))
+    assert.equal(work.length, 2, `work strip rows:\n${drawn.join('\n')}`)
   } finally {
     release()
     view.stop()
