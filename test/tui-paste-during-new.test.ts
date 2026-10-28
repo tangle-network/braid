@@ -50,10 +50,15 @@ test('a prompt pasted while /new is still opening is admitted and the frame keep
   const done = view.start()
   try {
     await terminal.waitForRender()
-    terminal.sendInput('run A\r')
+    const type = async (text: string) => {
+      for (const character of text) terminal.sendInput(character)
+      await terminal.waitForRender()
+      terminal.sendInput('\r')
+    }
+    await type('run A')
     await waitUntil('run A start', () => app.state().activeRuns.length === 1, () => terminal.getViewport())
 
-    terminal.sendInput('/new B conversation\r')
+    await type('/new B conversation')
     terminal.sendInput(`\u001b[200~${PROMPT}\u001b[201~`)
     terminal.sendInput('\r')
     await waitUntil('run B admission', () => app.state().activeRuns.length === 2, () => terminal.getViewport(), 20_000)
