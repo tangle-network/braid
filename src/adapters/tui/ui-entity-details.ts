@@ -134,14 +134,12 @@ function supervisorDetail(record: SupervisorRecord | undefined): EntityDetailVie
       ...(record.totalUsage === undefined
         ? []
         : [
-            `tree usage: ${usageLine(record.totalUsage.inputTokens, record.totalUsage.outputTokens, record.totalUsage.spendUsd, record.totalUsage.completeness)}`,
+            `tree usage: ${usageLine(record.totalUsage)}`,
             `tree latency: ${record.totalUsage.latencyMs}ms${record.workerCount === undefined ? '' : ` · workers ${record.workerCount}`}`,
           ]),
       ...(record.driverUsage === undefined
         ? []
-        : [
-            `driver usage: ${usageLine(record.driverUsage.inputTokens, record.driverUsage.outputTokens, record.driverUsage.spendUsd, record.driverUsage.completeness)}`,
-          ]),
+        : [`driver usage: ${usageLine(record.driverUsage)}`]),
       `${record.remoteEndpointEnv === undefined ? 'started' : 'first observed'}: ${safe(record.createdAt)}`,
       `${record.remoteEndpointEnv === undefined ? 'updated' : 'last recorded change'}: ${safe(record.updatedAt)}`,
     ],
@@ -187,6 +185,9 @@ function workerDetail(record: WorkerRecord | undefined): EntityDetailView | unde
       : [
           `cost: ${record.usageCompleteness === 'observed-floor' ? '≥' : ''}$${record.spendUsd.toFixed(4)}`,
         ]),
+    ...(record.estimatedSpendUsd === undefined
+      ? []
+      : [`estimated cost: ~$${record.estimatedSpendUsd.toFixed(4)} (billed cost unknown)`]),
     ...(record.inputTokens === undefined
       ? []
       : [
@@ -213,15 +214,18 @@ function workerDetail(record: WorkerRecord | undefined): EntityDetailView | unde
   }
 }
 
-function usageLine(
-  input: number,
-  output: number,
-  spendUsd: number,
-  completeness: 'complete' | 'observed-floor' | 'unknown',
-): string {
-  const prefix = completeness === 'observed-floor' ? '≥' : completeness === 'unknown' ? '?' : ''
-  const cost = completeness === 'unknown' ? 'cost not reported' : `${prefix}$${spendUsd.toFixed(4)}`
-  return `${prefix}${input} in · ${prefix}${output} out · ${cost} · ${completeness}`
+function usageLine(usage: NonNullable<SupervisorRecord['totalUsage']>): string {
+  const prefix =
+    usage.completeness === 'observed-floor' ? '≥' : usage.completeness === 'unknown' ? '?' : ''
+  const cost =
+    usage.completeness === 'unknown' || usage.spendUsd === undefined
+      ? 'cost unknown'
+      : `${prefix}$${usage.spendUsd.toFixed(4)}`
+  const estimate =
+    usage.estimatedSpendUsd === undefined
+      ? ''
+      : ` · estimated ~$${usage.estimatedSpendUsd.toFixed(4)} (billed cost unknown)`
+  return `${prefix}${usage.inputTokens} in · ${prefix}${usage.outputTokens} out · ${cost}${estimate} · ${usage.completeness}`
 }
 
 function bounded(lines: readonly string[]): readonly string[] {

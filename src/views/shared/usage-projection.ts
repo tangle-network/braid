@@ -266,49 +266,39 @@ function totalsForUsage(usage: readonly UsageView[]): UsageTotalsView {
 }
 
 function totalsForWorkers(workers: readonly BraidState['workers'][number][]): UsageTotalsView {
-  const observedTokenSources = workers.filter(
-    (worker) => worker.inputTokens !== undefined || worker.outputTokens !== undefined,
-  )
-  const observedCostSources = workers.filter((worker) => worker.spendUsd !== undefined)
-  const missingTokens = workers.length - observedTokenSources.length
-  const missingCosts = workers.length - observedCostSources.length
-  const incompleteTokens = workers.filter(
-    (worker) =>
-      worker.inputTokens === undefined ||
-      worker.outputTokens === undefined ||
-      worker.usageCompleteness !== 'complete',
-  ).length
-  const incompleteCosts = workers.filter(
-    (worker) => worker.spendUsd === undefined || worker.usageCompleteness !== 'complete',
-  ).length
-  const calls = aggregateMeasurement(workers.map(() => undefined))
-  const latency = aggregateMeasurement(workers.map((worker) => worker.latencyMs))
-  return {
-    sourceCount: workers.length,
-    input: sum(observedTokenSources.map((worker) => worker.inputTokens)),
-    output: sum(observedTokenSources.map((worker) => worker.outputTokens)),
+  const usage: UsageView[] = workers.map((worker) => ({
+    input: worker.inputTokens ?? 0,
+    output: worker.outputTokens ?? 0,
     tokenStatus:
-      workers.length === 0 || observedTokenSources.length === 0
+      worker.inputTokens === undefined && worker.outputTokens === undefined
         ? 'unknown'
-        : incompleteTokens > 0
-          ? 'observed-floor'
-          : 'complete',
-    ...(observedCostSources.length === 0
+        : worker.inputTokens !== undefined &&
+            worker.outputTokens !== undefined &&
+            worker.usageCompleteness === 'complete'
+          ? 'complete'
+          : 'observed-floor',
+    ...(worker.spendUsd === undefined ? {} : { costUsd: worker.spendUsd }),
+    ...(worker.estimatedSpendUsd === undefined
       ? {}
-      : { costUsd: sum(observedCostSources.map((worker) => worker.spendUsd)) }),
+      : { estimatedCostUsd: worker.estimatedSpendUsd }),
+    costStatus: costStatus(
+      worker.usageCompleteness === 'complete' ? undefined : false,
+      worker.spendUsd,
+      worker.estimatedSpendUsd,
+    ),
+    ...(worker.latencyMs === undefined ? {} : { llmLatencyMs: worker.latencyMs }),
+  }))
+  const totals = totalsForUsage(usage)
+  return {
+    ...totals,
+    tokenStatus:
+      totals.tokenStatus === 'unknown' && usage.some((row) => row.tokenStatus !== 'unknown')
+        ? 'observed-floor'
+        : totals.tokenStatus,
     costStatus:
-      workers.length === 0 || observedCostSources.length === 0
-        ? 'unknown'
-        : incompleteCosts > 0
-          ? 'observed-floor'
-          : 'reported',
-    ...(latency.value === undefined ? {} : { llmLatencyMs: latency.value }),
-    unknownTokenSources: Math.max(missingTokens, incompleteTokens),
-    unknownCostSources: Math.max(missingCosts, incompleteCosts),
-    callStatus: calls.status,
-    latencyStatus: latency.status,
-    unknownCallSources: calls.unknownSources,
-    unknownLatencySources: latency.unknownSources,
+      totals.costStatus === 'unknown' && totals.costUsd !== undefined
+        ? 'observed-floor'
+        : totals.costStatus,
   }
 }
 

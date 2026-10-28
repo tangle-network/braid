@@ -27,6 +27,9 @@ importers:
       '@tangle-network/agent-interface':
         specifier: 5.10.2
         version: 5.10.2
+      '@tangle-network/agent-profile-materialize':
+        specifier: ^1.1.4
+        version: 1.1.4(@tangle-network/agent-interface@5.10.2)
       '@tangle-network/agent-provider-cli-bridge':
         specifier: 2.0.0
         version: 2.0.0
@@ -579,6 +582,11 @@ packages:
 
   '@tangle-network/agent-profile-materialize@1.1.2':
     resolution: {integrity: sha512-r3PPcpjYQndHGvQKJv6sTMJyHBD3Ql0HjPISnMdS6m+PodNuAyGc+bWYm89QMM+UjKW7l/vqfGVMES/RlskfYA==}
+    peerDependencies:
+      '@tangle-network/agent-interface': ^5.10.2
+
+  '@tangle-network/agent-profile-materialize@1.1.4':
+    resolution: {integrity: sha512-9AqQILuNnb8+Bb4JByJNNRtYnCNsRYxES2oNndW2jeHG21hn2Gwg6vMHQST0z7wHxYnjyTETIyVTc0ATPNjF/g==}
     peerDependencies:
       '@tangle-network/agent-interface': ^5.10.2
 
@@ -1312,6 +1320,10 @@ snapshots:
       zod: 4.6.7
 
   '@tangle-network/agent-profile-materialize@1.1.2(@tangle-network/agent-interface@5.10.2)':
+    dependencies:
+      '@tangle-network/agent-interface': 5.10.2
+
+  '@tangle-network/agent-profile-materialize@1.1.4(@tangle-network/agent-interface@5.10.2)':
     dependencies:
       '@tangle-network/agent-interface': 5.10.2
 

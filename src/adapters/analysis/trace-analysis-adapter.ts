@@ -7,11 +7,10 @@ import {
   buildDefaultAnalystRegistry,
   type CustomTokenPricing,
   createDspyRlmTraceEngine,
-  type TraceAnalysisEngine,
 } from '@tangle-network/agent-eval'
 import { systemOneAnalyst } from '@tangle-network/agent-eval/systemone'
 import type { ExternalOptimizerModelExecutionObservation } from '@tangle-network/agent-eval/campaign'
-import type { AgentProfile, HarnessType } from '@tangle-network/agent-interface'
+import type { AgentProfile } from '@tangle-network/agent-interface'
 import type { AnalysisCapabilityIssue } from '../../app/analysis-types.js'
 import { ConnectionError } from '../../app/connection-errors.js'
 import type { ConnectionKind, ConnectionRecord } from '../../domain/entities.js'
@@ -30,6 +29,7 @@ import {
   readConnectionCredential,
 } from '../connections/production-connections.js'
 import { AGENT_EVAL_VERSION } from './agent-eval-version.js'
+import { redactProviderError } from '../../domain/redaction.js'
 import {
   AgentEvalAnalystAdapter,
   createUnavailableAgentEvalAnalystAdapter,
@@ -37,7 +37,6 @@ import {
 import { ModelExecutionScope } from './model-execution-scope.js'
 import {
   type PythonCommandProbe,
-  type PythonRunnerIdentity,
   type PythonRunnerSpec,
   resolvePythonRunner,
 } from './python-runner.js'
@@ -68,8 +67,6 @@ export interface TraceAnalysisDiagnostic {
 export interface TraceAnalysisAdapterOptions extends ProductionConnectionOptions {
   readonly connection: ConnectionRecord
   readonly profile: Readonly<AgentProfile>
-  readonly model?: string
-  readonly runner?: HarnessType
   readonly python?: PythonRunnerSpec
   readonly pythonCandidates?: readonly string[]
   readonly pythonProbe?: PythonCommandProbe
@@ -77,7 +74,6 @@ export interface TraceAnalysisAdapterOptions extends ProductionConnectionOptions
   readonly managedRuntimeReadiness?: 'launcher' | 'complete'
   readonly signal?: AbortSignal
   readonly pricing?: CustomTokenPricing
-  readonly maxCostUsd?: number
   readonly maxOutputTokens?: number
   readonly maxReasoningTokens?: number
   readonly maxTotalOutputTokens?: number
@@ -103,20 +99,8 @@ export interface TraceAnalysisAdapterUnavailable {
 export interface TraceAnalysisAdapterReady {
   readonly status: 'engine-configured'
   readonly diagnostics: readonly []
-  readonly engine: TraceAnalysisEngine
   readonly registry: AnalystRegistry
-  readonly connection: Readonly<{
-    readonly id: string
-    readonly kind: ConnectionKind
-    readonly endpoint: string
-  }>
-  readonly model: string
-  readonly runner?: HarnessType
-  readonly python: PythonRunnerIdentity
-  readonly modelExecutions: () => readonly ExternalOptimizerModelExecutionObservation[]
   readonly modelExecutionScope: ModelExecutionScope
-  /** The credential value itself is deliberately absent from this result. */
-  readonly credentialState: 'provided' | 'not-required'
 }
 
 export type TraceAnalysisConfiguration = TraceAnalysisAdapterReady | TraceAnalysisAdapterUnavailable
@@ -280,7 +264,7 @@ export async function createTraceAnalysisAdapter(
     })
   }
 
-  const authoredModel = (options.model ?? profile.model?.default)?.trim()
+  const authoredModel = profile.model?.default?.trim()
   if (!authoredModel) {
     return unavailable('missing-model', {
       kind: 'missing-model',
@@ -289,7 +273,7 @@ export async function createTraceAnalysisAdapter(
       connectionId: id,
     })
   }
-  const runner = options.runner ?? profile.harness
+  const runner = profile.harness
   if (connection.kind === 'cli-bridge' && runner === undefined) {
     return unavailable('unavailable', {
       kind: 'connection-configuration-failed',
@@ -322,38 +306,6 @@ export async function createTraceAnalysisAdapter(
     return connectionDiagnostic(error, connection)
   }
 
-  const python = await resolvePythonRunner({
-    ...(options.python === undefined ? {} : { runner: options.python }),
-    ...(options.pythonCandidates === undefined ? {} : { candidates: options.pythonCandidates }),
-    ...(options.pythonProbe === undefined ? {} : { probe: options.pythonProbe }),
-    ...(options.pythonProbeTimeoutMs === undefined
-      ? {}
-      : { timeoutMs: options.pythonProbeTimeoutMs }),
-    ...(options.managedRuntimeReadiness === undefined
-      ? {}
-      : { managedRuntimeReadiness: options.managedRuntimeReadiness }),
-    ...(options.signal === undefined ? {} : { signal: options.signal }),
-  })
-  if (python.status !== 'ready') {
-    const diagnostic: TraceAnalysisDiagnostic = {
-      kind: python.status,
-      code:
-        python.status === 'missing-python'
-          ? 'TRACE_ANALYSIS_PYTHON_REQUIRED'
-          : python.status === 'missing-python-package'
-            ? 'TRACE_ANALYSIS_PYTHON_PACKAGE_REQUIRED'
-            : 'TRACE_ANALYSIS_PYTHON_PROBE_FAILED',
-      message: python.message,
-      connectionId: id,
-    }
-    return unavailable(
-      python.status === 'missing-python' || python.status === 'missing-python-package'
-        ? python.status
-        : 'unavailable',
-      diagnostic,
-    )
-  }
-
   let credential: string | undefined
   try {
     credential = await readConnectionCredential(connection, options, endpoint)
@@ -365,6 +317,7 @@ export async function createTraceAnalysisAdapter(
     connection.kind === 'cli-bridge'
       ? normalizeCliBridgeProviderBaseUrl(endpoint, connection.id)
       : normalizeTangleInferenceRuntimeBaseUrl(endpoint, connection.id)
+  let phase: 'profile' | 'engine' = 'profile'
   try {
     const limits = analysisTokenLimits(options)
     const modelExecutionScope = new ModelExecutionScope()
@@ -392,12 +345,43 @@ export async function createTraceAnalysisAdapter(
         ? {}
         : { onRetainedAdmission: options.onRetainedAdmission }),
     })
+    phase = 'engine'
+    const python = await resolvePythonRunner({
+      ...(options.python === undefined ? {} : { runner: options.python }),
+      ...(options.pythonCandidates === undefined ? {} : { candidates: options.pythonCandidates }),
+      ...(options.pythonProbe === undefined ? {} : { probe: options.pythonProbe }),
+      ...(options.pythonProbeTimeoutMs === undefined
+        ? {}
+        : { timeoutMs: options.pythonProbeTimeoutMs }),
+      ...(options.managedRuntimeReadiness === undefined
+        ? {}
+        : { managedRuntimeReadiness: options.managedRuntimeReadiness }),
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
+    })
+    if (python.status !== 'ready') {
+      const diagnostic: TraceAnalysisDiagnostic = {
+        kind: python.status,
+        code:
+          python.status === 'missing-python'
+            ? 'TRACE_ANALYSIS_PYTHON_REQUIRED'
+            : python.status === 'missing-python-package'
+              ? 'TRACE_ANALYSIS_PYTHON_PACKAGE_REQUIRED'
+              : 'TRACE_ANALYSIS_PYTHON_PROBE_FAILED',
+        message: python.message,
+        connectionId: id,
+      }
+      return unavailable(
+        python.status === 'missing-python' || python.status === 'missing-python-package'
+          ? python.status
+          : 'unavailable',
+        diagnostic,
+      )
+    }
     const { maxOutputTokens, maxReasoningTokens } = limits
     const maxCostUsd =
-      options.maxCostUsd ??
-      (owner.pricing === undefined
+      owner.pricing === undefined
         ? undefined
-        : defaultModelCostCeiling(owner.pricing, maxOutputTokens, maxReasoningTokens))
+        : defaultModelCostCeiling(owner.pricing, maxOutputTokens, maxReasoningTokens)
     const engine = createDspyRlmTraceEngine({
       call: owner.call,
       callRef: owner.callRef,
@@ -421,25 +405,20 @@ export async function createTraceAnalysisAdapter(
     return {
       status: 'engine-configured',
       diagnostics: [],
-      engine,
       registry,
-      connection: { id, kind: connection.kind, endpoint },
-      model,
-      python: {
-        command: python.runner.command,
-        source: python.runner.source,
-        ...(python.runner.args === undefined ? {} : { args: [...python.runner.args] }),
-      },
-      credentialState: credential === undefined ? 'not-required' : 'provided',
-      ...(runner === undefined ? {} : { runner }),
-      modelExecutions: owner.executions,
       modelExecutionScope,
     }
   } catch (error) {
     return unavailable('unavailable', {
-      kind: 'engine-configuration-failed',
-      code: 'TRACE_ANALYSIS_ENGINE_CONFIGURATION_FAILED',
-      message: engineConfigurationMessage(error),
+      kind: phase === 'profile' ? 'connection-configuration-failed' : 'engine-configuration-failed',
+      code:
+        phase === 'profile'
+          ? 'TRACE_ANALYSIS_PROFILE_UNSUPPORTED'
+          : 'TRACE_ANALYSIS_ENGINE_CONFIGURATION_FAILED',
+      message:
+        phase === 'profile'
+          ? redactProviderError(error instanceof Error ? error : String(error))
+          : engineConfigurationMessage(error),
       connectionId: id,
     })
   }

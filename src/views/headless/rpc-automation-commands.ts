@@ -12,37 +12,26 @@ export type AutomationRpcCommand = Extract<
 
 export type AutomationParameterType = 'string' | 'boolean' | 'number' | 'record'
 
+const RULE_PARAMETER_TYPES = {
+  ruleId: 'string',
+  runId: 'string',
+  interactionId: 'string',
+  request: 'record',
+  answer: 'record',
+  responseScope: 'string',
+  matcher: 'record',
+  context: 'record',
+  expiresAt: 'string',
+  maximumUses: 'number',
+  confirmPersistent: 'boolean',
+  creationSource: 'string',
+} as const
+
 export const AUTOMATION_PARAMETER_TYPES: Readonly<
   Record<AutomationRpcCommand, Readonly<Record<string, AutomationParameterType>>>
 > = {
-  automation_create: {
-    ruleId: 'string',
-    runId: 'string',
-    interactionId: 'string',
-    request: 'record',
-    answer: 'record',
-    responseScope: 'string',
-    matcher: 'record',
-    context: 'record',
-    expiresAt: 'string',
-    maximumUses: 'number',
-    confirmPersistent: 'boolean',
-    creationSource: 'string',
-  },
-  automation_update: {
-    ruleId: 'string',
-    runId: 'string',
-    interactionId: 'string',
-    request: 'record',
-    answer: 'record',
-    responseScope: 'string',
-    matcher: 'record',
-    context: 'record',
-    expiresAt: 'string',
-    maximumUses: 'number',
-    confirmPersistent: 'boolean',
-    creationSource: 'string',
-  },
+  automation_create: RULE_PARAMETER_TYPES,
+  automation_update: RULE_PARAMETER_TYPES,
   automation_dry_run: { runId: 'string', interactionId: 'string', context: 'record' },
   automation_disable: { ruleId: 'string' },
   automation_delete: { ruleId: 'string' },

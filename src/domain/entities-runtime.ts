@@ -96,10 +96,11 @@ export interface CheckpointRecord {
 export interface RuntimeUsageRecord {
   readonly inputTokens: number
   readonly outputTokens: number
-  readonly spendUsd: number
+  readonly spendUsd?: number
+  readonly estimatedSpendUsd?: number
   readonly latencyMs: number
   readonly iterations?: number
-  /** Runtime's current monitor omits completeness flags, so these totals are an observed floor. */
+  /** Completeness qualifies captured quantities; an absent dollar amount remains unknown. */
   readonly completeness: 'complete' | 'observed-floor' | 'unknown'
 }
 
@@ -151,6 +152,7 @@ export interface WorkerRecord {
   readonly role?: 'manager' | 'worker'
   readonly streamStatus?: string
   readonly spendUsd?: number
+  readonly estimatedSpendUsd?: number
   readonly inputTokens?: number
   readonly outputTokens?: number
   readonly latencyMs?: number

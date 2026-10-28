@@ -325,6 +325,32 @@ test('retained analysis preserves requested route and measured usage without inv
   const root = await mkdtemp(join(tmpdir(), 'braid-native-model-observation-'))
   const bridge = await startRuntimeBridgeServer({ responseText: 'NATIVE_CONTRACT_REPLY' })
   try {
+    for (const harness of ['codex', 'kimi-code'] as const) {
+      assert.throws(
+        () =>
+          createRuntimeTraceModelOwner({
+            profile: {
+              name: 'Unsupported native analysis policy',
+              harness,
+              model: { default: 'default' },
+            },
+            connection: {
+              id: createConnectionId('connection-native-policy'),
+              kind: 'cli-bridge',
+              updatedAt: at,
+            },
+            baseUrl: bridge.endpoint,
+            model: `${harness}/default`,
+          }),
+        /tools|permissions/u,
+      )
+    }
+    assert.equal(
+      bridge.requests.length,
+      0,
+      'unsupported native policy must refuse before admission',
+    )
+    assert.equal(bridge.sessions.length, 0)
     const route = 'pi/openai/gpt-5'
     const owner = createRuntimeTraceModelOwner({
       profile: {

@@ -147,18 +147,31 @@ function finite(value: number | undefined): number | undefined {
   return value === undefined || !Number.isFinite(value) || value < 0 ? undefined : value
 }
 
-function observedUsage(input: {
-  readonly tokensInput: number
-  readonly tokensOutput: number
-  readonly usd: number
-  readonly ms?: number
-  readonly latencyMs?: number
-  readonly iterations?: number
-}): NonNullable<SupervisorRecord['totalUsage']> {
+function costFields(usd: number | undefined, estimate: number | undefined) {
+  const spendUsd = finite(usd)
+  const estimatedSpendUsd = finite(estimate)
+  return {
+    ...(spendUsd === undefined ? {} : { spendUsd }),
+    ...(estimatedSpendUsd === undefined ? {} : { estimatedSpendUsd }),
+  }
+}
+
+function observedUsage(
+  input: {
+    readonly tokensInput: number
+    readonly tokensOutput: number
+    readonly usd: number
+    readonly usdKnown?: boolean
+    readonly ms?: number
+    readonly latencyMs?: number
+    readonly iterations?: number
+  },
+  estimate?: number,
+): NonNullable<SupervisorRecord['totalUsage']> {
   return {
     inputTokens: finite(input.tokensInput) ?? 0,
     outputTokens: finite(input.tokensOutput) ?? 0,
-    spendUsd: finite(input.usd) ?? 0,
+    ...costFields(input.usdKnown === false ? undefined : input.usd, estimate),
     latencyMs: finite(input.latencyMs ?? input.ms) ?? 0,
     ...(finite(input.iterations) === undefined ? {} : { iterations: input.iterations }),
     completeness: 'observed-floor',
@@ -223,6 +236,7 @@ function projectSnapshot(input: SupervisorSnapshotRequest, raw: TopSnapshot): Su
     }
     seenSupervisors.add(runtimeSupervisorId)
     const id = supervisorId(input, runtimeSupervisorId)
+    const accounting = raw.pursuit?.runs.find((run) => run.runId === runtimeSupervisorId)
     const createdAt = validIso(view.startedAt, at)
     const rootRunId = bindings.get(runtimeSupervisorId)
     supervisors.push({
@@ -239,8 +253,11 @@ function projectSnapshot(input: SupervisorSnapshotRequest, raw: TopSnapshot): Su
       ...(view.workerModel === undefined || view.workerModel.trim().length === 0
         ? {}
         : { workerModel: redactSensitiveText(view.workerModel) }),
-      driverUsage: observedUsage(view.driverSpend),
-      totalUsage: observedUsage(view.totals),
+      driverUsage: observedUsage(
+        view.driverSpend,
+        accounting?.totals.exclusiveByNode[runtimeSupervisorId]?.usdEstimated,
+      ),
+      totalUsage: observedUsage(view.totals, accounting?.totals.inclusive.usdEstimated),
       workerCount: view.totals.workers,
       createdAt,
       updatedAt: validIso(view.completedAt, at),
@@ -257,7 +274,7 @@ function projectSnapshot(input: SupervisorSnapshotRequest, raw: TopSnapshot): Su
       const createdWorkerAt = validIso(worker.startedAt, createdAt)
       const parentRuntimeRef = worker.parent?.trim() || undefined
       const parentWorkerId =
-        parentRuntimeRef === undefined
+        parentRuntimeRef === undefined || parentRuntimeRef === runtimeSupervisorId
           ? undefined
           : (references.byId.get(parentRuntimeRef) ??
             references.byUniqueLabel.get(parentRuntimeRef))
@@ -272,7 +289,10 @@ function projectSnapshot(input: SupervisorSnapshotRequest, raw: TopSnapshot): Su
           : { parentRuntimeRef: redactSensitiveText(parentRuntimeRef) }),
         ...(parentWorkerId === undefined ? {} : { parentWorkerId }),
         status: workerStatus(worker.status),
-        ...(finite(worker.spend.usd) === undefined ? {} : { spendUsd: worker.spend.usd }),
+        ...costFields(
+          worker.spend.usdKnown === false ? undefined : worker.spend.usd,
+          accounting?.totals.exclusiveByNode[worker.id]?.usdEstimated,
+        ),
         ...(finite(worker.spend.tokensInput) === undefined
           ? {}
           : { inputTokens: worker.spend.tokensInput }),
@@ -292,7 +312,11 @@ function projectSnapshot(input: SupervisorSnapshotRequest, raw: TopSnapshot): Su
       const workerReference = { kind: 'worker' as const, id: workerDomainId }
       const workerNode = graphNode(workerReference, createdWorkerAt, title)
       graphNodes.push({ ...workerNode, status: workerStatus(worker.status) })
-      if (parentRuntimeRef === undefined || parentWorkerId !== undefined) {
+      if (
+        parentRuntimeRef === undefined ||
+        parentRuntimeRef === runtimeSupervisorId ||
+        parentWorkerId !== undefined
+      ) {
         graphEdges.push(
           graphEdge({
             kind: 'spawned',

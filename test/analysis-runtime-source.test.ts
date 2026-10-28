@@ -120,7 +120,14 @@ async function recordRuntimeRun(
             outRef: 'record:worker',
             out: { worker: 'worker' },
             verdict: { valid: true, score: 1 },
-            spent: { iterations: 1, tokens: { input: 5, output: 5 }, usd: 0, ms: 0 },
+            spent: {
+              iterations: 1,
+              tokens: { input: 5, output: 5 },
+              usd: 0.125,
+              usdKnown: false,
+              usdEstimated: 0.125,
+              ms: 0,
+            },
           }),
         },
       },
@@ -266,6 +273,17 @@ test('a Runtime durable run is analyzed, cited and replayed without a Braid run'
     assert.equal(finding?.supported, true)
     assert.deepEqual(finding?.citations[0]?.span, { traceId: `${runId}:s0`, spanId: 'edit-1' })
     assert.equal(analyst.requests.length, 1)
+    const details = await step({
+      command: 'get_details',
+      params: { entityType: 'analysis', entityId: first.analysis.id },
+    })
+    const detail = details.responses.find((row) => row.type === 'ack')
+    assert(detail?.type === 'ack')
+    assert.deepEqual(
+      (detail.result as { data: { findings: { citations: { span?: unknown }[] }[] } }).data
+        .findings[0]?.citations[0]?.span,
+      { traceId: `${runId}:s0`, spanId: 'edit-1' },
+    )
 
     const promoted = await step({
       command: 'promote_analysis',
@@ -382,6 +400,20 @@ test('built JSONL selects a Runtime-written durable run without granting control
     )
     const supervisor = view.supervisors[0]!
     const worker = view.workers[0]!
+    const settledSnapshot = await loadTopSnapshot(runDir, { runDir })
+    const canonicalWorker = settledSnapshot.supervisors[0]?.workers.find(
+      (row) => row.id === worker.runtimeId,
+    )
+    assert.equal(canonicalWorker?.spend.usdKnown, false)
+    const settledWorker = (settled.response.result.workers as WorkerRecord[]).find(
+      (row) => row.id === worker.id,
+    )
+    assert.equal(settledWorker?.spendUsd, undefined)
+    assert.equal(settledWorker?.estimatedSpendUsd, 0.125)
+    assert.equal(
+      (settled.response.result.supervisors as SupervisorRecord[])[0]?.totalUsage?.spendUsd,
+      undefined,
+    )
     await assert.rejects(
       rpc.request(
         'steer_worker',
@@ -396,8 +428,19 @@ test('built JSONL selects a Runtime-written durable run without granting control
     )
     const graph = await rpc.request('get_graph', {})
     assert(JSON.stringify(graph.response.result).includes(String(worker.id)))
+    const workerNode = (graph.response.result.nodes as { id: string; costUsd?: number }[]).find(
+      (row) => row.id === worker.id,
+    )
+    assert(workerNode)
+    assert.equal(
+      workerNode.costUsd,
+      undefined,
+      'estimated dollars must not become an observed graph cost',
+    )
     const details = await rpc.request('get_details', { entityType: 'worker', entityId: worker.id })
     assert(JSON.stringify(details.response.result).includes(worker.runtimeId))
+    assert.equal(details.response.result.data.spendUsd, undefined)
+    assert.equal(details.response.result.data.estimatedSpendUsd, 0.125)
     const state = await rpc.state()
     assert.equal(state.state.runs.length, 0, 'Runtime identifiers must not manufacture Braid runs')
     await assert.rejects(

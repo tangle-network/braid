@@ -16,6 +16,10 @@ import {
 } from '@tangle-network/agent-interface'
 import type { RuntimeStreamEvent } from '@tangle-network/agent-runtime'
 import type { RouterTransportConfig } from '@tangle-network/agent-runtime/kernel'
+import {
+  isMaterializerHarness,
+  materializeProfile,
+} from '@tangle-network/agent-profile-materialize'
 import { canonicalDigest } from '../../domain/canonical.js'
 import type { ConnectionRecord } from '../../domain/entities.js'
 import { safePublicIdentifier } from '../../domain/provider-values.js'
@@ -128,9 +132,12 @@ function catalogPricing(model: string): CustomTokenPricing | undefined {
   }
 }
 
-function responseFormat(
-  request: ExternalOptimizerModelCallRequest['request'],
-): Readonly<Record<string, unknown>> | undefined {
+type AnalystControls = Pick<
+  ExternalOptimizerModelCallRequest['request'],
+  'jsonSchema' | 'jsonMode' | 'thinking' | 'maxTokens' | 'temperature'
+>
+
+function responseFormat(request: AnalystControls): Readonly<Record<string, unknown>> | undefined {
   if (request.jsonSchema !== undefined) {
     return {
       type: 'json_schema',
@@ -557,7 +564,7 @@ function publicError(value: unknown): string {
 
 function analystCallProfile(
   options: RuntimeTraceModelOwnerOptions,
-  request: ExternalOptimizerModelCallRequest['request'],
+  request: AnalystControls,
   retry: RuntimeRouterRetryPolicy,
 ): AgentProfile {
   const source = snapshotAgentProfile(options.profile)
@@ -618,7 +625,7 @@ function analystCallProfile(
     ...(request.temperature === undefined ? {} : { temperature: request.temperature }),
     ...(format === undefined ? {} : { extraBody: { response_format: format } }),
   }
-  return snapshotAgentProfile({
+  const profile = snapshotAgentProfile({
     name: `${source.name ?? 'Braid'} trace analyst`,
     description: 'One bounded trace-analysis model call',
     harness,
@@ -627,6 +634,7 @@ function analystCallProfile(
       ? {
           tools: { ...ANALYST_MODEL_TOOLS },
           permissions: { ...ANALYST_MODEL_PERMISSIONS },
+          resources: { failOnError: true },
           ...(harness === 'pi' ? { extensions: { pi: { load: [] } } } : {}),
         }
       : {}),
@@ -641,6 +649,12 @@ function analystCallProfile(
       ...(Object.keys(metadata).length === 0 ? {} : { metadata }),
     },
   })
+  if (bridge) {
+    if (!isMaterializerHarness(harness))
+      throw new TypeError(`Trace analyst policy cannot be materialized by ${harness}`)
+    materializeProfile(profile, harness)
+  }
+  return profile
 }
 
 function analystModelPrompt(harness: NonNullable<AgentProfile['harness']>): AgentProfile['prompt'] {
@@ -660,6 +674,7 @@ export function createRuntimeTraceModelOwner(
 ): RuntimeTraceModelOwner {
   // Runtime retries one transient transport failure with the same idempotent call identity.
   const retry = Object.freeze({ maxAttempts: 2, ...options.retry })
+  analystCallProfile(options, {}, retry)
   const sourceProfileDigest = canonicalAgentProfileDigestHex(options.profile)
   const callRef = `braid-agent-runtime:${String(
     canonicalDigest({

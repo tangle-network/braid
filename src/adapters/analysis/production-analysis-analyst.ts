@@ -14,46 +14,41 @@ const MAX_COMPLETED_RUNS = 256
 /** Builds one trace-analysis adapter from the exact route captured for each request. */
 export class ProductionAnalysisAnalyst implements AnalysisAnalyst {
   readonly #bootstrap: AnalysisAnalyst
-  readonly #create: (
-    target: AnalysisExecutionTarget,
-    request: Pick<EvalAnalystRequest, 'onRetainedAdmission' | 'signal' | 'totalTimeoutMs'>,
-  ) => Promise<AnalysisAnalyst>
+  readonly #connectionOptions: ProductionConnectionOptions
   readonly #completed = new Map<string, readonly ExternalOptimizerModelExecutionObservation[]>()
 
   constructor(input: {
     readonly bootstrap: AnalysisAnalyst
     readonly connectionOptions?: ProductionConnectionOptions
-    readonly create?: (
-      target: AnalysisExecutionTarget,
-      request: Pick<EvalAnalystRequest, 'onRetainedAdmission' | 'signal' | 'totalTimeoutMs'>,
-    ) => Promise<AnalysisAnalyst>
   }) {
     this.#bootstrap = input.bootstrap
-    const connectionOptions = input.connectionOptions ?? {}
-    this.#create =
-      input.create ??
-      (async (target, request) => {
-        if (target.connection === undefined) {
-          return createUnavailableTraceAnalysisAnalyst(
-            'The captured analysis route has no matching connection record.',
-          )
-        }
-        return createTraceAnalysisAnalyst(
-          await createTraceAnalysisAdapter({
-            profile: target.profile,
-            connection: target.connection,
-            ...connectionOptions,
-            managedRuntimeReadiness: 'complete',
-            ...(request.onRetainedAdmission === undefined
-              ? {}
-              : { onRetainedAdmission: request.onRetainedAdmission }),
-            ...(request.signal === undefined ? {} : { signal: request.signal }),
-            ...(request.totalTimeoutMs === undefined
-              ? {}
-              : { pythonProbeTimeoutMs: request.totalTimeoutMs }),
-          }),
-        )
-      })
+    this.#connectionOptions = input.connectionOptions ?? {}
+  }
+
+  async #create(
+    target: AnalysisExecutionTarget,
+    request: Pick<EvalAnalystRequest, 'onRetainedAdmission' | 'signal' | 'totalTimeoutMs'>,
+  ): Promise<AnalysisAnalyst> {
+    if (target.connection === undefined) {
+      return createUnavailableTraceAnalysisAnalyst(
+        'The captured analysis route has no matching connection record.',
+      )
+    }
+    return createTraceAnalysisAnalyst(
+      await createTraceAnalysisAdapter({
+        profile: target.profile,
+        connection: target.connection,
+        ...this.#connectionOptions,
+        managedRuntimeReadiness: 'complete',
+        ...(request.onRetainedAdmission === undefined
+          ? {}
+          : { onRetainedAdmission: request.onRetainedAdmission }),
+        ...(request.signal === undefined ? {} : { signal: request.signal }),
+        ...(request.totalTimeoutMs === undefined
+          ? {}
+          : { pythonProbeTimeoutMs: request.totalTimeoutMs }),
+      }),
+    )
   }
 
   list() {
@@ -78,15 +73,7 @@ export class ProductionAnalysisAnalyst implements AnalysisAnalyst {
         ? createUnavailableTraceAnalysisAnalyst(
             'The analysis request has no captured execution route.',
           )
-        : await this.#create(target, {
-            ...(request.onRetainedAdmission === undefined
-              ? {}
-              : { onRetainedAdmission: request.onRetainedAdmission }),
-            ...(request.signal === undefined ? {} : { signal: request.signal }),
-            ...(request.totalTimeoutMs === undefined
-              ? {}
-              : { totalTimeoutMs: request.totalTimeoutMs }),
-          })
+        : await this.#create(target, request)
     try {
       for await (const item of analyst.stream(request)) yield item
     } finally {

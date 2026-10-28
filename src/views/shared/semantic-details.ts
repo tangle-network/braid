@@ -57,8 +57,12 @@ function safeFinding(finding: AnalysisFinding): Readonly<Record<string, unknown>
     ...(finding.severity === undefined ? {} : { severity: finding.severity }),
     ...(finding.confidence === undefined ? {} : { confidence: finding.confidence }),
     supported: finding.supported,
+    ...(finding.supportError === undefined ? {} : { supportError: safe(finding.supportError) }),
     citations: finding.citations.map((citation) => ({
       id: citation.id,
+      ...(citation.span === undefined
+        ? {}
+        : { span: { traceId: safe(citation.span.traceId), spanId: safe(citation.span.spanId) } }),
       ...(citation.eventId === undefined ? {} : { eventId: citation.eventId }),
       ...(citation.messageId === undefined ? {} : { messageId: citation.messageId }),
       ...(citation.partId === undefined ? {} : { partId: citation.partId }),
@@ -404,6 +408,9 @@ function dataFor(
         ...(worker.role === undefined ? {} : { role: worker.role }),
         ...(worker.streamStatus === undefined ? {} : { stream: safe(worker.streamStatus) }),
         ...(worker.spendUsd === undefined ? {} : { spendUsd: worker.spendUsd }),
+        ...(worker.estimatedSpendUsd === undefined
+          ? {}
+          : { estimatedSpendUsd: worker.estimatedSpendUsd }),
         ...(worker.inputTokens === undefined ? {} : { inputTokens: worker.inputTokens }),
         ...(worker.outputTokens === undefined ? {} : { outputTokens: worker.outputTokens }),
         ...(worker.latencyMs === undefined ? {} : { latencyMs: worker.latencyMs }),
