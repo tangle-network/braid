@@ -57,7 +57,9 @@ jobs:
           cache: pnpm
 
       - name: Configure external release storage
-        run: echo "BRAID_RELEASE_ARTIFACT_ROOT=$RUNNER_TEMP/braid-release" >> "$GITHUB_ENV"
+        run: |
+          mkdir -p "$RUNNER_TEMP/braid-release"
+          echo "BRAID_RELEASE_ARTIFACT_ROOT=$RUNNER_TEMP/braid-release" >> "$GITHUB_ENV"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
