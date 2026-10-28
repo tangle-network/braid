@@ -176,7 +176,8 @@ for (const timing of TIMINGS) {
       for (const character of 'run A') terminal.sendInput(character)
       terminal.sendInput('\r')
       await waitUntil('run A start', () => app.state().activeRuns.length === 1, screen)
-      const form = () => /Allow tool "bash"\?/u.test(screen().join('\n'))
+      // The form's footer; the activity browser lists the same request title.
+      const form = () => /alt\+a automate/u.test(screen().join('\n'))
       const waiting = () => /permission waiting/u.test(screen().join('\n'))
       if (timing === 'under the activity browser') {
         // LIVE-07's Ctrl+C for run B landed in B's form that had just opened, and denied bash.
@@ -223,7 +224,10 @@ for (const timing of TIMINGS) {
         terminal.sendInput('\r')
         await waitUntil('run A focus', () => app.state().focusedRunId === runA?.id, screen)
         await terminal.waitForRender()
-        if (!form() && /activity/iu.test(screen().join('\n'))) terminal.sendInput('\u001b')
+        for (let back = 0; back < 3 && /activity/iu.test(screen().join('\n')); back += 1) {
+          terminal.sendInput('\u001b')
+          await terminal.waitForRender()
+        }
         await waitUntil('the form or its notice', () => form() || waiting(), screen)
         if (form()) return
       }
