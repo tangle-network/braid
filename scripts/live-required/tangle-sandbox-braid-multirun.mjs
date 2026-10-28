@@ -656,10 +656,6 @@ export function frameRunIds(frame) {
   return (frame.view?.runs ?? []).map((run) => run.id)
 }
 
-export function frameEventIds(frame, runId) {
-  return eventIdsForRun(frame, runId)
-}
-
 function eventKind(event) {
   return event?.kind ?? event?.event?.kind ?? event?.type
 }
@@ -739,7 +735,9 @@ export function assertFrameHasConcurrentRuns(frame, runIds) {
   for (const runId of runIds) {
     const { stateRun } = runFromFrame(frame, runId)
     assert.ok(isActive(stateRun.status), `run ${runId} is not active`)
-    assert.ok(stateRun.lastProviderSequence > 0, `run ${runId} has no streamed events`)
+    // The recorded state omits provider sequences; a run streamed once it has events or transcript.
+    const streamed = eventIdsForRun(frame, runId).length > 0 || assistantTranscriptForRun(frame, runId)
+    assert.ok(streamed, `run ${runId} has no streamed events`)
   }
   const activeOwnership = frame.state?.activeRuns?.filter((entry) => runIds.includes(entry.runId))
   assert.equal(activeOwnership?.length, 2, 'frame did not expose two active run ownership records')
