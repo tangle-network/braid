@@ -5,7 +5,7 @@ function sleep(ms) {
 }
 
 export class RpcSession {
-  constructor(binary, workspace, keyFile, endpoint, timeoutMs = 180_000) {
+  constructor(binary, workspace, keyFile, endpoint, timeoutMs = 180_000, args = []) {
     this.binary = binary
     this.workspace = workspace
     this.keyFile = keyFile
@@ -19,7 +19,7 @@ export class RpcSession {
     this.stderr = ''
     this.child = spawn(
       process.execPath,
-      [binary, 'rpc', '--workspace', workspace, '--database-key-file', keyFile],
+      [binary, 'rpc', '--workspace', workspace, '--database-key-file', keyFile, ...args],
       {
         cwd: workspace,
         env: {

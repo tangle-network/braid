@@ -13,7 +13,6 @@ import {
   createProductionComposition,
   type ProductionCompositionConfig,
 } from '../app/production-composition.js'
-import { profileModelSettings } from '../app/profile-model-settings.js'
 import { canonicalDigest } from '../domain/canonical.js'
 import type { CredentialPort } from '../ports/credentials.js'
 import type { NativeInteractiveExecutionControl } from '../ports/native-interactive-execution.js'
@@ -100,19 +99,9 @@ async function productionIntelligence(production: ProductionCompositionConfig): 
   readonly analyst: ProductionAnalysisAnalyst
 }> {
   const selected = createProductionComposition(production)
-  const modelSettings = profileModelSettings(selected.profile)
   const analysis = await createTraceAnalysisAdapter({
     profile: selected.profile,
     connection: selected.connection,
-    ...(modelSettings.maxVisibleOutputTokens === undefined
-      ? {}
-      : { maxOutputTokens: modelSettings.maxVisibleOutputTokens }),
-    ...(modelSettings.maxReasoningTokens === undefined
-      ? {}
-      : { maxReasoningTokens: modelSettings.maxReasoningTokens }),
-    ...(modelSettings.maxTotalOutputTokens === undefined
-      ? {}
-      : { maxTotalOutputTokens: modelSettings.maxTotalOutputTokens }),
     ...(production.connectionOptions ?? {}),
   })
   return {

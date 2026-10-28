@@ -147,6 +147,14 @@ The protocol schema is published in the npm package and checked for backward com
 
 End of input performs the same safe shutdown as `shutdown` with the configured default and returns a meaningful process exit code.
 
+### Durable Runtime review and bounded analysis
+
+Send `refresh_supervision` with `params.runDir` to read a durable Runtime run through Runtime's asynchronous snapshot reader. Use an absolute run directory. The returned supervisor retains that source directory, while Runtime and Braid identifiers remain distinct. This selection is read-only: worker and supervisor controls refuse it, including when the run directory equals the workspace. It cannot be combined with a remote endpoint. Existing `get_graph`, `get_activity` and `get_details` query the resulting projections.
+
+`ask` and `analyze` accept `budgetUsd` and `totalTimeoutMs` and forward them to the existing exact-analysis execution. The selected canonical profile and connection remain the analysis route; per-request profile or connection overrides are rejected. Analyze a durable source with `runtime:<runId>@<absolute runDir>` without creating a Braid run.
+
+The explicit `systemone` recipe records uncalibrated, bounded trace assessments through agent-eval. It is excluded from `all`; use existing recipes such as `improvement` for proposed edits, never apply those edits automatically. Findings retain bounded metadata, recommended actions and validation plans in the existing AnalysisRecord. Requested routes and independently reported model identity are separate fields. Native retained results currently do not report served identity, so System One records an explicit failed assessment without dispatching a model call; existing recipes remain available. Unknown billed cost remains unknown.
+
 ### Cancellation, restart, and evidence rules
 
 Cancellation is a two-party operation.

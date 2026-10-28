@@ -1,6 +1,7 @@
 import type { AgentProfile } from '@tangle-network/agent-interface'
 import { snapshotAgentProfile } from '@tangle-network/agent-interface/profile-snapshot'
 import { canonicalDigest } from '../domain/canonical.js'
+import { assertJsonValue } from '../domain/invariants-base.js'
 import type {
   AnalysisCitation,
   AnalysisFinding,
@@ -328,6 +329,7 @@ function importAnalysis(
 
 function importFinding(ids: ConversationImportIds, value: unknown, label: string): AnalysisFinding {
   const finding = importRecord(value, label)
+  if (finding.metadata !== undefined) assertJsonValue(finding.metadata, `${label}.metadata`)
   if (!Array.isArray(finding.citations)) {
     throw new AppError('IMPORT_INVALID', `${label}.citations must be an array`)
   }
@@ -347,6 +349,15 @@ function importFinding(ids: ConversationImportIds, value: unknown, label: string
   return {
     id: requiredString(finding.id, `${label}.id`),
     text: requiredString(finding.text, `${label}.text`),
+    ...optionalField(
+      'recommendedAction',
+      optionalString(finding.recommendedAction, `${label}.recommendedAction`),
+    ),
+    ...optionalField(
+      'validationPlan',
+      optionalString(finding.validationPlan, `${label}.validationPlan`),
+    ),
+    ...(finding.metadata === undefined ? {} : { metadata: finding.metadata }),
     ...(finding.severity === undefined
       ? {}
       : {

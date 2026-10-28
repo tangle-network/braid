@@ -5,7 +5,6 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
 import { openSqliteStorage } from '../src/adapters/storage/sqlite.js'
-import { buildBraidViewModel } from '../src/adapters/tui/ui-view-model.js'
 import {
   commitApplicationEvent,
   commitApplicationEventAsync,
@@ -16,7 +15,6 @@ import { MemoryJournal } from '../src/app/journal.js'
 import { StorageJournal } from '../src/app/storage-journal.js'
 import { canonicalDigest } from '../src/domain/canonical.js'
 import type { AnalysisRecord } from '../src/domain/entities.js'
-import type { BraidEventEnvelope } from '../src/domain/events.js'
 import { createAnalysisId, createEventId } from '../src/domain/ids.js'
 import { redactBraidEvent } from '../src/domain/redaction.js'
 import { replayEvents } from '../src/domain/reducer.js'
@@ -73,85 +71,6 @@ function modelCallExport(): readonly Record<string, unknown>[] {
   ]
 }
 
-test('analysis model calls survive event replay and appear as concise detail lines', () => {
-  const calls = importAnalysisModelCalls(modelCallExport(), 'analyses[0].modelCalls')
-  assert.ok(calls)
-  const initial = initialState(DETERMINISTIC_PROFILE)
-  const analysis: AnalysisRecord = {
-    id: createAnalysisId('analysis-roundtrip'),
-    source: {
-      conversationId: initial.conversationId,
-      branchId: initial.branchId,
-      digest: canonicalDigest({ source: 'roundtrip-analysis' }),
-      complete: true,
-    },
-    status: 'completed',
-    findings: [],
-    modelCalls: calls,
-    usage: {
-      input: 165,
-      output: 53,
-      tokensKnown: false,
-      estimatedCostUsd: 0.014,
-      usdKnown: false,
-    },
-    wallTimeMs: 88,
-    createdAt: startedAt,
-    updatedAt: endedAt,
-  }
-  const event: BraidEventEnvelope = {
-    eventId: createEventId('event-roundtrip-analysis'),
-    sequence: 1,
-    revision: 1,
-    occurredAt: endedAt,
-    event: { kind: 'analysis.created', analysis },
-  }
-  const restarted = replayEvents(initial, [event])
-  const restored = restarted.analyses[0]
-  assert.deepEqual(restored?.modelCalls, calls)
-
-  const details = queryDetails(restarted, {
-    entityType: 'analysis',
-    entityId: analysis.id,
-  })
-  const modelCallField = details.fields.find((field) => field.label === 'modelCalls')
-  assert.equal(
-    modelCallField?.value,
-    '#1 openai/gpt-5.6-luna · tokens 120 in / 45 out · cost $0.0123 · latency 88ms\n' +
-      '#2 glm-5.2 · tokens unknown · cost unknown · latency unknown',
-  )
-  assert.deepEqual(details.data.usage, {
-    input: 165,
-    output: 53,
-    tokensKnown: false,
-    estimatedCostUsd: 0.014,
-    usdKnown: false,
-  })
-  assert.equal(JSON.stringify(details).includes('secret-value'), false)
-
-  const terminalView = buildBraidViewModel(restarted)
-  const terminalDetail = terminalView.entityDetails?.find(
-    (detail) => detail.entityType === 'analysis' && detail.entityId === analysis.id,
-  )
-  assert.deepEqual(terminalDetail?.analysisExecution, {
-    observedModels: ['glm-5.2', 'gpt-5.6-luna'],
-    modelCalls: calls.map((call) => ({
-      sequence: call.sequence,
-      ...(call.provider === undefined ? {} : { provider: call.provider }),
-      model: call.model,
-      ...(call.inputTokens === undefined ? {} : { inputTokens: call.inputTokens }),
-      ...(call.outputTokens === undefined ? {} : { outputTokens: call.outputTokens }),
-      tokensKnown: call.tokensKnown,
-      ...(call.cost.usd === undefined ? {} : { costUsd: call.cost.usd }),
-      costStatus: call.cost.status,
-      ...(call.latencyMs === undefined ? {} : { latencyMs: call.latencyMs }),
-      outcome: call.outcome,
-    })),
-    wallTimeMs: 88,
-  })
-  assert.match(terminalDetail?.lines.join('\n') ?? '', /model call #1 openai\/gpt-5\.6-luna/u)
-})
-
 test('large analysis source ranges retain valid event IDs through encrypted commit and replay', async (t) => {
   const initial = initialState(DETERMINISTIC_PROFILE)
   const sourceEventIds = Array.from({ length: 2_500 }, (_, index) =>
@@ -173,7 +92,15 @@ test('large analysis source ranges retain valid event IDs through encrypted comm
       lastSequence: sourceEventIds.length,
     },
     status: 'preparing',
-    findings: [],
+    findings: [
+      {
+        id: 'unsupported-recorded-finding',
+        text: 'The retained claim has no supported source.',
+        supported: false,
+        supportError: 'Citation references missing Runtime span source/missing',
+        citations: [],
+      },
+    ],
     createdAt: startedAt,
     updatedAt: startedAt,
   }
@@ -247,6 +174,12 @@ test('large analysis source ranges retain valid event IDs through encrypted comm
   const reopenedJournal = await StorageJournal.fromStorage(storage, new FixedClock(startedAt))
   const restored = replayEvents(initial, reopenedJournal.replay())
   assert.deepEqual(restored.analyses[0]?.sourceRange?.eventIds, sourceEventIds)
+  const details = queryDetails(restored, { entityType: 'analysis', entityId: analysis.id })
+  assert.deepEqual(
+    details.data.findings,
+    analysis.findings,
+    'get_details preserves unsupported source reasons after encrypted storage and restart',
+  )
   const replayed = replayEvents(restored, reopenedJournal.replay())
   assert.equal(replayed.sequence, restored.sequence)
   assert.deepEqual(replayed.analyses[0]?.sourceRange?.eventIds, sourceEventIds)

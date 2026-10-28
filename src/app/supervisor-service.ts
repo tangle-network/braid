@@ -49,19 +49,23 @@ export class SupervisorService {
     const remote = this.#remoteEndpoint(input)
     if (remote !== undefined) return this.#remoteSnapshot(input, remote)
     const watcher = await this.#loadWatcher()
-    const raw = watcher.snapshot(input.rootDir)
+    const raw =
+      input.runDir === undefined
+        ? watcher.snapshot(input.rootDir)
+        : await watcher.snapshot(input.rootDir, { runDir: input.runDir })
     return this.#commit(input, raw)
   }
 
-  async reconnect(input: SupervisorSnapshotRequest): Promise<SupervisionRecords> {
-    const remote = this.#remoteEndpoint(input)
-    if (remote !== undefined) return this.#remoteSnapshot(input, remote)
-    const watcher = await this.#loadWatcher()
-    const raw = watcher.reconnect(input.rootDir)
-    return this.#commit(input, raw)
+  reconnect(input: SupervisorSnapshotRequest): Promise<SupervisionRecords> {
+    return this.snapshot(input)
   }
 
   #remoteEndpoint(input: SupervisorSnapshotRequest): string | undefined {
+    if (input.runDir !== undefined) {
+      if (input.remoteEndpointEnv !== undefined)
+        throw new Error('A durable runDir cannot be combined with a remote endpoint')
+      return undefined
+    }
     const state = this.#host.currentState()
     const selected = state.workers.find((worker) => String(worker.id) === input.workerId)
     const owner =
@@ -133,8 +137,10 @@ export class SupervisorService {
   }
 
   async *watch(input: SupervisorWatchRequest): AsyncGenerator<SupervisorProjection, void, void> {
+    if (input.runDir !== undefined) this.#remoteEndpoint(input)
     const watcher = await this.#loadWatcher()
     const options: SupervisorWatchOptions = {
+      ...(input.runDir === undefined ? {} : { runDir: input.runDir }),
       ...(input.intervalMs === undefined ? {} : { intervalMs: input.intervalMs }),
       ...(input.signal === undefined ? {} : { signal: input.signal }),
     }

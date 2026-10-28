@@ -203,6 +203,7 @@ export function assertSupervisorRecord(record: SupervisorRecord): void {
   nonEmpty(record.runtimeId, 'supervisor.runtimeId')
   if (record.runtimeId.length > 1_024) fail('supervisor.runtimeId is too long')
   nonEmpty(record.runtimeRoot, 'supervisor.runtimeRoot')
+  if (record.runDir !== undefined) nonEmpty(record.runDir, 'supervisor.runDir')
   if (record.rootRunId !== undefined)
     assertEntityId('run', record.rootRunId, 'supervisor.rootRunId')
   if (record.title !== undefined) nonEmpty(record.title, 'supervisor.title')
@@ -234,6 +235,7 @@ export function assertWorkerRecord(record: WorkerRecord): void {
   if (record.runner !== undefined) nonEmpty(record.runner, 'worker.runner')
   for (const [name, value] of [
     ['spendUsd', record.spendUsd],
+    ['estimatedSpendUsd', record.estimatedSpendUsd],
     ['inputTokens', record.inputTokens],
     ['outputTokens', record.outputTokens],
     ['latencyMs', record.latencyMs],
@@ -256,7 +258,12 @@ function assertRuntimeUsage(
 ): void {
   finiteNonNegative(usage.inputTokens, `${label}.inputTokens`)
   finiteNonNegative(usage.outputTokens, `${label}.outputTokens`)
-  finiteNonNegative(usage.spendUsd, `${label}.spendUsd`)
+  for (const [name, value] of [
+    ['spendUsd', usage.spendUsd],
+    ['estimatedSpendUsd', usage.estimatedSpendUsd],
+  ] as const) {
+    if (value !== undefined) finiteNonNegative(value, `${label}.${name}`)
+  }
   finiteNonNegative(usage.latencyMs, `${label}.latencyMs`)
   if (usage.iterations !== undefined) finiteNonNegative(usage.iterations, `${label}.iterations`)
   if (!['complete', 'observed-floor', 'unknown'].includes(usage.completeness)) {

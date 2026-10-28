@@ -55,6 +55,7 @@ function modelCallRecord(
   const usage = record(execution?.usage)
   const connection = record(execution?.connection)
   const routeValue = record(execution?.route)
+  const reportedModel = safePublicIdentifier(usage?.reportedModel)
   const inputTokens = finite(usage?.inputTokens)
   const outputTokens = finite(usage?.outputTokens)
   const tokensKnown =
@@ -86,6 +87,7 @@ function modelCallRecord(
     callRef: safePublicIdentifier(observation.callRef) ?? 'unknown-call-ref',
     path: safeEndpointPath(observation.path),
     model: safePublicIdentifier(observation.model) ?? 'unknown-model',
+    ...(reportedModel === undefined ? {} : { reportedModel }),
     ...(provider === undefined ? {} : { provider }),
     ...(route === undefined ? {} : { route }),
     ...(tokensKnown && inputTokens !== undefined ? { inputTokens } : {}),

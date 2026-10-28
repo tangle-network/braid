@@ -1,9 +1,13 @@
-import type { AnalysisFinding, AnalysisModelCallRecord } from '../../domain/entities.js'
+import type {
+  AnalysisFinding,
+  AnalysisModelCallRecord,
+  AnalysisRecord,
+} from '../../domain/entities.js'
 import { runOutcomeDetail } from '../../domain/provider-values.js'
 import type { BraidState } from '../../domain/state.js'
 import { analysisModelCallLine, analysisModelCallView } from './analysis-model-call-presentation.js'
 import { environmentView } from './environment-presentation.js'
-import { sanitizeTerminalText, sanitizeTitle } from './sanitize.js'
+import { redactStructuredValue, sanitizeTerminalText, sanitizeTitle } from './sanitize.js'
 import { ensureEntityExists, graphEdgesForEntity, queryGraph } from './semantic-graph.js'
 import { assertNodeType, SemanticQueryError } from './semantic-query-scope.js'
 import type {
@@ -41,11 +45,24 @@ function safeFinding(finding: AnalysisFinding): Readonly<Record<string, unknown>
   return {
     id: finding.id,
     text: safe(finding.text),
+    ...(finding.recommendedAction === undefined
+      ? {}
+      : { recommendedAction: safe(finding.recommendedAction) }),
+    ...(finding.validationPlan === undefined
+      ? {}
+      : { validationPlan: safe(finding.validationPlan) }),
+    ...(finding.metadata === undefined
+      ? {}
+      : { metadata: redactStructuredValue(finding.metadata) }),
     ...(finding.severity === undefined ? {} : { severity: finding.severity }),
     ...(finding.confidence === undefined ? {} : { confidence: finding.confidence }),
     supported: finding.supported,
+    ...(finding.supportError === undefined ? {} : { supportError: safe(finding.supportError) }),
     citations: finding.citations.map((citation) => ({
       id: citation.id,
+      ...(citation.span === undefined
+        ? {}
+        : { span: { traceId: safe(citation.span.traceId), spanId: safe(citation.span.spanId) } }),
       ...(citation.eventId === undefined ? {} : { eventId: citation.eventId }),
       ...(citation.messageId === undefined ? {} : { messageId: citation.messageId }),
       ...(citation.partId === undefined ? {} : { partId: citation.partId }),
@@ -62,6 +79,79 @@ function modelCallLines(
   if (modelCalls === undefined) return ['model calls unknown']
   if (modelCalls.length === 0) return ['no model calls recorded']
   return modelCalls.map((call) => analysisModelCallLine(analysisModelCallView(call)))
+}
+
+function analysisData(analysis: AnalysisRecord): Readonly<Record<string, unknown>> {
+  return {
+    id: analysis.id,
+    ...(analysis.analysisRunId === undefined ? {} : { analysisRunId: analysis.analysisRunId }),
+    source: {
+      ...(analysis.source.runtimeRun === undefined
+        ? {}
+        : { runtimeRun: analysis.source.runtimeRun }),
+      conversationId: analysis.source.conversationId,
+      branchId: analysis.source.branchId,
+      ...(analysis.source.runId === undefined ? {} : { runId: analysis.source.runId }),
+      ...(analysis.source.throughMessageId === undefined
+        ? {}
+        : { throughMessageId: analysis.source.throughMessageId }),
+      ...(analysis.source.trace === undefined
+        ? {}
+        : {
+            trace: {
+              id: analysis.source.trace.id,
+              provider: analysis.source.trace.provider,
+              digest: analysis.source.trace.digest,
+            },
+          }),
+      digest: analysis.source.digest,
+      complete: analysis.source.complete,
+      ...(analysis.source.missingHistory === undefined
+        ? {}
+        : { missingHistory: analysis.source.missingHistory }),
+    },
+    ...(analysis.question === undefined ? {} : { question: safe(analysis.question) }),
+    ...(analysis.recipe === undefined ? {} : { recipe: safe(analysis.recipe) }),
+    ...(analysis.analystProfileId === undefined
+      ? {}
+      : { analystProfileId: analysis.analystProfileId }),
+    ...(analysis.analystProfileDigest === undefined
+      ? {}
+      : { analystProfileDigest: analysis.analystProfileDigest }),
+    status: analysis.status,
+    ...(analysis.error === undefined ? {} : { error: safe(analysis.error) }),
+    findings: analysis.findings.map(safeFinding),
+    ...(analysis.request === undefined ? {} : { request: redactStructuredValue(analysis.request) }),
+    ...(analysis.provenance === undefined
+      ? {}
+      : { provenance: redactStructuredValue(analysis.provenance) }),
+    ...(analysis.analysts === undefined
+      ? {}
+      : { analysts: redactStructuredValue(analysis.analysts) }),
+    modelCalls: modelCallLines(analysis.modelCalls),
+    ...(analysis.usage === undefined
+      ? {}
+      : {
+          usage: {
+            input: analysis.usage.input,
+            output: analysis.usage.output,
+            tokensKnown: analysis.usage.tokensKnown !== false,
+            ...(analysis.usage.reasoning === undefined
+              ? {}
+              : { reasoning: analysis.usage.reasoning }),
+            ...(analysis.usage.costUsd === undefined ? {} : { costUsd: analysis.usage.costUsd }),
+            ...(analysis.usage.estimatedCostUsd === undefined
+              ? {}
+              : { estimatedCostUsd: analysis.usage.estimatedCostUsd }),
+            usdKnown: analysis.usage.usdKnown !== false && analysis.usage.costUsd !== undefined,
+            ...(analysis.usage.model === undefined ? {} : { model: safe(analysis.usage.model) }),
+          },
+        }),
+    ...(analysis.costUsd === undefined ? {} : { costUsd: analysis.costUsd }),
+    ...(analysis.wallTimeMs === undefined ? {} : { wallTimeMs: analysis.wallTimeMs }),
+    createdAt: analysis.createdAt,
+    updatedAt: analysis.updatedAt,
+  }
 }
 
 function dataFor(
@@ -233,70 +323,7 @@ function dataFor(
     }
     case 'analysis': {
       const analysis = state.analyses.find((candidate) => candidate.id === id)
-      if (analysis === undefined) return undefined
-      return {
-        id: analysis.id,
-        ...(analysis.analysisRunId === undefined ? {} : { analysisRunId: analysis.analysisRunId }),
-        source: {
-          conversationId: analysis.source.conversationId,
-          branchId: analysis.source.branchId,
-          ...(analysis.source.runId === undefined ? {} : { runId: analysis.source.runId }),
-          ...(analysis.source.throughMessageId === undefined
-            ? {}
-            : { throughMessageId: analysis.source.throughMessageId }),
-          ...(analysis.source.trace === undefined
-            ? {}
-            : {
-                trace: {
-                  id: analysis.source.trace.id,
-                  provider: analysis.source.trace.provider,
-                  digest: analysis.source.trace.digest,
-                },
-              }),
-          digest: analysis.source.digest,
-          complete: analysis.source.complete,
-          ...(analysis.source.missingHistory === undefined
-            ? {}
-            : { missingHistory: analysis.source.missingHistory }),
-        },
-        ...(analysis.question === undefined ? {} : { question: safe(analysis.question) }),
-        ...(analysis.recipe === undefined ? {} : { recipe: safe(analysis.recipe) }),
-        ...(analysis.analystProfileId === undefined
-          ? {}
-          : { analystProfileId: analysis.analystProfileId }),
-        ...(analysis.analystProfileDigest === undefined
-          ? {}
-          : { analystProfileDigest: analysis.analystProfileDigest }),
-        status: analysis.status,
-        findings: analysis.findings.map(safeFinding),
-        modelCalls: modelCallLines(analysis.modelCalls),
-        ...(analysis.usage === undefined
-          ? {}
-          : {
-              usage: {
-                input: analysis.usage.input,
-                output: analysis.usage.output,
-                tokensKnown: analysis.usage.tokensKnown !== false,
-                ...(analysis.usage.reasoning === undefined
-                  ? {}
-                  : { reasoning: analysis.usage.reasoning }),
-                ...(analysis.usage.costUsd === undefined
-                  ? {}
-                  : { costUsd: analysis.usage.costUsd }),
-                ...(analysis.usage.estimatedCostUsd === undefined
-                  ? {}
-                  : { estimatedCostUsd: analysis.usage.estimatedCostUsd }),
-                usdKnown: analysis.usage.usdKnown !== false && analysis.usage.costUsd !== undefined,
-                ...(analysis.usage.model === undefined
-                  ? {}
-                  : { model: safe(analysis.usage.model) }),
-              },
-            }),
-        ...(analysis.costUsd === undefined ? {} : { costUsd: analysis.costUsd }),
-        ...(analysis.wallTimeMs === undefined ? {} : { wallTimeMs: analysis.wallTimeMs }),
-        createdAt: analysis.createdAt,
-        updatedAt: analysis.updatedAt,
-      }
+      return analysis === undefined ? undefined : analysisData(analysis)
     }
     case 'environment': {
       const environment = state.environments.find((candidate) => candidate.id === id)
@@ -340,6 +367,7 @@ function dataFor(
         id: supervisor.id,
         runtimeId: supervisor.runtimeId,
         runtimeRoot: supervisor.runtimeRoot,
+        ...(supervisor.runDir === undefined ? {} : { runDir: safe(supervisor.runDir) }),
         ...(supervisor.conversationId === undefined
           ? {}
           : { conversationId: supervisor.conversationId }),
@@ -380,6 +408,9 @@ function dataFor(
         ...(worker.role === undefined ? {} : { role: worker.role }),
         ...(worker.streamStatus === undefined ? {} : { stream: safe(worker.streamStatus) }),
         ...(worker.spendUsd === undefined ? {} : { spendUsd: worker.spendUsd }),
+        ...(worker.estimatedSpendUsd === undefined
+          ? {}
+          : { estimatedSpendUsd: worker.estimatedSpendUsd }),
         ...(worker.inputTokens === undefined ? {} : { inputTokens: worker.inputTokens }),
         ...(worker.outputTokens === undefined ? {} : { outputTokens: worker.outputTokens }),
         ...(worker.latencyMs === undefined ? {} : { latencyMs: worker.latencyMs }),
