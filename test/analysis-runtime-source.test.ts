@@ -367,14 +367,15 @@ test('built JSONL selects a Runtime-written durable run without granting control
   const started = new Promise<void>((resolveReady) => {
     ready = resolveReady
   })
-  await assert.rejects(
+  let recording: Promise<void> | undefined
+  try {
+    await assert.rejects(
     recordRuntimeRun(runDir, runId, undefined, 0.5, true),
     /first attempt failed after worker settlement/u,
   )
   const failed = await loadTopSnapshot(runDir, { runDir })
   assert.equal(failed.pursuit?.runs.at(-1)?.totals.inclusive.usdEstimated, 0.5)
-  const recording = recordRuntimeRun(runDir, runId, { ready: () => ready(), release: held })
-  try {
+    recording = recordRuntimeRun(runDir, runId, { ready: () => ready(), release: held })
     await Promise.race([
       started,
       recording.then(() => {
@@ -495,7 +496,7 @@ test('built JSONL selects a Runtime-written durable run without granting control
     assert.deepEqual(await runBytes(runDir), before)
   } finally {
     release()
-    await recording.catch(() => {})
+    await recording?.catch(() => {})
     await session?.forceStop()
     await rm(root, { recursive: true, force: true })
   }
