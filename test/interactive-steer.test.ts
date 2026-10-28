@@ -102,40 +102,39 @@ test('retained interactive runs advertise steering from the provider prompt cont
   assert.equal(interactiveRunCapabilities(await prepared(fixture)).controls.steer, true)
 })
 
-test('fresh processes steer a started run once per operation id, one turn each', async () => {
+test('steers reconnect from the started admission and deliver each operation once', async () => {
   const fixture = new InteractiveEnvironmentFixture()
   const journalRoot = await mkdtemp(join(tmpdir(), 'braid-interactive-steer-'))
   const { sessionId, recovery } = await startedRun(fixture, journalRoot)
-  const steer = (operationId: string, text: string) =>
-    braidProcess(fixture, journalRoot).steerRun({ runId, operationId, text, ...recovery })
+  const steer = (port: TangleRetainedInteractiveExecutionPort, operationId: string, text: string) =>
+    port.steerRun({ runId, operationId, text, ...recovery })
 
-  // Disconnect: the starting process is gone; each steer reconnects from the durable admission.
-  assert.deepEqual(await steer('steer-1', 'Run the tests.'), {
+  // Disconnect: the starting process is gone; this process reconnects from the durable admission.
+  const steering = braidProcess(fixture, journalRoot)
+  assert.deepEqual(await steer(steering, 'steer-1', 'Run the tests.'), {
     operationId: 'steer-1',
     outcome: 'accepted',
     detail: 'steered',
   })
-  // Replay: the same operation from another process is the provider's held result.
-  assert.equal((await steer('steer-1', 'Run the tests.')).outcome, 'already-applied')
-  // The same operation id with different text never reaches the agent.
-  assert.deepEqual(await steer('steer-1', 'Delete the tests.'), {
+  // Replay: the same operation under the same claim is the provider's held result.
+  assert.equal((await steer(steering, 'steer-1', 'Run the tests.')).outcome, 'already-applied')
+  // The prompt digest binds the claim, so another process's claim never re-delivers the operation;
+  // Braid's durable control ledger answers that repeat before it reaches the port.
+  assert.deepEqual(await steer(braidProcess(fixture, journalRoot), 'steer-1', 'Run the tests.'), {
     operationId: 'steer-1',
     outcome: 'rejected',
     detail: 'operation-conflict',
   })
-  // Duplicate events: two processes race one new operation. The provider delivers it once; the
-  // loser either reads the held result or loses its control generation, which Braid records as
-  // unknown and reconciles with the same operation id.
+  // Duplicate events: two processes race one new operation; the provider delivers it once.
   const raced = await Promise.all(
     [0, 1].map(() =>
-      steer('steer-2', 'Summarize.').then(
+      steer(braidProcess(fixture, journalRoot), 'steer-2', 'Summarize.').then(
         (receipt) => receipt.outcome,
-        () => 'stale-claim',
+        () => 'superseded-claim',
       ),
     ),
   )
   assert.equal(raced.filter((outcome) => outcome === 'accepted').length, 1)
-  assert.equal((await steer('steer-2', 'Summarize.')).outcome, 'already-applied')
 
   assert.deepEqual(fixture.prompts, ['Run the tests.', 'Summarize.'])
   assert.deepEqual(await turnOperations(journalRoot, sessionId), ['steer-1', 'steer-2'])
