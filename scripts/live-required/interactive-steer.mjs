@@ -42,8 +42,13 @@ export async function steerTwiceThroughBraid(packed, config, identity) {
   return { operationId, attempts }
 }
 
-/** Count Runtime's `agent.turn` records per steer operation in the run's observer journal. */
-export async function steerTurnsFromJournal(config, sessionId, operationIds) {
+/**
+ * Count Runtime's `agent.turn` records per steer operation in the run's observer journal.
+ * Returns false when the proof ran without `--steer`.
+ */
+export async function steerTurnsFromJournal(config, sessionId, steers) {
+  if (!steers.every(Boolean)) return false
+  const operationIds = steers.map((attempt) => attempt.operationId)
   const path = join(
     dirname(config.environment.BRAID_STATE_PATH),
     'runtime-journal',
