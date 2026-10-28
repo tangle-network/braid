@@ -94,10 +94,15 @@ process.on(
         await receipt.completion
         result = { acknowledgement: receipt.acknowledgement }
       } else if (input.command === 'reconnect') {
-      const completion = app.reconnectRun(input)
-      await Promise.race([broker.waitForHandle(input.runId), completion.then(() => { throw new Error('Reconnect ended before handle publication') })])
-      void completion.catch(() => undefined)
-    } else if (input.command === 'shutdown') {
+        const completion = app.reconnectRun(input)
+        await Promise.race([
+          broker.waitForHandle(input.runId),
+          completion.then(() => {
+            throw new Error('Reconnect ended before handle publication')
+          }),
+        ])
+        void completion.catch(() => undefined)
+      } else if (input.command === 'shutdown') {
         await app.shutdown({ operationId: input.operationId }).completion
         await app.close()
       } else if (input.command === 'state') result = app.state()
