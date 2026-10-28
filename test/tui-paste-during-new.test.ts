@@ -224,7 +224,11 @@ for (const timing of TIMINGS) {
         terminal.sendInput('\r')
         await waitUntil('run A focus', () => app.state().focusedRunId === runA?.id, screen)
         await terminal.waitForRender()
-        for (let back = 0; back < 3 && /activity/iu.test(screen().join('\n')); back += 1) {
+        for (
+          let back = 0;
+          back < 4 && !/type \/ for commands/u.test(screen().join('\n'));
+          back += 1
+        ) {
           terminal.sendInput('\u001b')
           await terminal.waitForRender()
         }
