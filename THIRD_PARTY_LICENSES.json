@@ -87,6 +87,11 @@
       "version": "1.1.2"
     },
     {
+      "license": "Unknown",
+      "name": "@tangle-network/agent-profile-materialize",
+      "version": "1.1.4"
+    },
+    {
       "license": "MIT",
       "name": "@tangle-network/agent-provider-cli-bridge",
       "version": "2.0.0"
