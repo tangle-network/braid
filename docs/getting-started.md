@@ -152,6 +152,27 @@ Braid needs secure storage for credentials and the conversation database key.
 On a headless machine, use the protected external key-file options described in [security and storage](07-security-and-privacy.md#local-state-encryption).
 Do not put a database key inside the agent's workspace or regenerate it for an existing database.
 
+## Start without the setup screens
+
+Pass the profile, connection, and first task on the command line:
+
+```bash
+braid --profile ./agent.json --connection <id> --prompt "Find where this project handles authentication."
+```
+
+`--profile` accepts a profile file or the name of a profile bundled with the package.
+`--prompt` sends one message after connection setup finishes.
+
+For an unattended start, add `--plain --config <file> --database-key-file <file>`.
+Keep the key file at mode `0600` outside the workspace, as [security and storage](07-security-and-privacy.md#local-state-encryption) describes.
+
+To reach a loopback CLI Bridge without a saved credential, set `BRAID_CLI_BRIDGE_ENDPOINT` and `BRAID_CLI_BRIDGE_AUTH` in the environment.
+Braid sends the credential only to that endpoint's origin, and a saved credential reference takes precedence.
+Never pass a bearer value as a command argument or put it in the configuration file.
+
+To open an existing Runtime graph without starting a turn, pass `--remote-env NAME`, where the environment variable `NAME` holds Runtime's read capability as JSON.
+In `braid rpc`, use `refresh_supervision` and `send` instead.
+
 ## More controls
 
 Use `/help <word>` to search the command registry.
