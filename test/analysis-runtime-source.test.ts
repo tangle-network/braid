@@ -113,6 +113,13 @@ async function recordRuntimeRun(
             (async function* () {
               yield { kind: 'iteration' }
               yield { kind: 'tokens', input: 5, output: 5 }
+              yield {
+                kind: 'cost',
+                usd: 0.125,
+                usdKnown: false,
+                usdEstimated: 0.125,
+                provenance: 'catalog-estimate',
+              }
             })(),
           traceSource: () => ({ onSpan: () => () => {}, collect: async () => [span] }),
           teardown: async () => ({ destroyed: true }),
