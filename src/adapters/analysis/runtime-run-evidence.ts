@@ -34,9 +34,9 @@ export async function readRuntimeRunEvidence(
     runId,
     runDir,
     pursuitId: projection.pursuitId,
-    chainTip: projection.chainTip,
-    sequence: projection.sequence,
+    lastSequence: Math.max(...attempts.map((attempt) => attempt.lastSequence)),
     settled: attempts.every((attempt) => attempt.status !== 'running'),
+    // Runtime refuses a run directory with more than one root, so its spans are this run's.
     spans: (await durableRunToolSpans(runDir)).map(redactedSpan),
   }
 }

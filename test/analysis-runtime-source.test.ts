@@ -243,6 +243,15 @@ test('a Runtime durable run is analyzed, cited and replayed without a Braid run'
     assert.deepEqual(finding?.citations[0]?.span, { traceId: `${runId}:s0`, spanId: 'edit-1' })
     assert.equal(analyst.requests.length, 1)
 
+    const promoted = await rpc(durable.app, [
+      {
+        command: 'promote_analysis',
+        operationId: 'op-promote',
+        params: { analysisId: first.analysis.id, findingIds: ['finding-runtime'] },
+      },
+    ])
+    assert(promoted.some((item) => item.type === 'ack'), JSON.stringify(promoted))
+
     const wrongRun = await rpc(durable.app, [analyze(`runtime:run:other@${runDir}`, 'op-2')])
     assert(wrongRun.some((item) => item.type === 'error' || item.type === 'ack'))
     assert.match(JSON.stringify(wrongRun), /not recorded in/u)

@@ -60,9 +60,8 @@ export interface FrozenAnalysisEvent {
 /** One Runtime durable run as Runtime recorded it, read through Runtime's public readers. */
 export interface RuntimeRunEvidence extends RuntimeRunReference {
   readonly pursuitId: string
-  /** Observer journal digest-chain tip and length when the run was read. */
-  readonly chainTip: string
-  readonly sequence: number
+  /** This run's last observer record; later records for other work leave the source unchanged. */
+  readonly lastSequence: number
   /** Every attempt of the run has a terminal observer record. */
   readonly settled: boolean
   /** Redacted root-stream and worker tool spans, one trace per Runtime node. */
