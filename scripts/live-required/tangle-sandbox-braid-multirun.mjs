@@ -321,11 +321,8 @@ function isActive(status) {
   return !TERMINAL_STATUSES.has(status)
 }
 
-/**
- * One provider event legitimately backs a row in several activity families (its `event:` row, an
- * `activity:` row, an answered permission's `interaction:` row), so a duplicate is the same source
- * event twice within one family or one message part list.
- */
+// One provider event backs rows in several families (`event:`, `activity:`, `interaction:`), so a
+// duplicate is one source event twice in one family or one message part list.
 function eventKeysForRun(frame, runId) {
   const activityKeys = (frame?.view?.activity ?? [])
     .filter((item) => item.runId === runId && typeof item.sourceEventId === 'string')
@@ -459,10 +456,12 @@ function eventControl(event) {
   return payload?.value?.control ?? payload?.control?.control
 }
 
+// The frame keeps 256 events; a late acknowledgement can outlive its request in that window.
+const CANCEL_RECORDS = new Set(['run.control.requested', 'run.control.acknowledged'])
 export function frameCancellationDispatch(frame, runId) {
   const event = (Array.isArray(frame?.events) ? frame.events : []).find((candidate) => {
     return (
-      eventKind(candidate) === 'run.control.requested' &&
+      CANCEL_RECORDS.has(eventKind(candidate)) &&
       eventRunId(candidate) === runId &&
       eventControl(candidate) === 'cancel' &&
       typeof eventOperationId(candidate) === 'string' &&
