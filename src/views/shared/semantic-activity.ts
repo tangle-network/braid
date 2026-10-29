@@ -9,15 +9,9 @@ import {
   resolveScope,
   type SemanticQueryScope,
 } from './semantic-query-scope.js'
-import type {
-  ActivityQueryResult,
-  SemanticActivityItem,
-  SemanticNodeType,
-} from './semantic-query-types.js'
+import type { ActivityQueryResult, SemanticActivityItem } from './semantic-query-types.js'
 
-function safe(value: string): string {
-  return sanitizeTerminalText(value)
-}
+const safe = sanitizeTerminalText
 
 function safeTitle(value: string): string {
   return sanitizeTitle(value) || '[untitled]'
@@ -208,11 +202,6 @@ function compare(
   return order === 0 ? compareSemanticText(left.id, right.id) : order
 }
 
-/**
- * Keeps the newest `limit` items and the rows of the newest `limit` runs. A run row sorts at its
- * admission time, so concurrent streaming would otherwise push the runs out of the window and leave
- * the runs list without the run a person wants to focus.
- */
 function newestWithRuns(
   items: readonly SemanticActivityItem[],
   limit: number,
@@ -220,8 +209,16 @@ function newestWithRuns(
   const firstRecent = items.length - limit
   const runRows = items.flatMap((item, index) => (isRunRow(item) ? [index] : []))
   const firstRun = runRows.at(-limit) ?? runRows[0] ?? items.length
+  const newestIdentity = new Map<string, number>()
+  for (const [index, item] of items.entries()) {
+    if (item.runId === undefined || item.sourceEventId === undefined) continue
+    newestIdentity.set(item.runId, index)
+  }
   return items.filter(
-    (item, index) => index >= firstRecent || (index >= firstRun && isRunRow(item)),
+    (item, index) =>
+      index >= firstRecent ||
+      (index >= firstRun && isRunRow(item)) ||
+      [...newestIdentity.values()].includes(index),
   )
 }
 
@@ -235,7 +232,7 @@ export function queryActivity(
     readonly conversationId?: string
     readonly branchId?: string
     readonly runId?: string
-    /** Bounds the feed to the newest items; the newest `limit` run rows are always kept. */
+    /** Newest rows, recent run rows, and each run's newest provider-event row. */
     readonly limit?: number
   } = {},
 ): ActivityQueryResult {
@@ -298,5 +295,3 @@ export function queryActivity(
     activity,
   }
 }
-
-export type { SemanticNodeType }
