@@ -9,6 +9,7 @@ import {
   OPENINFERENCE_SPAN_KIND,
   OUTPUT_VALUE,
 } from '@tangle-network/agent-eval/trace-attributes'
+import type { ToolSpan } from '@tangle-network/agent-eval/traces'
 import type { FrozenAnalysisEvent } from '../../app/analysis-types.js'
 import { profileModelSettings } from '../../app/profile-model-settings.js'
 import type { TurnUsage } from '../../domain/entities.js'
@@ -201,4 +202,16 @@ export function analysisEventAttributes(
   const error = analysisEventError(event)
   if (error !== undefined) attributes['error.message'] = safeAnalysisText(error)
   return attributes
+}
+
+export function redactedSpan(span: ToolSpan): ToolSpan {
+  return {
+    ...span,
+    args: safeAnalysisValue(span.args),
+    ...(span.result === undefined ? {} : { result: safeAnalysisValue(span.result) }),
+    ...(span.error === undefined ? {} : { error: safeAnalysisText(span.error) }),
+    ...(span.attributes === undefined
+      ? {}
+      : { attributes: safeAnalysisValue(span.attributes) as Record<string, unknown> }),
+  }
 }

@@ -26,12 +26,12 @@ import {
   nonEmpty,
   objectValue,
 } from './invariants-base.js'
+import { assertNativeChildren } from './invariants-native-children.js'
 import {
   assertProviderSessionIdentifier,
   assertRetainedRunAdmission,
 } from './invariants-retained-admission.js'
 import { assertAutomationRuleRecord } from './invariants-runtime.js'
-import { assertNativeChildren } from './invariants-native-children.js'
 import { safePublicIdentifier } from './provider-values.js'
 
 export function assertRunRecord(record: RunRecord): void {
@@ -279,7 +279,18 @@ export function assertAnalysisRecord(record: AnalysisRecord): void {
     if (record.source.runId !== undefined)
       fail('analysis.source names both a Braid and a Runtime run')
     nonEmpty(record.source.runtimeRun.runId, 'analysis.source.runtimeRun.runId')
-    nonEmpty(record.source.runtimeRun.runDir, 'analysis.source.runtimeRun.runDir')
+    const runtime = record.source.runtimeRun
+    if (runtime.runDir !== undefined) {
+      if (runtime.remoteEndpointEnv !== undefined) fail('analysis source has two Runtime locations')
+      nonEmpty(runtime.runDir, 'analysis.source.runtimeRun.runDir')
+    } else if (
+      !/^[A-Z_][A-Z0-9_]*$/u.test(runtime.remoteEndpointEnv) ||
+      runtime.checkpoint === undefined
+    ) {
+      fail('analysis source requires a protected endpoint reference and captured checkpoint')
+    } else {
+      assertJsonValue(runtime.checkpoint, 'analysis.source.runtimeRun.checkpoint')
+    }
   }
   if (record.source.throughMessageId !== undefined)
     assertEntityId('message', record.source.throughMessageId, 'analysis.source.throughMessageId')

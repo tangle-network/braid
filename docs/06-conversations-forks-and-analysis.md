@@ -309,6 +309,10 @@ Braid resolves the selected run or branch boundary to an immutable source record
 
 The source record receives a digest before analysis starts.
 
+The existing `runtime:<runId>@<reference>` source accepts an absolute local run directory or an uppercase environment reference for a remote Workflow run. The remote environment value is the same protected read-endpoint JSON used by remote supervision: `{ "url": "https://id.tangle.tools/v1/workflows/<workflowId>/runs/<runId>", "headers": { "Authorization": "<resolved inside the calling process>" } }`. Braid requests `trace=1` and refuses redirects. The endpoint and header values never enter the journal, source URI, or analysis result.
+
+The frozen remote source retains the Workflow run identifier separately from the observed Runtime root identifier. Its checkpoint records the captured workflow revision, source and graph digests, Runtime namespace/generation/revision, owner state, run status and attempt count, plus the API's exact trace completeness and gaps. Those metadata also enter the existing bounded trace tools so the analyst can see missing evidence. A changed checkpoint refuses reuse; a partial, active, or still-owned capture is never labeled complete. HTTP failures and raced reads remain refusals, never local-directory fallbacks.
+
 Late provider events cannot enter that analysis silently; the user starts a new analysis for an updated source.
 
 An incomplete source is allowed only after the analyst and user-visible result both carry the missing range.

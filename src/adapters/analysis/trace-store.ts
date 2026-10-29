@@ -232,13 +232,27 @@ function toolTraceText(spans: readonly ToolSpan[]): string {
 export function buildAnalysisTraceStore(evidence: FrozenAnalysisEvidence): AnalysisTraceBundle {
   verifyFrozenAnalysisSource(evidence)
   if (evidence.runtime !== undefined) {
+    const runtime = evidence.runtime
     // agent-eval refuses an empty trace: it cannot tell a tool-free run from a failed capture.
     if (evidence.runtime.spans.length === 0) {
       throw new AnalysisSourceError(`Runtime run ${evidence.runtime.runId} has no recorded spans`)
     }
     return {
       store: createBoundedTraceAnalysisStore(
-        toolSpansToTraceAnalysisStore([...evidence.runtime.spans]),
+        toolSpansToTraceAnalysisStore(
+          runtime.spans.map((span) => ({
+            ...span,
+            attributes: {
+              ...span.attributes,
+              'braid.source.complete': evidence.source.complete,
+              ...(runtime.runDir !== undefined
+                ? {}
+                : {
+                    'braid.source.checkpoint': runtime.checkpoint,
+                  }),
+            },
+          })),
+        ),
       ),
       spans: [],
     }

@@ -8,6 +8,7 @@ import type {
   MessagePartRecord,
   MessageRecord,
   RunRecord,
+  RuntimeRunCheckpoint,
   RuntimeRunReference,
 } from '../domain/entities.js'
 import type { BraidEvent, BraidEventEnvelope } from '../domain/events.js'
@@ -57,14 +58,17 @@ export interface FrozenAnalysisEvent {
   readonly event: BraidEvent
 }
 
-/** One Runtime durable run as Runtime recorded it, read through Runtime's public readers. */
-export interface RuntimeRunEvidence extends RuntimeRunReference {
-  readonly pursuitId: string
-  /** This run's last observer record; later records for other work leave the source unchanged. */
-  readonly lastSequence: number
-  /** Every attempt of the run has a terminal observer record. */
+/** Public Runtime evidence, frozen with the actual local cursor or remote read fence. */
+export type RuntimeRunEvidence = (
+  | (Extract<RuntimeRunReference, { readonly runDir: string }> & {
+      readonly pursuitId: string
+      readonly lastSequence: number
+    })
+  | (Extract<RuntimeRunReference, { readonly remoteEndpointEnv: string }> & {
+      readonly checkpoint: RuntimeRunCheckpoint
+    })
+) & {
   readonly settled: boolean
-  /** Redacted root-stream and worker tool spans, one trace per Runtime node. */
   readonly spans: readonly ToolSpan[]
 }
 

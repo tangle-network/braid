@@ -24,6 +24,7 @@ interface StreamState extends RemoteAgentStream {
   readonly protectedPending: string
 }
 
+export const REMOTE_RUNTIME_READ_TIMEOUT_MS = 5_000
 const MAX_STREAM_CHARACTERS = 24_000
 
 function record(value: unknown): Record<string, unknown> {
@@ -87,7 +88,7 @@ function bounded(text: string): string {
     : text
 }
 
-function endpoint(name: string): {
+export function runtimeReadEndpoint(name: string): {
   readonly url: string
   readonly protectedHeaders: Record<string, string>
   readonly fingerprint: string
@@ -148,7 +149,7 @@ export class RemoteSupervisorWatcher {
   >()
 
   async snapshot(endpointEnv: string, workerId?: string): Promise<RemoteSupervisorObservation> {
-    const spec = endpoint(endpointEnv)
+    const spec = runtimeReadEndpoint(endpointEnv)
     let connection = this.#connections.get(endpointEnv)
     try {
       if (connection?.fingerprint !== spec.fingerprint) {
@@ -159,7 +160,7 @@ export class RemoteSupervisorWatcher {
           reader: await connectRemoteSupervisor({
             url: spec.url,
             protectedHeaders: spec.protectedHeaders,
-            timeoutMs: 5_000,
+            timeoutMs: REMOTE_RUNTIME_READ_TIMEOUT_MS,
           }),
           streams: new Map(),
         }
