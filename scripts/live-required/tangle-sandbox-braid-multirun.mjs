@@ -357,11 +357,8 @@ async function openActivityBrowser(runtime, label, timeoutMs) {
 }
 
 /**
- * Focus one run from the activity browser's runs list, as a user does: F2, Tab, one arrow, Enter.
- * The runs list keeps every run's row in admission order, newest first, and Tab starts on the
- * focused run (#169), so one arrow reaches the other run. Braid holds a permission form while the
- * browser is open, so each try closes the browser (never a form: Escape there denies it) and the
- * next try answers the held form first. Success is the frame focusing runId.
+ * Focus one run as a user does: F2, Tab (starts on the focused run, #169), one arrow, Enter. Braid
+ * holds forms while the browser is open, so each try closes it (never a form: Escape denies it).
  */
 async function focusRunFromActivityBrowser(runtime, runId, direction, label, timeoutMs) {
   return waitFor(
@@ -722,14 +719,16 @@ export function assertSuccessfulTerminalExit(exit, label) {
   assert.equal(exit?.exitCode, 0, `${label} Braid terminal process exited with a non-zero status`)
 }
 
+const STREAMED = new Set()
 export function assertFrameHasConcurrentRuns(frame, runIds) {
   assert.equal(runIds.length, 2, 'concurrent proof requires exactly two run ids')
   for (const runId of runIds) {
     const { stateRun } = runFromFrame(frame, runId)
     assert.ok(isActive(stateRun.status), `run ${runId} is not active`)
-    // The recorded state omits provider sequences; a run streamed once it has events or transcript.
-    const streamed = eventIdsForRun(frame, runId).length || assistantTranscriptForRun(frame, runId)
-    assert.ok(streamed, `run ${runId} has no streamed events`)
+    // Streamed once its events or transcript showed; the frame omits both when it is off screen.
+    if (eventIdsForRun(frame, runId).length || assistantTranscriptForRun(frame, runId))
+      STREAMED.add(runId)
+    assert.ok(STREAMED.has(runId), `run ${runId} has no streamed events`)
   }
   const activeOwnership = frame.state?.activeRuns?.filter((entry) => runIds.includes(entry.runId))
   assert.equal(activeOwnership?.length, 2, 'frame did not expose two active run ownership records')
