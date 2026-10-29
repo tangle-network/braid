@@ -1,13 +1,13 @@
 import { join } from 'node:path'
 import { defineAgentProfile } from '@tangle-network/agent-interface'
-import { FileCredentialStore } from './file-credentials.js'
 import { NativeInteractiveRunBroker } from '../../src/adapters/runtime/native-interactive-run-broker.js'
 import type { PreparedTangleRetainedConnection } from '../../src/adapters/runtime/production-tangle-sandbox-backend.js'
 import { TangleRetainedInteractiveExecutionPort } from '../../src/adapters/runtime/tangle-retained-interactive-execution.js'
-import { createDurableBraidApplication } from '../../src/startup/durable-runtime.js'
 import { canonicalDigest } from '../../src/domain/canonical.js'
 import { createOperationId, parseDigestValue } from '../../src/domain/ids.js'
 import type { RuntimeEventEnvelope } from '../../src/domain/runtime-events.js'
+import { createDurableBraidApplication } from '../../src/startup/durable-runtime.js'
+import { FileCredentialStore } from './file-credentials.js'
 import { networkInteractiveProvider } from './interactive-provider-network.js'
 
 const root = process.env.STEER_TEST_ROOT ?? ''
@@ -51,7 +51,7 @@ const { app } = await createDurableBraidApplication({
   profile,
   execution,
   credentialStore: new FileCredentialStore(join(root, 'credentials')),
-  cancelTimeoutMs: Number(process.env.STEER_TEST_TIMEOUT ?? 5_000) < 1_000 ? 30 : 5_000,
+  ...(Number(process.env.STEER_TEST_TIMEOUT ?? 5_000) < 1_000 ? { cancelTimeoutMs: 30 } : {}),
   ...{ steerTimeoutMs: Number(process.env.STEER_TEST_TIMEOUT ?? 5_000) },
 })
 await app.whenDurable()

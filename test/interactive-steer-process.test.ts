@@ -166,6 +166,7 @@ test('live owner survives a second process steer, replay, duplicate event, disco
           : undefined,
     })
     assert.equal(duplicate.state.runs[0]?.lastProviderSequence, 1)
+    server.delay('stop', 5_500)
     const cancelled = await recovered.request('cancel', { runId: run.id })
     assert.equal(
       cancelled.result?.acknowledgement?.outcome,
@@ -199,7 +200,7 @@ test('steer deadline leaves delivery alive and late acceptance settles durably t
     const started = await owner.request('send', { text: 'Inspect the workspace.' })
     const run = started.state.runs[0]
     assert.ok(run?.providerSessionId)
-    server.delayPrompts(400)
+    server.delay('sendPrompt', 400)
     const steering = await child(root, server.endpoint, 60)
     children.push(steering)
     const params = { runId: run.id, text: 'Summarize.', operationId: 'op-late-steer' }

@@ -843,6 +843,10 @@ Explicit controls still resolve the exact retained Runtime handle. Implicit shut
 only that process's owned observations. Journal transitions synchronize committed events across
 processes before allocating sequences, so a steer receipt cannot break the TUI's next event.
 
+Cancellation budgets connection recovery, authority validation, and provider stop before its
+acknowledgement deadline aborts dispatch. The default and `cancelTimeoutMs` override are owned
+by [the application](../src/app/application.ts). A completed status alone never proves cancellation.
+
 Steer uses its own acknowledgement deadline, independent of cancellation. Its deadline bounds
 the foreground receipt, not the provider send. A late `accepted` settles the durable operation;
 steer uncertainty never changes run status. Closing the control process drains late settlement

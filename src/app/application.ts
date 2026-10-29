@@ -109,7 +109,7 @@ import { RuntimeSelection } from './runtime-selection.js'
 export type { BraidApplicationOptions, CancelInput, CancelReceipt } from './application-options.js'
 
 const MAX_MESSAGE_BYTES = 1024 * 1024
-const DEFAULT_CANCEL_TIMEOUT_MS = 5_000
+const DEFAULT_CANCEL_TIMEOUT_MS = 60_000
 const DEFAULT_STEER_TIMEOUT_MS = 60_000
 
 /** Never a real send operation: it only probes the next send's execution snapshot. */
