@@ -1,7 +1,7 @@
 // Drives Braid's terminal the way a user does: waits, the activity browser, permission forms, and
 // pasted prompts. The live proofs share it so each decides from what the terminal shows.
 import { pause, typeText } from '../live-demo/terminal.mjs'
-import { countProtectedWork, redactString } from '../proof-tools.mjs'
+import { countProtectedWork } from '../proof-tools.mjs'
 import { permissionFormAnswer } from './tangle-sandbox-braid-stress-support.mjs'
 import { activityBrowserOpen, runsTabOpen, transcriptSurfaceReady } from './terminal-screen.mjs'
 
@@ -104,12 +104,7 @@ export async function focusRunFromActivityBrowser(runtime, runId, direction, lab
   )
 }
 
-/**
- * Answer each permission a run raises through its terminal form, the way a user answers it, and
- * keep a receipt. A model may ask for a command the prompt did not name (LIVE-07: an exploratory
- * `ls` in branch A). At 48da449 the form took the composer and swallowed branch B's prompt; Braid
- * now holds a form that arrives during typing in the status line, so the proof opens it with alt+p.
- */
+/** Answer visible permission forms through the terminal and retain their journal outcomes. */
 async function answerPendingPermissions(runtime, frame, timeoutMs) {
   const refused = runtime.permissions.find((receipt) => !receipt.answerable)
   if (refused !== undefined)
@@ -117,35 +112,37 @@ async function answerPendingPermissions(runtime, frame, timeoutMs) {
   // Keys typed while the activity browser is open go to the browser; answer once it closes.
   if (activityBrowserOpen(runtime.screen())) return false
   let answered = false
-  // The form on screen is the head of the queue; answer in queue order so receipts match it.
-  const queue = [...(frame?.view?.interactions ?? [])].sort(
-    (left, right) => (left.queuePosition ?? 0) - (right.queuePosition ?? 0),
-  )
-  for (const interaction of queue) {
+  // Braid prioritizes the conversation on screen, not global queue order. Read the form's
+  // request N/M heading and refresh after each answer; another run may ask while it is open.
+  while (frame?.view?.interactions?.length > 0) {
+    await openDeferredInteraction(runtime, timeoutMs)
+    const interaction = await retryUntil(
+      'visible permission identity',
+      async () => {
+        frame = await runtime.captureState(timeoutMs)
+        const queue = frame.view.interactions
+        const heading = runtime.screen().match(/permission · request (\d+)\/(\d+)/u)
+        if (!FORM_OPEN.test(runtime.screen())) return undefined
+        if (heading === null) return queue.length === 1 ? queue[0] : undefined
+        if (Number(heading[2]) !== queue.length) return undefined
+        return queue.find((item) => item.queuePosition === Number(heading[1]) - 1)
+      },
+      timeoutMs,
+    )
     const { interactionId } = interaction
     const recorded = runtime.permissions.find((receipt) => receipt.interactionId === interactionId)
-    if (recorded?.accepted) continue
     const answer = permissionFormAnswer(interaction)
-    const command = interaction.request?.subject?.input?.command
-    // `accepted` turns true only once the form leaves the queue after the typed answer. A still
-    // queued form whose earlier answer did not land is answered again on its existing receipt:
-    // 0.3.5's run 5 left one unanswered after a poll error, and its run's cancel then voided it.
     const receipt = recorded ?? {
       runId: interaction.runId,
       interactionId,
       kind: interaction.kind,
       subject: interaction.subject?.title ?? null,
-      ...(typeof command === 'string'
-        ? { commandPreview: redactString(command).slice(0, 240) }
-        : {}),
       answerable: answer !== undefined,
       accepted: false,
     }
     if (recorded === undefined) runtime.permissions.push(receipt)
     if (answer === undefined)
       throw new ProofRefusal(`The proof cannot answer a ${interaction.kind} request`)
-    await runtime.waitForStable(1_000).catch(() => undefined)
-    await openDeferredInteraction(runtime, timeoutMs)
     // Clear anything a racing prompt left in the form, then enter the answer in one paste.
     const clear = `${CURSOR_LINE_END}${DELETE_TO_LINE_START}`
     runtime.input(`${clear}${bracketedPaste(JSON.stringify(answer))}\r`)
@@ -163,6 +160,7 @@ async function answerPendingPermissions(runtime, frame, timeoutMs) {
       throw new ProofRefusal(`Braid did not accept the typed permission answer (${outcome})`)
     receipt.accepted = true
     answered = true
+    frame = await runtime.captureState(timeoutMs)
   }
   return answered
 }
