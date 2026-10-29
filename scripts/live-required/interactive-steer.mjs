@@ -40,12 +40,12 @@ export async function steerTwiceThroughBraid(packed, config, identity) {
   for (const attempt of attempts) {
     assert.match(
       attempt.initialStatus ?? '',
-      /^(running|detached)$/u,
+      /^(running|streaming|detached)$/u,
       `steer startup changed run state: ${JSON.stringify(attempt)}`,
     )
     assert.match(
       attempt.run.status ?? '',
-      /^(running|detached)$/u,
+      /^(running|streaming|detached)$/u,
       `steer changed run state: ${JSON.stringify(attempt)}`,
     )
   }

@@ -184,7 +184,7 @@ async function present(
         runId,
       })
       const run = state.runs.find((candidate) => candidate.id === runId)
-      if (run?.status !== 'running') {
+      if (run?.status !== 'streaming') {
         execution.settle(runId, { kind: 'detached' })
         await runCompletion.catch(() => undefined)
         return {
