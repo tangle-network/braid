@@ -1,6 +1,5 @@
 import type {
   AgentExactRunControlRef,
-  AgentInteractiveSessionControlClaim,
   AgentProfile,
   AgentWorkspaceBranchingProvider,
   ConfidentialAttestationVerifier,
@@ -91,7 +90,6 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
   readonly #activeRuns = new Set<string>()
   readonly #detachRequested = new Set<string>()
   readonly #cancelledRuns = new Set<string>()
-  readonly #steerControls = new Map<string, AgentInteractiveSessionControlClaim>()
   readonly workspaceBranchingProvider?: AgentWorkspaceBranchingProvider
   readonly confidentialAttestationVerifier?: ConfidentialAttestationVerifier
 
@@ -387,6 +385,7 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
     const control = await claimRetainedInteractiveControl({
       handle,
       holderId: this.#holderId,
+      ...(this.#journalRoot === undefined ? {} : { delegation: 'accept' as const }),
       ...(controlSignal === undefined ? {} : { signal: controlSignal }),
     })
     const material = { operationId: input.operationId, ref: handle.ref, control }
@@ -419,8 +418,8 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
   /**
    * Deliver one prompt to the live process. A fresh `braid rpc` process reconnects the handle from
    * the started admission. The prompt digest binds the control claim, so the provider replays an
-   * operation id only under the claim that sent it: this process reuses its claim until expiry,
-   * and Braid's durable control ledger answers a repeat from another process.
+   * operation id only under the claim that sent it. Runtime resolves current authority before
+   * delivery; Braid's durable ledger answers repeats without resending under a changed claim.
    */
   async steerRun(
     input: {
@@ -452,28 +451,21 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
       }
     }
     const options = input.signal === undefined ? undefined : { signal: input.signal }
-    const send = async () => {
-      const material = {
-        operationId: input.operationId,
-        ref: handle.ref,
-        control: await this.#steerControl(input.runId, handle, options),
-        prompt: input.text,
-      }
-      return handle.sendPrompt(
-        { ...material, requestDigest: agentInteractiveSessionPromptRequestDigest(material) },
-        options,
-      )
+    const material = {
+      operationId: input.operationId,
+      ref: handle.ref,
+      control: await claimRetainedInteractiveControl({
+        handle,
+        holderId: this.#holderId,
+        ...(this.#journalRoot === undefined ? {} : { delegation: 'accept' as const }),
+        ...options,
+      }),
+      prompt: input.text,
     }
-    let acknowledgement: Awaited<ReturnType<typeof send>>
-    try {
-      acknowledgement = await send()
-    } catch (error) {
-      // An attached TUI's newer claim supersedes the cached one. One resend under a current claim
-      // is safe: a prompt the provider already holds answers conflict, never a second delivery.
-      this.#steerControls.delete(input.runId)
-      if (input.signal?.aborted) throw error
-      acknowledgement = await send()
-    }
+    const acknowledgement = await handle.sendPrompt(
+      { ...material, requestDigest: agentInteractiveSessionPromptRequestDigest(material) },
+      options,
+    )
     switch (acknowledgement.status) {
       case 'accepted':
         return { operationId: input.operationId, outcome: 'accepted', detail: 'steered' }
@@ -488,27 +480,6 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
           detail: acknowledgement.message ?? 'interactive-prompt-unknown',
         }
     }
-  }
-
-  async #steerControl(
-    runId: string,
-    handle: RetainedInteractiveRunHandle,
-    options: { readonly signal: AbortSignal } | undefined,
-  ): Promise<AgentInteractiveSessionControlClaim> {
-    const held = this.#steerControls.get(runId)
-    if (
-      held !== undefined &&
-      held.refDigest === canonicalCandidateDigest(handle.ref) &&
-      Date.parse(held.expiresAt) > Date.now() + 5_000
-    )
-      return held
-    const control = await claimRetainedInteractiveControl({
-      handle,
-      holderId: this.#holderId,
-      ...options,
-    })
-    this.#steerControls.set(runId, control)
-    return control
   }
 
   async #start(
@@ -735,7 +706,6 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
 
   #forgetHandle(runId: string): void {
     this.#handles.delete(runId)
-    this.#steerControls.delete(runId)
     this.#prepared.delete(runId)
     if (!this.#activeRuns.has(runId)) this.#cancelledRuns.delete(runId)
   }

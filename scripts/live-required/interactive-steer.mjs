@@ -37,6 +37,18 @@ export async function steerTwiceThroughBraid(packed, config, identity) {
   }
   const attempts = [await steerOnce(), await steerOnce()]
   const evidence = JSON.stringify(attempts)
+  for (const attempt of attempts) {
+    assert.match(
+      attempt.initialStatus ?? '',
+      /^(running|detached)$/u,
+      `steer startup changed run state: ${JSON.stringify(attempt)}`,
+    )
+    assert.match(
+      attempt.run.status ?? '',
+      /^(running|detached)$/u,
+      `steer changed run state: ${JSON.stringify(attempt)}`,
+    )
+  }
   assert.equal(attempts[0].outcome, 'accepted', `the first steer was not accepted: ${evidence}`)
   assert.ok(
     attempts[1].outcome === 'replayed' || attempts[1].outcome === 'already-applied',

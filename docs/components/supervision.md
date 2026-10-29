@@ -107,9 +107,12 @@ The observing TUI retains its stream while another process reads and requests st
 Startup and implicit shutdown leave another live process's observations alone. Journal transitions
 synchronize foreign receipts before the owner's next event. Steer has a separate acknowledgement
 deadline; a late acceptance settles its receipt without aborting delivery or changing run status.
-The current live provider refuses steering from a different holder while a terminal lease is
-active; [Runtime issue 2230](https://github.com/tangle-network/agent-runtime/issues/2230) blocks the
-attached-TUI acceptance case. A request or local integration result is not proof of delivery.
+The native presenter offers its provider claim through Runtime's explicit local delegation; a
+second process accepts the exact holder and generation, preserving attached input and resize.
+Runtime keeps full-control authority private to trusted local processes; observer exports grant
+no authority. Braid does not cache or share claims. A failed send is not resent under a new claim.
+[Runtime issue 2230](https://github.com/tangle-network/agent-runtime/issues/2230) and the attached
+LIVE-08 recording supply the producer and consumer proof.
 
 Cancel appears only when the runtime reports cancellation support.
 

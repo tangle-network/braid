@@ -31,6 +31,8 @@ export interface NativeInteractiveRunLease {
 export class NativeInteractiveRunBroker implements NativeInteractiveExecutionControl {
   readonly #entries = new Map<string, BrokerEntry>()
 
+  constructor(readonly delegation?: 'offer') {}
+
   open(runId: string): NativeInteractiveRunLease {
     const entry = this.#entry(runId)
     if (entry.opened) throw new Error(`Interactive run ${runId} already has an active execution`)
