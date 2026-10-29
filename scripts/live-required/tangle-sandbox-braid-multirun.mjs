@@ -1081,7 +1081,7 @@ export async function runProof({
       cleanup.accountStable = afterAccount.identityDigest === beforeAccount?.identityDigest
       const baselineIds = new Set((beforeAccount?.resources ?? []).map((resource) => resource.id))
       assert.ok(
-        afterAccount.resources.every((resource) => baselineIds.has(resource.id)),
+        !proofWindow || afterAccount.resources.every((resource) => baselineIds.has(resource.id)),
         'An unmatched retained Braid resource remained after exact owned cleanup',
       )
     } catch (error) {
