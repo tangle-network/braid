@@ -1164,7 +1164,7 @@ async function stopThroughBraid(binary, config, runId, timeoutMs) {
       )
       assert.ok(
         acknowledgement.outcome === 'accepted' || acknowledgement.outcome === 'replayed',
-        'Braid stop did not return an accepted or replayed outcome',
+        `Braid stop did not return an accepted or replayed outcome: ${JSON.stringify(acknowledgement)}`,
       )
       const terminal = await initialized.session.waitFor(
         'Braid interactive stop state',
