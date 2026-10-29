@@ -16,13 +16,11 @@ const safe = sanitizeTerminalText
 function safeTitle(value: string): string {
   return sanitizeTitle(value) || '[untitled]'
 }
-
 function elapsedMs(startedAt: string, endedAt: string | undefined): number | undefined {
   if (endedAt === undefined) return undefined
   const elapsed = Date.parse(endedAt) - Date.parse(startedAt)
   return Number.isFinite(elapsed) && elapsed >= 0 ? elapsed : undefined
 }
-
 function kindForActivity(type: string): SemanticActivityItem['kind'] {
   const normalized = type.toLowerCase()
   if (normalized.includes('tool')) return 'tool'
@@ -32,14 +30,12 @@ function kindForActivity(type: string): SemanticActivityItem['kind'] {
   if (normalized === 'run') return 'run'
   return 'system'
 }
-
 function add(
   output: SemanticActivityItem[],
   item: Omit<SemanticActivityItem, 'id'> & { readonly id: string },
 ): void {
   output.push(item)
 }
-
 function includeRun(
   state: BraidState,
   run: BraidState['runs'][number],
@@ -48,7 +44,6 @@ function includeRun(
 ): boolean {
   return (runId === undefined || run.id === runId) && isInScope(state, 'run', run.id, scope)
 }
-
 function activityForRun(run: BraidState['runs'][number], output: SemanticActivityItem[]): void {
   const runElapsedMs = elapsedMs(run.startedAt, run.terminalAt)
   add(output, {
@@ -117,7 +112,6 @@ function activityForRun(run: BraidState['runs'][number], output: SemanticActivit
     })
   }
 }
-
 function activityForAnalysis(analysis: BraidState['analyses'][number]): SemanticActivityItem {
   return {
     id: `analysis:${analysis.id}`,
@@ -131,7 +125,6 @@ function activityForAnalysis(analysis: BraidState['analyses'][number]): Semantic
     ...(analysis.source.runId === undefined ? {} : { runId: analysis.source.runId }),
   }
 }
-
 function activityForSupervisor(
   supervisor: BraidState['supervisors'][number],
 ): SemanticActivityItem {
@@ -149,7 +142,6 @@ function activityForSupervisor(
     ...(wallElapsedMs === undefined ? {} : { elapsedMs: wallElapsedMs }),
   }
 }
-
 function activityForWorker(
   worker: BraidState['workers'][number],
   rootRunId: string | undefined,
@@ -170,7 +162,6 @@ function activityForWorker(
     ...(wallElapsedMs === undefined ? {} : { elapsedMs: wallElapsedMs }),
   }
 }
-
 function activityForEnvironment(
   environment: BraidState['environments'][number],
   runId: string | undefined,
@@ -188,7 +179,6 @@ function activityForEnvironment(
     startedAt: environment.startedAt ?? environment.createdAt,
   }
 }
-
 function compare(
   left: SemanticActivityItem,
   right: SemanticActivityItem,
@@ -201,7 +191,6 @@ function compare(
   const order = (insertionOrder.get(left.id) ?? 0) - (insertionOrder.get(right.id) ?? 0)
   return order === 0 ? compareSemanticText(left.id, right.id) : order
 }
-
 function newestWithRuns(
   items: readonly SemanticActivityItem[],
   limit: number,
@@ -232,7 +221,6 @@ export function queryActivity(
     readonly conversationId?: string
     readonly branchId?: string
     readonly runId?: string
-    /** Newest rows, recent run rows, and each run's newest provider-event row. */
     readonly limit?: number
   } = {},
 ): ActivityQueryResult {

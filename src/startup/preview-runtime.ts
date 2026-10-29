@@ -57,6 +57,7 @@ export interface StartupPreview {
   readonly outputPolicyCleanup?: () => void
   readonly adopt: () => StartupPreviewHandoff
   readonly takeSignalOwnership: (handler: (exitCode: TerminalSignalExitCode) => void) => () => void
+  readonly consumeFrameRequest: () => boolean
   readonly close: () => void
 }
 
@@ -241,6 +242,7 @@ export function createStartupPreview(input: {
       signalCleanup ??= signals.takeOver(handler)
       return signalCleanup
     },
+    consumeFrameRequest: () => signals.consumeFrameRequest(),
     close: () => {
       stopPreview()
       if (signalCleanup === undefined) signals.dispose()

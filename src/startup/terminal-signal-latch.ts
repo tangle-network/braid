@@ -9,16 +9,18 @@ export type TerminalSignalExitCode = (typeof TERMINAL_EXIT_CODES)[TerminalSignal
 
 export interface TerminalSignalLatch {
   readonly takeOver: (handler: (exitCode: TerminalSignalExitCode) => void) => () => void
+  readonly consumeFrameRequest: () => boolean
   readonly dispose: () => void
 }
 
-/** Keeps process termination observable while the preview is visible, then transfers ownership. */
 export function createTerminalSignalLatch(
   initialHandler: (exitCode: TerminalSignalExitCode) => void,
 ): TerminalSignalLatch {
   let handler = initialHandler
   let latched: TerminalSignalExitCode | undefined
+  let frameRequested = false
   let disposed = false
+  const onFrameSignal = () => (frameRequested = true)
   const listeners = Object.fromEntries(
     Object.entries(TERMINAL_EXIT_CODES).map(([signal, exitCode]) => [
       signal,
@@ -32,12 +34,14 @@ export function createTerminalSignalLatch(
 
   for (const signal of Object.keys(TERMINAL_EXIT_CODES) as TerminalSignal[])
     process.on(signal, listeners[signal])
+  process.on('SIGUSR2', onFrameSignal)
 
   const dispose = () => {
     if (disposed) return
     disposed = true
     for (const signal of Object.keys(TERMINAL_EXIT_CODES) as TerminalSignal[])
       process.off(signal, listeners[signal])
+    process.off('SIGUSR2', onFrameSignal)
   }
 
   return Object.freeze({
@@ -45,6 +49,11 @@ export function createTerminalSignalLatch(
       handler = nextHandler
       if (latched !== undefined) nextHandler(latched)
       return dispose
+    },
+    consumeFrameRequest: () => {
+      const requested = frameRequested
+      frameRequested = false
+      return requested
     },
     dispose,
   })
