@@ -3,16 +3,16 @@ export const TRANSCRIPT_FOOTER = 'type / for commands ·'
 
 // Each activity-browser tab titles its first line `activity`, `runs`, `analyses` or `workers`,
 // then `›` or `·`; the browser remembers its tab, so a proof can reopen it on any of them.
-const BROWSER_TAB = /^\s*(?:activity|runs|analyses|workers) [›·]/mu
+const BROWSER_TAB = /^\s*(activity|runs|analyses|workers) [›·]/mu
 
 /** Whether the activity browser is open on any tab, where keys go to the browser. */
 export function activityBrowserOpen(screen) {
   return typeof screen === 'string' && (screen.includes('· tab filter') || BROWSER_TAB.test(screen))
 }
 
-/** Whether the browser shows its runs tab, where Enter focuses the selected run. */
-export function runsTabOpen(screen) {
-  return typeof screen === 'string' && /^\s*runs [›·]/mu.test(screen)
+/** The selected browser tab, when its header is visible. */
+export function browserTab(screen) {
+  return typeof screen === 'string' ? BROWSER_TAB.exec(screen)?.[1] : undefined
 }
 
 export function transcriptSurfaceReady(screen) {

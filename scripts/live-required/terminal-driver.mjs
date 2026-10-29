@@ -3,7 +3,7 @@
 import { pause, typeText } from '../live-demo/terminal.mjs'
 import { countProtectedWork, redactString } from '../proof-tools.mjs'
 import { permissionFormAnswer } from './tangle-sandbox-braid-stress-support.mjs'
-import { activityBrowserOpen, runsTabOpen, transcriptSurfaceReady } from './terminal-screen.mjs'
+import { activityBrowserOpen, browserTab, transcriptSurfaceReady } from './terminal-screen.mjs'
 
 /** A proof failure that more polling cannot change; retryUntil rethrows it at once. */
 class ProofRefusal extends Error {}
@@ -76,32 +76,30 @@ async function openActivityBrowser(runtime, label, timeoutMs) {
 
 /**
  * Focus one run as a user does: F2, Tab (starts on the focused run, #169), one arrow, Enter. Braid
- * holds forms while the browser is open, so each try closes it (never a form: Escape denies it).
+ * holds forms while the browser is open; close only that browser (Escape denies a form).
  */
 export async function focusRunFromActivityBrowser(runtime, runId, direction, label, timeoutMs) {
-  return retryUntil(
-    `${label} focus`,
-    async () => {
-      await openActivityBrowser(runtime, label, timeoutMs)
-      // Tab cycles all, runs, analyses, workers; stop on runs whichever tab the browser reopened on.
-      for (let tab = 0; tab < 4 && !runsTabOpen(runtime.screen()); tab += 1) {
-        runtime.input('\t')
-        await runtime.waitForStable(300).catch(() => undefined)
-      }
-      runtime.input(`${direction}\r`)
-      const focused = async () => {
-        const frame = await runtime.captureState(timeoutMs)
-        return frame.view.focusedRunId === runId ? frame : undefined
-      }
-      const frame = await retryUntil(`${label} focus try`, focused, 5_000).catch(() => undefined)
-      for (let back = 0; back < 4 && activityBrowserOpen(runtime.screen()); back += 1) {
-        runtime.input('\u001b')
-        await runtime.waitForStable(500).catch(() => undefined)
-      }
-      return frame
-    },
-    timeoutMs,
-  )
+  await openActivityBrowser(runtime, label, timeoutMs)
+  // Observe each tab transition before sending another key; old output may already be quiet.
+  for (let tab = 0; tab < 4 && browserTab(runtime.screen()) !== 'runs'; tab += 1) {
+    const before = browserTab(runtime.screen())
+    runtime.input('\t')
+    await retryUntil(
+      `${label} browser tab`,
+      () => {
+        const after = browserTab(runtime.screen())
+        return after !== undefined && after !== before
+      },
+      5_000,
+    )
+  }
+  runtime.input(`${direction}\r`)
+  const frame = await waitForFrame(runtime, label, (f) => f.view.focusedRunId === runId, timeoutMs)
+  if (activityBrowserOpen(runtime.screen())) {
+    runtime.input('\u001b')
+    await retryUntil(label, () => !activityBrowserOpen(runtime.screen()), timeoutMs)
+  }
+  return frame
 }
 
 /** Answer visible permission forms through the terminal and retain their journal outcomes. */
