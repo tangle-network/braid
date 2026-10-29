@@ -61,7 +61,7 @@ async function openActivityBrowser(runtime, label, timeoutMs) {
   await retryUntil(
     `${label} activity browser`,
     async () => {
-      if (/activity/iu.test(runtime.screen())) return true
+      if (activityBrowserOpen(runtime.screen())) return true
       const frame = await runtime.captureState(timeoutMs)
       const answered = await answerPendingPermissions(runtime, frame, timeoutMs)
       if (answered || performance.now() - pressedAt > 3_000) {

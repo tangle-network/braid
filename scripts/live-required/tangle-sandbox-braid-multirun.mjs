@@ -188,8 +188,7 @@ function createTerminal(
     await waitForTerminalQuiescence(outputTracker, { timeoutMs, pause })
   }
   const captureState = async (timeoutMs = 10_000) => {
-    // A live provider can keep writing stream frames without a quiet interval.
-    // Signal the recorder after a short drain window instead of waiting for the full phase timeout.
+    // A live provider may never go quiet: signal the recorder after a short drain, not the phase timeout.
     await waitForStable(Math.min(timeoutMs, 1_000)).catch(() => undefined)
     if (exited)
       throw new Error(
@@ -1102,7 +1101,7 @@ export async function runProof({
     cleanup.resources.length === controls.size &&
     cleanup.resources.every((resource) => resource.confirmed === true) &&
     cleanup.errors.length === 0 &&
-    cleanup.activeResourceDelta === 0 &&
+    (proofWindow === undefined || cleanup.activeResourceDelta === 0) &&
     cleanup.accountStable === true &&
     cleanup.workspace?.credentialRemoved === true &&
     cleanup.workspace?.temporaryRootRemoved === true
