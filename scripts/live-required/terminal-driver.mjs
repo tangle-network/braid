@@ -1,7 +1,7 @@
 // Drives Braid's terminal the way a user does: waits, the activity browser, permission forms, and
 // pasted prompts. The live proofs share it so each decides from what the terminal shows.
 import { pause, typeText } from '../live-demo/terminal.mjs'
-import { countProtectedWork } from '../proof-tools.mjs'
+import { countProtectedWork, redactString } from '../proof-tools.mjs'
 import { permissionFormAnswer } from './tangle-sandbox-braid-stress-support.mjs'
 import { activityBrowserOpen, runsTabOpen, transcriptSurfaceReady } from './terminal-screen.mjs'
 
@@ -143,6 +143,7 @@ async function answerPendingPermissions(runtime, frame, timeoutMs) {
     if (recorded === undefined) runtime.permissions.push(receipt)
     if (answer === undefined)
       throw new ProofRefusal(`The proof cannot answer a ${interaction.kind} request`)
+    receipt.beforeAnswer = permissionCapture(runtime, frame)
     // Clear anything a racing prompt left in the form, then enter the answer in one paste.
     const clear = `${CURSOR_LINE_END}${DELETE_TO_LINE_START}`
     runtime.input(`${clear}${bracketedPaste(JSON.stringify(answer))}\r`)
@@ -151,7 +152,12 @@ async function answerPendingPermissions(runtime, frame, timeoutMs) {
     const outcome = await retryUntil(
       'permission answer',
       async () => {
-        const settled = permissionOutcome(await runtime.captureState(timeoutMs), interactionId)
+        frame = await runtime.captureState(timeoutMs)
+        receipt.afterAnswer ??= permissionCapture(runtime, frame)
+        const dispatches = permissionCapture(runtime, frame).dispatches
+        if (dispatches.length > 0) receipt.dispatches = dispatches
+        const settled = permissionOutcome(frame, interactionId)
+        if (settled !== 'unsettled') receipt.settlement = permissionCapture(runtime, frame)
         return settled === 'unsettled' ? undefined : settled
       },
       timeoutMs,
@@ -163,6 +169,31 @@ async function answerPendingPermissions(runtime, frame, timeoutMs) {
     frame = await runtime.captureState(timeoutMs)
   }
   return answered
+}
+
+/** Bounded, redacted evidence around typed answers; never records answer values. */
+function permissionCapture(runtime, frame) {
+  return {
+    at: new Date().toISOString(),
+    revision: frame?.view?.revision,
+    focusedRunId: frame?.view?.focusedRunId,
+    screen: redactString(runtime.screen()).slice(0, 6_000),
+    queue: (frame?.view?.interactions ?? []).slice(0, 16).map((item) => ({
+      runId: item.runId,
+      interactionId: item.interactionId,
+      queuePosition: item.queuePosition,
+    })),
+    dispatches: (frame?.events ?? [])
+      .filter((event) => /run\.interaction\.(?:response\.requested|responded)$/u.test(event.kind))
+      .slice(-16)
+      .map((event) => ({
+        sequence: event.sequence,
+        kind: event.kind,
+        runId: event.payload.runId,
+        interactionId: event.payload.value?.interactionId ?? event.payload.interactionId,
+        operationId: event.payload.value?.operationId ?? event.payload.operationId,
+      })),
+  }
 }
 
 // A permission form's footer. The `waiting · alt+p` notice hides while Ctrl+C has quit armed
@@ -193,9 +224,13 @@ export function permissionOutcome(frame, interactionId) {
     const payload = event?.payload ?? {}
     const id = payload.interactionId ?? payload.value?.interactionId ?? payload.interaction?.id
     if (id !== interactionId) continue
-    if (['run.interaction.response.requested', 'run.interaction.responded'].includes(event.kind))
-      return 'responded'
-    if (event.kind === 'run.interaction.cancelled')
+    if (event.kind === 'run.interaction.responded') {
+      const response = payload.value ?? payload
+      return response.outcome === 'accepted'
+        ? 'responded'
+        : `${response.outcome}: ${response.detail ?? 'unconfirmed response'}`
+    }
+    if (event.kind === 'run.interaction.cancelled' && payload.interaction?.reason !== 'resolved')
       outcome = `cancelled: ${payload.interaction?.reason ?? 'unknown reason'}`
   }
   return outcome
