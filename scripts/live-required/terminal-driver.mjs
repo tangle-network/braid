@@ -3,7 +3,7 @@
 import { pause, typeText } from '../live-demo/terminal.mjs'
 import { countProtectedWork, redactString } from '../proof-tools.mjs'
 import { permissionFormAnswer } from './tangle-sandbox-braid-stress-support.mjs'
-import { activityBrowserOpen, transcriptSurfaceReady } from './terminal-screen.mjs'
+import { activityBrowserOpen, runsTabOpen, transcriptSurfaceReady } from './terminal-screen.mjs'
 
 /** A proof failure that more polling cannot change; retryUntil rethrows it at once. */
 class ProofRefusal extends Error {}
@@ -83,8 +83,11 @@ export async function focusRunFromActivityBrowser(runtime, runId, direction, lab
     `${label} focus`,
     async () => {
       await openActivityBrowser(runtime, label, timeoutMs)
-      runtime.input('\t')
-      await pause(100)
+      // Tab cycles all, runs, analyses, workers; stop on runs whichever tab the browser reopened on.
+      for (let tab = 0; tab < 4 && !runsTabOpen(runtime.screen()); tab += 1) {
+        runtime.input('\t')
+        await runtime.waitForStable(300).catch(() => undefined)
+      }
       runtime.input(`${direction}\r`)
       const focused = async () => {
         const frame = await runtime.captureState(timeoutMs)

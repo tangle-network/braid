@@ -1,10 +1,18 @@
 // Readers for what Braid's terminal shows; the live proofs decide from these, not from timing.
 export const TRANSCRIPT_FOOTER = 'type / for commands ·'
 
-/** The activity list (its `tab filter` footer) or its runs tab, where keys go to the browser. */
+// Each activity-browser tab titles its first line `activity`, `runs`, `analyses` or `workers`,
+// then `›` or `·`; the browser remembers its tab, so a proof can reopen it on any of them.
+const BROWSER_TAB = /^\s*(?:activity|runs|analyses|workers) [›·]/mu
+
+/** Whether the activity browser is open on any tab, where keys go to the browser. */
 export function activityBrowserOpen(screen) {
-  if (typeof screen !== 'string') return false
-  return screen.includes('· tab filter') || screen.split('\n').some((l) => /^\s*runs ›/u.test(l))
+  return typeof screen === 'string' && (screen.includes('· tab filter') || BROWSER_TAB.test(screen))
+}
+
+/** Whether the browser shows its runs tab, where Enter focuses the selected run. */
+export function runsTabOpen(screen) {
+  return typeof screen === 'string' && /^\s*runs [›·]/mu.test(screen)
 }
 
 export function transcriptSurfaceReady(screen) {
