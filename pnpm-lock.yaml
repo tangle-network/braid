@@ -31,8 +31,8 @@ importers:
         specifier: 1.1.4
         version: 1.1.4(@tangle-network/agent-interface@5.10.2)
       '@tangle-network/agent-provider-cli-bridge':
-        specifier: 2.0.0
-        version: 2.0.0
+        specifier: 2.0.3
+        version: 2.0.3
       '@tangle-network/agent-provider-daytona':
         specifier: 0.6.0
         version: 0.6.0
@@ -40,8 +40,8 @@ importers:
         specifier: 4.5.0
         version: 4.5.0(@tangle-network/sandbox@1.0.33)
       '@tangle-network/agent-runtime':
-        specifier: 2.3.7
-        version: 2.3.7(@tangle-network/agent-eval@1.0.1)(@tangle-network/agent-interface@5.10.2)(@tangle-network/sandbox@1.0.33)
+        specifier: 3.0.1
+        version: 3.0.1(@tangle-network/agent-eval@1.0.1)(@tangle-network/agent-interface@5.10.2)(@tangle-network/sandbox@1.0.33)
       '@tangle-network/sandbox':
         specifier: 1.0.33
         version: 1.0.33
@@ -574,8 +574,8 @@ packages:
     peerDependencies:
       '@tangle-network/agent-interface': ^5.10.2
 
-  '@tangle-network/agent-provider-cli-bridge@2.0.0':
-    resolution: {integrity: sha512-Qu82wxPv0wxpZ4/Gs2iCYfTJCKkHyBcqhWumIHKJ0yrnhsgmUR5XtV326WcG/+Ujoyvs9m9aUN+aCenvhykvdQ==}
+  '@tangle-network/agent-provider-cli-bridge@2.0.3':
+    resolution: {integrity: sha512-9TMrcPqarpsWfNJ5+escdiEiAXqCbKi+XErcr/xHNgt7R64HjgzWEUjjrklWVqptIuQKQQhAyZhr7e9ZmDsptQ==}
     engines: {node: '>=22.19.0'}
 
   '@tangle-network/agent-provider-daytona@0.6.0':
@@ -591,8 +591,8 @@ packages:
     peerDependencies:
       '@tangle-network/sandbox': '>=0.60.88 <2.0.0'
 
-  '@tangle-network/agent-runtime@2.3.7':
-    resolution: {integrity: sha512-295UQyBvV9iFb0ZiEEIqA2xjgxcRQUdtQ27JV895oUVMgm/5iHAJypPqEKwKEfgoVkxxljrKkmKni2GANxqfPw==}
+  '@tangle-network/agent-runtime@3.0.1':
+    resolution: {integrity: sha512-0k24XVp5iLlm1/kzm2Uqh7By1dsrUo6v9r7li1tTFx5Ywxl2ovqBxIRDZxVltNEfHHO/8D2a+aAn4OrlgLcejQ==}
     engines: {node: '>=22.19.0'}
     hasBin: true
     peerDependencies:
@@ -1275,7 +1275,7 @@ snapshots:
     dependencies:
       '@tangle-network/agent-interface': 5.10.2
 
-  '@tangle-network/agent-provider-cli-bridge@2.0.0':
+  '@tangle-network/agent-provider-cli-bridge@2.0.3':
     dependencies:
       '@tangle-network/agent-interface': 5.10.2
       undici: 8.12.3
@@ -1289,7 +1289,7 @@ snapshots:
       '@tangle-network/agent-interface': 5.10.2
       '@tangle-network/sandbox': 1.0.33
 
-  '@tangle-network/agent-runtime@2.3.7(@tangle-network/agent-eval@1.0.1)(@tangle-network/agent-interface@5.10.2)(@tangle-network/sandbox@1.0.33)':
+  '@tangle-network/agent-runtime@3.0.1(@tangle-network/agent-eval@1.0.1)(@tangle-network/agent-interface@5.10.2)(@tangle-network/sandbox@1.0.33)':
     dependencies:
       '@earendil-works/pi-codemode': 1.4.0
       '@tangle-network/agent-core': 1.0.1
