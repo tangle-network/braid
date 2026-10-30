@@ -65,11 +65,40 @@ export interface TraceReference {
   readonly digest: Digest
 }
 
-/** A Runtime durable run in Runtime's own coordinates; it is never a Braid run. */
-export interface RuntimeRunReference {
-  readonly runId: string
-  readonly runDir: string
+/** A captured Workflow API read fence, separate from the Runtime root and Braid identities. */
+export interface RuntimeRunCheckpoint {
+  readonly workflowId: string
+  readonly runtimeRunId: string
+  readonly revUsed: number
+  readonly sourceSha: string
+  readonly authoredGraphDigest: string
+  readonly graphDigest: string
+  readonly generation: number
+  readonly revision: number
+  readonly namespace: string
+  readonly owned: boolean
+  readonly status: string
+  readonly attempts: number
+  readonly trace: {
+    readonly status: 'complete' | 'partial' | 'missing'
+    readonly gaps: readonly { readonly nodeId?: string; readonly reason: string }[]
+  }
 }
+
+/** Runtime coordinates only. Protected remote endpoints remain in the calling process. */
+export type RuntimeRunReference =
+  | {
+      readonly runId: string
+      readonly runDir: string
+      readonly remoteEndpointEnv?: never
+      readonly checkpoint?: never
+    }
+  | {
+      readonly runId: string
+      readonly remoteEndpointEnv: string
+      readonly runDir?: never
+      readonly checkpoint?: RuntimeRunCheckpoint
+    }
 
 export interface FrozenAnalysisSource {
   readonly conversationId: ConversationId

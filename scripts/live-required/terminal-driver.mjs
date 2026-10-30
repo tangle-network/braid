@@ -1,0 +1,274 @@
+// Drives Braid's terminal the way a user does: waits, the activity browser, permission forms, and
+// pasted prompts. The live proofs share it so each decides from what the terminal shows.
+import { pause, typeText } from '../live-demo/terminal.mjs'
+import { countProtectedWork, redactString } from '../proof-tools.mjs'
+import { permissionFormAnswer } from './tangle-sandbox-braid-stress-support.mjs'
+import { activityBrowserOpen, browserTab, transcriptSurfaceReady } from './terminal-screen.mjs'
+
+/** A proof failure that more polling cannot change; retryUntil rethrows it at once. */
+class ProofRefusal extends Error {}
+
+/** Polls until predicate returns a value, retrying through its errors except a ProofRefusal. */
+export async function retryUntil(label, predicate, timeoutMs) {
+  const deadline = performance.now() + timeoutMs
+  let lastError
+  for (;;) {
+    try {
+      countProtectedWork('polls')
+      const value = await predicate()
+      if (value) return value
+    } catch (error) {
+      if (error instanceof ProofRefusal) throw error
+      lastError = error
+    }
+    if (performance.now() >= deadline) {
+      throw new Error(
+        `${label} timed out after ${timeoutMs}ms${lastError instanceof Error ? `: ${lastError.message}` : ''}`,
+      )
+    }
+    await pause(100)
+  }
+}
+
+export async function waitForActivityBrowserDismissal(runtime, label, timeoutMs) {
+  return retryUntil(
+    `${label} activity browser dismissal`,
+    () => transcriptSurfaceReady(runtime.screen()),
+    timeoutMs,
+  )
+}
+
+export async function sendCancellationAfterActivityBrowserDismissal(runtime, label, timeoutMs) {
+  if (!transcriptSurfaceReady(runtime.screen())) {
+    runtime.input('\u001b')
+    await waitForActivityBrowserDismissal(runtime, label, timeoutMs)
+  }
+  runtime.input('\u0003')
+}
+
+export const ACTIVITY_DOWN = '\u001b[B'
+export const ACTIVITY_UP = '\u001b[A'
+
+/**
+ * Open the activity browser as a user does, answering a permission form that opens over the
+ * terminal first and pressing F2 again once it is gone: at 59aff2c a form appeared just after F2,
+ * took the key, and the browser wait sat behind it for 300s.
+ */
+async function openActivityBrowser(runtime, label, timeoutMs) {
+  await settlePermissions(runtime, timeoutMs)
+  runtime.input('\u001bOQ')
+  let pressedAt = performance.now()
+  await retryUntil(
+    `${label} activity browser`,
+    async () => {
+      if (activityBrowserOpen(runtime.screen())) return true
+      const frame = await runtime.captureState(timeoutMs)
+      const answered = await answerPendingPermissions(runtime, frame, timeoutMs)
+      if (answered || performance.now() - pressedAt > 3_000) {
+        runtime.input('\u001bOQ')
+        pressedAt = performance.now()
+      }
+      return false
+    },
+    timeoutMs,
+  )
+}
+
+/**
+ * Focus one run as a user does: F2, Tab (starts on the focused run, #169), one arrow, Enter. Braid
+ * holds forms while the browser is open; close only that browser (Escape denies a form).
+ */
+export async function focusRunFromActivityBrowser(runtime, runId, direction, label, timeoutMs) {
+  await openActivityBrowser(runtime, label, timeoutMs)
+  // Observe each tab transition before sending another key; old output may already be quiet.
+  for (let tab = 0; tab < 4 && browserTab(runtime.screen()) !== 'runs'; tab += 1) {
+    const before = browserTab(runtime.screen())
+    runtime.input('\t')
+    await retryUntil(
+      `${label} browser tab`,
+      () => {
+        const after = browserTab(runtime.screen())
+        return after !== undefined && after !== before
+      },
+      5_000,
+    )
+  }
+  runtime.input(`${direction}\r`)
+  const frame = await waitForFrame(runtime, label, (f) => f.view.focusedRunId === runId, timeoutMs)
+  if (activityBrowserOpen(runtime.screen())) {
+    runtime.input('\u001b')
+    await retryUntil(label, () => !activityBrowserOpen(runtime.screen()), timeoutMs)
+  }
+  return frame
+}
+
+/** Answer visible permission forms through the terminal and retain their journal outcomes. */
+async function answerPendingPermissions(runtime, frame, timeoutMs) {
+  const refused = runtime.permissions.find((receipt) => !receipt.answerable)
+  if (refused !== undefined)
+    throw new ProofRefusal(`The proof cannot answer a ${refused.kind} request`)
+  // Keys typed while the activity browser is open go to the browser; answer once it closes.
+  if (activityBrowserOpen(runtime.screen())) return false
+  let answered = false
+  // Braid prioritizes the conversation on screen, not global queue order. Read the form's
+  // request N/M heading and refresh after each answer; another run may ask while it is open.
+  while (frame?.view?.interactions?.length > 0) {
+    await openDeferredInteraction(runtime, timeoutMs)
+    const interaction = await retryUntil(
+      'visible permission identity',
+      async () => {
+        frame = await runtime.captureState(timeoutMs)
+        const queue = frame.view.interactions
+        const heading = runtime.screen().match(/permission · request (\d+)\/(\d+)/u)
+        if (!FORM_OPEN.test(runtime.screen())) return undefined
+        if (heading === null) return queue.length === 1 ? queue[0] : undefined
+        if (Number(heading[2]) !== queue.length) return undefined
+        return queue.find((item) => item.queuePosition === Number(heading[1]) - 1)
+      },
+      timeoutMs,
+    )
+    const { interactionId } = interaction
+    const recorded = runtime.permissions.find((receipt) => receipt.interactionId === interactionId)
+    const answer = permissionFormAnswer(interaction)
+    const receipt = recorded ?? {
+      runId: interaction.runId,
+      interactionId,
+      kind: interaction.kind,
+      subject: interaction.subject?.title ?? null,
+      answerable: answer !== undefined,
+      accepted: false,
+    }
+    if (recorded === undefined) runtime.permissions.push(receipt)
+    if (answer === undefined)
+      throw new ProofRefusal(`The proof cannot answer a ${interaction.kind} request`)
+    receipt.beforeAnswer = permissionCapture(runtime, frame)
+    // Clear anything a racing prompt left in the form, then enter the answer in one paste.
+    const clear = `${CURSOR_LINE_END}${DELETE_TO_LINE_START}`
+    runtime.input(`${clear}${bracketedPaste(JSON.stringify(answer))}\r`)
+    // The form closes before Braid journals the response, and it also leaves the queue when the
+    // request expires: wait for the journal to settle it, and accept only a recorded response.
+    const outcome = await retryUntil(
+      'permission answer',
+      async () => {
+        frame = await runtime.captureState(timeoutMs)
+        receipt.afterAnswer ??= permissionCapture(runtime, frame)
+        const dispatches = permissionCapture(runtime, frame).dispatches
+        if (dispatches.length > 0) receipt.dispatches = dispatches
+        const settled = permissionOutcome(frame, interactionId)
+        if (settled !== 'unsettled') receipt.settlement = permissionCapture(runtime, frame)
+        return settled === 'unsettled' ? undefined : settled
+      },
+      timeoutMs,
+    )
+    if (outcome !== 'responded')
+      throw new ProofRefusal(`Braid did not accept the typed permission answer (${outcome})`)
+    receipt.accepted = true
+    answered = true
+    frame = await runtime.captureState(timeoutMs)
+  }
+  return answered
+}
+
+/** Bounded, redacted evidence around typed answers; never records answer values. */
+function permissionCapture(runtime, frame) {
+  return {
+    at: new Date().toISOString(),
+    revision: frame?.view?.revision,
+    focusedRunId: frame?.view?.focusedRunId,
+    screen: redactString(runtime.screen()).slice(0, 6_000),
+    queue: (frame?.view?.interactions ?? []).slice(0, 16).map((item) => ({
+      runId: item.runId,
+      interactionId: item.interactionId,
+      queuePosition: item.queuePosition,
+    })),
+    dispatches: (frame?.events ?? [])
+      .filter((event) => /run\.interaction\.(?:response\.requested|responded)$/u.test(event.kind))
+      .slice(-16)
+      .map((event) => ({
+        sequence: event.sequence,
+        kind: event.kind,
+        runId: event.payload.runId,
+        interactionId: event.payload.value?.interactionId ?? event.payload.interactionId,
+        operationId: event.payload.value?.operationId ?? event.payload.operationId,
+      })),
+  }
+}
+
+// A permission form's footer. The `waiting · alt+p` notice hides while Ctrl+C has quit armed
+// (LIVE-07 cancel-b), so the proof opens a held form by Alt+P whenever no form is on screen.
+const FORM_OPEN = /alt\+a automate/u
+
+async function openDeferredInteraction(runtime, timeoutMs) {
+  let pressedAt = 0
+  await retryUntil(
+    'the waiting interaction form',
+    async () => {
+      if (FORM_OPEN.test(runtime.screen())) return true
+      if (performance.now() - pressedAt > 2_000) {
+        runtime.input('\u001bp')
+        pressedAt = performance.now()
+      }
+      return false
+    },
+    timeoutMs,
+  )
+  await runtime.waitForStable(1_000).catch(() => undefined)
+}
+
+/** How Braid's journal settled one permission: a recorded response, a cancellation, or neither. */
+export function permissionOutcome(frame, interactionId) {
+  let outcome = 'unsettled'
+  for (const event of frame?.events ?? []) {
+    const payload = event?.payload ?? {}
+    const id = payload.interactionId ?? payload.value?.interactionId ?? payload.interaction?.id
+    if (id !== interactionId) continue
+    if (event.kind === 'run.interaction.responded') {
+      const response = payload.value ?? payload
+      return response.outcome === 'accepted'
+        ? 'responded'
+        : `${response.outcome}: ${response.detail ?? 'unconfirmed response'}`
+    }
+    if (event.kind === 'run.interaction.cancelled' && payload.interaction?.reason !== 'resolved')
+      outcome = `cancelled: ${payload.interaction?.reason ?? 'unknown reason'}`
+  }
+  return outcome
+}
+
+export async function settlePermissions(runtime, timeoutMs) {
+  await answerPendingPermissions(runtime, await runtime.captureState(timeoutMs), timeoutMs)
+}
+
+const CURSOR_LINE_END = '\u0005'
+const DELETE_TO_LINE_START = '\u0015'
+
+function bracketedPaste(value) {
+  return `\u001b[200~${value}\u001b[201~`
+}
+
+/**
+ * Send a prompt the way a user pastes it: one input event, so a permission form that opens while it
+ * arrives cannot take its tail (LIVE-07 at 48da449 lost 547 of 870 typed characters to a form).
+ */
+export async function pasteAndSubmit(runtime, value, timeoutMs) {
+  await settlePermissions(runtime, timeoutMs)
+  // The paste and its Enter share one write, so no form can open between them.
+  runtime.input(`${bracketedPaste(value)}\r`)
+}
+
+export async function typeAndSubmit(runtime, value, timeoutMs) {
+  await settlePermissions(runtime, timeoutMs)
+  await typeText(runtime, value, 2)
+  runtime.input('\r')
+}
+
+export async function waitForFrame(runtime, label, predicate, timeoutMs) {
+  return retryUntil(
+    label,
+    async () => {
+      const frame = await runtime.captureState(timeoutMs)
+      if (await answerPendingPermissions(runtime, frame, timeoutMs)) return undefined
+      return predicate(frame) ? frame : undefined
+    },
+    timeoutMs,
+  )
+}

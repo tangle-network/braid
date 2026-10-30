@@ -53,7 +53,6 @@ export function queueRunInput(
     ...(durable === undefined ? {} : { completion: Promise.resolve(durable) }),
   }
 }
-
 export async function steerRun(
   context: ControlPort,
   input: { readonly operationId: string; readonly runId?: string; readonly text: string },
@@ -77,7 +76,6 @@ export async function steerRun(
   }
   return control(context, request, 'steer')
 }
-
 export async function cancelRun(
   context: ControlPort,
   input: {
@@ -108,7 +106,6 @@ export async function cancelRun(
   const receipt = await control(context, request, 'cancel', input.terminalStatus ?? 'cancelled')
   return receipt
 }
-
 export async function detachRun(
   context: ControlPort,
   input: { readonly operationId: string; readonly runId?: string },
@@ -306,7 +303,12 @@ async function control(
       context.ledger.clearCancelStatus(request.runId)
     }
     context.ledger.clearDetached(request.runId)
-    if (
+    if (controlKind === 'cancel' && ack.outcome === 'unknown') {
+      await applyAcceptedCancellation(context, request, run, cancelStatus ?? 'cancelled', {
+        ...ack,
+        detail: unknownCancellationDetail(ack.detail),
+      })
+    } else if (
       controlKind !== 'steer' &&
       ack.outcome === 'unknown' &&
       !context.isTerminal(context.findRun(request.runId).status)
@@ -315,9 +317,7 @@ async function control(
         unknownEventWithPendingText(
           context,
           request.runId,
-          controlKind === 'cancel'
-            ? unknownCancellationDetail(ack.detail)
-            : (ack.detail ?? 'Control outcome is unknown'),
+          ack.detail ?? 'Control outcome is unknown',
         ),
       )
       if (unknown !== undefined) await unknown

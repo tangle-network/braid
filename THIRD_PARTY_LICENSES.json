@@ -79,7 +79,7 @@
     {
       "license": "MIT",
       "name": "@tangle-network/agent-provider-cli-bridge",
-      "version": "2.0.0"
+      "version": "2.0.3"
     },
     {
       "license": "MIT",
@@ -94,7 +94,7 @@
     {
       "license": "MIT",
       "name": "@tangle-network/agent-runtime",
-      "version": "2.3.7"
+      "version": "3.0.1"
     },
     {
       "license": "MIT",

@@ -89,6 +89,7 @@ export function createInterfaceSignalLifecycle(
     process.once('SIGHUP', onHangup)
   }
   process.on('SIGUSR2', onFrameSnapshot)
+  if (input.startupPreview?.consumeFrameRequest() === true) onFrameSnapshot()
 
   return Object.freeze({
     interrupted: () => signalExitCode !== undefined,

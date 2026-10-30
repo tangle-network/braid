@@ -103,13 +103,18 @@ export function parseAnalysisSourceReference(value: string): AnalysisSourceRefer
   return undefined
 }
 
-/** `runtime:<runId>@<runDir>` names a Runtime durable run; Braid verifies the pair when it reads. */
+/** The existing Runtime source token accepts an absolute directory or protected endpoint env ref. */
 function runtimeProjection(reference: AnalysisSourceReference): AnalysisSourceProjection {
   const separator = reference.id.indexOf('@')
   const runId = reference.id.slice(0, separator)
   const runDir = reference.id.slice(separator + 1)
+  if (separator > 0 && /^[A-Z_][A-Z0-9_]*$/u.test(runDir)) {
+    return { reference, request: { runtimeRun: { runId, remoteEndpointEnv: runDir } } }
+  }
   if (separator <= 0 || !isAbsolute(runDir)) {
-    throw new AnalysisSourceError('A Runtime source is runtime:<runId>@<absolute runDir>')
+    throw new AnalysisSourceError(
+      'A Runtime source is runtime:<runId>@<absolute runDir or ENV_REFERENCE>',
+    )
   }
   return { reference, request: { runtimeRun: { runId, runDir } } }
 }
@@ -388,8 +393,17 @@ function freezeRuntimeSource(
     {
       conversationId,
       branchId,
-      runtimeRun: { runId: runtime.runId, runDir: runtime.runDir },
-      complete: runtime.settled,
+      runtimeRun:
+        runtime.runDir !== undefined
+          ? { runId: runtime.runId, runDir: runtime.runDir }
+          : {
+              runId: runtime.runId,
+              remoteEndpointEnv: runtime.remoteEndpointEnv,
+              checkpoint: runtime.checkpoint,
+            },
+      complete:
+        runtime.settled &&
+        (runtime.runDir !== undefined || runtime.checkpoint.trace.status === 'complete'),
     },
     { runtime: cloneAndFreeze(runtime), events: [], messages: [], messageParts: [] },
     {

@@ -2,10 +2,10 @@
 // optional model seat by its connection. It records the run, the tool trace fidelity, the advertised
 // interaction kinds, and a canary scan, then deletes the exact sandbox it created.
 import { randomUUID } from 'node:crypto'
-import { isDeepStrictEqual } from 'node:util'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { isDeepStrictEqual } from 'node:util'
 
 import { Sandbox } from '@tangle-network/sandbox'
 import { castFor, createCapturedTerminal, pause, typeText } from '../live-demo/terminal.mjs'
@@ -19,9 +19,10 @@ import {
   resolveBinary,
   rpcRequest,
 } from './headless.mjs'
-import { sandboxConfiguration, transcriptSurfaceReady } from './tangle-sandbox-braid-multirun.mjs'
+import { sandboxConfiguration } from './tangle-sandbox-braid-multirun.mjs'
 import { cleanupOwnedRetainedResources } from './tangle-sandbox-braid-stress.mjs'
 import { permissionFormAnswer } from './tangle-sandbox-braid-stress-support.mjs'
+import { transcriptSurfaceReady } from './terminal-screen.mjs'
 
 const scriptPath = fileURLToPath(import.meta.url)
 const repository = resolve(dirname(scriptPath), '../..')
