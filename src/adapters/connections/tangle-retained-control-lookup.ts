@@ -1,6 +1,7 @@
 import { AgentExactRunControlRefSchema } from '@tangle-network/agent-interface'
 import type { SandboxClientLike, SandboxInstanceLike } from '@tangle-network/agent-provider-tangle'
 import { stableProviderId } from '../runtime/production-backend-common.js'
+import { BRAID_SANDBOX_OWNER } from '../runtime/tangle-sandbox-retention.js'
 import type {
   TangleRetainedControlLookup,
   TangleRetainedControlLookupInput,
@@ -33,7 +34,7 @@ function matchesRetainedEnvironment(
   const metadata = box.metadata
   return (
     box.name === stableProviderId('braid-', input.providerSessionId) &&
-    metadata?.owner === 'braid' &&
+    metadata?.owner === BRAID_SANDBOX_OWNER &&
     metadata.lifecycle === 'retained' &&
     metadata.providerSessionId === input.providerSessionId &&
     metadata.retainedIdempotencyKey === input.environmentIdempotencyKey

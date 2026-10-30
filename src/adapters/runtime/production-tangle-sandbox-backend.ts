@@ -45,6 +45,7 @@ import {
 } from './production-backend-common.js'
 import { observeSandboxClient } from './sandbox-observation.js'
 import {
+  BRAID_SANDBOX_OWNER,
   retainedSandboxIdentity,
   retainedSandboxLifecycle,
   withRetainedSandboxPolicy,
@@ -88,9 +89,14 @@ export async function resolveTangleSandboxBackend(
   const workspaceRequestDigestValue = workspaceRequestDigest(workspaceRequest)
   const resourceRequest = connectionResourceRequest(record)
   const secretNames = connectionSecretNames(record)
+  const environmentMetadata = Object.freeze({
+    owner: BRAID_SANDBOX_OWNER,
+    lifecycle: 'ephemeral' as const,
+  })
   const environmentRequestDigest = canonicalDigest({
     kind: 'tangle-sandbox-environment-request',
     idempotencyKey,
+    metadata: environmentMetadata,
     workspaceRequest: workspaceRequest ?? null,
     ...(resourceRequest === undefined ? {} : { resourceRequest }),
     ...(secretNames === undefined ? {} : { secretNames }),
@@ -127,6 +133,7 @@ export async function resolveTangleSandboxBackend(
             ...(workspaceRequest === undefined ? {} : { workspace: workspaceRequest }),
             ...(resourceRequest === undefined ? {} : { resources: resourceRequest }),
             ...(secretNames === undefined ? {} : { secrets: [...secretNames] }),
+            metadata: environmentMetadata,
             name: record.name,
             idempotencyKey,
             signal: context.signal,
