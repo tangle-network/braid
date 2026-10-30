@@ -29,9 +29,7 @@ async function child(root: string, endpoint: string, timeout = 5_000, cancelTime
       STEER_TEST_ROOT: root,
       STEER_TEST_ENDPOINT: endpoint,
       STEER_TEST_TIMEOUT: String(timeout),
-      ...(cancelTimeout === undefined
-        ? {}
-        : { STEER_TEST_CANCEL_TIMEOUT: String(cancelTimeout) }),
+      ...(cancelTimeout === undefined ? {} : { STEER_TEST_CANCEL_TIMEOUT: String(cancelTimeout) }),
     },
     stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
   })
