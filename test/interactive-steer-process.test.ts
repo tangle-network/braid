@@ -373,7 +373,7 @@ test('a stop that accepts after the cancel deadline still cancels and releases t
     assert.equal(foreground.result?.acknowledgement?.outcome, 'unknown')
     assert.equal(foreground.state.runs[0]?.status, 'unknown')
     assert.deepEqual(server.fixture.destroyedIds, [])
-    let status = foreground.state.runs[0]?.status
+    let status: string | undefined
     const startedAt = Date.now()
     while (status !== 'cancelled' && Date.now() - startedAt < 5_000) {
       await new Promise((resolve) => setTimeout(resolve, 20))
