@@ -294,7 +294,7 @@ test('a 1001 terminal close reattaches a live run and stop destroys that sandbox
     )
     assert.deepEqual(server.fixture.stopEnvironmentIds, [controlRef.environmentId])
     assert.deepEqual(server.fixture.destroyedIds, [controlRef.environmentId])
-    assert.equal(owner.lateError(), undefined, owner.lateError())
+    assert.equal(owner.lateError(), undefined, owner.lateError() ?? '')
   } finally {
     await Promise.all(children.map((value) => value.kill()))
     await server.close()
