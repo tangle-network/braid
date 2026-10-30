@@ -15,6 +15,7 @@ import type {
   RunCapabilities,
 } from '../../ports/execution.js'
 import { stableProviderId } from './production-backend-common.js'
+import { BRAID_SANDBOX_OWNER } from './tangle-sandbox-retention.js'
 import type { PreparedTangleRetainedConnection } from './production-tangle-sandbox-backend.js'
 
 type StatusInput = Parameters<NonNullable<ExecutionPort['status']>>[0]
@@ -93,7 +94,7 @@ export function interactiveEnvironment(
     backend: prepared.runner,
     name: stableProviderId('braid-interactive-', runId),
     metadata: {
-      owner: 'braid',
+      owner: BRAID_SANDBOX_OWNER,
       lifecycle: 'retained',
       surface: 'interactive-agent',
     },
