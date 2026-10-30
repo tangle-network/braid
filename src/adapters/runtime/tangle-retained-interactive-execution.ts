@@ -144,6 +144,7 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
     assertInteractiveAdmissionMatchesInput(admission, input)
     const prepared = await this.#resolveRecovery(input, admission)
     assertInteractiveProvider(prepared)
+    this.#providers.set(input.runId, prepared.provider)
     yield* this.#session(input.runId, input.signal, async (lease) => {
       const handle = await this.#recoverHandle(prepared, input, admission)
       if (handle === null) return { handle: null }
@@ -288,19 +289,16 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
       controlSignal === undefined ? undefined : { signal: controlSignal },
     )
     if (acknowledgement.status === 'accepted' || acknowledgement.status === 'replayed') {
+      this.#cancelledRuns.add(input.runId)
       const released = await this.#releaseRetainedEnvironment(
         input.runId,
         handle.ref.run.environmentId,
         controlSignal,
       )
       if (!released) {
-        return {
-          operationId: input.operationId,
-          outcome: 'unknown',
-          detail: 'retained-environment-destroy-unconfirmed',
-        }
+        this.#cancelledRuns.delete(input.runId)
+        return { operationId: input.operationId, outcome: 'unknown', detail: 'DESTROY_UNCONFIRMED' }
       }
-      this.#cancelledRuns.add(input.runId)
       this.#settleCancelled(input.runId)
       this.#forgetHandle(input.runId)
       return {
