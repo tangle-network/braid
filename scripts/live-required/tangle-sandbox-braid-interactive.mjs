@@ -30,17 +30,18 @@ import {
   rpcState,
 } from './headless.mjs'
 import {
+  interactiveResourceName,
+  isOwnedInteractiveResource,
+  sameNameInteractiveResources,
+} from './interactive-resource-ownership.mjs'
+import { steerTurnsFromJournal, steerTwiceThroughBraid } from './interactive-steer.mjs'
+import {
   createPty,
   harnessCommand,
   occurrences,
   waitForValue,
   writeRecording,
 } from './interactive-terminal.mjs'
-import {
-  interactiveResourceName,
-  isOwnedInteractiveResource,
-  sameNameInteractiveResources,
-} from './interactive-resource-ownership.mjs'
 import { DEFAULT_TANGLE_ROUTER_MODEL, releaseProofRouting } from './model-defaults.mjs'
 import {
   assertProviderObservationDeadline,
@@ -71,7 +72,6 @@ import {
   withoutEnvironment,
 } from './tangle-sandbox-braid-stress-support.mjs'
 import { assertSameInteractiveRef } from './tangle-sandbox-interactive-continuity.mjs'
-import { steerTurnsFromJournal, steerTwiceThroughBraid } from './interactive-steer.mjs'
 import { workspaceRequestFor } from './workspace-request.mjs'
 
 const scriptPath = fileURLToPath(import.meta.url)
@@ -1164,7 +1164,7 @@ async function stopThroughBraid(binary, config, runId, timeoutMs) {
       )
       assert.ok(
         acknowledgement.outcome === 'accepted' || acknowledgement.outcome === 'replayed',
-        'Braid stop did not return an accepted or replayed outcome',
+        `Braid stop did not return an accepted or replayed outcome: ${JSON.stringify(acknowledgement)}`,
       )
       const terminal = await initialized.session.waitFor(
         'Braid interactive stop state',
@@ -1237,7 +1237,7 @@ async function runProof({
   profile,
   providerOptions = {},
   castPath,
-  steer = false, // opt-in until braid#188: a second process cannot yet steer a TUI-held run
+  steer = false, // attached steering is exercised explicitly by LIVE-08 --steer
   requireZeroActiveResourceDelta = true, // false on a shared key: the exact census is the proof
 } = {}) {
   const timeoutMs = positiveEnvironment(
@@ -1398,6 +1398,7 @@ async function runProof({
     const attachBeforeScreen = runtime.screen
     await submitBraidCommand(runtime, attach, timeoutMs)
     await runtime.waitForReady(timeoutMs, attachOutputRevision, attachBeforeScreen)
+    const steerAttached = steer && (await steerTwiceThroughBraid(packed, config, initialIdentity))
     const resizeOutputRevision = runtime.terminalOutputRevision
     runtime.resize(100, 30)
     await runtime.waitForTerminalQuiescence(timeoutMs, resizeOutputRevision)
@@ -1423,7 +1424,6 @@ async function runProof({
       'native reconnect provider control reference',
     )
     verifiedIdentity = reconnectedIdentity
-    const steerAttached = steer && (await steerTwiceThroughBraid(packed, config, initialIdentity))
     const reconnectBeforeScreen = runtime.screen
     const reconnectActionRevision = runtime.terminalOutputRevision
     await runtime.submit(reconnectCommand)

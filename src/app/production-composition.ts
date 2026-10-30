@@ -12,9 +12,8 @@ import {
   AgentRuntimeExecutionPort,
   type AgentTurnBackendResolver,
 } from '../adapters/runtime/agent-runtime-execution.js'
-import { ConnectionRoutingExecutionPort } from '../adapters/runtime/connection-routing-execution.js'
-import { createProviderContextTransferPort } from '../adapters/runtime/provider-context-transfer.js'
 import { CliBridgeRetainedExecutionPort } from '../adapters/runtime/cli-bridge-retained-execution.js'
+import { ConnectionRoutingExecutionPort } from '../adapters/runtime/connection-routing-execution.js'
 import { ModeRoutingExecutionPort } from '../adapters/runtime/mode-routing-execution.js'
 import { NativeInteractiveRunBroker } from '../adapters/runtime/native-interactive-run-broker.js'
 import {
@@ -24,8 +23,9 @@ import {
   resolveProductionRegisteredRetainedConnection,
   resolveProductionTangleRetainedConnection,
 } from '../adapters/runtime/production-backend-resolver.js'
-import { ProviderRetainedExecutionPort } from '../adapters/runtime/provider-retained-execution.js'
 import { prepareCliBridgeProviderRoute } from '../adapters/runtime/production-cli-bridge-backend.js'
+import { createProviderContextTransferPort } from '../adapters/runtime/provider-context-transfer.js'
+import { ProviderRetainedExecutionPort } from '../adapters/runtime/provider-retained-execution.js'
 import { RuntimeSupervisorController } from '../adapters/runtime/supervisor-control.js'
 import { TangleRetainedExecutionPort } from '../adapters/runtime/tangle-retained-execution.js'
 import { TangleRetainedInteractiveExecutionPort } from '../adapters/runtime/tangle-retained-interactive-execution.js'
@@ -339,7 +339,7 @@ export function createProductionComposition(
       )
     },
   })
-  const broker = new NativeInteractiveRunBroker()
+  const broker = new NativeInteractiveRunBroker(config.runtimeJournalRoot ? 'offer' : undefined)
   const createExecution = (connection: ConnectionRecord): ExecutionPort => {
     const scopedOptions: ProductionBackendResolverOptions = {
       ...withConfidentialVerifiers(connection, resolverOptions),

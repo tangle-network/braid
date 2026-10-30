@@ -7,6 +7,7 @@ export type NativeInteractiveRunOutcome =
 
 /** Rendezvous between Braid's durable run and the terminal-only native viewer. */
 export interface NativeInteractiveExecutionControl {
+  readonly delegation?: 'offer' | undefined
   waitForHandle(
     runId: string,
     options?: { readonly signal?: AbortSignal },

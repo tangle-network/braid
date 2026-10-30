@@ -23,7 +23,10 @@ import type {
 } from '../views/shared/native-interactive-actions.js'
 
 interface InteractiveApplicationHandle {
-  readonly app: Pick<BraidApplication, 'detachRun' | 'reconnectRun' | 'send' | 'state'> &
+  readonly app: Pick<
+    BraidApplication,
+    'detachRun' | 'reconnectRun' | 'reconcileRun' | 'send' | 'state'
+  > &
     Partial<Pick<BraidApplication, 'intelligence'>>
   readonly nativeInteractive?: NativeInteractiveExecutionControl
 }
@@ -175,7 +178,22 @@ async function present(
   const handle = await execution.waitForHandle(runId)
   let result: NativeTerminalTransportResult
   try {
-    result = await presentHandle(options, handle)
+    if (current.app.state().runs.find((run) => run.id === runId)?.status === 'reconnecting') {
+      const state = await current.app.reconcileRun({
+        operationId: options.nextOperationId(),
+        runId,
+      })
+      const run = state.runs.find((candidate) => candidate.id === runId)
+      if (run?.status !== 'streaming') {
+        execution.settle(runId, { kind: 'detached' })
+        await runCompletion.catch(() => undefined)
+        return {
+          kind: 'error',
+          message: run?.error ?? `Native session is ${run?.status ?? 'unavailable'}`,
+        }
+      }
+    }
+    result = await presentHandle(options, handle, execution.delegation)
   } catch (error) {
     await detachAfterViewerFailure(current.app, runId, options.nextOperationId, error)
     throw error
@@ -273,10 +291,12 @@ async function attachWorker(
 async function presentHandle(
   options: NativeInteractiveActionsOptions,
   handle: RetainedInteractiveRunHandle,
+  delegation?: 'offer',
 ): Promise<NativeTerminalTransportResult> {
   const control = await claimRetainedInteractiveControl({
     handle,
     holderId: options.holderId,
+    ...(delegation === undefined ? {} : { delegation }),
   })
   const terminalSession: AgentInteractiveTerminalSession = await handle.attach({
     control,

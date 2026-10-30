@@ -11,7 +11,7 @@ export async function interactiveProviderServer() {
   const fixture = new InteractiveEnvironmentFixture()
   const provider = fixture.provider()
   let environment: AgentEnvironment | undefined
-  let promptDelayMs = 0
+  const delays = new Map<string, number>()
   const calls: string[] = []
   const server = createServer(async (request, response) => {
     try {
@@ -34,8 +34,8 @@ export async function interactiveProviderServer() {
         } else {
           const session = environment.interactive?.(args[0] as never)
           if (session === undefined) throw new Error('No interactive session')
-          if (method === 'sendPrompt' && promptDelayMs > 0)
-            await new Promise((resolve) => setTimeout(resolve, promptDelayMs))
+          const delay = delays.get(method)
+          if (delay !== undefined) await new Promise((resolve) => setTimeout(resolve, delay))
           const action = session[method as keyof typeof session]
           if (typeof action !== 'function') throw new Error(`No action: ${method}`)
           result = await (action as (argument: unknown) => Promise<unknown>)(args[1])
@@ -53,9 +53,7 @@ export async function interactiveProviderServer() {
     fixture,
     calls,
     endpoint: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
-    delayPrompts: (ms: number) => {
-      promptDelayMs = ms
-    },
+    delay: (method: 'sendPrompt' | 'stop', ms: number) => delays.set(method, ms),
     close: () =>
       new Promise<void>((resolve, reject) => {
         server.closeAllConnections()

@@ -18,12 +18,18 @@ export async function steerTwiceThroughBraid(packed, config, identity) {
     const initialized = await initializedSession(packed.binary, config)
     try {
       const startedAt = Date.now()
-      const { outcome } = await rpcRequest(initialized.session, 'steer', params, operationId)
-      // The ack carries only the outcome; the steering process's run row names the rest.
+      const { outcome, replayed } = await rpcRequest(
+        initialized.session,
+        'steer',
+        params,
+        operationId,
+      )
+      // The acknowledgement carries control disposition; the run row names current state.
       const { state } = await rpcState(initialized.session)
       const run = runFromState(state, params.runId)
       return {
         outcome,
+        replayed,
         acknowledgement: initialized.session.responses
           .filter((entry) => entry.type === 'event' && JSON.stringify(entry).includes(operationId))
           .at(-1),
@@ -37,11 +43,20 @@ export async function steerTwiceThroughBraid(packed, config, identity) {
   }
   const attempts = [await steerOnce(), await steerOnce()]
   const evidence = JSON.stringify(attempts)
+  for (const attempt of attempts) {
+    assert.match(
+      attempt.initialStatus ?? '',
+      /^(running|streaming|detached)$/u,
+      `steer startup changed run state: ${JSON.stringify(attempt)}`,
+    )
+    assert.match(
+      attempt.run.status ?? '',
+      /^(running|streaming|detached)$/u,
+      `steer changed run state: ${JSON.stringify(attempt)}`,
+    )
+  }
   assert.equal(attempts[0].outcome, 'accepted', `the first steer was not accepted: ${evidence}`)
-  assert.ok(
-    attempts[1].outcome === 'replayed' || attempts[1].outcome === 'already-applied',
-    `the repeated steer was not a replay: ${evidence}`,
-  )
+  assert.equal(attempts[1].replayed, true, `the repeated steer was not a replay: ${evidence}`)
   return { operationId, attempts }
 }
 

@@ -412,9 +412,9 @@ Braid maps that surface to Runtime's retained interactive handle and records `su
 A retained interactive run advertises `controls.steer` exactly when the provider reports `interactiveAgent.sendPrompt`.
 `steer` reconnects the handle from the run's `interactive_started` admission when the process holds no handle, as a fresh `braid rpc` process does, claims control, and calls `sendPrompt` with the ledger operation identifier and `agentInteractiveSessionPromptRequestDigest`.
 The provider's acknowledgement maps to the control receipt: `accepted` to accepted, `replayed` to already-applied, `conflict` to rejected, and `unknown` to unknown.
-The prompt digest binds the control claim, so the provider replays an operation only under the claim that sent it: a process reuses its claim until expiry, and Braid's durable control ledger answers a repeated operation from another process before the provider sees it.
+The prompt digest binds the control claim. Each send resolves current authority through Runtime; Braid never resends an uncertain prompt under a replacement claim. Braid's durable control ledger answers repeated operations before they reach the provider.
 A run without a started process refuses the steer and never creates an environment.
-Runtime `2.3.3` journals reconnected and recovered handles under the start's `journalRoot`, keyed by the run's session id, so every accepted steer appears once as an `agent.turn` in `<journalRoot>/<sessionId>/observer.jsonl` for `agent-runtime-top`.
+Runtime journals accepted and replayed prompts under the start's `journalRoot`, keyed by session id. Its cross-process writer records one `agent.turn` per operation in `<journalRoot>/<sessionId>/observer.jsonl`, including repair after delivery before a control-process crash.
 
 The provider rejects `contextTransfer` and `nativeContinuation` until Sandbox supplies native support for those operations.
 
@@ -843,15 +843,25 @@ Explicit controls still resolve the exact retained Runtime handle. Implicit shut
 only that process's owned observations. Journal transitions synchronize committed events across
 processes before allocating sequences, so a steer receipt cannot break the TUI's next event.
 
+Cancellation budgets connection recovery, authority validation, and provider stop before its
+acknowledgement deadline aborts dispatch. The default and `cancelTimeoutMs` override are owned
+by [the application](../src/app/application.ts). A completed status alone never proves cancellation.
+
 Steer uses its own acknowledgement deadline, independent of cancellation. Its deadline bounds
 the foreground receipt, not the provider send. A late `accepted` settles the durable operation;
 steer uncertainty never changes run status. Closing the control process drains late settlement
 before closing storage. Repeating the same operation identifier returns the committed receipt
 and Runtime journals exactly one `agent.turn`.
 
-Attached-TUI steering remains unavailable in the current live provider flow.
-The terminal's active control lease refuses a different control holder; Runtime then reports a
-non-advancing generation. [Runtime issue 2230](https://github.com/tangle-network/agent-runtime/issues/2230)
-records the exact LIVE-08 reproduction and required coordination proof. Braid does not share or
-replace provider authority through a second local protocol. A passing port integration test does
-not satisfy attached-TUI provider acceptance.
+The native presenter offers its exact provider claim through Runtime's explicit local delegation.
+A second control process accepts it through the same Runtime helper. Acceptance preserves the
+holder and generation, so terminal input and resize remain valid. The provider still authorizes
+every command. Runtime owns the private grant and process-liveness checks outside observer
+exports; Braid stores no claims and implements no parallel authority protocol. This is full
+control delegation between trusted processes under the same OS principal and journal scope.
+Worker terminals and applications without durable Runtime state keep ordinary claim acquisition.
+
+After reconnect publishes its retained handle, the native presenter reads provider status to
+settle the local reconnecting state before opening the terminal. Fresh control processes retain
+that committed state. [Runtime issue 2230](https://github.com/tangle-network/agent-runtime/issues/2230)
+tracks the canonical primitive; completion still requires the clean attached LIVE-08 recording.
