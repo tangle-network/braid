@@ -339,14 +339,14 @@ class Driver {
     return r.out.trim().split('\n').at(-1) ?? ''
   }
 
-  // Settled: no live Sandbox created in 10 minutes, and the same live-id set and active count 5 minutes later.
   async waitSettled() {
     const key = (obs) => obs.replace(/.*ids=(\S+) active=(\S+).*/, '$1 $2')
     while (Date.now() < this.deadline) {
       const a = await this.observe()
       this.log(`observe ${a}`)
-      await sleep(5 * MINUTE)
-      if (!a.startsWith('SETTLED')) continue
+      const settled = a.startsWith('SETTLED')
+      await sleep(settled && !/\blive=0\b/.test(a) ? 5 * MINUTE : 30_000)
+      if (!settled) continue
       const b = await this.observe()
       this.log(`observe ${b}`)
       if (b.startsWith('SETTLED') && key(a) === key(b)) return b
