@@ -6,7 +6,7 @@ import type { ControlReceipt } from './application-types.js'
 import { AppError } from './errors.js'
 import { cancelRequestDigest, DEFAULT_CANCEL_REASON } from './operation-ledger.js'
 import type { RunLedger } from './run-ledger.js'
-import { isTerminal } from './run-status.js'
+import { isStoppableRun } from './run-status.js'
 
 export interface LegacyCancelHost {
   readonly state: () => BraidState
@@ -50,7 +50,7 @@ export function legacyCancel(host: LegacyCancelHost, input: CancelInput): Cancel
     }
   }
 
-  if (!run || isTerminal(run.status)) {
+  if (!run || !isStoppableRun(run)) {
     throw new AppError('UNKNOWN_RUN', `Run ${runId} is not active`)
   }
   const completion = host

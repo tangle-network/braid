@@ -41,7 +41,18 @@ export interface NativeInteractiveActionsOptions {
   readonly holderId: string
 }
 
-/** Coordinates one terminal viewer. Runtime and the application retain all durable state. */
+export function presentNativeInteractiveRun(
+  options: NativeInteractiveActionsOptions,
+  runId: string,
+  completion: Promise<unknown>,
+): Promise<NativeInteractiveCommandResult> {
+  const current = options.current()
+  const execution = current.nativeInteractive
+  return execution === undefined
+    ? Promise.resolve({ kind: 'unavailable', reason: 'Native terminal support is unavailable' })
+    : present(options, current, execution, runId, completion)
+}
+
 export function createNativeInteractiveUiActions(
   options: NativeInteractiveActionsOptions,
 ): NativeInteractiveUiActions {
@@ -193,7 +204,7 @@ async function present(
         }
       }
     }
-    result = await presentHandle(options, handle, execution.delegation)
+    result = await presentRetainedTerminal(options, handle, execution.delegation)
   } catch (error) {
     await detachAfterViewerFailure(current.app, runId, options.nextOperationId, error)
     throw error
@@ -286,6 +297,20 @@ async function attachWorker(
         ? `Native worker terminal ${result.outcome.phase} failed: ${result.outcome.message}`
         : 'Native worker terminal closed after an interrupt',
   }
+}
+async function presentRetainedTerminal(
+  options: NativeInteractiveActionsOptions,
+  handle: RetainedInteractiveRunHandle,
+  delegation?: 'offer',
+): Promise<NativeTerminalTransportResult> {
+  const first = await presentHandle(options, handle, delegation)
+  const message = first.outcome.kind === 'transport-error' ? first.outcome.message : ''
+  const shutdown =
+    first.outcome.kind === 'transport-error' &&
+    first.outcome.phase === 'events' &&
+    /^Terminal connection closed before the process exited \(code 1001(?::|\))/.test(message)
+  if (!shutdown || (await handle.status().catch(() => undefined))?.state !== 'running') return first
+  return presentHandle(options, handle, delegation)
 }
 
 async function presentHandle(

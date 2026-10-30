@@ -31,7 +31,10 @@ import type {
   RunCapabilities,
 } from '../../ports/execution.js'
 import { canonicalAgentProfileDigestHex } from '../agent-interface/profile-runtime.js'
-import type { NativeInteractiveRunBroker } from './native-interactive-run-broker.js'
+import type {
+  NativeInteractiveRunBroker,
+  NativeInteractiveRunLease,
+} from './native-interactive-run-broker.js'
 import { safeExecutionId } from './production-backend-common.js'
 import type { PreparedTangleRetainedConnection } from './production-tangle-sandbox-backend.js'
 import { retainedExecutionKey } from './retained-execution-state.js'
@@ -85,6 +88,7 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
   readonly #holderId: string
   readonly #journalRoot: string | undefined
   readonly #prepared = new Map<string, PreparedInteractiveConnection>()
+  readonly #providers = new Map<string, PreparedTangleRetainedConnection['provider']>()
   readonly #starting = new Map<string, Promise<RetainedInteractiveRunHandle>>()
   readonly #handles = new Map<string, RetainedInteractiveRunHandle>()
   readonly #activeRuns = new Set<string>()
@@ -126,49 +130,13 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
     if (this.#cancelledRuns.has(input.runId)) return
     const prepared = await this.#prepare(input)
     if (this.#cancelledRuns.has(input.runId)) return
-    const lease = this.#broker.open(input.runId)
-    this.#activeRuns.add(input.runId)
-    let terminal = false
-    try {
+    yield* this.#session(input.runId, input.signal, async (lease) => {
       const handle = this.#handles.get(input.runId) ?? (await this.#startOnce(prepared, input))
       this.#rememberHandle(input.runId, handle)
       lease.publish(handle)
       if (this.#detachRequested.has(input.runId)) this.#settleDetached(input.runId)
-      yield await observedEnvelope(input.runId, handle, prepared, 1)
-      const providerOutcome = await terminalOutcome(handle, input.signal)
-      if (providerOutcome !== undefined) {
-        terminal = true
-        yield terminalEnvelope(
-          input.runId,
-          handle,
-          prepared,
-          providerOutcome,
-          2,
-          this.#cancelledRuns.has(input.runId),
-        )
-        return
-      }
-      const outcome = await lease.outcome(
-        input.signal === undefined ? undefined : { signal: input.signal },
-      )
-      if (outcome.kind === 'detached') return
-      terminal = true
-      yield terminalEnvelope(
-        input.runId,
-        handle,
-        prepared,
-        outcome,
-        2,
-        this.#cancelledRuns.has(input.runId),
-      )
-    } catch (error) {
-      lease.fail(error)
-      throw error
-    } finally {
-      this.#activeRuns.delete(input.runId)
-      if (terminal) this.#forgetHandle(input.runId)
-      lease.close()
-    }
+      return { handle, prepared, replayedSequence: 0 }
+    })
   }
 
   async *reconnect(input: TangleInteractiveRecoveryInput): AsyncIterable<RuntimeEventEnvelope> {
@@ -176,57 +144,15 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
     assertInteractiveAdmissionMatchesInput(admission, input)
     const prepared = await this.#resolveRecovery(input, admission)
     assertInteractiveProvider(prepared)
-    const lease = this.#broker.open(input.runId)
-    this.#activeRuns.add(input.runId)
-    let terminal = false
-    try {
+    this.#providers.set(input.runId, prepared.provider)
+    yield* this.#session(input.runId, input.signal, async (lease) => {
       const handle = await this.#recoverHandle(prepared, input, admission)
-      if (handle === null) return
+      if (handle === null) return { handle: null }
       this.#rememberHandle(input.runId, handle)
       this.#detachRequested.delete(input.runId)
       lease.publish(handle)
-      const replayedSequence = replayBoundary(input, input.runId, handle)
-      if (replayedSequence < 1) {
-        yield await observedEnvelope(input.runId, handle, prepared, 1)
-      }
-      if (replayedSequence >= 2) {
-        terminal = true
-        return
-      }
-      const providerOutcome = await terminalOutcome(handle, input.signal)
-      if (providerOutcome !== undefined) {
-        terminal = true
-        yield terminalEnvelope(
-          input.runId,
-          handle,
-          prepared,
-          providerOutcome,
-          2,
-          this.#cancelledRuns.has(input.runId),
-        )
-        return
-      }
-      const outcome = await lease.outcome(
-        input.signal === undefined ? undefined : { signal: input.signal },
-      )
-      if (outcome.kind === 'detached') return
-      terminal = true
-      yield terminalEnvelope(
-        input.runId,
-        handle,
-        prepared,
-        outcome,
-        2,
-        this.#cancelledRuns.has(input.runId),
-      )
-    } catch (error) {
-      lease.fail(error)
-      throw error
-    } finally {
-      this.#activeRuns.delete(input.runId)
-      if (terminal) this.#forgetHandle(input.runId)
-      lease.close()
-    }
+      return { handle, prepared, replayedSequence: replayBoundary(input, input.runId, handle) }
+    })
   }
 
   async status(input: TangleInteractiveRecoveryInput): Promise<ProviderRunSnapshot | null> {
@@ -309,12 +235,15 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
     const admissionPhase = input.retainedAdmission?.phase
     const interactiveIntent =
       input.retainedAdmission?.phase === 'interactive_intent' ? input.retainedAdmission : undefined
-    if (
+    const beforeStart =
       handle === undefined &&
       !this.#starting.has(input.runId) &&
-      interactiveIntent !== undefined &&
-      input.controlRef === undefined
-    ) {
+      input.controlRef === undefined &&
+      (interactiveIntent !== undefined ||
+        (this.#prepared.has(input.runId) &&
+          input.providerSessionId === undefined &&
+          admissionPhase !== 'interactive_started'))
+    if (beforeStart && interactiveIntent !== undefined) {
       if (
         input.providerSessionId !== undefined &&
         input.providerSessionId !== interactiveIntent.sessionId
@@ -325,52 +254,18 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
           detail: 'interactive-intent-provider-session-mismatch',
         }
       }
-      this.#cancelledRuns.add(input.runId)
-      this.#prepared.delete(input.runId)
-      this.#settleCancelled(input.runId)
-      return {
-        operationId: input.operationId,
-        outcome: 'accepted',
-        detail: 'cancelled-before-start',
-      }
     }
-    if (
-      handle === undefined &&
-      this.#prepared.has(input.runId) &&
-      !this.#starting.has(input.runId) &&
-      input.providerSessionId === undefined &&
-      input.controlRef === undefined &&
-      admissionPhase !== 'interactive_started'
-    ) {
-      this.#cancelledRuns.add(input.runId)
-      this.#prepared.delete(input.runId)
-      this.#settleCancelled(input.runId)
-      return {
-        operationId: input.operationId,
-        outcome: 'accepted',
-        detail: 'cancelled-before-start',
-      }
-    }
-    if (handle === undefined && this.#starting.has(input.runId)) {
-      this.#cancelledRuns.add(input.runId)
-      try {
-        handle = (await this.#handleFor(recoveryInput)) ?? undefined
-      } catch {
-        return {
-          operationId: input.operationId,
-          outcome: 'unknown',
-          detail: 'interactive-start-could-not-be-cancelled',
-        }
-      }
-    }
+    if (beforeStart) return this.#acceptBeforeStart(input.operationId, input.runId)
     if (handle === undefined) {
+      const starting = this.#starting.has(input.runId)
+      if (starting) this.#cancelledRuns.add(input.runId)
       try {
         handle = (await this.#handleFor(recoveryInput)) ?? undefined
       } catch {
         return {
           operationId: input.operationId,
           outcome: 'unknown',
-          detail: 'interactive-run-missing',
+          detail: starting ? 'interactive-start-could-not-be-cancelled' : 'interactive-run-missing',
         }
       }
     }
@@ -389,12 +284,21 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
       ...(controlSignal === undefined ? {} : { signal: controlSignal }),
     })
     const material = { operationId: input.operationId, ref: handle.ref, control }
-    const acknowledgement = await handle.stop(
-      { ...material, requestDigest: agentInteractiveSessionStopRequestDigest(material) },
-      controlSignal === undefined ? undefined : { signal: controlSignal },
-    )
+    const acknowledgement = await handle.stop({
+      ...material,
+      requestDigest: agentInteractiveSessionStopRequestDigest(material),
+    })
     if (acknowledgement.status === 'accepted' || acknowledgement.status === 'replayed') {
       this.#cancelledRuns.add(input.runId)
+      const released = await this.#releaseRetainedEnvironment(
+        input.runId,
+        handle.ref.run.environmentId,
+        controlSignal?.aborted === true ? undefined : controlSignal,
+      )
+      if (!released) {
+        this.#cancelledRuns.delete(input.runId)
+        return { operationId: input.operationId, outcome: 'unknown', detail: 'DESTROY_UNCONFIRMED' }
+      }
       this.#settleCancelled(input.runId)
       this.#forgetHandle(input.runId)
       return {
@@ -415,12 +319,6 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
     }
   }
 
-  /**
-   * Deliver one prompt to the live process. A fresh `braid rpc` process reconnects the handle from
-   * the started admission. The prompt digest binds the control claim, so the provider replays an
-   * operation id only under the claim that sent it. Runtime resolves current authority before
-   * delivery; Braid's durable ledger answers repeats without resending under a changed claim.
-   */
   async steerRun(
     input: {
       readonly runId: string
@@ -526,6 +424,7 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
     }
     const prepared = await this.#resolve(input)
     assertInteractiveProvider(prepared)
+    this.#providers.set(input.runId, prepared.provider)
     this.#prepared.set(input.runId, {
       key: retainedExecutionKey(input, interactiveRunCapabilities(prepared)),
       prepared,
@@ -604,6 +503,7 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
     const admission = requireInteractiveAdmission(input.retainedAdmission)
     const prepared = await this.#resolveRecovery(input, admission)
     assertInteractiveProvider(prepared)
+    this.#providers.set(input.runId, prepared.provider)
     const handle = await this.#recoverHandle(prepared, input, admission)
     if (handle !== null) this.#rememberHandle(input.runId, handle)
     return handle
@@ -685,28 +585,102 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
   }
 
   #settleDetached(runId: string): void {
-    if (!this.#activeRuns.has(runId)) return
-    switch (this.#broker.settle(runId, { kind: 'detached' })) {
-      case 'settled':
-      case 'absent':
-      case 'already-settled':
-        return
-    }
+    if (this.#activeRuns.has(runId)) this.#broker.settle(runId, { kind: 'detached' })
   }
 
   #settleCancelled(runId: string): void {
-    if (!this.#activeRuns.has(runId)) return
-    switch (this.#broker.settle(runId, { kind: 'exited', exitSignal: 'SIGTERM' })) {
-      case 'settled':
-      case 'absent':
-      case 'already-settled':
-        return
+    if (this.#activeRuns.has(runId))
+      this.#broker.settle(runId, { kind: 'exited', exitSignal: 'SIGTERM' })
+  }
+
+  async *#session(
+    runId: string,
+    signal: AbortSignal | undefined,
+    begin: (lease: NativeInteractiveRunLease) => Promise<
+      | { readonly handle: null }
+      | {
+          readonly handle: RetainedInteractiveRunHandle
+          readonly prepared: PreparedTangleRetainedConnection
+          readonly replayedSequence: number
+        }
+    >,
+  ): AsyncGenerator<RuntimeEventEnvelope> {
+    const lease = this.#broker.open(runId)
+    this.#activeRuns.add(runId)
+    let terminal = false
+    try {
+      const opened = await begin(lease)
+      if (opened.handle === null) return
+      terminal = yield* this.#follow(
+        runId,
+        signal,
+        opened.prepared,
+        opened.handle,
+        lease,
+        opened.replayedSequence,
+      )
+    } catch (error) {
+      lease.fail(error)
+      throw error
+    } finally {
+      this.#activeRuns.delete(runId)
+      if (terminal) this.#forgetHandle(runId)
+      lease.close()
     }
+  }
+
+  async *#follow(
+    runId: string,
+    signal: AbortSignal | undefined,
+    prepared: PreparedTangleRetainedConnection,
+    handle: RetainedInteractiveRunHandle,
+    lease: NativeInteractiveRunLease,
+    replayedSequence: number,
+  ): AsyncGenerator<RuntimeEventEnvelope, boolean> {
+    if (replayedSequence < 1) yield await observedEnvelope(runId, handle, prepared, 1)
+    if (replayedSequence >= 2) return true
+    const providerOutcome = await terminalOutcome(handle, signal)
+    if (providerOutcome !== undefined) {
+      const cancelled = this.#cancelledRuns.has(runId)
+      yield terminalEnvelope(runId, handle, prepared, providerOutcome, 2, cancelled)
+      return true
+    }
+    const outcome = await lease.outcome(signal === undefined ? undefined : { signal })
+    if (outcome.kind === 'detached') return false
+    yield terminalEnvelope(runId, handle, prepared, outcome, 2, this.#cancelledRuns.has(runId))
+    return true
   }
 
   #forgetHandle(runId: string): void {
     this.#handles.delete(runId)
     this.#prepared.delete(runId)
+    this.#providers.delete(runId)
     if (!this.#activeRuns.has(runId)) this.#cancelledRuns.delete(runId)
+  }
+
+  #acceptBeforeStart(operationId: string, runId: string): ControlAcknowledgement {
+    this.#cancelledRuns.add(runId)
+    this.#prepared.delete(runId)
+    this.#settleCancelled(runId)
+    return { operationId, outcome: 'accepted', detail: 'cancelled-before-start' }
+  }
+
+  async #releaseRetainedEnvironment(
+    runId: string,
+    environmentId: string,
+    signal: AbortSignal | undefined,
+  ): Promise<boolean> {
+    const provider = this.#providers.get(runId)
+    const options = signal === undefined ? undefined : { signal }
+    if (provider?.get === undefined || environmentId.length === 0) return false
+    try {
+      const environment = await provider.get(environmentId, options)
+      if (environment === null) return true
+      if (environment.destroy === undefined) return false
+      await environment.destroy(options)
+      return true
+    } catch {
+      return false
+    }
   }
 }

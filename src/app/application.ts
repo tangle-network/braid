@@ -76,7 +76,7 @@ import {
 import { recoverPendingFinalResults } from './run-final-recovery.js'
 import { createRunLedger } from './run-ledger.js'
 import { reconcileRun, reconnectRun } from './run-replay.js'
-import { isTerminal, waitForIdle } from './run-status.js'
+import { isStoppableRun, isTerminal, waitForIdle } from './run-status.js'
 import { resolveConversationTarget } from './run-targets.js'
 import { shutdownApplication } from './shutdown-controller.js'
 import { createTaskFeedbackActions, type TaskFeedbackActions } from './task-feedback.js'
@@ -677,10 +677,10 @@ export class BraidApplication {
     const abort = runId ? this.#ledger.getAbort(runId) : undefined
     return Boolean(
       run &&
-        !isTerminal(run.status) &&
+        isStoppableRun(run) &&
         run.status !== 'cancelling' &&
         run.capabilities.controls.cancel &&
-        abort &&
+        (abort || run.status === 'unknown') &&
         this.#ledger.controlForRun(run.id, 'cancel') === undefined,
     )
   }
@@ -929,7 +929,7 @@ export class BraidApplication {
 
   async #cancelForClose(runId: string): Promise<void> {
     const run = this.#state.runs.find((candidate) => candidate.id === runId)
-    if (run === undefined || isTerminal(run.status)) return
+    if (run === undefined || !isStoppableRun(run)) return
     const receipt = await this.cancelRun({
       operationId: `operation-close-${runId}`,
       runId,
