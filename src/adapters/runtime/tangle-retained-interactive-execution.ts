@@ -284,16 +284,16 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
       ...(controlSignal === undefined ? {} : { signal: controlSignal }),
     })
     const material = { operationId: input.operationId, ref: handle.ref, control }
-    const acknowledgement = await handle.stop(
-      { ...material, requestDigest: agentInteractiveSessionStopRequestDigest(material) },
-      controlSignal === undefined ? undefined : { signal: controlSignal },
-    )
+    const acknowledgement = await handle.stop({
+      ...material,
+      requestDigest: agentInteractiveSessionStopRequestDigest(material),
+    })
     if (acknowledgement.status === 'accepted' || acknowledgement.status === 'replayed') {
       this.#cancelledRuns.add(input.runId)
       const released = await this.#releaseRetainedEnvironment(
         input.runId,
         handle.ref.run.environmentId,
-        controlSignal,
+        controlSignal?.aborted === true ? undefined : controlSignal,
       )
       if (!released) {
         this.#cancelledRuns.delete(input.runId)
@@ -640,14 +640,14 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
     if (replayedSequence < 1) yield await observedEnvelope(runId, handle, prepared, 1)
     if (replayedSequence >= 2) return true
     const providerOutcome = await terminalOutcome(handle, signal)
-    const cancelled = this.#cancelledRuns.has(runId)
     if (providerOutcome !== undefined) {
+      const cancelled = this.#cancelledRuns.has(runId)
       yield terminalEnvelope(runId, handle, prepared, providerOutcome, 2, cancelled)
       return true
     }
     const outcome = await lease.outcome(signal === undefined ? undefined : { signal })
     if (outcome.kind === 'detached') return false
-    yield terminalEnvelope(runId, handle, prepared, outcome, 2, cancelled)
+    yield terminalEnvelope(runId, handle, prepared, outcome, 2, this.#cancelledRuns.has(runId))
     return true
   }
 

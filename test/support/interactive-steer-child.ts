@@ -52,7 +52,11 @@ const { app } = await createDurableBraidApplication({
   profile,
   execution,
   credentialStore: new FileCredentialStore(join(root, 'credentials')),
-  ...(Number(process.env.STEER_TEST_TIMEOUT ?? 5_000) < 1_000 ? { cancelTimeoutMs: 30 } : {}),
+  ...(Number(process.env.STEER_TEST_CANCEL_TIMEOUT ?? 0) > 0
+    ? { cancelTimeoutMs: Number(process.env.STEER_TEST_CANCEL_TIMEOUT) }
+    : Number(process.env.STEER_TEST_TIMEOUT ?? 5_000) < 1_000
+      ? { cancelTimeoutMs: 30 }
+      : {}),
   ...{ steerTimeoutMs: Number(process.env.STEER_TEST_TIMEOUT ?? 5_000) },
 })
 await app.whenDurable()

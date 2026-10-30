@@ -22,13 +22,16 @@ interface Reply {
   readonly events?: readonly BraidEventEnvelope[]
 }
 
-async function child(root: string, endpoint: string, timeout = 5_000) {
+async function child(root: string, endpoint: string, timeout = 5_000, cancelTimeout?: number) {
   const process = fork(new URL('./support/interactive-steer-child.js', import.meta.url), [], {
     env: {
       ...globalThis.process.env,
       STEER_TEST_ROOT: root,
       STEER_TEST_ENDPOINT: endpoint,
       STEER_TEST_TIMEOUT: String(timeout),
+      ...(cancelTimeout === undefined
+        ? {}
+        : { STEER_TEST_CANCEL_TIMEOUT: String(cancelTimeout) }),
     },
     stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
   })
@@ -183,6 +186,9 @@ test('live owner survives a second process steer, replay, duplicate event, disco
       }),
     )
     assert.equal(cancelled.state.runs[0]?.status, 'cancelled')
+    assert.deepEqual(server.fixture.destroyedIds, [
+      cancelled.state.runs[0]?.controlRef?.environmentId,
+    ])
     assert.equal((await turns(root, run.providerSessionId, params.operationId)).length, 1)
     assert.equal(server.fixture.creates, 1, 'recovery creates no replacement environment')
     await recovered.request('shutdown')
@@ -342,6 +348,41 @@ test('unknown retained run is cancelled only after stop and sandbox release are 
     assert.equal(released.state.runs[0]?.status, 'cancelled')
     assert.deepEqual(server.fixture.destroyedIds, [environmentId])
     assert.ok(server.fixture.stopEnvironmentIds.every((id) => id === environmentId))
+  } finally {
+    await Promise.all(children.map((value) => value.kill()))
+    await server.close()
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('a stop that accepts after the cancel deadline still cancels and releases the sandbox', {
+  timeout: 60_000,
+}, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-terminal-late-cancel-'))
+  const server = await interactiveProviderServer()
+  const children: Awaited<ReturnType<typeof child>>[] = []
+  try {
+    const owner = await child(root, server.endpoint)
+    children.push(owner)
+    const started = await owner.request('send', { text: 'Inspect the workspace.' })
+    const run = started.state.runs[0]
+    assert.ok(run?.controlRef)
+    const environmentId = run.controlRef.environmentId
+    server.delay('stop', 800)
+    const stopper = await child(root, server.endpoint, 5_000, 200)
+    children.push(stopper)
+    const foreground = await stopper.request('cancel', { runId: run.id })
+    assert.equal(foreground.result?.acknowledgement?.outcome, 'unknown')
+    assert.equal(foreground.state.runs[0]?.status, 'unknown')
+    assert.deepEqual(server.fixture.destroyedIds, [])
+    let status = foreground.state.runs[0]?.status
+    const startedAt = Date.now()
+    while (status !== 'cancelled' && Date.now() - startedAt < 5_000) {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      status = (await stopper.request('state')).state.runs[0]?.status
+    }
+    assert.equal(status, 'cancelled')
+    assert.deepEqual(server.fixture.destroyedIds, [environmentId])
   } finally {
     await Promise.all(children.map((value) => value.kill()))
     await server.close()

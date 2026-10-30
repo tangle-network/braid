@@ -298,7 +298,7 @@ async function control(
       return
     }
     context.ledger.clearExplicitlyCancelled(request.runId)
-    if (controlKind !== 'cancel' || ack.outcome === 'rejected' || ack.outcome === 'unknown') {
+    if (controlKind !== 'cancel' || ack.outcome === 'rejected') {
       context.ledger.clearCancellationPending(request.runId)
       context.ledger.clearCancelStatus(request.runId)
     }
