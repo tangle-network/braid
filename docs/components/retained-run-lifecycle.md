@@ -32,7 +32,7 @@ Detach closes only the local reader and leaves the provider run active.
 
 Cancel uses one stable operation identifier and reconciles an ambiguous acknowledgement through exact provider status.
 
-Unknown status remains unknown until a later exact observation resolves it.
+Unknown status remains unknown until a later exact observation resolves it. A run that still has its exact control reference can be cancelled; Braid records that cancellation only after the provider acknowledges the stop, then releases the retained environment.
 
 The implementation never parses runner output or reads provider-private state.
 
@@ -79,7 +79,7 @@ Duplicate environments, conflicting control references, stale sessions, and malf
 
 A client crash does not imply provider cancellation.
 
-A stream disconnect does not imply run failure.
+A stream disconnect does not imply run failure. A terminal close with code 1001 while the provider process is still running reattaches once and does not end the run.
 
 Credentials and raw provider payloads never enter the journal, frame captures, or diagnostics.
 

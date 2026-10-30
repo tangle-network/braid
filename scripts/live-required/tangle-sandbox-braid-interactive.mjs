@@ -161,7 +161,6 @@ export function sandboxConfiguration(environment) {
 export function isCancellableInteractiveRunStatus(status) {
   return typeof status === 'string' && CANCELLABLE_INTERACTIVE_RUN_STATUSES.has(status)
 }
-
 export function stoppedRunFromState(response, runId) {
   if (!stateForRun(response, runId)) return undefined
   const run = runFromState(response.state, runId)
@@ -1152,7 +1151,8 @@ async function stopThroughBraid(binary, config, runId, timeoutMs) {
       }
     } else {
       assert.ok(
-        isCancellableInteractiveRunStatus(beforeRun?.status),
+        isCancellableInteractiveRunStatus(beforeRun?.status) ||
+          (beforeRun?.status === 'unknown' && beforeRun.controlRef != null),
         `Braid stop cannot target run status ${beforeRun?.status ?? 'missing'}`,
       )
       const operationId = interactiveStopOperationId()

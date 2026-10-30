@@ -8,6 +8,10 @@ export function findRun(context: Pick<StateReader, 'currentState'>, runId: strin
   return run
 }
 
+export function isStoppableRun(run: { status: RunStatus; controlRef?: unknown }): boolean {
+  return !isTerminal(run.status) || (run.status === 'unknown' && run.controlRef !== undefined)
+}
+
 export function isTerminal(
   status: RunStatus,
 ): status is Extract<

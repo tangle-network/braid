@@ -6,7 +6,7 @@ import type { ControlEffectRequest, ControlPort, QueuePort } from './application
 import type { ControlOperationRecord, ControlReceipt, QueueReceipt } from './application-types.js'
 import { AppError } from './errors.js'
 import { retainedExecutionRecoveryContext } from './run-recovery-context.js'
-import { isTerminal } from './run-status.js'
+import { isStoppableRun, isTerminal } from './run-status.js'
 import { resolveRunTarget } from './run-targets.js'
 
 export function queueRunInput(
@@ -88,7 +88,7 @@ export async function cancelRun(
 ): Promise<ControlReceipt> {
   const previous = context.ledger.getControl(input.operationId)
   const run = resolveRunTarget(context.currentState(), input, previous?.runId)
-  if (context.ledger.getControl(input.operationId) === undefined && isTerminal(run.status))
+  if (context.ledger.getControl(input.operationId) === undefined && !isStoppableRun(run))
     throw new AppError('UNKNOWN_RUN', `Run ${run.id} is not active`)
   if (!run.capabilities.controls.cancel && !input.legacy)
     throw new AppError('CAPABILITY_UNAVAILABLE', 'This run does not advertise cancellation support')
@@ -174,7 +174,7 @@ async function control(
 
   if (controlKind === 'cancel') {
     const existing = context.ledger.controlForRun(request.runId, 'cancel')
-    if (existing !== undefined)
+    if (existing !== undefined && (await existing.acknowledgement).outcome !== 'unknown')
       return existingControlReceipt(context, request.operationId, controlKind, existing)
   }
 
@@ -228,7 +228,7 @@ async function control(
       }
       await commitControlRequestBatch(context, [requested, legacyRequested])
       const afterRequest = context.findRun(request.runId)
-      if (context.isTerminal(afterRequest.status)) {
+      if (!isStoppableRun(afterRequest)) {
         preflightAcknowledgement = {
           operationId: request.operationId,
           outcome: 'rejected',
@@ -298,17 +298,12 @@ async function control(
       return
     }
     context.ledger.clearExplicitlyCancelled(request.runId)
-    if (controlKind !== 'cancel' || ack.outcome === 'rejected') {
+    if (controlKind !== 'cancel' || ack.outcome === 'rejected' || ack.outcome === 'unknown') {
       context.ledger.clearCancellationPending(request.runId)
       context.ledger.clearCancelStatus(request.runId)
     }
     context.ledger.clearDetached(request.runId)
-    if (controlKind === 'cancel' && ack.outcome === 'unknown') {
-      await applyAcceptedCancellation(context, request, run, cancelStatus ?? 'cancelled', {
-        ...ack,
-        detail: unknownCancellationDetail(ack.detail),
-      })
-    } else if (
+    if (
       controlKind !== 'steer' &&
       ack.outcome === 'unknown' &&
       !context.isTerminal(context.findRun(request.runId).status)

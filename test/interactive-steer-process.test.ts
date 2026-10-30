@@ -41,6 +41,7 @@ async function child(root: string, endpoint: string, timeout = 5_000) {
     { resolve: (reply: Reply) => void; reject: (error: Error) => void }
   >()
   let nextId = 0
+  let lateError: string | undefined
   let initialResolve!: (reply: Reply) => void
   let initialReject!: (error: Error) => void
   const ready = new Promise<Reply>((resolve, reject) => {
@@ -53,7 +54,10 @@ async function child(root: string, endpoint: string, timeout = 5_000) {
       return
     }
     const waiter = pending.get(reply.id ?? -1)
-    if (waiter === undefined) return
+    if (waiter === undefined) {
+      if (reply.error) lateError = reply.error
+      return
+    }
     pending.delete(reply.id ?? -1)
     if (reply.error) waiter.reject(new Error(`${reply.error}\n${stderr}`))
     else waiter.resolve(reply)
@@ -78,6 +82,7 @@ async function child(root: string, endpoint: string, timeout = 5_000) {
       if (process.exitCode === null && process.signalCode === null) process.kill('SIGKILL')
       await exit
     },
+    lateError: () => lateError,
   }
 }
 
@@ -232,6 +237,111 @@ test('steer deadline leaves delivery alive and late acceptance settles durably t
         )
       ).includes('op-late-steer'),
     )
+  } finally {
+    await Promise.all(children.map((value) => value.kill()))
+    await server.close()
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+async function until(ready: () => boolean, label: string) {
+  const started = Date.now()
+  while (!ready()) {
+    if (Date.now() - started > 15_000) throw new Error(label)
+    await new Promise((resolve) => setTimeout(resolve, 20))
+  }
+}
+
+test('a 1001 terminal close reattaches a live run and stop destroys that sandbox once', {
+  timeout: 60_000,
+}, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-terminal-1001-'))
+  const server = await interactiveProviderServer()
+  server.fixture.attachPlan = ['shutdown', 'live']
+  const children: Awaited<ReturnType<typeof child>>[] = []
+  try {
+    const owner = await child(root, server.endpoint)
+    children.push(owner)
+    const ready = await owner.request('view', { text: 'Inspect the workspace.' })
+    const run = ready.state.runs[0]
+    const controlRef = run?.controlRef
+    assert.ok(run && controlRef, `run status before reattach ${run?.status}`)
+    await until(
+      () => server.fixture.attaches >= 2 || owner.lateError() !== undefined,
+      'terminal did not reattach after code 1001',
+    )
+    assert.equal(owner.lateError(), undefined)
+    assert.equal(server.fixture.attaches, 2)
+    const stopper = await child(root, server.endpoint)
+    children.push(stopper)
+    const visible = stopper.initial.state.runs.find((candidate) => candidate.id === run.id)
+    assert.ok(
+      visible?.status === 'streaming' ||
+        visible?.status === 'running' ||
+        visible?.status === 'waiting' ||
+        visible?.status === 'starting',
+      `reattached run status ${visible?.status}`,
+    )
+    const cancelled = await stopper.request('cancel', { runId: run.id })
+    assert.ok(
+      cancelled.result?.acknowledgement?.outcome === 'accepted' ||
+        cancelled.result?.acknowledgement?.outcome === 'already-applied',
+      JSON.stringify(cancelled.result),
+    )
+    assert.ok(
+      cancelled.state.runs[0]?.status === 'cancelled' ||
+        cancelled.state.runs[0]?.status === 'aborted',
+    )
+    assert.deepEqual(server.fixture.stopEnvironmentIds, [controlRef.environmentId])
+    assert.deepEqual(server.fixture.destroyedIds, [controlRef.environmentId])
+    assert.equal(owner.lateError(), undefined, owner.lateError())
+  } finally {
+    await Promise.all(children.map((value) => value.kill()))
+    await server.close()
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('unknown retained run is cancelled only after stop and sandbox release are both confirmed', {
+  timeout: 60_000,
+}, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-terminal-unknown-stop-'))
+  const server = await interactiveProviderServer()
+  const children: Awaited<ReturnType<typeof child>>[] = []
+  const open = async () => {
+    const value = await child(root, server.endpoint)
+    children.push(value)
+    return value
+  }
+  try {
+    const owner = await open()
+    const started = await owner.request('send', { text: 'Inspect the workspace.' })
+    const run = started.state.runs[0]
+    assert.ok(run?.controlRef)
+    const environmentId = run.controlRef.environmentId
+    server.fixture.sessionState = 'unknown'
+    const stopper = await open()
+    const reconciled = await stopper.request('reconcile', { runId: run.id })
+    assert.equal(reconciled.state.runs[0]?.status, 'unknown')
+    assert.ok(reconciled.state.runs[0]?.controlRef)
+    server.fixture.stopEffect = 'unknown'
+    const withheld = await stopper.request('cancel', { runId: run.id })
+    assert.equal(withheld.result?.acknowledgement?.outcome, 'unknown')
+    assert.equal(withheld.state.runs[0]?.status, 'unknown')
+    assert.deepEqual(server.fixture.destroyedIds, [])
+    assert.deepEqual(server.fixture.stopEnvironmentIds, [environmentId])
+    server.fixture.stopEffect = 'stopped'
+    server.fixture.destroyError = true
+    const unreleased = await stopper.request('cancel', { runId: run.id })
+    assert.equal(unreleased.result?.acknowledgement?.outcome, 'unknown')
+    assert.equal(unreleased.state.runs[0]?.status, 'unknown')
+    assert.deepEqual(server.fixture.destroyedIds, [])
+    server.fixture.destroyError = false
+    const released = await stopper.request('cancel', { runId: run.id })
+    assert.equal(released.result?.acknowledgement?.outcome, 'accepted')
+    assert.equal(released.state.runs[0]?.status, 'cancelled')
+    assert.deepEqual(server.fixture.destroyedIds, [environmentId])
+    assert.ok(server.fixture.stopEnvironmentIds.every((id) => id === environmentId))
   } finally {
     await Promise.all(children.map((value) => value.kill()))
     await server.close()

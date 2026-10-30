@@ -57,12 +57,26 @@ const capabilities: AgentEnvironmentCapabilities = {
  */
 export class InteractiveEnvironmentFixture {
   readonly prompts: string[] = []
+  readonly stopEnvironmentIds: string[] = []
+  readonly destroyedIds: string[] = []
   creates = 0
+  attaches = 0
+  /** First attach closes with code 1001; a later attach stays open until the caller stops it. */
+  attachPlan: Array<'shutdown' | 'live'> = []
+  sessionState: 'running' | 'unknown' = 'running'
+  stopEffect: 'stopped' | 'unknown' = 'stopped'
+  destroyError = false
   #ref: AgentInteractiveSessionRef | undefined
   #generation = 0
   #running = true
   readonly #promptLedger = new Map<string, AgentInteractiveSessionPromptAcknowledgement>()
   readonly #environmentId = 'interactive-fixture-environment'
+
+  noteAttach(): 'shutdown' | 'live' {
+    const plan = this.attachPlan[this.attaches] ?? 'live'
+    this.attaches += 1
+    return plan
+  }
 
   provider(): AgentEnvironmentProvider {
     const environment = this.#environment()
@@ -73,7 +87,10 @@ export class InteractiveEnvironmentFixture {
         this.creates += 1
         return environment
       },
-      get: async (id) => (id === this.#environmentId ? environment : null),
+      get: async (id) =>
+        this.destroyedIds.includes(this.#environmentId) || id !== this.#environmentId
+          ? null
+          : environment,
     }
   }
 
@@ -131,15 +148,24 @@ export class InteractiveEnvironmentFixture {
               control: this.#control(ref),
             }
           },
-          status: async () =>
-            this.#running
+          status: async () => {
+            if (this.sessionState === 'unknown') {
+              return {
+                state: 'unknown' as const,
+                ref,
+                message: 'terminal connection closed',
+                retryable: true,
+              }
+            }
+            return this.#running
               ? { state: 'running' as const, ref }
               : {
                   state: 'exited' as const,
                   ref,
                   endedAt: '2026-10-28T00:05:00.000Z',
                   reason: 'stopped' as const,
-                },
+                }
+          },
           attach: async () => {
             throw new Error('the steer proof attaches no terminal')
           },
@@ -173,6 +199,17 @@ export class InteractiveEnvironmentFixture {
             return acknowledgement
           },
           stop: async (command) => {
+            this.stopEnvironmentIds.push(command.ref.run.environmentId)
+            if (this.stopEffect === 'unknown') {
+              return {
+                operationId: command.operationId,
+                requestDigest: command.requestDigest,
+                ref,
+                control: command.control,
+                status: 'unknown' as const,
+                effect: 'unknown' as const,
+              }
+            }
             this.#running = false
             return {
               operationId: command.operationId,
@@ -185,7 +222,10 @@ export class InteractiveEnvironmentFixture {
           },
         }
       },
-      destroy: async () => {},
+      destroy: async () => {
+        if (this.destroyError) throw new Error('sandbox delete failed')
+        this.destroyedIds.push(this.#environmentId)
+      },
     }
   }
 }

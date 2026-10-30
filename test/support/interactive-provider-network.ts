@@ -1,6 +1,12 @@
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import type {
+  AgentInteractiveSessionAttach,
+  AgentInteractiveSessionControlClaim,
+  AgentInteractiveSessionRef,
+  AgentInteractiveTerminalSession,
+} from '@tangle-network/agent-interface'
+import type {
   AgentEnvironment,
   AgentEnvironmentProvider,
 } from '@tangle-network/agent-interface/environment-provider'
@@ -27,6 +33,11 @@ export async function interactiveProviderServer() {
         result = { id: environment.id }
       } else if (method === 'get')
         result = environment === undefined ? null : { id: environment.id }
+      else if (method === 'destroy') {
+        if (environment === undefined) throw new Error('No environment')
+        await environment.destroy?.()
+        result = null
+      } else if (method === 'attach') result = fixture.noteAttach()
       else {
         if (environment === undefined) throw new Error('No environment')
         if (method === 'startInteractive') {
@@ -79,14 +90,15 @@ export function networkInteractiveProvider(endpoint: string): AgentEnvironmentPr
       provider: 'tangle-sandbox',
       status: async () => 'running',
       async *stream() {},
-      destroy: async () => {},
+      destroy: (options) => call('destroy', [], options?.signal).then(() => undefined),
       startInteractive: (request, options) =>
         call('startInteractive', [request], options?.signal) as never,
       interactive: (ref) =>
         ({
           ref,
-          attach: async () => {
-            throw new Error('Network steer test opens no terminal')
+          attach: async (request: AgentInteractiveSessionAttach) => {
+            const plan = (await call('attach', [ref])) as 'shutdown' | 'live'
+            return terminalSession(ref, request.control, plan === 'shutdown')
           },
           status: (_options) => call('status', [ref]) as never,
           claimControl: (command, options) =>
@@ -104,5 +116,54 @@ export function networkInteractiveProvider(endpoint: string): AgentEnvironmentPr
       return environment(result.id)
     },
     get: async (id) => ((await call('get', [id])) === null ? null : environment(id)),
+  }
+}
+
+function terminalSession(
+  ref: AgentInteractiveSessionRef,
+  control: AgentInteractiveSessionControlClaim,
+  shutdown: boolean,
+): AgentInteractiveTerminalSession {
+  const terminalSessionId = 'interactive-fixture-terminal'
+  const now = '2026-10-28T00:00:00.000Z'
+  return {
+    ref: {
+      terminalSessionId,
+      parentExecutionId: ref.run.executionId,
+      name: 'interactive',
+      shell: 'bash',
+      cwd: '/workspace',
+      cols: 80,
+      rows: 24,
+      createdAt: now,
+      lastActivityAt: now,
+      expiresAt: '2126-08-16T00:00:00.000Z',
+      isRunning: true,
+      attachCount: 1,
+    },
+    cursors: { earliest: 0, latest: 0 },
+    control,
+    input: async () => undefined,
+    resize: async () => undefined,
+    detach: async () => ({ status: 'detached', terminalSessionId }),
+    close: async () => ({ status: 'closed', terminalSessionId }),
+    async *events(options?: { signal?: AbortSignal }) {
+      if (shutdown) {
+        yield {
+          type: 'error',
+          message:
+            'Terminal connection closed before the process exited ' +
+            '(code 1001: Server shutting down)',
+        }
+        return
+      }
+      await new Promise<void>((resolve) => {
+        if (options?.signal?.aborted) {
+          resolve()
+          return
+        }
+        options?.signal?.addEventListener('abort', () => resolve(), { once: true })
+      })
+    },
   }
 }

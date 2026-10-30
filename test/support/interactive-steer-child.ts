@@ -1,4 +1,5 @@
 import { join } from 'node:path'
+import { presentNativeInteractiveRun } from '../../src/bin/native-interactive-actions.js'
 import { defineAgentProfile } from '@tangle-network/agent-interface'
 import { NativeInteractiveRunBroker } from '../../src/adapters/runtime/native-interactive-run-broker.js'
 import type { PreparedTangleRetainedConnection } from '../../src/adapters/runtime/production-tangle-sandbox-backend.js'
@@ -91,6 +92,39 @@ process.on(
         const event = input.event as RuntimeEventEnvelope
         await app.ingestRuntimeEvent(event)
         await app.ingestRuntimeEvent(event)
+      } else if (input.command === 'view') {
+        app.initialize(root)
+        await app.whenDurable()
+        const sent = app.send({
+          operationId: input.operationId,
+          text: input.text,
+          mode: 'interactive',
+        })
+        await sent.admissionReady
+        while ((app.state().runs[0]?.lastProviderSequence ?? 0) < 1)
+          await new Promise((resolve) => setTimeout(resolve, 5))
+        process.send?.({
+          id: input.id,
+          result: { ready: true },
+          state: app.state(),
+          events: app.events(),
+        })
+        await presentNativeInteractiveRun(
+          {
+            current: () => ({ app, nativeInteractive: broker }),
+            terminal: { columns: 80, rows: 24, start() {}, stop() {}, write() {} },
+            signals: () => ({ takeOver: () => () => undefined }),
+            suspend() {},
+            resume() {},
+            nextOperationId: () => `${input.operationId}-terminal`,
+            holderId: 'braid',
+          },
+          sent.runId,
+          sent.completion,
+        )
+        result = { ready: true }
+      } else if (input.command === 'reconcile') {
+        await app.reconcileRun({ operationId: input.operationId, runId: input.runId })
       } else if (input.command === 'cancel') {
         const receipt = await app.cancelRun(input)
         await receipt.completion
