@@ -296,8 +296,7 @@ async function runInference({ repository, environment, binary, invocationId }) {
         binary,
         config,
         marker: 'TANGLE_INFERENCE_CANCEL',
-        prompt:
-          'Produce a numbered list from 1 to 10000, one short word per line, until Braid cancels this run.',
+        prompt: 'Count from 1 to 30, one number per line.',
       })
       cancellation = { status: 'confirmed', runId: cancelled.run.id }
     } else {

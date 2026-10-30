@@ -616,7 +616,7 @@ export async function runHeadlessCancellation({ binary, config, marker, prompt, 
     const terminal = await session.waitFor(
       'cancelled turn terminal state',
       (candidate) => stateForRun(candidate, sent.runId),
-      Number(process.env.BRAID_LIVE_REQUIRED_TIMEOUT_MS ?? 180_000),
+      Number(process.env.BRAID_LIVE_REQUIRED_TIMEOUT_MS ?? 60_000),
     )
     const run = runFromState(terminal.state, sent.runId)
     if (!['aborted', 'cancelled'].includes(run?.status))
