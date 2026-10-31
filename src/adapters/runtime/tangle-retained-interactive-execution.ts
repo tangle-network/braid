@@ -80,6 +80,10 @@ interface PreparedInteractiveConnection {
 }
 
 /** Runs one exact Tangle coding-agent TUI through Runtime's durable APIs. */
+export const PROVIDER_EXIT_WAIT_MS = 15_000
+export const PROVIDER_EXIT_POLL_MS = 500
+export const PROVIDER_EXIT_HOLD_MS = 3_000
+
 export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
   readonly admissionMode = 'async' as const
   readonly #resolve: TangleRetainedInteractiveExecutionOptions['resolve']
@@ -290,6 +294,10 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
     })
     if (acknowledgement.status === 'accepted' || acknowledgement.status === 'replayed') {
       this.#cancelledRuns.add(input.runId)
+      // Wait for the provider's own exit report while the session still exists,
+      // and hold the terminal state briefly, so stop observers can read the
+      // exact exited identity before the environment is released.
+      await this.#awaitProviderExit(handle, controlSignal)
       const released = await this.#releaseRetainedEnvironment(
         input.runId,
         handle.ref.run.environmentId,
@@ -316,6 +324,30 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
             ? 'unknown'
             : 'rejected',
       detail: acknowledgement.effect,
+    }
+  }
+
+  /**
+   * Bounded wait for the provider to report the session exited, never blocking cleanup past the
+   * budget, plus a short hold after the exit so concurrent observers can read the terminal
+   * status and execution list before the environment is released.
+   */
+  async #awaitProviderExit(
+    handle: RetainedInteractiveRunHandle,
+    signal: AbortSignal | undefined,
+  ): Promise<void> {
+    const deadline = Date.now() + PROVIDER_EXIT_WAIT_MS
+    while (Date.now() < deadline && signal?.aborted !== true) {
+      try {
+        const status = await handle.status()
+        if (status?.state === 'exited') {
+          await new Promise((resolve) => setTimeout(resolve, PROVIDER_EXIT_HOLD_MS))
+          return
+        }
+      } catch {
+        // A control read that fails mid-stop is retried until the budget ends.
+      }
+      await new Promise((resolve) => setTimeout(resolve, PROVIDER_EXIT_POLL_MS))
     }
   }
 
