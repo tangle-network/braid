@@ -3,7 +3,6 @@ import { randomUUID } from 'node:crypto'
 import { readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import * as agentInterface from '@tangle-network/agent-interface'
 import { AgentExactRunControlRefSchema } from '@tangle-network/agent-interface'
 import { Sandbox } from '@tangle-network/sandbox'
 import { readFreshStateFrame, stateFrameVersion } from '../interface-state-frame.mjs'
@@ -35,6 +34,7 @@ import {
   sameNameInteractiveResources,
 } from './interactive-resource-ownership.mjs'
 import { steerTurnsFromJournal, steerTwiceThroughBraid } from './interactive-steer.mjs'
+import { interactiveStopProviderEvidence } from './interactive-stop-evidence.mjs'
 import {
   createPty,
   harnessCommand,
@@ -71,7 +71,6 @@ import {
   sessionWorkspaceFilePath,
   withoutEnvironment,
 } from './tangle-sandbox-braid-stress-support.mjs'
-import { assertSameInteractiveRef } from './tangle-sandbox-interactive-continuity.mjs'
 import { workspaceRequestFor } from './workspace-request.mjs'
 
 const scriptPath = fileURLToPath(import.meta.url)
@@ -536,65 +535,6 @@ async function proveTuiReturned(runtime, timeoutMs, label) {
     timeoutMs,
   )
   return { outputBytes: runtime.output.length - before }
-}
-
-/**
- * Proves the provider ran exactly the one interactive process Braid started, and that Braid's stop
- * ended it. Interactive sessions use the interactive-control API, so `session.runs()` (the headless
- * execution list) must stay empty; the interactive status tombstone carries the exact identity.
- */
-export async function interactiveStopProviderEvidence({
-  box,
-  controlRef,
-  sessionRef,
-  timeoutMs,
-  label = 'LIVE-08 provider interactive execution',
-  pause = sleep,
-  now = () => performance.now(),
-}) {
-  assert.equal(box?.id, controlRef.environmentId, `${label} did not resolve the exact Sandbox`)
-  assert.equal(
-    sessionRef?.run?.executionId,
-    controlRef.executionId,
-    `${label} admission ref differs from the Braid control reference`,
-  )
-  const session = box.session(controlRef.sessionId)
-  const handle = session.interactive({ ref: sessionRef })
-  // Poll once a second; the Sandbox sidecar rate-limits control reads.
-  const deadline = now() + timeoutMs
-  let exited
-  for (;;) {
-    countProtectedWork('polls')
-    const status = await handle.status()
-    if (status) {
-      assertSameInteractiveRef(agentInterface, sessionRef, status.ref, `${label} status`)
-      if (status.state === 'exited') {
-        exited = status
-        break
-      }
-    }
-    if (now() >= deadline) throw new Error(`${label} stopped status timed out after ${timeoutMs}ms`)
-    await pause(1_000)
-  }
-  assert.equal(exited.reason, 'stopped', `${label} did not end through the exact stop request`)
-  const headlessExecutions = await session.runs()
-  assert.ok(Array.isArray(headlessExecutions), `${label} did not return the execution list`)
-  assert.equal(
-    headlessExecutions.length,
-    0,
-    `${label} found ${String(headlessExecutions.length)} headless executions beside the interactive process`,
-  )
-  return {
-    matched: true,
-    providerObserved: true,
-    source: 'interactive-status',
-    state: exited.state,
-    reason: exited.reason,
-    endedAt: exited.endedAt,
-    executionId: exited.ref.run.executionId,
-    incarnationId: exited.ref.incarnationId,
-    headlessExecutionCount: 0,
-  }
 }
 
 /**
@@ -1468,13 +1408,21 @@ async function runProof({
       true,
       { cols: 100, rows: 30 },
     )
-    const stop = await stopThroughBraid(packed.binary, config, identity.run.id, timeoutMs)
-    stopped = true
-    stopResult = stop
-    const providerExecution = await interactiveStopProviderEvidence({
+    const { stop, providerExecution } = await interactiveStopProviderEvidence({
       box: beforeStopObservation.box,
       controlRef: identity.controlRef,
       sessionRef: interactiveAdmissionIdentity(record, identity.run).admission.ref,
+      dispatchStop: async () => {
+        const stopResultInner = await stopThroughBraid(
+          packed.binary,
+          config,
+          identity.run.id,
+          timeoutMs,
+        )
+        stopped = true
+        stopResult = stopResultInner
+        return stopResultInner
+      },
       timeoutMs,
     })
     const beforeStop = { ...beforeStopObservation }
