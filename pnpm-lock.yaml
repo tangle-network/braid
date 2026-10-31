@@ -74,8 +74,8 @@ importers:
         specifier: 0.28.2
         version: 0.28.2
       node-pty:
-        specifier: 1.1.0
-        version: 1.1.0
+        specifier: 1.1.0-beta34
+        version: 1.1.0-beta34
       typescript:
         specifier: 7.0.2
         version: 7.0.2
@@ -887,8 +887,8 @@ packages:
     resolution: {integrity: sha512-VijLXbi3UACN69I0JVXJsX4tjACjNoQDgv2gTF6sx2wWEi8tkSg2eX8p5gSIFi8z2+DL3oHmY6OyKce38SDolg==}
     engines: {node: ^18 || ^20 || >= 21}
 
-  node-pty@1.1.0:
-    resolution: {integrity: sha512-20JqtutY6JPXTUnL0ij1uad7Qe1baT46lyolh2sSENDd4sTzKZ4nmAFkeAARDKwmlLjPx6XKRlwRUxwjOy+lUg==}
+  node-pty@1.1.0-beta34:
+    resolution: {integrity: sha512-RraDtX9RS1G1I5iO7e4YIOIA4arzd4ZVCD4mZr7+szaNupoTg9fxDCRr0EanqS0Qlzgm3PIdHNbPmblJguJuyg==}
 
   openapi3-ts@4.6.1:
     resolution: {integrity: sha512-XW9MOldkhoICNeXVzzmXzmOW5G73ppOEGmh7fLCqHjgfdEYCGGN+00MlVCeUZgovjjfC56j9tvtDt1zGabNjjA==}
@@ -1556,7 +1556,7 @@ snapshots:
 
   node-addon-api@8.9.2: {}
 
-  node-pty@1.1.0:
+  node-pty@1.1.0-beta34:
     dependencies:
       node-addon-api: 7.1.1
 

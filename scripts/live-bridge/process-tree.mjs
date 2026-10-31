@@ -10,8 +10,19 @@ const processTreeTrackers = new WeakMap()
 const defaultTermTimeoutMs = 2_000
 const defaultKillTimeoutMs = 2_000
 
-function childHasExited(child) {
-  return child.exitCode !== null || child.signalCode !== null
+// node-pty 1.1.0 exposed exitCode/signalCode fields on the terminal; the maintained
+// line reports exit only through onExit. Track that per child here so every live
+// proof shares one exit predicate.
+const exitedChildren = new WeakMap()
+
+export function childHasExited(child) {
+  if (typeof child?.onExit !== 'function')
+    return child.exitCode !== null || child.signalCode !== null
+  if (!exitedChildren.has(child)) {
+    exitedChildren.set(child, false)
+    child.onExit(() => exitedChildren.set(child, true))
+  }
+  return exitedChildren.get(child) === true
 }
 
 function errorMessage(error) {

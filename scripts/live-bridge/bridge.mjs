@@ -1,4 +1,5 @@
 import { proofHarnessTools } from '../proof-tools.mjs'
+import { childHasExited } from './process-tree.mjs'
 import { access } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { pnpmInvocation } from '../release/platform.mjs'
@@ -209,7 +210,7 @@ export async function launchBridgeIfRequested(endpoint, token, evidence, reposit
     await sleep(250)
     health = await requestJson(endpoint, '/health', token)
     if (healthIsStructurallyValid(health)) break
-    if (child.exitCode !== null || child.signalCode !== null) {
+    if (childHasExited(child)) {
       exited = await Promise.race([exit, sleep(1_000).then(() => ({ timeout: true }))])
     }
     if (exited !== undefined) break

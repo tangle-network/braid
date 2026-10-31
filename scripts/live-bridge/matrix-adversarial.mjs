@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { childHasExited } from './process-tree.mjs'
 import { spawn } from 'node:child_process'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -26,7 +27,7 @@ async function waitForPidFile(path, child, stderr, timeoutMs = 30_000) {
   while (Date.now() < deadline) {
     const value = Number(await readFile(path, 'utf8').catch(() => '0'))
     if (Number.isInteger(value) && value > 0) return value
-    if (child.exitCode !== null || child.signalCode !== null)
+    if (childHasExited(child))
       throw new Error(`Parent-crash fixture exited before writing ${path}: ${stderr()}`)
     await sleep(25)
   }

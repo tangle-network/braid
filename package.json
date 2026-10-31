@@ -94,7 +94,7 @@
     "test:upstream": "node scripts/release/verify-upstream.mjs",
     "test:package": "pnpm run build && node scripts/verify-package.mjs",
     "pack:check": "pnpm pack --pack-destination .tmp",
-    "check:release": "node --test scripts/release/registry-collision.test.mjs && node scripts/check-release.mjs",
+    "check:release": "node scripts/test-script-files.mjs scripts/release/registry-collision.test.mjs && node scripts/check-release.mjs",
     "release:check": "pnpm run check:release",
     "release:prepare": "node scripts/release/prepare-candidate.mjs",
     "release:collect": "node scripts/release/collect-release-evidence.mjs",
@@ -130,7 +130,7 @@
     "@types/node": "26.6.4",
     "@xterm/headless": "6.0.0",
     "esbuild": "0.28.2",
-    "node-pty": "1.1.0",
+    "node-pty": "1.1.0-beta34",
     "typescript": "7.0.2"
   }
 }

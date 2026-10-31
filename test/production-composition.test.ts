@@ -13,7 +13,7 @@ import {
 } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import test from 'node:test'
 import {
@@ -915,8 +915,8 @@ test('production default state isolates workspaces and config identities across 
   const statePathB = defaultStatePath(workspaceB, configPathB, environment)
   assert.notEqual(statePathA, statePathB)
   assert.match(
-    relative(join(dataDirectory, 'braid', 'workspaces'), statePathA),
-    /^[0-9a-f]{64}\/braid\.sqlite$/u,
+    relative(defaultBraidDataDirectory(environment), statePathA),
+    /^workspaces[\\/][0-9a-f]{64}[\\/]braid\.sqlite$/u,
   )
   assert.notEqual(
     defaultStatePath(workspaceA, join(workspaceA, '.braid', 'alternate.json'), environment),
@@ -931,7 +931,13 @@ test('production default state isolates workspaces and config identities across 
   )
   assert.ok(relative(workspaceA, statePathA).startsWith('..'))
   assert.ok(relative(workspaceB, statePathB).startsWith('..'))
-  assert.equal(defaultBraidDataDirectory(environment), join(dataDirectory, 'braid'))
+  // XDG_DATA_HOME owns the base on POSIX; darwin keeps its Library base regardless.
+  assert.equal(
+    defaultBraidDataDirectory(environment),
+    process.platform === 'darwin'
+      ? join(homedir(), 'Library', 'Application Support', 'braid')
+      : join(dataDirectory, 'braid'),
+  )
 
   const openAndClose = async (
     workspace: string,

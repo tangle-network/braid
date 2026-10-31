@@ -1239,6 +1239,53 @@ test('backup and restore enforce the approved root, descriptor identity, and no-
   await storage.close()
 })
 
+test('a symlinked state directory fails closed while its canonical spelling opens and round-trips', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-sqlite-symlinked-root-'))
+  const real = join(root, 'real-state')
+  await mkdir(real, { mode: 0o700 })
+  const alias = join(root, 'alias-state')
+  symlinkSync(real, alias, 'dir')
+  const factory = loadCipherDatabaseFactory()
+  let opened: ReturnType<typeof openBoundSqliteDatabase> | undefined
+  let reopened: ReturnType<typeof openBoundSqliteDatabase> | undefined
+  try {
+    // A state directory reached through a symlink is refused, even when the link
+    // is benign: private storage fails closed rather than trusting a resolvable
+    // alias, because a resolvable alias is indistinguishable from a planted one.
+    assert.throws(
+      () => openBoundSqliteDatabase(join(alias, 'braid.sqlite'), factory, 5_000),
+      (error: unknown) => error instanceof StorageError,
+      'a symlinked state directory must fail closed',
+    )
+    // The same tree through its real spelling is the supported path everywhere,
+    // including operating systems whose canonical temporary roots resolve
+    // through system symlinks when the caller passes the resolved spelling.
+    opened = openBoundSqliteDatabase(join(real, 'braid.sqlite'), factory, 5_000)
+    opened.database.pragma('journal_mode = WAL')
+    opened.database.exec('CREATE TABLE probe (value TEXT)')
+    opened.database.exec("INSERT INTO probe (value) VALUES ('canonical')")
+    closeBoundSqliteDatabase(opened)
+    opened = undefined
+    reopened = openBoundSqliteDatabase(join(real, 'braid.sqlite'), factory, 5_000)
+    assert.deepEqual(reopened.database.prepare('SELECT value FROM probe').all(), [
+      { value: 'canonical' },
+    ])
+    closeBoundSqliteDatabase(reopened)
+    reopened = undefined
+    const aliasedDatabase = join(real, 'linked.sqlite')
+    symlinkSync(join(real, 'braid.sqlite'), aliasedDatabase, 'file')
+    assert.throws(
+      () => openBoundSqliteDatabase(aliasedDatabase, factory, 5_000),
+      (error: unknown) => error instanceof StorageError,
+      'the database file itself must never be opened through a symlink',
+    )
+  } finally {
+    if (reopened) closeBoundSqliteDatabase(reopened)
+    if (opened) closeBoundSqliteDatabase(opened)
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test('native SQLite reuses a verified file descriptor on a third open', async () => {
   if (process.platform !== 'linux') return
   const root = await mkdtemp(join(tmpdir(), 'braid-sqlite-native-reopen-'))

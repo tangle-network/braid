@@ -1,4 +1,12 @@
-import { closeSync, constants, fchmodSync, fstatSync, openSync, readdirSync } from 'node:fs'
+import {
+  closeSync,
+  constants,
+  fchmodSync,
+  fstatSync,
+  lstatSync,
+  openSync,
+  readdirSync,
+} from 'node:fs'
 import { basename, dirname, resolve } from 'node:path'
 import { descriptorPath, openAt, unlinkAt } from '../persistence/posix-at.js'
 import {
@@ -144,7 +152,18 @@ function assertOwnedDatabase(metadata: ReturnType<typeof fstatSync>, path: strin
 function openDirectoryChain(path: string): number {
   let descriptor = openSync('/', REQUIRED_PARENT_FLAGS)
   try {
+    let current = ''
     for (const component of resolve(path).split('/').filter(Boolean)) {
+      current = current === '' ? `/${component}` : `${current}/${component}`
+      // O_NOFOLLOW refuses a symlinked final component on Linux, but BSD-derived
+      // kernels only apply it to the last component of the whole path; an explicit
+      // lstat per component keeps the walk refusing symlinks everywhere.
+      if (lstatSync(current).isSymbolicLink()) {
+        throw new StorageError(
+          'STORAGE_PATH',
+          `Storage directory must not be a symbolic link: ${current}`,
+        )
+      }
       const next = openAt(descriptor, component, REQUIRED_PARENT_FLAGS)
       closeSync(descriptor)
       descriptor = next

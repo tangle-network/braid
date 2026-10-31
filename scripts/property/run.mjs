@@ -1,4 +1,6 @@
 import { spawnSync } from 'node:child_process'
+import { realpathSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { createHash } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
@@ -55,6 +57,10 @@ function runStage(name, args) {
       BRAID_PROPERTY_FIRST_SEED: String(firstSeed),
       BRAID_PROPERTY_RUNS: String(runs),
       BRAID_TEST_DIST: testDist,
+      // The durable storage walk refuses symlinked path prefixes; macOS TMPDIR
+      // starts at the /var symlink, so tests run from its kernel-resolved self.
+      TMPDIR: realpathSync(tmpdir()),
+      TMP: realpathSync(tmpdir()),
     },
     maxBuffer: 4 * 1024 * 1024,
   })

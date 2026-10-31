@@ -216,12 +216,19 @@ export class RuntimeSupervisorController {
     operationId: string,
     reason = 'cancelled by user',
     source = 'braid',
+    operator = 'braid.user',
   ): SupervisorCancelResult {
     const supervisor = this.#findSupervisor(rootDir, supervisorId)
     if (supervisor === undefined) {
       return { status: 'unavailable', issue: missingSupervisorIssue(supervisorId) }
     }
-    const cancellation = this.#cancelRun(supervisor.stateDir, operationId, { reason, source })
+    // The runtime rejects a new cancelRun request that does not name who stops
+    // the run; every stop says its operator.
+    const cancellation = this.#cancelRun(supervisor.stateDir, operationId, {
+      reason,
+      source,
+      operator,
+    })
     return {
       status: cancellation.effect === 'unknown' ? 'requested' : 'acknowledged',
       operationId: cancellation.operationId,
