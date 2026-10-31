@@ -5,6 +5,7 @@ import * as agentInterface from '@tangle-network/agent-interface'
 import { countProtectedWork } from '../proof-tools.mjs'
 import { assertSameInteractiveRef } from './tangle-sandbox-interactive-continuity.mjs'
 import { sleep } from '../live-bridge/process.mjs'
+import { safeMessage } from './contracts.mjs'
 import { observeSandboxInventory } from './provider-observation.mjs'
 import {
   interactiveResourceName,

@@ -29,6 +29,15 @@ interface ExitStatus {
   readonly endedAt: string
   readonly ref: { readonly run: { readonly executionId: string }; readonly incarnationId: string }
 }
+interface CleanupModule {
+  readonly cleanupFailure: (label: string, error: unknown) => Error
+  readonly releasedByStopCleanup: (
+    client: unknown,
+    controlRef: { readonly environmentId: string },
+    runId: string,
+    timeoutMs: number,
+  ) => Promise<{ afterStop: unknown; cleanup: Record<string, unknown> } | undefined>
+}
 interface StopEvidenceModule {
   readonly interactiveStopProviderEvidence: (input: {
     readonly box: unknown
@@ -49,9 +58,10 @@ interface StopEvidenceModule {
 }
 // The live proof module is a release helper without a product declaration; load it
 // from the repository (tests run with the repository as the working directory).
-const { interactiveStopProviderEvidence, observeProviderExit } = (await import(
+const stopEvidenceModule = (await import(
   pathToFileURL(`${process.cwd()}/scripts/live-required/interactive-stop-evidence.mjs`).href
-)) as unknown as StopEvidenceModule
+)) as unknown as StopEvidenceModule & CleanupModule
+const { interactiveStopProviderEvidence, observeProviderExit } = stopEvidenceModule
 
 const controlRef = { environmentId: 'env-1', executionId: 'exec-1', sessionId: 'sess-1' }
 const sessionRef = {
@@ -171,5 +181,31 @@ test('observeProviderExit rejects a status that names a different incarnation', 
     ),
     (error: unknown) =>
       error instanceof Error && /status|incarnation|identity/iu.test(error.message),
+  )
+})
+
+test('moved cleanup helpers stay callable (a missing import fails here, not in production)', async () => {
+  const failure = stopEvidenceModule.cleanupFailure('label', new Error('inner'))
+  assert.match(failure.message, /label: inner/u)
+  const absentClient = {
+    get: async () => null,
+    list: async () => [],
+  }
+  const released = await stopEvidenceModule.releasedByStopCleanup(
+    absentClient,
+    { environmentId: 'env-gone' },
+    'run-x',
+    2_000,
+  )
+  assert.equal(released?.cleanup.confirmed, true)
+  const stillThere = { get: async () => ({ id: 'env-gone' }), list: async () => [] }
+  assert.equal(
+    await stopEvidenceModule.releasedByStopCleanup(
+      stillThere,
+      { environmentId: 'env-gone' },
+      'run-x',
+      2_000,
+    ),
+    undefined,
   )
 })
