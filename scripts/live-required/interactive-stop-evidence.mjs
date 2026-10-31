@@ -6,6 +6,7 @@ import { countProtectedWork } from '../proof-tools.mjs'
 import { assertSameInteractiveRef } from './tangle-sandbox-interactive-continuity.mjs'
 import { sleep } from '../live-bridge/process.mjs'
 import { safeMessage } from './contracts.mjs'
+import { MissingIntegrationError } from './tangle-sandbox-braid-stress-support.mjs'
 import { observeSandboxInventory } from './provider-observation.mjs'
 import {
   interactiveResourceName,
@@ -163,4 +164,28 @@ export async function attemptCleanup(errors, label, operation) {
 
 export function cleanupFailure(label, error) {
   return new Error(`${label}: ${safeMessage(error)}`, { cause: error })
+}
+
+export async function interactiveRetainedBox(client, controlRef, runId, label) {
+  if (!client) {
+    throw new MissingIntegrationError(`${label} requires the Sandbox verification client`, {
+      required: 'BRAID_TANGLE_SANDBOX_API_KEY or TANGLE_API_KEY',
+    })
+  }
+  const expectedName = interactiveResourceName(runId)
+  const box = await client.get(controlRef.environmentId)
+  if (
+    !box ||
+    box.id !== controlRef.environmentId ||
+    !isOwnedInteractiveResource(box, expectedName)
+  ) {
+    throw new MissingIntegrationError(
+      `${label} did not resolve the exact retained interactive Sandbox`,
+      {
+        environmentId: controlRef.environmentId,
+        expectedName,
+      },
+    )
+  }
+  return box
 }

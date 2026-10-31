@@ -37,6 +37,8 @@ import { steerTurnsFromJournal, steerTwiceThroughBraid } from './interactive-ste
 import {
   assertInteractiveOwnedResourceCleanup,
   attemptCleanup,
+  cleanupFailure,
+  interactiveRetainedBox,
   interactiveStopProviderEvidence,
   releasedByStopCleanup,
 } from './interactive-stop-evidence.mjs'
@@ -69,7 +71,6 @@ import {
   argument,
   configurationEnvironment,
   isMissingWorkspaceFileError,
-  MissingIntegrationError,
   positiveEnvironment,
   resourceDelta,
   sandboxWorkspaceRelativePath,
@@ -235,30 +236,6 @@ export function assertInteractiveTelemetry(telemetry, spend, timing) {
     'interactive latency is not a finite measurement',
   )
   return { complete: true }
-}
-
-export async function interactiveRetainedBox(client, controlRef, runId, label) {
-  if (!client) {
-    throw new MissingIntegrationError(`${label} requires the Sandbox verification client`, {
-      required: 'BRAID_TANGLE_SANDBOX_API_KEY or TANGLE_API_KEY',
-    })
-  }
-  const expectedName = interactiveResourceName(runId)
-  const box = await client.get(controlRef.environmentId)
-  if (
-    !box ||
-    box.id !== controlRef.environmentId ||
-    !isOwnedInteractiveResource(box, expectedName)
-  ) {
-    throw new MissingIntegrationError(
-      `${label} did not resolve the exact retained interactive Sandbox`,
-      {
-        environmentId: controlRef.environmentId,
-        expectedName,
-      },
-    )
-  }
-  return box
 }
 
 export async function waitForProviderReadback(
@@ -982,11 +959,20 @@ export async function finalizeInteractiveProof({
         new Error('Sandbox observation client was unavailable; exact deletion was refused'),
       )
     } else {
-      const observed = await attemptCleanup(errors, 'stopped Sandbox observation', () =>
-        observe(client, resolvedIdentity.controlRef, resolvedIdentity.run.id, timeoutMs),
-      )
-      if (observed.ok) {
-        afterStop = observed.value
+      let observeStopError
+      let afterStopObserved
+      try {
+        afterStopObserved = await observe(
+          client,
+          resolvedIdentity.controlRef,
+          resolvedIdentity.run.id,
+          timeoutMs,
+        )
+      } catch (error) {
+        observeStopError = error
+      }
+      if (observeStopError === undefined) {
+        afterStop = afterStopObserved
         const deleted = await attemptCleanup(errors, 'exact Sandbox deletion', () =>
           cleanupSandbox(client, resolvedIdentity, timeoutMs),
         )
@@ -1005,7 +991,8 @@ export async function finalizeInteractiveProof({
         // Braid's interactive stop releases the retained environment once the
         // provider reported the exit (the proof observed that exact exit while
         // the session still existed). A sandbox already absent after such a stop
-        // is confirmed cleanup when no owned interactive resource remains.
+        // is confirmed cleanup when no owned interactive resource remains; only
+        // an unresolvable sandbox with leftovers keeps the observation failure.
         const absent = await releasedByStopCleanup(
           client,
           resolvedIdentity.controlRef,
@@ -1016,6 +1003,7 @@ export async function finalizeInteractiveProof({
           afterStop = absent.afterStop
           cleanup = absent.cleanup
         } else {
+          errors.push(cleanupFailure('stopped Sandbox observation', observeStopError))
           errors.push(
             new Error('stopped Sandbox was neither observable nor provably released by the stop'),
           )
