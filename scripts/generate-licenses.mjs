@@ -7,10 +7,19 @@ const raw = execFileSync('pnpm', ['licenses', 'list', '--prod', '--json'], {
   encoding: 'utf8',
 })
 const groups = JSON.parse(raw)
+// pnpm lists the platform-specific optional binary beside its neutral base, so
+// the inventory would differ by generating platform. Collapse every platform
+// binary to one canonical name: darwin and linux check runs then produce the
+// same committed file.
+const PLATFORM_BINARY = /-(?:linux|darwin|win32)-(?:x64|arm64|ia32)(?:-(?:gnu|msvc))?$/u
 const packages = Object.entries(groups)
   .flatMap(([license, entries]) =>
     entries.flatMap((entry) =>
-      entry.versions.map((version) => ({ license, name: entry.name, version })),
+      entry.versions.map((version) => ({
+        license,
+        name: entry.name.replace(PLATFORM_BINARY, '-platform-binary'),
+        version,
+      })),
     ),
   )
   .sort((left, right) =>
