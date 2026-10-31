@@ -1,5 +1,7 @@
 import { spawnSync } from 'node:child_process'
+import { realpathSync } from 'node:fs'
 import { readdir, readFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -10,7 +12,15 @@ const args = process.argv.slice(2).filter((argument) => argument !== '--')
 if (args.includes('--list')) await import('./run-tests.mjs')
 const startedAt = performance.now()
 const testDist = await createTestDist('test')
-const environment = { ...process.env, BRAID_TEST_DIST: testDist }
+// Durable storage walks openat(O_NOFOLLOW) from the root, so the temp root must be
+// its kernel-resolved self (macOS TMPDIR begins at the /var symlink, which the
+// walk refuses). Pin the canonical path for every spawned test process.
+const environment = {
+  ...process.env,
+  BRAID_TEST_DIST: testDist,
+  TMPDIR: realpathSync(tmpdir()),
+  TMP: realpathSync(tmpdir()),
+}
 
 function run(command, commandArgs) {
   const result = spawnSync(command, commandArgs, {
