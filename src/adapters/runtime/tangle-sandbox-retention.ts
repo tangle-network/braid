@@ -1,5 +1,7 @@
-import type { SandboxClientLike } from '@tangle-network/agent-provider-tangle'
-import type { CreateSandboxOptions } from '@tangle-network/sandbox'
+import type {
+  SandboxClientLike,
+  TangleCreateSandboxOptions,
+} from '@tangle-network/agent-provider-tangle'
 import {
   MAX_RETAINED_IDLE_TTL_SECONDS,
   MIN_RETAINED_IDLE_TTL_SECONDS,
@@ -61,7 +63,7 @@ export function withRetainedSandboxPolicy(
   const usage = observable.usage?.bind(source)
   const subscription = observable.subscription?.bind(source)
   return Object.freeze({
-    async create(options?: CreateSandboxOptions, requestOptions?: { signal?: AbortSignal }) {
+    async create(options?: TangleCreateSandboxOptions, requestOptions?: { signal?: AbortSignal }) {
       return source.create(
         { ...options, ephemeral: false, idleTimeoutSeconds: idleTtlSeconds },
         requestOptions,
