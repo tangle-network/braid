@@ -296,7 +296,7 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
       this.#cancelledRuns.add(input.runId)
       // Wait for the provider's own exit report while the session still exists,
       // and hold the terminal state briefly, so stop observers can read the
-      // exact exited identity before the environment is released.
+      // exact exited identity.
       await this.#awaitProviderExit(handle, controlSignal)
       const released = await this.#releaseRetainedEnvironment(
         input.runId,
@@ -305,7 +305,11 @@ export class TangleRetainedInteractiveExecutionPort implements ExecutionPort {
       )
       if (!released) {
         this.#cancelledRuns.delete(input.runId)
-        return { operationId: input.operationId, outcome: 'unknown', detail: 'DESTROY_UNCONFIRMED' }
+        return {
+          operationId: input.operationId,
+          outcome: 'unknown',
+          detail: 'DESTROY_UNCONFIRMED',
+        }
       }
       this.#settleCancelled(input.runId)
       this.#forgetHandle(input.runId)

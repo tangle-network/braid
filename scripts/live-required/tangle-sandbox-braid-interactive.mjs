@@ -34,7 +34,12 @@ import {
   sameNameInteractiveResources,
 } from './interactive-resource-ownership.mjs'
 import { steerTurnsFromJournal, steerTwiceThroughBraid } from './interactive-steer.mjs'
-import { interactiveStopProviderEvidence } from './interactive-stop-evidence.mjs'
+import {
+  assertInteractiveOwnedResourceCleanup,
+  attemptCleanup,
+  interactiveStopProviderEvidence,
+  releasedByStopCleanup,
+} from './interactive-stop-evidence.mjs'
 import {
   createPty,
   harnessCommand,
@@ -230,21 +235,6 @@ export function assertInteractiveTelemetry(telemetry, spend, timing) {
     'interactive latency is not a finite measurement',
   )
   return { complete: true }
-}
-
-export function assertInteractiveOwnedResourceCleanup(cleanup, expectedEnvironmentId) {
-  assert.equal(cleanup?.confirmed, true, 'owned Sandbox cleanup was not confirmed')
-  assert.ok(
-    Array.isArray(cleanup?.removedIds) && cleanup.removedIds.includes(expectedEnvironmentId),
-    'owned Sandbox cleanup omitted the exact resource',
-  )
-  assert.equal(cleanup?.remainingIds?.length, 0, 'owned Sandbox cleanup left a resource behind')
-  assert.equal(
-    cleanup?.matchedCount,
-    1,
-    `owned Sandbox cleanup found ${cleanup?.matchedCount ?? 'an unknown number of'} resources; expected one`,
-  )
-  return cleanup
 }
 
 export async function interactiveRetainedBox(client, controlRef, runId, label) {
@@ -831,10 +821,6 @@ async function cleanupExactSandbox(client, identity, timeoutMs = DEFAULT_TIMEOUT
   return assertInteractiveOwnedResourceCleanup(cleanup, observed.id)
 }
 
-function cleanupFailure(label, error) {
-  return new Error(`${label}: ${safeMessage(error)}`, { cause: error })
-}
-
 export function interactiveFailureMessages(error, environment = process.env) {
   const messages = []
   const seen = new Set()
@@ -870,15 +856,6 @@ function assertStopResultMatchesIdentity(stopResult, identity) {
     'Braid stop result returned a different local run',
   )
   return controlRef
-}
-
-async function attemptCleanup(errors, label, operation) {
-  try {
-    return { ok: true, value: await operation() }
-  } catch (error) {
-    errors.push(cleanupFailure(label, error))
-    return { ok: false, value: undefined }
-  }
 }
 
 export async function finalizeInteractiveProof({
@@ -1023,6 +1000,25 @@ export async function finalizeInteractiveProof({
           } catch (error) {
             errors.push(error)
           }
+        }
+      } else {
+        // Braid's interactive stop releases the retained environment once the
+        // provider reported the exit (the proof observed that exact exit while
+        // the session still existed). A sandbox already absent after such a stop
+        // is confirmed cleanup when no owned interactive resource remains.
+        const absent = await releasedByStopCleanup(
+          client,
+          resolvedIdentity.controlRef,
+          resolvedIdentity.run.id,
+          timeoutMs,
+        )
+        if (absent !== undefined) {
+          afterStop = absent.afterStop
+          cleanup = absent.cleanup
+        } else {
+          errors.push(
+            new Error('stopped Sandbox was neither observable nor provably released by the stop'),
+          )
         }
       }
     }
