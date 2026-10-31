@@ -60,6 +60,7 @@ function backendRegistryEntry(type: string) {
       configurable: true,
       interactions: ['question', 'permission', 'plan'] as ('permission' | 'question' | 'plan')[],
     },
+    callerCredentialOnly: false,
   }
 }
 
