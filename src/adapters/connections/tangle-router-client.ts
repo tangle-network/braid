@@ -4,7 +4,7 @@ import { BRAID_VERSION } from '../../version.js'
 
 /**
  * The Tangle router records this header as the request's client name, which is how
- * tangle-admin attributes usage to Braid rather than to an anonymous API key.
+ * tangle-ops attributes usage to Braid rather than to an anonymous API key.
  */
 export const TANGLE_CLIENT_HEADER = 'x-tangle-client'
 export const BRAID_TANGLE_CLIENT = `braid/${BRAID_VERSION}`
