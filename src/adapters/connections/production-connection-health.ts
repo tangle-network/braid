@@ -14,7 +14,7 @@ import {
   normalizeCliBridgeRuntimeBaseUrl,
   stripCliBridgeVersion,
 } from './production-connection-endpoints.js'
-import { createTangleSandboxClient } from './production-connection-providers.js'
+import { createSandboxClient } from './production-connection-providers.js'
 import type {
   ConnectionHealthOptions,
   ConnectionModelVerificationOptions,
@@ -32,7 +32,7 @@ export async function healthForConnection(
   try {
     const endpoint = connectionEndpoint(record, options)
     if (record.kind === 'tangle-sandbox') {
-      const client = (await createTangleSandboxClient(
+      const client = (await createSandboxClient(
         record,
         options,
         healthOptions.signal,

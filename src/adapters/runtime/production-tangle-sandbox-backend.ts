@@ -75,7 +75,7 @@ export async function resolveTangleSandboxBackend(
   const { profile, model, runner } = await tangleExecutionIdentity(input, selection, connectionId)
 
   const [
-    { createTangleSandboxClient, withConnectionRouting },
+    { createSandboxClient, withConnectionRouting },
     { createTangleProvider },
     { createExecutor, providerAsSandboxClient },
   ] = await Promise.all([
@@ -104,7 +104,7 @@ export async function resolveTangleSandboxBackend(
       ? {}
       : { routing: record.providerOptions.routing }),
   })
-  const rawClient = await createTangleSandboxClient(record, options, input.signal)
+  const rawClient = await createSandboxClient(record, options, input.signal)
   const observedClient = observeSandboxClient(rawClient, lifecycle)
   const confidential = nitroVerifiersForConnection(record, options)
   const modelCredentials = tangleModelCredentialsForConnection(record, options)
@@ -253,12 +253,12 @@ export async function resolveTangleSandboxRetainedConnection(
     transferred ? stableProviderId('session-braid-', input.runId) : providerSessionId,
   )
   const lifecycle = retainedSandboxLifecycle(idleTtlSeconds)
-  const [{ createTangleSandboxClient, withConnectionRouting }, { createTangleProvider }] =
+  const [{ createSandboxClient, withConnectionRouting }, { createTangleProvider }] =
     await Promise.all([
       import('../connections/production-connection-providers.js'),
       import('@tangle-network/agent-provider-tangle'),
     ])
-  const rawClient = await createTangleSandboxClient(record, options, input.signal)
+  const rawClient = await createSandboxClient(record, options, input.signal)
   if (
     options.tangleRetainedControlLookup === undefined &&
     !supportsTangleRetainedControlLookup(rawClient)

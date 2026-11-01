@@ -36,7 +36,7 @@ import { createRegisteredEnvironmentProvider } from './registered-provider.js'
 import { tangleModelCredentialsForConnection } from './tangle-model-credentials.js'
 import { supportsTangleRetainedControlLookup } from './tangle-retained-control-lookup.js'
 
-export async function createTangleSandboxClient(
+export async function createSandboxClient(
   record: ConnectionRecord,
   options: ProductionConnectionOptions,
   signal?: AbortSignal,
@@ -71,7 +71,7 @@ export async function createTangleEnvironmentProvider(
   assertConnectionRecord(record)
   const { lifecycle, idleTtlSeconds } = record.providerOptions
   const confidential = nitroVerifiersForConnection(record, options)
-  const client = await createTangleSandboxClient(record, options, signal)
+  const client = await createSandboxClient(record, options, signal)
   signal?.throwIfAborted()
   const modelCredentials = tangleModelCredentialsForConnection(record, options)
   return withConnectionRouting(
