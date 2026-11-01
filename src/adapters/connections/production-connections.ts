@@ -25,7 +25,7 @@ export {
 } from './production-connection-endpoints.js'
 export {
   createTangleEnvironmentProvider,
-  createTangleSandboxClient,
+  createSandboxClient,
   createTangleWorkspaceBranchingProvider,
   getTangleSandboxEnvironment,
 } from './production-connection-providers.js'
