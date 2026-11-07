@@ -373,9 +373,10 @@ test('a stop that accepts after the cancel deadline still cancels and releases t
     assert.equal(foreground.result?.acknowledgement?.outcome, 'unknown')
     assert.equal(foreground.state.runs[0]?.status, 'unknown')
     assert.deepEqual(server.fixture.destroyedIds, [])
-    let status: string | undefined
+    // A loaded host lands the 800 ms late stop much later: wait while 'unknown' (30 s), fail on any other status.
+    let status: string | undefined = 'unknown'
     const startedAt = Date.now()
-    while (status !== 'cancelled' && Date.now() - startedAt < 5_000) {
+    while (status === 'unknown' && Date.now() - startedAt < 30_000) {
       await new Promise((resolve) => setTimeout(resolve, 20))
       status = (await stopper.request('state')).state.runs[0]?.status
     }
