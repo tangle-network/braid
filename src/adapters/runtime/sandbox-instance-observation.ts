@@ -66,7 +66,7 @@ export function captureSandboxBox(
   const runtimeUrl = boundedObservationText(box.connection?.runtimeUrl)
   if (runtimeUrl !== undefined)
     state.runtimeEndpointHost = endpointLocation(runtimeUrl).runtimeEndpointHost
-  state.gpu = gpuObservation(box.gpuLease)
+  state.gpu = gpuObservation(box.gpuLease as GpuLease | undefined)
   if (state.lifecycle === 'unknown')
     unavailable.add('sandbox-lifecycle:not-reported-or-unrecognized')
 }
