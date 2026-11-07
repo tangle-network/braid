@@ -429,7 +429,7 @@
     {
       "license": "MIT",
       "name": "@tangle-network/agent-eval",
-      "version": "1.0.21"
+      "version": "1.0.22"
     },
     {
       "license": "MIT",
@@ -444,22 +444,17 @@
     {
       "license": "Unknown",
       "name": "@tangle-network/agent-profile-materialize",
-      "version": "1.1.4"
-    },
-    {
-      "license": "Unknown",
-      "name": "@tangle-network/agent-profile-materialize",
-      "version": "1.1.54"
-    },
-    {
-      "license": "Unknown",
-      "name": "@tangle-network/agent-profile-materialize",
       "version": "1.1.55"
+    },
+    {
+      "license": "Unknown",
+      "name": "@tangle-network/agent-profile-materialize",
+      "version": "1.1.62"
     },
     {
       "license": "MIT",
       "name": "@tangle-network/agent-provider-cli-bridge",
-      "version": "2.0.9"
+      "version": "2.0.10"
     },
     {
       "license": "MIT",
@@ -469,12 +464,12 @@
     {
       "license": "MIT",
       "name": "@tangle-network/agent-provider-tangle",
-      "version": "5.0.14"
+      "version": "5.0.15"
     },
     {
       "license": "MIT",
       "name": "@tangle-network/agent-runtime",
-      "version": "3.0.43"
+      "version": "8.0.0"
     },
     {
       "license": "MIT",
@@ -482,9 +477,14 @@
       "version": "2.2.0"
     },
     {
+      "license": "MIT",
+      "name": "@tangle-network/agent-trace-contract",
+      "version": "2.2.2"
+    },
+    {
       "license": "Unknown",
       "name": "@tangle-network/cli-agent-registry",
-      "version": "0.14.0"
+      "version": "0.15.30"
     },
     {
       "license": "MIT",
@@ -494,7 +494,7 @@
     {
       "license": "MIT",
       "name": "@tangle-network/sandbox",
-      "version": "1.0.264"
+      "version": "1.0.282"
     },
     {
       "license": "Apache-2.0",
@@ -1080,11 +1080,6 @@
       "license": "MIT",
       "name": "strip-ansi",
       "version": "6.0.1"
-    },
-    {
-      "license": "MIT",
-      "name": "tar-stream",
-      "version": "3.2.1"
     },
     {
       "license": "MIT",
