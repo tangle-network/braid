@@ -12,7 +12,7 @@ import {
   type SandboxClientLike,
   type SandboxInstanceLike,
 } from '@tangle-network/agent-provider-tangle'
-import type { CreateSandboxOptions, SandboxEvent } from '@tangle-network/sandbox'
+import type { SandboxEvent } from '@tangle-network/sandbox'
 import { safeExecutionId } from '../../src/adapters/runtime/production-backend-common.js'
 import type { PreparedTangleRetainedConnection } from '../../src/adapters/runtime/production-tangle-sandbox-backend.js'
 import { observeSandboxClient } from '../../src/adapters/runtime/sandbox-observation.js'
@@ -21,6 +21,8 @@ import {
   retainedSandboxLifecycle,
   withRetainedSandboxPolicy,
 } from '../../src/adapters/runtime/tangle-sandbox-retention.js'
+
+type CreateSandboxOptions = NonNullable<Parameters<SandboxClientLike['create']>[0]>
 
 interface FakeExecution {
   readonly sessionId: string

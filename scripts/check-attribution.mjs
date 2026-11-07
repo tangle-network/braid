@@ -1,8 +1,7 @@
 import { readFile, readdir } from 'node:fs/promises'
 import { extname, join, relative } from 'node:path'
 import { pathToFileURL } from 'node:url'
-// agent-interface 5.7 under a development alias: the agent-runtime cohort pins agent-interface below 5.3.
-import { verifyResourceProvenance } from '@tangle-network/agent-interface-current'
+import { verifyResourceProvenance } from '@tangle-network/agent-interface'
 
 const root = new URL('../', import.meta.url)
 const notice = await readFile(new URL('../THIRD_PARTY_NOTICES.md', import.meta.url), 'utf8')
