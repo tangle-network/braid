@@ -68,6 +68,7 @@ const localReadResponses = new Map([
             configurable: true,
             interactions: ['question', 'permission', 'plan'],
           },
+          callerCredentialOnly: false,
         },
       ],
       timestamp: '2026-09-29T00:00:00.000Z',
@@ -298,7 +299,7 @@ function assertStableCreateIdempotency(observedRequests) {
   )
   const fingerprints = dispatches.map((request) => request.idempotencyKeyFingerprint)
   assert.ok(dispatches.length >= 2, 'provider create did not perform a retry')
-  assert.ok(dispatches.length <= 5, 'provider create exceeded its five-attempt retry bound')
+  assert.ok(dispatches.length <= 6, 'provider create exceeded its six-attempt retry bound')
   assert.equal(
     observedRequests.filter((request) => request.method === 'POST').length,
     dispatches.length,
@@ -364,8 +365,8 @@ async function waitForUnknownRun(previousRunCount, label, previousRequestCount) 
       requests
         .slice(previousRequestCount)
         .filter((request) => request.method === 'POST' && request.path === '/v1/sandboxes')
-        .length === 5,
-    `${label} five bounded create attempts`,
+        .length === 6,
+    `${label} six bounded create attempts`,
     60_000,
   )
   await waitForRequestBodies(`${label} request bodies`)
@@ -377,7 +378,7 @@ async function waitForUnknownRun(previousRunCount, label, previousRequestCount) 
       return value
     await sleep(250)
   }
-  throw new Error(`Timed out: ${label} did not become unknown after five create attempts`)
+  throw new Error(`Timed out: ${label} did not become unknown after six create attempts`)
 }
 async function waitForConversationCount(previousCount, label) {
   let value

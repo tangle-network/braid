@@ -366,16 +366,19 @@ test('a stop that accepts after the cancel deadline still cancels and releases t
     const run = started.state.runs[0]
     assert.ok(run?.controlRef)
     const environmentId = run.controlRef.environmentId
-    server.delay('stop', 800)
-    const stopper = await child(root, server.endpoint, 5_000, 200)
+    // The 3 s deadline must cover get/status/claimControl before stop is sent; a loaded host
+    // missed a 200 ms deadline and never sent stop. The 6 s stop delay then outlasts the deadline.
+    server.delay('stop', 6_000)
+    const stopper = await child(root, server.endpoint, 5_000, 3_000)
     children.push(stopper)
     const foreground = await stopper.request('cancel', { runId: run.id })
+    assert.ok(server.calls.includes('stop'), `stop not sent before the deadline: ${server.calls}`)
     assert.equal(foreground.result?.acknowledgement?.outcome, 'unknown')
     assert.equal(foreground.state.runs[0]?.status, 'unknown')
     assert.deepEqual(server.fixture.destroyedIds, [])
-    let status: string | undefined
+    let status: string | undefined = 'unknown'
     const startedAt = Date.now()
-    while (status !== 'cancelled' && Date.now() - startedAt < 5_000) {
+    while (status === 'unknown' && Date.now() - startedAt < 30_000) {
       await new Promise((resolve) => setTimeout(resolve, 20))
       status = (await stopper.request('state')).state.runs[0]?.status
     }
