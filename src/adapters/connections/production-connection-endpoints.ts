@@ -10,6 +10,9 @@ import {
 // connection configuration without materializing the runtime kernel.
 export const DEFAULT_TANGLE_INFERENCE_ENDPOINT = 'https://router.tangle.tools'
 
+/** Router role for the newest cheap general model. The Router resolves the concrete id. */
+export const CHEAP_ROUTER_MODEL = 'tangle/cheap'
+
 export function connectionEndpoint(
   record: ConnectionRecord,
   options: Pick<

@@ -20,6 +20,8 @@ import {
   materializeBridgeModelRoute,
 } from '../connections/cli-bridge-model-route.js'
 import {
+  CHEAP_ROUTER_MODEL,
+  DEFAULT_TANGLE_INFERENCE_ENDPOINT,
   normalizeCliBridgeProviderBaseUrl,
   normalizeTangleInferenceRuntimeBaseUrl,
 } from '../connections/production-connection-endpoints.js'
@@ -294,10 +296,14 @@ export async function createTraceAnalysisAdapter(
       connectionId: id,
     })
   }
-  const model =
+  const subjectModel =
     connection.kind === 'cli-bridge' && runner !== undefined
       ? materializeBridgeModelRoute(runner, authoredModel, profile.model?.provider)
       : authoredModel
+  // Claude Code's Opus safeguards refuse the analyst prompt (reasoning_extraction)
+  // and the bridge then labels the empty-stderr exit NODE_DOWN. Those calls use
+  // the Router's cheap role instead of the subject harness.
+  const routeClaudeAnalyst = connection.kind === 'cli-bridge' && runner === 'claude-code'
 
   let endpoint: string
   try {
@@ -313,17 +319,48 @@ export async function createTraceAnalysisAdapter(
     return connectionDiagnostic(error, connection)
   }
 
-  const baseUrl =
+  const subjectBaseUrl =
     connection.kind === 'cli-bridge'
       ? normalizeCliBridgeProviderBaseUrl(endpoint, connection.id)
       : normalizeTangleInferenceRuntimeBaseUrl(endpoint, connection.id)
+  let model = subjectModel
+  let analystConnection = connection
+  let baseUrl = subjectBaseUrl
+  if (routeClaudeAnalyst) {
+    const routerKey = process.env.TANGLE_API_KEY?.trim()
+    if (routerKey === undefined || routerKey.length === 0) {
+      return unavailable('missing-credential', {
+        kind: 'missing-credential',
+        code: 'TRACE_ANALYSIS_ROUTER_KEY_REQUIRED',
+        message:
+          'Claude Code refuses trace-analysis prompts (safeguards: reasoning_extraction). Set TANGLE_API_KEY so analysts use the Router role tangle/cheap.',
+        connectionId: id,
+      })
+    }
+    model = CHEAP_ROUTER_MODEL
+    baseUrl = normalizeTangleInferenceRuntimeBaseUrl(
+      DEFAULT_TANGLE_INFERENCE_ENDPOINT,
+      connection.id,
+    )
+    credential = routerKey
+    analystConnection = {
+      ...connection,
+      kind: 'tangle-inference',
+      endpoint: DEFAULT_TANGLE_INFERENCE_ENDPOINT,
+      providerOptions: {
+        ...connection.providerOptions,
+        transport: 'https',
+        endpoint: DEFAULT_TANGLE_INFERENCE_ENDPOINT,
+      },
+    }
+  }
   let phase: 'profile' | 'engine' = 'profile'
   try {
     const limits = analysisTokenLimits(options)
     const modelExecutionScope = new ModelExecutionScope()
     const owner = createRuntimeTraceModelOwner({
       profile,
-      connection,
+      connection: analystConnection,
       baseUrl,
       ...(credential === undefined ? {} : { credential }),
       model,
@@ -401,7 +438,7 @@ export async function createTraceAnalysisAdapter(
     })
     const registry = buildDefaultAnalystRegistry({ engine })
     registerBraidQuestionAnalyst(registry, engine)
-    registerSystemOne(registry, owner, model, maxOutputTokens, connection.kind)
+    registerSystemOne(registry, owner, model, maxOutputTokens, analystConnection.kind)
     return {
       status: 'engine-configured',
       diagnostics: [],

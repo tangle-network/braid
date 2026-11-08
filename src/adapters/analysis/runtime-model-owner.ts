@@ -593,13 +593,16 @@ function analystCallProfile(
   }
   const format = responseFormat(request)
   const sourceReasoning = source.model?.reasoningEffort
+  // tangle/cheap accepts chat tools only with reasoning_effort none.
   const reasoningEffort =
-    request.thinking === 'disabled'
+    model === 'tangle/cheap'
       ? 'none'
-      : request.thinking === 'enabled' &&
-          (sourceReasoning === undefined || sourceReasoning === 'none')
-        ? 'minimal'
-        : sourceReasoning
+      : request.thinking === 'disabled'
+        ? 'none'
+        : request.thinking === 'enabled' &&
+            (sourceReasoning === undefined || sourceReasoning === 'none')
+          ? 'minimal'
+          : sourceReasoning
   const maxVisibleOutputTokens = request.maxTokens ?? source.model?.maxVisibleOutputTokens
   const maxReasoningTokens = options.maxReasoningTokens ?? source.model?.maxReasoningTokens
   const maxTotalOutputTokens = options.maxTotalOutputTokens ?? source.model?.maxTotalOutputTokens
