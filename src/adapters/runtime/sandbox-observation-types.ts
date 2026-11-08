@@ -1,6 +1,5 @@
 import type { SandboxClientLike, SandboxInstanceLike } from '@tangle-network/agent-provider-tangle'
 import type {
-  GpuLease,
   SandboxConnection,
   SandboxIdentity,
   SandboxResourceUsage,
@@ -27,7 +26,6 @@ export interface ObservableSandboxInstance extends SandboxInstanceLike {
   readonly startedAt?: Date | string
   readonly lastActivityAt?: Date | string
   readonly expiresAt?: Date | string
-  readonly gpuLease?: GpuLease
   resourceUsage?(): Promise<SandboxResourceUsage | null>
 }
 

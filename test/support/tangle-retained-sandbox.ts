@@ -61,6 +61,7 @@ function backendRegistryEntry(type: string) {
       sessions: true,
       configurable: true,
       interactions: ['question', 'permission', 'plan'] as ('permission' | 'question' | 'plan')[],
+      executionCorrelation: false,
     },
     callerCredentialOnly: false,
   }
