@@ -83,9 +83,12 @@ export async function reconnectRun(
     for (;;) {
       if (probeFirst) {
         const verdict = await probeProvider(context, run.id, abort.signal)
-        if (verdict.kind === 'unreachable' && !stopped() && (await reachability.wait(abort.signal)))
-          continue
-        if (verdict.kind === 'lost' || verdict.kind === 'unreachable') {
+        // Right after a refused connection, `unknown` is the same restart seen through the status
+        // read, so it is asked again too; otherwise the provider's `unknown` stands.
+        const retry =
+          verdict.kind === 'unreachable' || (verdict.kind === 'unknown' && reachability.active)
+        if (retry && !stopped() && (await reachability.wait(abort.signal))) continue
+        if (verdict.kind !== 'live' && verdict.kind !== 'terminal') {
           await commitUnknownIfLive(context, run.id, `provider stream lost; ${verdict.detail}`)
           break
         }
@@ -205,6 +208,7 @@ type ProviderVerdict =
   | { readonly kind: 'terminal' }
   | { readonly kind: 'lost'; readonly detail: string }
   | { readonly kind: 'unreachable'; readonly detail: string }
+  | { readonly kind: 'unknown'; readonly detail: string }
 
 /**
  * A provider that refuses connections may be restarting with the run intact: CLI Bridge
@@ -235,6 +239,11 @@ class ProviderReachability {
       return false
     }
     return true
+  }
+
+  /** True from the first refused connection until the provider answers again. */
+  get active(): boolean {
+    return this.#since !== undefined
   }
 
   reset(): void {
@@ -288,7 +297,7 @@ async function probeProvider(
     return { kind: 'lost', detail: 'the provider reported a different run' }
   if (snapshot.status === 'unknown')
     return {
-      kind: 'lost',
+      kind: 'unknown',
       detail: safeSnapshotDetail(snapshot.detail, 'the provider state is unknown'),
     }
   return context.isTerminal(snapshot.status) ? { kind: 'terminal' } : { kind: 'live' }
