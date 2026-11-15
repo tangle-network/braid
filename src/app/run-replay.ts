@@ -60,7 +60,6 @@ export async function reconnectRun(
   let attachedNotified = false
   const reachability = new ProviderReachability()
   const attached = () => {
-    reachability.reset()
     if (attachedNotified) return
     attachedNotified = true
     input.onAttached?.()
@@ -110,7 +109,11 @@ export async function reconnectRun(
       }
       let outcome: PumpOutcome
       try {
-        outcome = await replayFromCursor(context, run.id, abort, attached)
+        // Only a newly committed event resets the window; a live status read alone does not.
+        outcome = await replayFromCursor(context, run.id, abort, () => {
+          reachability.reset()
+          attached()
+        })
       } catch (error) {
         if (!isProviderUnreachable(error) || stopped() || !(await reachability.wait(abort.signal)))
           throw error
@@ -241,7 +244,7 @@ class ProviderReachability {
     return true
   }
 
-  /** True from the first refused connection until the provider answers again. */
+  /** True from the first refused connection until replay commits an event again. */
   get active(): boolean {
     return this.#since !== undefined
   }

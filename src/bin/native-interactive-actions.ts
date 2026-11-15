@@ -5,6 +5,7 @@ import {
 } from '@tangle-network/agent-runtime/kernel'
 import { createNativeTerminalTransport } from '../adapters/tui/native-terminal-transport.js'
 import type { BraidApplication } from '../app/application.js'
+import { readOnlyRefusal } from '../app/application-guards.js'
 import { runtimeWorkerReference } from '../app/supervisor-projection.js'
 import { activeRunForBranch, type BraidRun, type BraidState } from '../domain/state.js'
 import type { NativeInteractiveExecutionControl } from '../ports/native-interactive-execution.js'
@@ -25,7 +26,7 @@ import type {
 interface InteractiveApplicationHandle {
   readonly app: Pick<
     BraidApplication,
-    'detachRun' | 'reconnectRun' | 'reconcileRun' | 'send' | 'state'
+    'detachRun' | 'readOnly' | 'reconnectRun' | 'reconcileRun' | 'send' | 'state'
   > &
     Partial<Pick<BraidApplication, 'intelligence'>>
   readonly nativeInteractive?: NativeInteractiveExecutionControl
@@ -104,6 +105,8 @@ function workerAvailability(
   busy: boolean,
 ): NativeInteractiveAvailability {
   if (busy) return { available: false, reason: 'A native terminal is already open' }
+  // A native terminal claims interactive control with no journal event; a viewer never opens one.
+  if (current.app.readOnly) return { available: false, reason: readOnlyRefusal().message }
   const running = current.app.state().workers.filter((worker) => worker.status === 'running')
   if (workerId !== undefined && !running.some((worker) => String(worker.id) === workerId)) {
     return { available: false, reason: 'The selected worker is not running' }
@@ -119,6 +122,8 @@ function availability(
   busy: boolean,
 ): NativeInteractiveAvailability {
   if (busy) return { available: false, reason: 'A native terminal is already open' }
+  // A native terminal claims interactive control with no journal event; a viewer never opens one.
+  if (current.app.readOnly) return { available: false, reason: readOnlyRefusal().message }
   if (current.nativeInteractive === undefined) {
     return {
       available: false,
