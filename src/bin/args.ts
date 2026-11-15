@@ -13,6 +13,7 @@ const UI_FIXTURES = [
 export interface CliOptions {
   readonly mode: 'tui' | 'rpc'
   readonly plain: boolean
+  readonly readOnly: boolean
   readonly reauthenticate?: true
   readonly fixture?: 'deterministic'
   readonly uiFixture?: (typeof UI_FIXTURES)[number]
@@ -52,6 +53,7 @@ Options:
   --high-contrast              Use high-contrast semantic colors
   --reduced-motion             Replace motion with stable status text
   --conversation <id>         Open a conversation by id
+  --read-only                 View the runs another live Braid owns; refuse every change
   --remote-env <NAME>         Open a Runtime graph using a protected environment reference
   --prompt <text>             Send one initial message after connection setup
   --profile <name|path>        Select a published profile or canonical profile file
@@ -96,6 +98,7 @@ export function parseArgs(argv: readonly string[], cwd: string): CliOptions {
   const options: { -readonly [Key in keyof CliOptions]: CliOptions[Key] } = {
     mode: 'tui',
     plain: false,
+    readOnly: false,
     inline: false,
     noColor: false,
     highContrast: false,
@@ -110,6 +113,7 @@ export function parseArgs(argv: readonly string[], cwd: string): CliOptions {
     if (argument === 'rpc' && index === 0) options.mode = 'rpc'
     else if (argument === '--inline') options.inline = true
     else if (argument === '--plain') options.plain = true
+    else if (argument === '--read-only') options.readOnly = true
     else if (argument === '--reauthenticate') options.reauthenticate = true
     else if (argument === '--no-color') options.noColor = true
     else if (argument === '--high-contrast') options.highContrast = true
@@ -152,6 +156,17 @@ export function parseArgs(argv: readonly string[], cwd: string): CliOptions {
   ) {
     throw new CliUsageError('--reauthenticate requires the production interactive terminal')
   }
+
+  if (
+    options.readOnly &&
+    (options.prompt !== undefined ||
+      options.reauthenticate === true ||
+      options.fixture !== undefined ||
+      options.remoteEndpointEnv !== undefined)
+  )
+    throw new CliUsageError(
+      '--read-only views a shared journal; it cannot be combined with --prompt, --reauthenticate, --fixture or --remote-env',
+    )
 
   if (
     options.mode === 'rpc' &&

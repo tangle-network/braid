@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from 'node:timers/promises'
 import { canonicalDigest } from '../domain/canonical.js'
 import type { BraidState } from '../domain/state.js'
 import type { ProviderRunSnapshot } from '../ports/execution.js'
@@ -9,7 +10,7 @@ import {
   safeSnapshotUsage,
   snapshotFailure,
 } from './provider-snapshot.js'
-import { runtimeFailure } from './provider-values.js'
+import { isProviderUnreachable, runtimeFailure } from './provider-values.js'
 import { retainedExecutionRecoveryContext } from './run-recovery-context.js'
 import {
   IdleArm,
@@ -57,7 +58,9 @@ export async function reconnectRun(
     })
   }
   let attachedNotified = false
+  const reachability = new ProviderReachability()
   const attached = () => {
+    reachability.reset()
     if (attachedNotified) return
     attachedNotified = true
     input.onAttached?.()
@@ -72,12 +75,20 @@ export async function reconnectRun(
     // again, so a quiet long tool call keeps replaying while a lost provider ends as unknown.
     // Every step is bounded (stream idle, then one status read), so a reconnect re-attaches or
     // settles within streamIdleMs + statusTimeoutMs of the replay starting.
+    // A provider that refuses the connection is asked again within ProviderReachability's window:
+    // a Bridge restart keeps the run, and the next pass replays it from the committed cursor.
     let probeFirst = input.stallDetail !== undefined
     let terminalProbes = 0
+    const stopped = () => abort.signal.aborted || context.ledger.isDetached(run.id)
     for (;;) {
       if (probeFirst) {
         const verdict = await probeProvider(context, run.id, abort.signal)
-        if (verdict.kind === 'lost') {
+        // Right after a refused connection, `unknown` is the same restart seen through the status
+        // read, so it is asked again too; otherwise the provider's `unknown` stands.
+        const retry =
+          verdict.kind === 'unreachable' || (verdict.kind === 'unknown' && reachability.active)
+        if (retry && !stopped() && (await reachability.wait(abort.signal))) continue
+        if (verdict.kind !== 'live' && verdict.kind !== 'terminal') {
           await commitUnknownIfLive(context, run.id, `provider stream lost; ${verdict.detail}`)
           break
         }
@@ -97,9 +108,17 @@ export async function reconnectRun(
           }
         }
       }
-      const outcome = await replayFromCursor(context, run.id, abort, attached)
+      let outcome: PumpOutcome
+      try {
+        outcome = await replayFromCursor(context, run.id, abort, attached)
+      } catch (error) {
+        if (!isProviderUnreachable(error) || stopped() || !(await reachability.wait(abort.signal)))
+          throw error
+        probeFirst = true
+        continue
+      }
       if (outcome === 'stalled') {
-        if (abort.signal.aborted || context.ledger.isDetached(run.id)) break
+        if (stopped()) break
         probeFirst = true
         continue
       }
@@ -188,6 +207,50 @@ type ProviderVerdict =
   | { readonly kind: 'live' }
   | { readonly kind: 'terminal' }
   | { readonly kind: 'lost'; readonly detail: string }
+  | { readonly kind: 'unreachable'; readonly detail: string }
+  | { readonly kind: 'unknown'; readonly detail: string }
+
+/**
+ * A provider that refuses connections may be restarting with the run intact: CLI Bridge
+ * continues a turn after its own restart, and listens again 1.8 s after a SIGKILL (measured
+ * 2026-11-15, kill to listening). Braid asks again, pausing 250 ms doubling to 2 s, for up to
+ * 30 s from the first refusal: room for a supervised restart and its startup, while a provider
+ * that never returns still settles as unknown within the 45 s stream-idle bound.
+ */
+const UNREACHABLE_WINDOW_MS = 30_000
+const UNREACHABLE_FIRST_PAUSE_MS = 250
+const UNREACHABLE_MAX_PAUSE_MS = 2_000
+
+class ProviderReachability {
+  #since: number | undefined
+  #pause = UNREACHABLE_FIRST_PAUSE_MS
+
+  /** Waits before the next attempt; false once the window is spent or the run was aborted. */
+  async wait(signal: AbortSignal | undefined): Promise<boolean> {
+    const now = performance.now()
+    this.#since ??= now
+    const remaining = this.#since + UNREACHABLE_WINDOW_MS - now
+    if (remaining <= 0 || signal?.aborted === true) return false
+    const pause = Math.min(this.#pause, remaining)
+    this.#pause = Math.min(this.#pause * 2, UNREACHABLE_MAX_PAUSE_MS)
+    try {
+      await sleep(pause, undefined, signal === undefined ? {} : { signal })
+    } catch {
+      return false
+    }
+    return true
+  }
+
+  /** True from the first refused connection until the provider answers again. */
+  get active(): boolean {
+    return this.#since !== undefined
+  }
+
+  reset(): void {
+    this.#since = undefined
+    this.#pause = UNREACHABLE_FIRST_PAUSE_MS
+  }
+}
 
 /** Ask the provider about the exact run before replaying or giving up on it. */
 async function probeProvider(
@@ -216,7 +279,7 @@ async function probeProvider(
     // Provider text is redacted and bounded before it accompanies Braid's own plain reason.
     const failure = runtimeFailure(error, '')
     return {
-      kind: 'lost',
+      kind: isProviderUnreachable(error) ? 'unreachable' : 'lost',
       detail:
         failure.cause !== undefined
           ? `status read failed: ${failure.text}`
@@ -234,7 +297,7 @@ async function probeProvider(
     return { kind: 'lost', detail: 'the provider reported a different run' }
   if (snapshot.status === 'unknown')
     return {
-      kind: 'lost',
+      kind: 'unknown',
       detail: safeSnapshotDetail(snapshot.detail, 'the provider state is unknown'),
     }
   return context.isTerminal(snapshot.status) ? { kind: 'terminal' } : { kind: 'live' }
@@ -267,33 +330,39 @@ export async function reconcileRun(
       })
     return structuredClone(context.currentState())
   }
+  const status = context.execution.status.bind(context.execution)
+  const reachability = new ProviderReachability()
   let snapshot: ProviderRunSnapshot | null | typeof STALLED
-  try {
-    // The same deadline as the watchdog's probe: a status read that never answers is a lost
-    // provider, so a reconnect or reconcile cannot wait on it forever.
-    snapshot = await withinDeadline(
-      context.execution.status({
-        runId: run.id,
-        ...(run.providerSessionId === undefined
-          ? {}
-          : { providerSessionId: run.providerSessionId }),
-        ...(run.controlRef === undefined ? {} : { controlRef: run.controlRef }),
-        ...retainedExecutionRecoveryContext(run, context.currentState().workspace),
-        ...(input.signal === undefined ? {} : { signal: input.signal }),
-      }),
-      statusTimeoutMs(context.execution),
-    )
-  } catch (error) {
-    if (!context.isTerminal(run.status))
-      await context.commitAndWait({
-        kind: 'run.unknown',
-        runId: run.id,
-        detail: withPriorFailure(
-          input.priorFailureDetail,
-          `provider status read failed: ${runtimeFailure(error, 'RUNTIME_STATUS_ERROR').text}`,
-        ),
-      })
-    return structuredClone(context.currentState())
+  for (;;) {
+    try {
+      // The same deadline as the watchdog's probe: a status read that never answers is a lost
+      // provider, so a reconnect or reconcile cannot wait on it forever.
+      snapshot = await withinDeadline(
+        status({
+          runId: run.id,
+          ...(run.providerSessionId === undefined
+            ? {}
+            : { providerSessionId: run.providerSessionId }),
+          ...(run.controlRef === undefined ? {} : { controlRef: run.controlRef }),
+          ...retainedExecutionRecoveryContext(run, context.currentState().workspace),
+          ...(input.signal === undefined ? {} : { signal: input.signal }),
+        }),
+        statusTimeoutMs(context.execution),
+      )
+      break
+    } catch (error) {
+      if (isProviderUnreachable(error) && (await reachability.wait(input.signal))) continue
+      if (!context.isTerminal(run.status))
+        await context.commitAndWait({
+          kind: 'run.unknown',
+          runId: run.id,
+          detail: withPriorFailure(
+            input.priorFailureDetail,
+            `provider status read failed: ${runtimeFailure(error, 'RUNTIME_STATUS_ERROR').text}`,
+          ),
+        })
+      return structuredClone(context.currentState())
+    }
   }
   if (snapshot === STALLED) {
     if (!context.isTerminal(run.status))

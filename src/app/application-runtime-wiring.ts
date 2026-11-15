@@ -16,6 +16,7 @@ export interface ApplicationRuntimeWiringInput
   readonly transitionTail: () => Promise<void>
   readonly setTransitionTail: (tail: Promise<void>) => void
   readonly markStorageFailure: (error: unknown) => void
+  readonly readOnly: boolean
 }
 
 export interface ApplicationRuntimeWiring {
@@ -59,6 +60,7 @@ export function wireApplicationRuntime(
     setTransitionTail: input.setTransitionTail,
     storageFailure: input.storageFailure,
     markStorageFailure: input.markStorageFailure,
+    readOnly: input.readOnly,
   }
   const ports = buildApplicationPortRuntime({
     currentState: input.currentState,

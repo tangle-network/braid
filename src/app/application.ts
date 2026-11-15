@@ -10,6 +10,7 @@ import type {
   RunAdmissionReceipt,
 } from '../domain/receipts.js'
 import { redactSensitiveText } from '../domain/redaction.js'
+import { conversationView } from '../domain/reducer-conversation-events.js'
 import { replayEvents } from '../domain/reducer.js'
 import type { RuntimeEventEnvelope } from '../domain/runtime-events.js'
 import {
@@ -22,7 +23,13 @@ import type { Clock } from '../ports/clock.js'
 import type { ExecuteTurnInput, ExecutionPort } from '../ports/execution.js'
 import type { IdSource } from '../ports/ids.js'
 import { snapshotAnalysisExecutionTarget } from './analysis-execution-target.js'
-import { admissionIsAsync, assertWritable, operationId } from './application-guards.js'
+import {
+  admissionIsAsync,
+  assertWritable,
+  operationId,
+  readOnlyEffectStorage,
+  readOnlyRefusal,
+} from './application-guards.js'
 import { ApplicationInteractionActions } from './application-interaction-actions.js'
 import { ApplicationLifecycle, boundedDrain } from './application-lifecycle.js'
 import type { BraidApplicationOptions, CancelInput, CancelReceipt } from './application-options.js'
@@ -56,6 +63,7 @@ import { effectiveRunConfiguration } from './effective-run-configuration.js'
 import { AppError } from './errors.js'
 import { FailClosedJournal } from './fail-closed-journal.js'
 import { createIntelligenceActions, type IntelligenceActions } from './intelligence-actions.js'
+import { JournalFollower } from './journal-follower.js'
 import { MemoryJournal } from './journal.js'
 import { legacyCancel } from './legacy-cancel.js'
 import {
@@ -160,6 +168,11 @@ export class BraidApplication {
   #restartReconciliation: Promise<void> = Promise.resolve()
   #automationReconciliation: Promise<void> = Promise.resolve()
   #state: BraidState
+  /** This process views a journal another Braid writes; see `readOnly` in the options. */
+  readonly readOnly: boolean
+  /** The conversation a read-only viewer opened; it is never recorded. */
+  #viewedConversation: string | undefined
+  #follower: JournalFollower | undefined
 
   constructor(options: BraidApplicationOptions) {
     this.#execution = options.execution
@@ -174,8 +187,10 @@ export class BraidApplication {
         : new FailClosedJournal(options.clock)
     this.#journal = options.journal ?? fallback
     this.#asynchronousJournal = this.#journal.asynchronous === true
-    const effectStorage =
+    this.readOnly = options.readOnly === true
+    const sharedEffects =
       options.effectStorage ?? (isEffectStorage(this.#journal) ? this.#journal : fallback)
+    const effectStorage = this.readOnly ? readOnlyEffectStorage(sharedEffects) : sharedEffects
     const fallbackFingerprint = createInMemoryOperationFingerprint()
     const fingerprint = (input: {
       readonly effectKind: string
@@ -263,6 +278,7 @@ export class BraidApplication {
       },
       storageFailure: () => this.#storageFailure,
       markStorageFailure: (error) => this.#latchStorageFailure(error),
+      readOnly: this.readOnly,
       flush: () => this.whenDurable(),
       executeControl: (input, options) => this.#executeControl(input, options),
       admitPersistedSend: (operationId, digest) =>
@@ -356,30 +372,40 @@ export class BraidApplication {
       state: () => this.#state,
       ledger: this.#ledger,
     })
-    const runReconciliation = reconcileRestartRun(
-      this.#portViews.restart,
-      this.#journal.runOwnership?.claim,
-    ).then(() =>
-      recoverPendingFinalResults(
-        this.#portViews.replay,
-        this.#journal.loadEvents?.bind(this.#journal),
-        undefined,
-        this.#journal.runOwnership?.claim,
-      ),
-    )
-    this.#restartReconciliation = runReconciliation
-      .then(() => this.conversations.lifecycle.reconcilePendingDeletes())
-      .catch((error: unknown) => {
-        this.#latchStorageFailure(error)
-        throw error
+    if (this.readOnly) {
+      // A viewer reconciles nothing: each run's owner does, and the viewer follows its events.
+      interactionReconciliation.resolve()
+      this.#follower = new JournalFollower(this.#transition, {
+        view: () => this.state(),
+        isClosed: () => this.#lifecycle.isClosed(),
+        fail: (error) => this.#latchStorageFailure(error),
       })
-    this.#automationReconciliation = this.#restartReconciliation.then(() =>
-      this.#interactions.reconcile({ bypassStartupReconciliation: true }),
-    )
-    void this.#automationReconciliation.then(
-      () => interactionReconciliation.resolve(),
-      (error: unknown) => interactionReconciliation.reject(error),
-    )
+    } else {
+      const runReconciliation = reconcileRestartRun(
+        this.#portViews.restart,
+        this.#journal.runOwnership?.claim,
+      ).then(() =>
+        recoverPendingFinalResults(
+          this.#portViews.replay,
+          this.#journal.loadEvents?.bind(this.#journal),
+          undefined,
+          this.#journal.runOwnership?.claim,
+        ),
+      )
+      this.#restartReconciliation = runReconciliation
+        .then(() => this.conversations.lifecycle.reconcilePendingDeletes())
+        .catch((error: unknown) => {
+          this.#latchStorageFailure(error)
+          throw error
+        })
+      this.#automationReconciliation = this.#restartReconciliation.then(() =>
+        this.#interactions.reconcile({ bypassStartupReconciliation: true }),
+      )
+      void this.#automationReconciliation.then(
+        () => interactionReconciliation.resolve(),
+        (error: unknown) => interactionReconciliation.reject(error),
+      )
+    }
     this.#durableSender = createDurableSender({
       currentState: () => this.#state,
       ids: this.#ids,
@@ -402,7 +428,20 @@ export class BraidApplication {
   }
 
   state(): BraidState {
-    return structuredClone(this.#state)
+    return structuredClone(
+      this.#viewedConversation === undefined
+        ? this.#state
+        : conversationView(this.#state, this.#viewedConversation),
+    )
+  }
+
+  /** Shows one conversation to a read-only viewer without recording a selection. */
+  viewConversation(conversationId: string): BraidState {
+    if (!this.readOnly) throw new AppError('INVALID_INTENT', 'Open a conversation to select it')
+    if (!this.#state.conversations.some((conversation) => conversation.id === conversationId))
+      throw new AppError('UNKNOWN_CONVERSATION', `Conversation ${conversationId} does not exist`)
+    this.#viewedConversation = conversationId
+    return this.state()
   }
 
   revision(): number {
@@ -568,6 +607,7 @@ export class BraidApplication {
    * one rule; admission still checks the connection's live answer.
    */
   sendRefusal(input: Pick<SendInput, 'conversationId' | 'branchId'> = {}): string | undefined {
+    if (this.readOnly) return readOnlyRefusal().message
     const state = this.#state
     if (state.workspace === null) return undefined
     try {
@@ -736,6 +776,7 @@ export class BraidApplication {
   }
 
   reconnectRun(input: ReconnectInput): Promise<BraidState> {
+    if (this.readOnly) return Promise.reject(readOnlyRefusal())
     const existing = this.#activeReconnects.get(input.runId)
     if (existing !== undefined) {
       if (existing.operationId !== input.operationId)
@@ -819,7 +860,10 @@ export class BraidApplication {
       state: () => this.#state,
       ownsRun: (runId) => this.#journal.runOwnership?.owns(runId) ?? true,
       ledger: this.#ledger,
-      commit: (event) => this.#commit(event),
+      commit: (event) => {
+        // A viewer that leaves records nothing; it owns no run to cancel or detach.
+        if (!this.readOnly) this.#commit(event)
+      },
       cancelRun: (value) => this.cancelRun(value),
       detachRun: (value) => this.detachRun(value),
       waitForIdle: () => this.waitForIdle(),
@@ -831,12 +875,14 @@ export class BraidApplication {
   }
 
   close(): Promise<void> {
+    void this.#follower?.stop()
     return this.#lifecycle.close(() => this.#closeStorage())
   }
 
   async #closeStorage(): Promise<void> {
     let failure: unknown
     try {
+      await this.#follower?.stop()
       await this.#lifecycle.settleActive({
         runIds: this.#activeRunIds(),
         shouldSettleRun: (runId) => {

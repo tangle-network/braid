@@ -1,4 +1,5 @@
 import type { BraidApplication } from '../../app/application.js'
+import { readOnlyRefusal } from '../../app/application-guards.js'
 import { AppError } from '../../app/errors.js'
 import type { BraidState } from '../../domain/state.js'
 import type {
@@ -9,6 +10,7 @@ import type {
   UiSubscriber,
   UiSubscriptionOptions,
 } from '../../views/shared/intents.js'
+import { isMutatingCommand } from '../../views/shared/command-registry.js'
 import type { BraidViewModel, HeadlessState } from '../../views/shared/models.js'
 import { freezeView } from '../../views/shared/models.js'
 import { sessionUsageFor, usageForRun } from '../../views/shared/usage-projection.js'
@@ -283,6 +285,7 @@ export class ApplicationUiController implements BraidUiController {
     if (intent.type === 'send' || ('command' in intent && intent.command === 'send'))
       this.#notice = undefined
     const app = this.#app
+    if (app.readOnly && changesState(intent)) return errorResult(readOnlyRefusal())
     if (
       intent.type === 'run-command' &&
       (intent.command === 'ask' || intent.command === 'analyze' || intent.command === 'compare')
@@ -434,4 +437,15 @@ export function createApplicationUiController(
   profileConnectionOptions: ProfileConnectionDispatchOptions = {},
 ): ApplicationUiController {
   return new ApplicationUiController(app, appearance, fixture, profileConnectionOptions)
+}
+
+/**
+ * Every user action that changes durable state carries an operation id, so a read-only viewer
+ * refuses those; leaving (shutdown) changes nothing a viewer owns.
+ */
+function changesState(intent: BraidIntent): boolean {
+  if (intent.type === 'shutdown') return false
+  if (intent.type === 'run-command')
+    return intent.operationId !== undefined || isMutatingCommand(intent.command)
+  return 'operationId' in intent && intent.operationId !== undefined
 }

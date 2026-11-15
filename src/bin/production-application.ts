@@ -175,6 +175,7 @@ export async function openProductionApplication(
       ...(source === undefined ? {} : { databaseKeySource: source }),
       intelligence,
       connectionRegistry: connections,
+      ...(options.startupOptions.readOnly === true ? { readOnly: true } : {}),
     })
     try {
       app.initialize(options.workspace)
