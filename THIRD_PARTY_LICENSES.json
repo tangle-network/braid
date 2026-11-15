@@ -154,7 +154,7 @@
     {
       "license": "MIT",
       "name": "@hono/node-server",
-      "version": "2.1.5"
+      "version": "2.1.8"
     },
     {
       "license": "ISC",
@@ -809,7 +809,7 @@
     {
       "license": "MIT",
       "name": "hono",
-      "version": "4.13.14"
+      "version": "4.13.18"
     },
     {
       "license": "MIT",
