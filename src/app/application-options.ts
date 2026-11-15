@@ -33,4 +33,9 @@ export interface BraidApplicationOptions {
   readonly interactionResponseTimeoutMs?: number
   readonly conversationStorage?: Pick<StoragePort, 'destroyConversation'>
   readonly intelligence?: IntelligenceActionsOptions
+  /**
+   * View a shared journal another Braid process writes: claim no run, write nothing, and follow
+   * the events that process commits. Every mutating action is refused with `READ_ONLY`.
+   */
+  readonly readOnly?: boolean
 }

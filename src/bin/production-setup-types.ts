@@ -7,6 +7,8 @@ import type { ProductionCredentialContext } from './production-credential-contex
 
 export interface ProductionStartupLoadOptions {
   readonly workspace: string
+  /** Attach to the shared journal as a viewer; `--read-only`. */
+  readonly readOnly?: true
   /** Provider-neutral cloud workspace request. It is never copied into a connection record. */
   readonly workspaceRequest?: WorkspaceRequest
   readonly configPath?: string

@@ -7,7 +7,7 @@ import {
   commitApplicationEventsAsync,
 } from './application-support.js'
 import type { AppSubscriber } from './application-types.js'
-import { storageUnavailable } from './application-guards.js'
+import { readOnlyRefusal, storageUnavailable } from './application-guards.js'
 import { AppError } from './errors.js'
 import type { RunLedger } from './run-ledger.js'
 
@@ -23,6 +23,8 @@ export interface TransitionHost {
   readonly setTransitionTail: (tail: Promise<void>) => void
   readonly storageFailure: () => unknown
   readonly markStorageFailure: (error: unknown) => void
+  /** A read-only viewer refuses every write before it reaches the journal. */
+  readonly readOnly?: boolean
 }
 
 export function commitEvent(host: TransitionHost, event: BraidEvent): void {
@@ -41,6 +43,7 @@ export function commitEventRecovery(host: TransitionHost, event: BraidEvent): vo
 }
 
 function commitEventInternal(host: TransitionHost, event: BraidEvent, recovery: boolean): void {
+  if (host.readOnly === true) throw readOnlyRefusal()
   if (!recovery && host.storageFailure() !== undefined)
     throw storageUnavailable(host.storageFailure())
   if (host.asynchronous) {
@@ -110,6 +113,7 @@ function commitEventsInternal(
   recovery: boolean,
   expectedRevision?: number,
 ): Promise<void> {
+  if (host.readOnly === true) return Promise.reject(readOnlyRefusal())
   if (!host.asynchronous) {
     for (const event of events) {
       if (recovery) commitEventRecovery(host, event)

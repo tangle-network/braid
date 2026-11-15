@@ -103,7 +103,9 @@ async function openApplication(
     let profiles: Awaited<ReturnType<typeof loadProductionProfileCatalog>>
     try {
       profiles = await loadProductionProfileCatalog(startupOptions, production, connectionId)
-      await activateProductionConnection(configured.app, connectionId, production.connections)
+      // A viewer keeps the selection the owning process recorded.
+      if (!options.readOnly)
+        await activateProductionConnection(configured.app, connectionId, production.connections)
     } catch (activationError) {
       await configured.close().catch(() => undefined)
       throw activationError
@@ -121,6 +123,7 @@ async function openApplication(
     }
   } catch (error) {
     if (
+      options.readOnly ||
       options.reauthenticate === true ||
       !(error instanceof ProductionStartupError) ||
       error.code !== 'PRODUCTION_CONFIGURATION_NOT_FOUND'

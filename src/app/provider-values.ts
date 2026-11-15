@@ -110,6 +110,32 @@ function isResetTime(value: string): boolean {
   return Number.isFinite(time) && new Date(time).toISOString() === value
 }
 
+/** Socket failures Node and undici name when nothing listens or the peer dropped the connection. */
+const UNREACHABLE_CODES = new Set([
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'EPIPE',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
+  'UND_ERR_SOCKET',
+  'UND_ERR_CONNECT_TIMEOUT',
+])
+
+/** True when a thrown error, or one it wraps, says the provider could not be reached at all. */
+export function isProviderUnreachable(error: unknown): boolean {
+  const queue: unknown[] = [error]
+  for (let steps = 0; queue.length > 0 && steps < 12; steps += 1) {
+    const value = queue.shift()
+    if (typeof value !== 'object' || value === null) continue
+    const code = safeProperty(value, 'code')
+    if (typeof code === 'string' && UNREACHABLE_CODES.has(code)) return true
+    const errors = safeProperty(value, 'errors')
+    if (Array.isArray(errors)) queue.push(...errors.slice(0, 4))
+    queue.push(safeProperty(value, 'cause'))
+  }
+  return false
+}
+
 /** A thrown runtime failure: its stable code and, when the provider said why, its redacted cause. */
 export interface RuntimeFailure {
   readonly code: string

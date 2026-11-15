@@ -89,7 +89,12 @@ export async function runInterface(input: InterfaceRunnerInput): Promise<number>
   const nextOperationId = options.fixture
     ? () => `op-terminal-${String(++operation).padStart(6, '0')}`
     : () => `op-${randomUUID()}`
-  const commands: Array<[CommandName, string | undefined]> = [['open', options.conversation]]
+  // Opening records a selection; a read-only viewer shows the conversation without recording it.
+  const commands: Array<[CommandName, string | undefined]> = options.readOnly
+    ? []
+    : [['open', options.conversation]]
+  if (options.readOnly && options.conversation !== undefined)
+    active.current.app.viewConversation(options.conversation)
   // Production selections are already resolved before application construction.
   if (options.fixture)
     for (const command of ['profile', 'connection', 'runner', 'model', 'effort'] as const)

@@ -133,6 +133,19 @@ export function applyConversationEvent(state: BraidState, event: ConversationEve
   }
 }
 
+/** The state a read-only viewer of one conversation sees; nothing records the selection. */
+export function conversationView(state: BraidState, conversationId: string): BraidState {
+  const conversation = state.conversations.find((candidate) => candidate.id === conversationId)
+  if (conversation === undefined || conversation.id === state.conversationId) return state
+  const branchId = conversation.activeBranchId
+  return focusSelectedBranch({
+    ...state,
+    conversationId: conversation.id,
+    branchId,
+    draft: state.drafts.find((draft) => draft.branchId === branchId)?.text ?? '',
+  })
+}
+
 function focusSelectedBranch(state: BraidState): BraidState {
   const active = activeRunForBranch(state, state.conversationId, state.branchId)
   return normalizeActiveRuns(state, active?.id)

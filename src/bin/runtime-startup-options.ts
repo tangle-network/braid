@@ -35,6 +35,7 @@ export function createRuntimeStartupOptions(
         }
   const base: ProductionStartupLoadOptions = {
     workspace,
+    ...(options.readOnly ? { readOnly: true as const } : {}),
     ...(options.config === undefined ? {} : { configPath: options.config }),
     ...(options.profile === undefined ? {} : { profileReference: options.profile }),
     ...(options.connection === undefined ? {} : { connectionId: options.connection }),

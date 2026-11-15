@@ -44,6 +44,8 @@ export interface DurableCompositionOptions
   /** Mutable catalog shared with the product connection service. */
   readonly connectionRegistry?: ConnectionRegistry
   readonly startupObserver?: (stage: DurableStartupStage) => void
+  /** View the shared journal another Braid process writes; see `BraidApplicationOptions`. */
+  readonly readOnly?: boolean
 }
 
 export interface DurableStartupStage {
@@ -188,6 +190,7 @@ export async function createDurableBraidApplication(
       ...(options.interactionResponseTimeoutMs === undefined
         ? {}
         : { interactionResponseTimeoutMs: options.interactionResponseTimeoutMs }),
+      ...(options.readOnly === true ? { readOnly: true } : {}),
     })
     reportStartupStage(options.startupObserver, 'application-create', stageStarted)
     return {
