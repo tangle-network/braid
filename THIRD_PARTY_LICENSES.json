@@ -438,6 +438,11 @@
     },
     {
       "license": "MIT",
+      "name": "@tangle-network/agent-interface",
+      "version": "5.10.27"
+    },
+    {
+      "license": "MIT",
       "name": "@tangle-network/agent-knowledge",
       "version": "23.0.0"
     },
@@ -454,7 +459,7 @@
     {
       "license": "MIT",
       "name": "@tangle-network/agent-provider-cli-bridge",
-      "version": "2.0.10"
+      "version": "2.0.16"
     },
     {
       "license": "MIT",
