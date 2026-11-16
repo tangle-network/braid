@@ -52,7 +52,9 @@ export function continuationSessionFor(input: ContinuationInput): string | undef
     previous === undefined ||
     previous.providerSessionId === undefined ||
     !previous.capabilities.sessions.continue ||
-    (previous.status === 'failed' && runSupportsNativeContinuation(previous.capabilities))
+    (previous.status === 'failed' &&
+      (previous.capabilities.environment?.sessions.continue !== true ||
+        runSupportsNativeContinuation(previous.capabilities)))
   )
     return undefined
   return previous.providerSessionId
