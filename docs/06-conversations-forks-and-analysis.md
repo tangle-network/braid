@@ -12,6 +12,8 @@ A turn is one user input plus the runtime activity it causes.
 
 A run is one admitted execution attempt for a turn.
 
+After a fully observed failed run, a connection with ordinary session continuation can accept a new turn on the same branch and provider session when the profile and connection still match. The failed run stays failed. Unknown or incomplete runs do not qualify; exact native continuation still requires a completed predecessor and a provider boundary proof.
+
 An analysis is a separate child node that reads frozen run evidence and never becomes conversation context implicitly.
 
 ## Graph entities and edges

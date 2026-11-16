@@ -11,12 +11,16 @@ export interface ContinuationInput {
   readonly connectionId?: string
 }
 
-/** Return the completed run at the requested branch tip with matching identity. */
+/** Return a fully observed completed or failed branch tip with matching identity. */
 function continuationRunFor(input: ContinuationInput): BraidState['runs'][number] | undefined {
   const previous = input.state.runs
     .filter((run) => run.conversationId === input.conversationId && run.branchId === input.branchId)
     .at(-1)
-  if (previous === undefined || previous.status !== 'completed' || !previous.complete)
+  if (
+    previous === undefined ||
+    (previous.status !== 'completed' && previous.status !== 'failed') ||
+    !previous.complete
+  )
     return undefined
 
   const tip = input.state.messages
@@ -39,14 +43,16 @@ function continuationRunFor(input: ContinuationInput): BraidState['runs'][number
 /**
  * Return the only provider session that is safe for an ordinary follow-up.
  * A session is reusable only at the current branch tip and with the exact
- * recorded profile/connection identity from the completed predecessor.
+ * recorded profile/connection identity. A failed turn can reuse an ordinary resumable session;
+ * providers requiring an exact native boundary still need a completed predecessor and its proof.
  */
 export function continuationSessionFor(input: ContinuationInput): string | undefined {
   const previous = continuationRunFor(input)
   if (
     previous === undefined ||
     previous.providerSessionId === undefined ||
-    !previous.capabilities.sessions.continue
+    !previous.capabilities.sessions.continue ||
+    (previous.status === 'failed' && runSupportsNativeContinuation(previous.capabilities))
   )
     return undefined
   return previous.providerSessionId
@@ -59,6 +65,7 @@ export function resolveNativeContinuationRun(
   const previous = continuationRunFor(input)
   if (
     previous === undefined ||
+    previous.status !== 'completed' ||
     previous.providerSessionId === undefined ||
     previous.controlRef === undefined ||
     !runSupportsNativeContinuation(previous.capabilities)
