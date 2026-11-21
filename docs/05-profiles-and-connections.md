@@ -369,7 +369,7 @@ A retained subscription turn therefore carries its exact profile; managed turns 
 `env` lists variables from Braid's environment that the resolver reads, and Braid refuses the create with a plain message naming any that are unset.
 `connectionKeyEnv` and `connectionEndpointEnv` name the variables that receive this connection's own Sandbox key and endpoint, so the seat lands in the account that creates the sandbox.
 Braid reads the key from the operating-system credential store when the resolver runs and passes it only in the resolver's private process environment.
-The `cliAuth` form names a seat that is already stored.
+The `cliAuth` form names a stored native login. For a bearer-authenticated subscription, use a stored Sandbox secret name and the provider’s public HTTPS API root, for example `{"apiKeyEnv":"CODING_PLAN","baseUrl":"https://plan.example/api/v4"}`. Sandbox proxies requests under that root and applies the account owner’s grant. Neither Braid nor the agent needs the bearer value.
 For example, Discovery Lab's account owner is `{"command": ["acct", "sandbox", "resolve"], "connectionKeyEnv": "DISCOVERY_SANDBOX_API_KEY", "connectionEndpointEnv": "DISCOVERY_SANDBOX_BASE_URL"}`.
 Managed profiles ignore the reference and never contact the resolver.
 
