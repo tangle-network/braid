@@ -4,6 +4,7 @@ import {
   parseLiveEvidenceBinding,
 } from '../release/live-evidence-binding.mjs'
 import { collectCredentialSecrets, redactText } from '../release/redaction.mjs'
+import { validatePassedTangleInferenceReceipt } from './direct-router-contract.mjs'
 import { assertMultirunProof } from './multirun-contract.mjs'
 
 export const EXIT_CODES = Object.freeze({
@@ -626,40 +627,6 @@ function validateProofFacts(operation, status, facts) {
     if (facts.usage.tokensKnown !== true)
       throw new Error('Passed trace-analysis proof requires known token usage')
   }
-}
-
-function validatePassedTangleInferenceReceipt(receipt) {
-  const { facts, run } = receipt
-  const checks = new Set(receipt.checks)
-  validRequiredString(facts.normalRunId, 'Passed Tangle inference facts.normalRunId')
-  if (facts.cancellationStatus === 'confirmed') {
-    if (!checks.has('cancelled-turn') || checks.has('cancellation-reported-unavailable'))
-      throw new Error('Confirmed Tangle inference proof requires the cancelled-turn check')
-    if (facts.cancellationResponseCode !== null)
-      throw new Error('Confirmed Tangle inference cancellation must have no response code')
-    validRequiredString(facts.cancelledRunId, 'Passed Tangle inference facts.cancelledRunId')
-    if (facts.cancelledRunId === facts.normalRunId)
-      throw new Error('Confirmed Tangle inference cancellation must use a distinct run ID')
-    if (run.ids.length !== 2)
-      throw new Error('Confirmed Tangle inference proof requires normal and cancelled run IDs')
-    if (!run.ids.includes(facts.normalRunId) || !run.ids.includes(facts.cancelledRunId))
-      throw new Error('Confirmed Tangle inference proof is missing a referenced run ID')
-    return
-  }
-  if (facts.cancellationStatus !== 'reported-unavailable')
-    throw new Error(
-      'Passed Tangle inference proof requires confirmed or reported-unavailable cancellation',
-    )
-  if (!checks.has('cancellation-reported-unavailable') || checks.has('cancelled-turn'))
-    throw new Error(
-      'Unavailable Tangle inference proof requires the cancellation-reported-unavailable check',
-    )
-  if (facts.cancelledRunId !== null)
-    throw new Error('Unavailable Tangle inference cancellation cannot have a cancelled run ID')
-  if (!['CAPABILITY_UNAVAILABLE', 'UNKNOWN_RUN'].includes(facts.cancellationResponseCode))
-    throw new Error('Unavailable Tangle inference cancellation requires a recognized response code')
-  if (run.ids.length !== 1 || run.ids[0] !== facts.normalRunId)
-    throw new Error('Unavailable Tangle inference proof requires only the normal run ID')
 }
 
 function validatePassedSupervisorReceipt(receipt) {

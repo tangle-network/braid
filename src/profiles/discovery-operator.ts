@@ -1,6 +1,6 @@
 /**
  * @derived-from https://github.com/tangle-network/disco
- * @source-commit 3b916f123e21b654e824a0ae67f00fa95b4a5fba
+ * @source-commit 5cc84ba611ef0cd680fa759d0074df25f8182315
  * @source-path profiles/operators/discovery-operator.json
  * @source-license Project-owner-authorized distribution; mounted resources retain the licenses in THIRD_PARTY_NOTICES.md.
  * @adaptation Canonical-value-preserving TypeScript data export for the bundled profile catalog.
@@ -89,7 +89,7 @@ export default {
         {
           name: 'inspect-agent-traces',
           repository: 'tangle-network/traces',
-          ref: 'd43b1397f9b21a2222d11934a9afd24d293f27e9',
+          ref: '751caa74a2b25a6556512aabb11d1d08a08163e0',
           path: 'skills/inspect-agent-traces/SKILL.md',
           sha256: '2d3c8202367809d033294280faa145af07c699ee961b65d614519ea10b74e885',
         },

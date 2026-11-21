@@ -20,9 +20,9 @@ import { countProtectedWork, observeOwnedSandbox, protectedSpan } from '../proof
 import { liveEvidenceBindingFromEnvironment } from '../release/live-evidence-binding.mjs'
 import { connectionConfiguration } from './configuration.mjs'
 import { safeJson, safeMessage } from './contracts.mjs'
-import { configEvidence, prepareProductionWorkspace, resolveBinary } from './headless.mjs'
+import { configEvidence, prepareReleaseSandboxWorkspace, resolveBinary } from './headless.mjs'
 import { terminalText } from './interactive-terminal.mjs'
-import { DEFAULT_TANGLE_ROUTER_MODEL, releaseProofRouting } from './model-defaults.mjs'
+import { DEFAULT_TANGLE_ROUTER_MODEL } from './model-defaults.mjs'
 import { MULTIRUN_PROOF_SCHEMA } from './multirun-contract.mjs'
 import {
   cleanupRetainedResourceByControlRef,
@@ -734,7 +734,7 @@ export async function runProof({
     }
     const binary = await phase('binary.resolve', () => resolveBinary(targetRepository, environment))
     config = await phase('workspace.prepare', () =>
-      prepareProductionWorkspace({
+      prepareReleaseSandboxWorkspace({
         repository: targetRepository,
         environment: withoutEnvironment(
           configurationEnvironment(environment),
@@ -749,7 +749,6 @@ export async function runProof({
         providerOptions: {
           lifecycle: 'retained',
           idleTtlSeconds: 1_800,
-          ...releaseProofRouting(values.runner),
         },
         credentialRef: values.credentialRef,
         credentialValue: values.credentialValue,
@@ -1136,7 +1135,7 @@ export async function runProof({
       endpoint: values.endpoint,
       runner: values.runner,
       model: values.model,
-      modelProvider: values.modelProvider,
+      modelProvider: config?.profile.model.provider ?? values.modelProvider,
       lifecycle: 'retained',
       credentialConfigured: Boolean(values.credentialValue || values.credentialRef),
     },

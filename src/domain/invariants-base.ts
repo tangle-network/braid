@@ -1,5 +1,11 @@
 import { isIP } from 'node:net'
 import type { JsonValue } from './entities.js'
+import type {
+  AppliedEventRecord,
+  FeedbackDecisionRecord,
+  ReplayCursorRecord,
+  UnknownEventRecord,
+} from './entities-graph.js'
 import type { IdKind } from './ids.js'
 import { isDigestValue, isId, isReplayCursor } from './ids.js'
 import { isCanonicalIsoDateTime } from './text.js'
@@ -268,11 +274,7 @@ export function assertUniqueIds(values: readonly string[], name: string): void {
   }
 }
 
-import type { BraidState } from './state.js'
-
-export function assertFeedbackDecisionRecord(
-  record: BraidState['feedbackDecisions'][number],
-): void {
+export function assertFeedbackDecisionRecord(record: FeedbackDecisionRecord): void {
   assertEntityId('feedbackDecision', record.id, 'feedbackDecision.id')
   assertEntityId('conversation', record.conversationId, 'feedbackDecision.conversationId')
   if (record.operationId !== undefined)
@@ -300,20 +302,20 @@ export function assertFeedbackDecisionRecord(
   assertDate(record.createdAt, 'feedbackDecision.createdAt')
 }
 
-export function assertReplayCursorRecord(record: BraidState['replayCursors'][number]): void {
+export function assertReplayCursorRecord(record: ReplayCursorRecord): void {
   assertEntityId('run', record.runId, 'replayCursor.runId')
   if (!isReplayCursor(record.cursor)) fail('replayCursor.cursor is invalid')
   finiteNonNegative(record.committedSequence, 'replayCursor.committedSequence')
 }
 
-export function assertAppliedEventRecord(record: BraidState['appliedEvents'][number]): void {
+export function assertAppliedEventRecord(record: AppliedEventRecord): void {
   assertEntityId('event', record.id, 'appliedEvent.id')
   finitePositive(record.sequence, 'appliedEvent.sequence')
   finitePositive(record.revision, 'appliedEvent.revision')
   assertDigest(record.digest, 'appliedEvent.digest')
 }
 
-export function assertUnknownEventRecord(record: BraidState['unknownEvents'][number]): void {
+export function assertUnknownEventRecord(record: UnknownEventRecord): void {
   assertEntityId('event', record.id, 'unknownEvent.id')
   nonEmpty(record.type, 'unknownEvent.type')
   nonEmpty(record.summary, 'unknownEvent.summary')

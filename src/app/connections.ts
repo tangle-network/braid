@@ -330,6 +330,7 @@ function frozenModelCredentials(reference: ConnectionModelCredentials): Connecti
   if ('cliAuth' in reference) {
     return Object.freeze({ cliAuth: Object.freeze({ ...reference.cliAuth }) })
   }
+  if ('apiKeyEnv' in reference) return Object.freeze({ ...reference })
   return Object.freeze({
     ...reference,
     command: Object.freeze([...reference.command]),

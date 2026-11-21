@@ -24,7 +24,7 @@ import {
 import {
   configEvidence,
   initializedSession,
-  prepareProductionWorkspace,
+  prepareReleaseSandboxWorkspace,
   rpcRequest,
   rpcState,
 } from './headless.mjs'
@@ -49,7 +49,7 @@ import {
   waitForValue,
   writeRecording,
 } from './interactive-terminal.mjs'
-import { DEFAULT_TANGLE_ROUTER_MODEL, releaseProofRouting } from './model-defaults.mjs'
+import { DEFAULT_TANGLE_ROUTER_MODEL } from './model-defaults.mjs'
 import {
   assertProviderObservationDeadline,
   createProviderObservationDeadline,
@@ -1211,7 +1211,7 @@ async function runProof({
       packed.tarballSha256 !== environment.BRAID_LIVE_TARBALL_SHA256
     )
       throw new Error('LIVE-08 installed another tarball than the release candidate')
-    config = await prepareProductionWorkspace({
+    config = await prepareReleaseSandboxWorkspace({
       repository: targetRepository,
       environment: withoutEnvironment(
         configurationEnvironment(environment),
@@ -1227,7 +1227,6 @@ async function runProof({
       providerOptions: {
         lifecycle: 'retained',
         idleTtlSeconds,
-        ...releaseProofRouting(values.runner),
         ...providerOptions,
       },
       credentialRef: values.credentialRef,

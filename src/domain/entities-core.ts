@@ -214,6 +214,14 @@ export type ConnectionResourceRequest = Readonly<Omit<ResourceRequest, 'provider
 export type ConnectionModelCredentials =
   | ConnectionModelCredentialCommand
   | ConnectionModelCredentialStoredSeat
+  | ConnectionModelCredentialStoredApi
+
+export interface ConnectionModelCredentialStoredApi {
+  /** Public name of the bearer secret stored by the Sandbox account owner. */
+  readonly apiKeyEnv: string
+  /** Public HTTPS root of the model API allowed to receive the bearer. */
+  readonly baseUrl: string
+}
 
 export interface ConnectionModelCredentialCommand {
   /** Executable and arguments, run directly without a shell. */

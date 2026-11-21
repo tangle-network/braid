@@ -55,7 +55,11 @@ export function connectionConfiguration(
 ) {
   const endpoint =
     firstValue(environment, [`${prefix}_ENDPOINT`, ...endpointNames]) ?? fallbackEndpoint
-  const model = firstValue(environment, [`${prefix}_MODEL`, ...modelNames]) ?? fallbackModel
+  // A direct free-lane selection belongs to LIVE-06. Other proofs keep their own model.
+  const inheritedModels = modelNames.filter(
+    (name) => !(name === 'BRAID_TANGLE_MODEL' && /:free$/iu.test(environment[name]?.trim() ?? '')),
+  )
+  const model = firstValue(environment, [`${prefix}_MODEL`, ...inheritedModels]) ?? fallbackModel
   const runner = firstValue(environment, [`${prefix}_RUNNER`, ...runnerNames]) ?? fallbackRunner
   const modelProvider = resolveModelProvider({
     override: firstValue(environment, [
