@@ -50,6 +50,30 @@ async function liveModels() {
     BRAID_TANGLE_SANDBOX_MODEL: DEFAULT_TANGLE_ROUTER_MODEL,
   }
 }
+
+// A gate starts its own process environment. Forward only explicitly chosen public
+// selectors. The two release keys always come from their existing files on the host.
+async function operatorModelArguments(environment) {
+  const { directProofRouting, sandboxProofSeat } = await import(
+    '../live-required/model-defaults.mjs'
+  )
+  const args = []
+  for (const name of ['BRAID_TANGLE_MODEL', 'BRAID_TANGLE_SANDBOX_MODEL']) {
+    if (environment[name] === undefined) continue
+    const model = environment[name].trim()
+    if (!/^[a-z0-9][a-z0-9._/-]{0,191}(?::free)?$/u.test(model) || redact(model) !== model)
+      throw new Error(`${name} must be a public, exact model id`)
+    if (name === 'BRAID_TANGLE_MODEL') directProofRouting(model)
+    args.push(`${name}=${model}`)
+  }
+  const seat = sandboxProofSeat(
+    environment,
+    'opencode',
+    environment.BRAID_TANGLE_SANDBOX_MODEL?.trim(),
+  )
+  if (seat) args.push(`BRAID_TANGLE_SANDBOX_MODEL_CREDENTIALS=${JSON.stringify(seat)}`)
+  return args
+}
 const KEY_FILES = { router: 'router.key', sandbox: 'sandbox.key' }
 const MINUTE = 60_000
 const SETTLED_AGE_MINUTES = 10
@@ -502,6 +526,7 @@ class Driver {
       sha = pr.headRefOid
     }
     sha ??= await this.gh(['api', `repos/${REPO}/commits/main`, '--jq', '.sha'])
+    this.modelArguments = pr ? await operatorModelArguments(process.env) : []
     this.dir = path.join(os.homedir(), '.local/state/braid-live-release', sha)
     fs.mkdirSync(this.dir, { recursive: true })
     const target = pr ? `PR #${o.pr} head ${sha}` : `main commit ${sha}`
@@ -573,6 +598,8 @@ class Driver {
       const r = await this.gate(
         sha,
         [
+          'env',
+          ...this.modelArguments,
           'node',
           'scripts/release/live-release.mjs',
           'live-run',

@@ -35,6 +35,7 @@ test('LIVE-06 runs its exact selected Router route and rejects unpriced or subst
     },
   }
   let catalog = [row]
+  let servedModel
   const requests = []
   const posts = []
   const server = createServer(async (request, response) => {
@@ -60,23 +61,24 @@ test('LIVE-06 runs its exact selected Router route and rejects unpriced or subst
     for await (const bytes of request) body += bytes
     const parsed = JSON.parse(body)
     posts.push(parsed)
+    const responseModel = servedModel ?? parsed.model
     const usage = { prompt_tokens: 17, completion_tokens: 4, total_tokens: 21, cost: 0 }
     const content = 'LIVE_BRAID_TANGLE_INFERENCE_OK'
     if (parsed.stream) {
       response.setHeader('content-type', 'text/event-stream')
       for (const part of ['LIVE_BRAID_', 'TANGLE_INFERENCE_OK']) {
         response.write(
-          `data: ${JSON.stringify({ model: parsed.model, choices: [{ index: 0, delta: { content: part } }] })}\n\n`,
+          `data: ${JSON.stringify({ model: responseModel, choices: [{ index: 0, delta: { content: part } }] })}\n\n`,
         )
       }
       response.end(
-        `data: ${JSON.stringify({ model: parsed.model, choices: [{ index: 0, delta: {}, finish_reason: 'stop' }], usage })}\n\ndata: [DONE]\n\n`,
+        `data: ${JSON.stringify({ model: responseModel, choices: [{ index: 0, delta: {}, finish_reason: 'stop' }], usage })}\n\ndata: [DONE]\n\n`,
       )
     } else {
       response.setHeader('content-type', 'application/json')
       response.end(
         JSON.stringify({
-          model: parsed.model,
+          model: responseModel,
           choices: [{ message: { role: 'assistant', content }, finish_reason: 'stop' }],
           usage,
         }),
@@ -137,6 +139,12 @@ test('LIVE-06 runs its exact selected Router route and rejects unpriced or subst
     await assert.rejects(run, /exactly one matching free model|published zero rates/u)
   }
   assert.equal(posts.length, accepted)
+  catalog = [row]
+  servedModel = 'substitute/paid-model'
+  await assert.rejects(run, /exact recorded model/u)
+  t.diagnostic(
+    `Recorded ${accepted} accepted-lane request(s), ${posts.slice(0, accepted).filter((request) => request.stream === true).length} requested streaming; all unqualified catalogs issued zero inference requests.`,
+  )
   const substituted = structuredClone(free.evidence)
   substituted.observations.router.provider = 'zai'
   assert.throws(() => assertProofReceipt(substituted), /exact model and provider/u)
@@ -177,10 +185,10 @@ test('protected Sandbox profiles retain each native harness and put only the sto
       )
       assert.deepEqual(connection.providerOptions.modelCredentials, descriptor)
       assert.equal(connection.providerOptions.routing, undefined)
-      assert.equal(config.profile.harness, runner)
-      assert.equal(config.profile.model.default, 'glm-5.3')
-      assert.equal(config.profile.model.provider, provider)
-      assert.equal(config.profile.model.metadata.credentialSource, 'subscription')
+      assert.equal(startup.profile.harness, runner)
+      assert.equal(startup.profile.model.default, 'glm-5.3')
+      assert.equal(startup.profile.model.provider, provider)
+      assert.equal(startup.profile.model.metadata.credentialSource, 'subscription')
     } finally {
       await config.cleanup()
     }
