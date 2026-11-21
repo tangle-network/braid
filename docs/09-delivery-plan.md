@@ -465,6 +465,8 @@ node scripts/release/live-release.mjs --commit <full-sha> --host beelink1 --gh g
 node scripts/release/live-release.mjs --pr <n> --dry-run --gh gh-drew
 ```
 
+Supply the [protected model selectors](08-verification.md#protected-tangle-proof-configuration) in the operator environment for pre-merge canaries and in the protected workflow environment for post-merge evidence. The operator forwards the public model IDs and stored reference. The host reads its own release keys. Preflight observes the account from a pinned main checkout with its locked Sandbox SDK.
+
 With `--pr`, the command runs these steps in order and stops at the first failure:
 
 1. Run the full code gate at the PR head on the pinned Beelink: format, lint, typecheck, boundaries, an import of every `scripts/live-required/*.mjs`, `pnpm test`, and `pnpm run test:property`.

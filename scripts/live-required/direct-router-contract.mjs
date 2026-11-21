@@ -44,21 +44,22 @@ export function validatePassedTangleInferenceReceipt(receipt) {
     (typeof model === 'string' && directProofRouting(model).routing.only[0] === 'openrouter')
   ) {
     assertDirectProofRoute(model, router)
-    if (router.provider === 'openrouter') {
-      const completion = receipt.observations.completion
-      if (
-        completion?.runId !== facts.normalRunId ||
-        completion.model !== model ||
-        !Number.isSafeInteger(completion.input) ||
-        completion.input <= 0 ||
-        !Number.isSafeInteger(completion.output) ||
-        completion.output <= 0 ||
-        (completion.billedUsd !== null && completion.billedUsd !== 0)
-      )
-        throw new Error(
-          'Free Router completion needs the exact recorded model, measured usage and no reported charge',
-        )
-    }
+    const completion = receipt.observations.completion
+    if (
+      completion?.runId !== facts.normalRunId ||
+      completion.model !== model ||
+      !Number.isSafeInteger(completion.input) ||
+      completion.input <= 0 ||
+      !Number.isSafeInteger(completion.output) ||
+      completion.output <= 0
+    )
+      throw new Error('Direct Router completion needs the exact recorded model and measured usage')
+    if (
+      router.provider === 'openrouter' &&
+      completion.billedUsd !== null &&
+      completion.billedUsd !== 0
+    )
+      throw new Error('Free Router completion must have no reported charge')
   }
   const checks = new Set(receipt.checks)
   if (facts.cancellationStatus === 'confirmed') {
