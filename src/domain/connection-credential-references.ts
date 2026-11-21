@@ -159,7 +159,7 @@ function commandProblem(
   return undefined
 }
 
-/** Request only the stored bearer’s model API. Sandbox intersects this with the issuer’s grant. */
+/** The public model API bounds the scope a connection may request for its bearer. */
 export function storedModelProxyBinding(
   reference: ConnectionModelCredentialStoredApi,
 ): ProxySecretBinding {

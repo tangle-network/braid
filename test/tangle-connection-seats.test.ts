@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
+import { once } from 'node:events'
+import { createServer } from 'node:http'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -128,7 +130,7 @@ async function storedConnectionKey(connection: ConnectionRecord) {
   const ref = credentialRef('cred:v1:credential-tangle-seats')
   await credentials.store({
     ref,
-    value: bindCredentialToOrigin(Buffer.from(KEY_CANARY), endpoint),
+    value: bindCredentialToOrigin(Buffer.from(KEY_CANARY), connection.endpoint ?? endpoint),
   })
   return {
     connection: { ...connection, credentialRef: createCredentialRefId('credential-tangle-seats') },
@@ -144,6 +146,63 @@ async function waitFor(predicate: () => boolean, timeoutMs = 5_000): Promise<voi
     await new Promise((resolve) => setTimeout(resolve, 2))
   }
 }
+
+test('a saved model seat follows the current Sandbox grant and the profile can supply it without a lookup', async () => {
+  const reference = { apiKeyEnv: 'MODEL_PLAN', baseUrl: 'https://plan.example/api/v4' }
+  const grant = {
+    envName: reference.apiKeyEnv,
+    secretRef: { kind: 'secret-ref' as const, key: reference.apiKeyEnv },
+    presentation: { type: 'bearer' as const },
+    hosts: ['plan.example'],
+    paths: ['/api/v4/chat/completions'],
+    methods: ['POST' as const],
+    ttlSeconds: 600,
+  }
+  let policy = [grant]
+  const requests: string[] = []
+  const issuer = createServer((req, res) => {
+    if (
+      req.method !== 'GET' ||
+      req.url !== '/tenant/v1/secrets' ||
+      req.headers.authorization !== `Bearer ${KEY_CANARY}`
+    ) {
+      res.writeHead(400).end()
+      return
+    }
+    requests.push(req.url)
+    res.writeHead(200, { 'content-type': 'application/json' })
+    res.end(JSON.stringify({ secrets: [{ name: reference.apiKeyEnv, proxySecrets: policy }] }))
+  })
+  issuer.listen(0, '127.0.0.1')
+  await once(issuer, 'listening')
+  try {
+    const address = issuer.address()
+    assert.ok(address && typeof address !== 'string')
+    const keyed = await storedConnectionKey({
+      ...record({ modelCredentials: reference }),
+      endpoint: `http://127.0.0.1:${address.port}/tenant/v1/`,
+    })
+    const select = tangleModelCredentialsForConnection(keyed.connection, keyed)
+    assert.ok(typeof select === 'function')
+    const profile = subscriptionProfile('opencode')
+    assert.deepEqual(await select({ profile }), { ...reference, proxySecrets: [grant] })
+    const narrower = { ...grant, ttlSeconds: 90 }
+    policy = [narrower]
+    assert.deepEqual(await select({ profile }), { ...reference, proxySecrets: [narrower] })
+    assert.deepEqual(await select({ profile: { ...profile, proxySecrets: [narrower] } }), {
+      ...reference,
+      proxySecrets: [narrower],
+    })
+    assert.equal(requests.length, 2)
+    policy = [{ ...grant, paths: ['/other/*'] }]
+    await assert.rejects(async () => select({ profile }), /bearer grant/u)
+    policy = []
+    await assert.rejects(async () => select({ profile }), /bearer grant/u)
+  } finally {
+    issuer.closeAllConnections()
+    await new Promise<void>((resolve) => issuer.close(() => resolve()))
+  }
+})
 
 test('connection credential references accept names and refuse values with plain messages', () => {
   const accepted: ConnectionTransportOptions[] = [

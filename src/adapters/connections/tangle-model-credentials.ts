@@ -3,7 +3,7 @@ import type {
   TangleModelCredentials,
 } from '@tangle-network/agent-provider-tangle'
 import { ConnectionError } from '../../app/connection-errors.js'
-import { storedModelProxyBinding } from '../../domain/connection-credential-references.js'
+import { storedModelGrant } from './stored-model-grant.js'
 import type { ConnectionRecord } from '../../domain/entities.js'
 import { readConnectionCredential } from './production-connection-credentials.js'
 import { connectionEndpoint } from './production-connection-endpoints.js'
@@ -36,7 +36,10 @@ export function tangleModelCredentialsForConnection(
   if ('cliAuth' in reference) return { cliAuth: { ...reference.cliAuth } }
   if ('apiKeyEnv' in reference) {
     // SDK resolver selection requires explicit subscription intent, including after a restart.
-    return async () => ({ ...reference, proxySecrets: [storedModelProxyBinding(reference)] })
+    return async (input) => ({
+      ...reference,
+      proxySecrets: [await storedModelGrant(reference, record, options, input)],
+    })
   }
   const command = [...reference.command]
   const forwarded = [...(reference.env ?? [])]
