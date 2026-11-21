@@ -1,4 +1,12 @@
-import type { ConnectionTransportOptions } from './entities-core.js'
+import {
+  type ProxySecretBinding,
+  ProxySecretsSchema,
+} from '@tangle-network/agent-interface/environment-provider'
+import type {
+  ConnectionModelCredentialStoredApi,
+  ConnectionTransportOptions,
+} from './entities-core.js'
+import { assertPublicUrl } from './invariants-base.js'
 import { redactSensitiveText } from './secret-sanitizer.js'
 
 /**
@@ -151,6 +159,54 @@ function commandProblem(
   return undefined
 }
 
+/** Request only the stored bearer’s model API. Sandbox intersects this with the issuer’s grant. */
+export function storedModelProxyBinding(
+  reference: ConnectionModelCredentialStoredApi,
+): ProxySecretBinding {
+  const endpoint = new URL(reference.baseUrl)
+  return {
+    envName: reference.apiKeyEnv,
+    secretRef: { kind: 'secret-ref', key: reference.apiKeyEnv },
+    presentation: { type: 'bearer' },
+    hosts: [endpoint.hostname],
+    paths: [endpoint.pathname.replace(/\/$/u, '') + '/*'],
+  }
+}
+
+function storedApiProblem(
+  value: Readonly<Record<string, unknown>>,
+  field: string,
+): ConnectionCredentialReferenceProblem | undefined {
+  if (Object.keys(value).some((key) => key !== 'apiKeyEnv' && key !== 'baseUrl')) {
+    return material(`${field} accepts only the stored secret name and public model API URL`)
+  }
+  const { apiKeyEnv, baseUrl } = value
+  if (
+    typeof apiKeyEnv !== 'string' ||
+    credentialShaped(apiKeyEnv) ||
+    !/^[A-Z_][A-Z0-9_]{0,63}$/u.test(apiKeyEnv)
+  ) {
+    return material(`${field}.apiKeyEnv must name a stored Sandbox secret`)
+  }
+  if (typeof baseUrl !== 'string' || baseUrl.length > 2048 || credentialShaped(baseUrl)) {
+    return material(`${field}.baseUrl must be a public model API URL`)
+  }
+  try {
+    assertPublicUrl(baseUrl, field, { rejectQuery: true, rejectFragment: true })
+    const url = new URL(baseUrl)
+    if (
+      !url.port &&
+      !/[?#]/u.test(baseUrl) &&
+      (url.href === baseUrl || url.href === baseUrl + '/') &&
+      ProxySecretsSchema.safeParse([storedModelProxyBinding({ apiKeyEnv, baseUrl })]).success
+    )
+      return undefined
+  } catch {
+    // Return a fixed diagnostic, since an invalid endpoint may itself contain a credential.
+  }
+  return invalid(`${field}.baseUrl must be a canonical public HTTPS model API URL`)
+}
+
 function modelCredentialsProblem(value: unknown): ConnectionCredentialReferenceProblem | undefined {
   const field = 'connection.providerOptions.modelCredentials'
   if (!isRecord(value)) {
@@ -163,9 +219,10 @@ function modelCredentialsProblem(value: unknown): ConnectionCredentialReferenceP
     }
     return seatProblem(value.cliAuth)
   }
+  if (keys.includes('apiKeyEnv') || keys.includes('baseUrl')) return storedApiProblem(value, field)
   if (keys.some((key) => !COMMAND_FIELDS.has(key))) {
     return material(
-      `${field} accepts only command, env, connectionKeyEnv and connectionEndpointEnv, or cliAuth alone; credential values are never accepted`,
+      `${field} accepts only command, env, connectionKeyEnv and connectionEndpointEnv, a stored cliAuth seat, or an apiKeyEnv and baseUrl pair`,
     )
   }
   return commandProblem(value)

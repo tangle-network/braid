@@ -9,6 +9,9 @@ import { type AgentProfile, defineAgentProfile } from '@tangle-network/agent-int
 import { assertNoSecretArtifacts } from '../scripts/scan-secret-artifacts.mjs'
 import { bindCredentialToOrigin } from '../src/adapters/connections/production-connection-credentials.js'
 import { createTangleEnvironmentProvider } from '../src/adapters/connections/production-connection-providers.js'
+import { tangleModelCredentialsForConnection } from '../src/adapters/connections/tangle-model-credentials.js'
+import { openSqliteStorage } from '../src/adapters/storage/sqlite.js'
+import { StorageJournal } from '../src/app/storage-journal.js'
 import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
 import { resolveTangleSandboxRetainedConnection } from '../src/adapters/runtime/production-tangle-sandbox-backend.js'
 import {
@@ -29,7 +32,6 @@ import {
 import { ConnectionActionService } from '../src/app/connection-actions.js'
 import { ConnectionError } from '../src/app/connection-errors.js'
 import { ConnectionRegistry } from '../src/app/connections.js'
-import { MemoryJournal } from '../src/app/journal.js'
 import { activateProductionConnection } from '../src/bin/production-application.js'
 import type { ConnectionRecord, ConnectionTransportOptions } from '../src/domain/entities.js'
 import { createConnectionId, createCredentialRefId } from '../src/domain/ids.js'
@@ -146,6 +148,7 @@ async function waitFor(predicate: () => boolean, timeoutMs = 5_000): Promise<voi
 test('connection credential references accept names and refuse values with plain messages', () => {
   const accepted: ConnectionTransportOptions[] = [
     { secrets: [...GRANTED] },
+    { modelCredentials: { apiKeyEnv: 'RELEASE_PLAN', baseUrl: 'https://plan.example/v4' } },
     {
       secrets: ['GH_TOKEN'],
       modelCredentials: {
@@ -171,6 +174,24 @@ test('connection credential references accept names and refuse values with plain
   > = [
     [{ secrets: { GH_TOKEN: VALUE_CANARY } }, 'tangle-sandbox', 'SECRET', /secret names; values/u],
     [{ secrets: [VALUE_CANARY] }, 'tangle-sandbox', 'SECRET', /contains credential material/u],
+    [
+      { modelCredentials: { apiKeyEnv: VALUE_CANARY, baseUrl: 'https://plan.example/v4' } },
+      'tangle-sandbox',
+      'SECRET',
+      /stored Sandbox secret/u,
+    ],
+    [
+      { modelCredentials: { apiKeyEnv: 'PLAN', baseUrl: 'https://plan.example/v4?view=text' } },
+      'tangle-sandbox',
+      'INVALID',
+      /public HTTPS model API/u,
+    ],
+    [
+      { modelCredentials: { apiKeyEnv: 'PLAN', baseUrl: 'http://127.0.0.1/api' } },
+      'tangle-sandbox',
+      'INVALID',
+      /public HTTPS model API/u,
+    ],
     [{ secrets: [] }, 'tangle-sandbox', 'INVALID', /at least one stored secret/u],
     [{ secrets: ['GH_TOKEN', 'GH_TOKEN'] }, 'tangle-sandbox', 'INVALID', /repeat a name/u],
     [{ secrets: ['gh token'] }, 'tangle-sandbox', 'INVALID', /environment-variable names/u],
@@ -279,17 +300,29 @@ test('connection credential references accept names and refuse values with plain
   }
 })
 
-test('saved connection references survive the journal, operation replay, and restart', async () => {
-  const journal = new MemoryJournal(new FixedClock(at))
-  const application = () =>
-    createBraidApplication({
+test('stored seats survive encrypted SQLite restart and issue a scoped model grant', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-stored-seats-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const store = {
+    path: join(root, 'braid.sqlite'),
+    workspaceRoot: root,
+    credentialStore: new MemoryCredentialStore(),
+    databaseKeyRef: credentialRef('cred:v1:seat-test-database'),
+  }
+  const application = async () => {
+    const journal = await StorageJournal.fromStorage(
+      await openSqliteStorage(store),
+      new FixedClock(at),
+    )
+    return createBraidApplication({
       fixture: 'deterministic',
       profile: DETERMINISTIC_PROFILE,
       clock: new FixedClock(at),
       journal,
       effectStorage: journal,
     })
-  const service = (app: ReturnType<typeof application>) =>
+  }
+  const service = (app: Awaited<ReturnType<typeof application>>) =>
     new ConnectionActionService({
       host: {
         state: () => app.state(),
@@ -310,7 +343,7 @@ test('saved connection references survive the journal, operation replay, and res
     },
   }
   const saved = record(options)
-  const app = application()
+  const app = await application()
   const created = await service(app).upsert({ operationId: 'operation-seat-save', record: saved })
   assert.equal(created.replayed, false)
   const journaled = app.events().find(({ event }) => event.kind === 'connection.upserted')?.event
@@ -321,8 +354,34 @@ test('saved connection references survive the journal, operation replay, and res
   const replayed = await service(app).upsert({ operationId: 'operation-seat-save', record: saved })
   assert.equal(replayed.replayed, true)
 
-  const restarted = application()
-  assert.deepEqual(restarted.state().connections[0]?.providerOptions, saved.providerOptions)
+  const plan = { apiKeyEnv: 'MODEL_PLAN', baseUrl: 'https://plan.example/api/v4' }
+  const updated = record({ ...options, modelCredentials: plan })
+  await service(app).upsert({ operationId: 'operation-plan-save', record: updated })
+  await app.whenDurable()
+  await app.close()
+  const restarted = await application()
+  t.after(() => restarted.close())
+  const [reopened] = restarted.state().connections
+  assert.ok(reopened)
+  assert.deepEqual(reopened.providerOptions, updated.providerOptions)
+  const select = tangleModelCredentialsForConnection(reopened, {})
+  assert.ok(typeof select === 'function')
+  const grant = await select({
+    profile: subscriptionProfile('opencode'),
+    idempotencyKey: 'subscription-turn',
+  })
+  assert.deepEqual(grant, {
+    ...plan,
+    proxySecrets: [
+      {
+        envName: plan.apiKeyEnv,
+        secretRef: { kind: 'secret-ref', key: plan.apiKeyEnv },
+        hosts: ['plan.example'],
+        paths: ['/api/v4/*'],
+        presentation: { type: 'bearer' },
+      },
+    ],
+  })
   assert.equal(
     (await service(restarted).upsert({ operationId: 'operation-seat-save', record: saved }))
       .replayed,
