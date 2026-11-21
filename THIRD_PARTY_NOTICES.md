@@ -4,7 +4,7 @@
 
 `src/profiles/discovery-operator.ts` is the project-owner-authorized release
 snapshot of `tangle-network/disco`, commit
-`3b916f123e21b654e824a0ae67f00fa95b4a5fba`, path
+`5cc84ba611ef0cd680fa759d0074df25f8182315`, path
 `profiles/operators/discovery-operator.json` (the repository's historical name
 `tangle-network/discovery-lab` redirects there and stays in the profile's own
 provenance records). Discovery Lab remains its owner.
@@ -17,7 +17,7 @@ The snapshot carries these resources byte for byte. Their hashes are recorded in
 | Resource | Owner and source path | Source commit | License |
 | --- | --- | --- | --- |
 | `profile-authoring` | `tangle-network/agent-runtime`, `skills/profile-authoring/SKILL.md` | `b95a36ae1e3f697fc439b9911f5611490c907511` | MIT, as declared by the owner's package manifest |
-| `inspect-agent-traces` | `tangle-network/traces`, `skills/inspect-agent-traces/SKILL.md` | `d43b1397f9b21a2222d11934a9afd24d293f27e9` | MIT, Copyright (c) 2026 Tangle Network |
+| `inspect-agent-traces` | `tangle-network/traces`, `skills/inspect-agent-traces/SKILL.md` | `751caa74a2b25a6556512aabb11d1d08a08163e0` | MIT, Copyright (c) 2026 Tangle Network |
 | `operator-learning` | `tangle-network/discovery-lab`, `profiles/operators/learning.md` | `9ec4b405f8b93aecba75485aa09eca7f8d4da492` | Project-owner-authorized distribution |
 
 Braid's distributed `LICENSE` retains the MIT permission notice and the same
@@ -47,7 +47,7 @@ Before copied or substantially adapted code is committed, add one row below with
 
 | Braid path | Upstream source | Source commit | License | Adaptation |
 | --- | --- | --- | --- | --- |
-| `src/profiles/discovery-operator.ts` | [`tangle-network/disco`, `profiles/operators/discovery-operator.json`](https://github.com/tangle-network/disco/blob/3b916f123e21b654e824a0ae67f00fa95b4a5fba/profiles/operators/discovery-operator.json) | `3b916f123e21b654e824a0ae67f00fa95b4a5fba` | Project-owner-authorized distribution; mounted resources retain the licenses above | Canonical-value-preserving data export with a file-level source and authority header. |
+| `src/profiles/discovery-operator.ts` | [`tangle-network/disco`, `profiles/operators/discovery-operator.json`](https://github.com/tangle-network/disco/blob/5cc84ba611ef0cd680fa759d0074df25f8182315/profiles/operators/discovery-operator.json) | `5cc84ba611ef0cd680fa759d0074df25f8182315` | Project-owner-authorized distribution; mounted resources retain the licenses above | Canonical-value-preserving data export with a file-level source and authority header. |
 | `test/support/virtual-terminal.ts` | [`earendil-works/pi`, `packages/tui/test/virtual-terminal.ts`](https://github.com/earendil-works/pi/blob/a6f7317dfca61e357aee65faafe012a1be6c3734/packages/tui/test/virtual-terminal.ts) | `a6f7317dfca61e357aee65faafe012a1be6c3734` | MIT, Copyright (c) 2025 Mario Zechner | Changed imports to the published Pi TUI package, applied Braid formatting, and implemented the terminal status method required by Pi TUI 1.1.0 as a no-op in the headless test terminal; production code does not include this file. |
 | `src/views/tui/selector.ts` | [`earendil-works/pi`, `packages/tui/src/components/select-list.ts`](https://github.com/earendil-works/pi/blob/a6f7317dfca61e357aee65faafe012a1be6c3734/packages/tui/src/components/select-list.ts) | `a6f7317dfca61e357aee65faafe012a1be6c3734` | MIT, Copyright (c) 2025 Mario Zechner | Reuses Pi's pinned column-width and truncation calculations to mark description overflow while preserving the shared selector behavior. |
 | `scripts/live-bridge/windows-job-host-source.mjs` | [`dotnet/aspire`, `src/Aspire.Cli/Processes/WindowsConsoleProcessJob.cs` and `WindowsProcessInterop.cs`](https://github.com/dotnet/aspire/tree/be77aa36daf995fae0e72091141410c7082fcba3/src/Aspire.Cli/Processes) | `be77aa36daf995fae0e72091141410c7082fcba3` | MIT, Copyright (c) .NET Foundation and contributors | Adapted atomic Job Object attachment, kill-on-close containment, and active-process drain checks for Braid's Windows release proof. |
