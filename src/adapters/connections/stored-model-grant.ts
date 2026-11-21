@@ -56,7 +56,7 @@ export async function storedModelGrant(
   const response = await (options.fetch ?? fetch)(url, {
     headers: { authorization: `Bearer ${credential}`, accept: 'application/json' },
     redirect: 'error',
-    signal: input.signal,
+    signal: input.signal ?? null,
   })
   if ([403, 404, 405].includes(response.status)) {
     await response.body?.cancel()
