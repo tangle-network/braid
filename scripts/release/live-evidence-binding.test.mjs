@@ -36,6 +36,7 @@ test('LIVE-06 runs its exact selected Router route and rejects unpriced or subst
   }
   let catalog = [row]
   let servedModel
+  let ignoreStreaming = false
   const requests = []
   const posts = []
   const server = createServer(async (request, response) => {
@@ -64,7 +65,7 @@ test('LIVE-06 runs its exact selected Router route and rejects unpriced or subst
     const responseModel = servedModel ?? parsed.model
     const usage = { prompt_tokens: 17, completion_tokens: 4, total_tokens: 21, cost: 0 }
     const content = 'LIVE_BRAID_TANGLE_INFERENCE_OK'
-    if (parsed.stream) {
+    if (parsed.stream && !ignoreStreaming) {
       response.setHeader('content-type', 'text/event-stream')
       for (const part of ['LIVE_BRAID_', 'TANGLE_INFERENCE_OK']) {
         response.write(
@@ -125,6 +126,12 @@ test('LIVE-06 runs its exact selected Router route and rejects unpriced or subst
     })
   }
   const accepted = posts.length
+  assert.ok(accepted > 0)
+  assert.ok(
+    posts.every(
+      (request) => request.stream === true && request.stream_options?.include_usage === true,
+    ),
+  )
   for (const bad of [
     [],
     [row, row],
@@ -142,6 +149,9 @@ test('LIVE-06 runs its exact selected Router route and rejects unpriced or subst
   catalog = [row]
   servedModel = 'substitute/paid-model'
   await assert.rejects(run, /RUNTIME_FINAL_ERROR|exact recorded model/u)
+  servedModel = undefined
+  ignoreStreaming = true
+  await assert.rejects(run, /RUNTIME_FINAL_ERROR/u)
   t.diagnostic(
     `Recorded ${accepted} accepted-lane request(s), ${posts.slice(0, accepted).filter((request) => request.stream === true).length} requested streaming; all unqualified catalogs issued zero inference requests.`,
   )

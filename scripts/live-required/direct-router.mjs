@@ -8,7 +8,13 @@ export async function directRouterEvidence(repository, environment, config) {
   const model = config.profile.model.default
   const { only, allowFallbacks, requireModel } = config.connection.providerOptions.routing
   if (only?.length !== 1) throw new Error('Direct Router proof must select exactly one provider')
-  const route = { model, provider: only[0], allowFallbacks, requireModel }
+  const route = {
+    model,
+    provider: only[0],
+    allowFallbacks,
+    requireModel,
+    streamRequested: config.profile.model.metadata?.stream === true,
+  }
   if (route.provider === 'openrouter') {
     const dist = runtimeModuleRoot(repository, environment)
     const load = (file) => import(pathToFileURL(join(dist, file)).href)

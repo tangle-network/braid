@@ -13,9 +13,10 @@ export function assertDirectProofRoute(model, route) {
     route?.model !== model ||
     route.provider !== routing.only[0] ||
     route.allowFallbacks !== false ||
-    route.requireModel !== true
+    route.requireModel !== true ||
+    route.streamRequested !== true
   )
-    throw new Error('Direct Router proof did not pin its exact model and provider')
+    throw new Error('Direct Router proof must stream from its exact model and provider')
   if (route.provider !== 'openrouter') return
   const card = route.catalog
   if (

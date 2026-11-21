@@ -17,6 +17,7 @@ import {
   closeSession,
   configEvidence,
   prepareProductionWorkspace,
+  profileFor,
   resolveBinary,
   runHeadlessCancellation,
   runHeadlessTurn,
@@ -276,10 +277,13 @@ export async function runInference({ repository, environment, binary, invocation
     fallbackModelProvider: 'tangle-router',
     fallbackRunner: 'cli-base',
   })
+  const profile = profileFor(values)
+  profile.model.metadata = { stream: true }
   const config = await prepareProductionWorkspace({
     repository,
     environment,
     ...values,
+    profile,
     providerOptions: directProofRouting(values.model),
   })
   let normal
