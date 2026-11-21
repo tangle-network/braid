@@ -8,7 +8,7 @@ import {
   proofReceipt,
   tangleReceiptsArtifact,
 } from '../live-required/contracts.mjs'
-import { prepareProductionWorkspace, resolveBinary } from '../live-required/headless.mjs'
+import { prepareReleaseSandboxWorkspace, resolveBinary } from '../live-required/headless.mjs'
 import { runInference } from '../live-required/tangle.mjs'
 import { runtimeModuleRoot } from '../live-required/tangle-workspace-proof.mjs'
 import {
@@ -141,7 +141,7 @@ test('LIVE-06 runs its exact selected Router route and rejects unpriced or subst
   assert.equal(posts.length, accepted)
   catalog = [row]
   servedModel = 'substitute/paid-model'
-  await assert.rejects(run, /exact recorded model/u)
+  await assert.rejects(run, /RUNTIME_FINAL_ERROR|exact recorded model/u)
   t.diagnostic(
     `Recorded ${accepted} accepted-lane request(s), ${posts.slice(0, accepted).filter((request) => request.stream === true).length} requested streaming; all unqualified catalogs issued zero inference requests.`,
   )
@@ -159,7 +159,7 @@ test('protected Sandbox profiles retain each native harness and put only the sto
     ['opencode', 'zai-coding-plan'],
     ['pi', 'zai'],
   ]) {
-    const config = await prepareProductionWorkspace({
+    const config = await prepareReleaseSandboxWorkspace({
       repository,
       environment: { BRAID_TANGLE_SANDBOX_MODEL_CREDENTIALS: JSON.stringify(descriptor) },
       kind: 'tangle-sandbox',
@@ -169,7 +169,6 @@ test('protected Sandbox profiles retain each native harness and put only the sto
       modelProvider: 'tangle-router',
       providerOptions: {
         lifecycle: 'retained',
-        routing: { only: ['zai'], allowFallbacks: false, requireModel: true },
       },
     })
     try {

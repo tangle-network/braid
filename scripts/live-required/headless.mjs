@@ -14,7 +14,7 @@ import {
 } from '../live-bridge/protocol.mjs'
 import { resolveModelProvider } from './configuration.mjs'
 import { endpointEvidence, protectedUnavailable, safeMessage } from './contracts.mjs'
-import { sandboxProofSeat } from './model-defaults.mjs'
+import { releaseProofRouting, sandboxProofSeat } from './model-defaults.mjs'
 import { lastRunStatusDetail } from './tangle-sandbox-braid-stress-support.mjs'
 
 const AUTH_ENVIRONMENT_NAMES = Object.freeze([
@@ -284,6 +284,28 @@ export async function resolveBinary(repository, environment) {
   return candidate
 }
 
+// Release rows share the native profile and connection. Independent live proofs and
+// user-authored profiles retain their normal credential selection.
+export function prepareReleaseSandboxWorkspace(options) {
+  const { environment, runner, model } = options
+  const seat =
+    options.profile === undefined ? sandboxProofSeat(environment, runner, model) : undefined
+  if (seat) {
+    const modelProvider = runner === 'opencode' ? 'zai-coding-plan' : 'zai'
+    const profile = profileFor({ kind: 'tangle-sandbox', runner, model, modelProvider })
+    profile.model.metadata = { credentialSource: 'subscription' }
+    return prepareProductionWorkspace({
+      ...options,
+      profile,
+      providerOptions: { ...options.providerOptions, modelCredentials: seat },
+    })
+  }
+  return prepareProductionWorkspace({
+    ...options,
+    providerOptions: { ...releaseProofRouting(runner), ...options.providerOptions },
+  })
+}
+
 export async function prepareProductionWorkspace({
   repository,
   environment = process.env,
@@ -318,17 +340,7 @@ export async function prepareProductionWorkspace({
         : `credential-live-${kindId}-${randomUUID().replaceAll('-', '')}`
     const selectedCredentialId = generatedCredentialId ?? credentialRef
     if (selectedCredentialId !== undefined) validCredentialId(selectedCredentialId)
-    // The generated release profile can explicitly select the native plan on the Sandbox.
-    // Authored profiles keep their own credential intent.
-    const seat =
-      kind === 'tangle-sandbox' && authoredProfile === undefined
-        ? sandboxProofSeat(environment, runner, model)
-        : undefined
-    const nativeProvider = runner === 'opencode' ? 'zai-coding-plan' : 'zai'
-    const profile =
-      authoredProfile ??
-      profileFor({ kind, model, runner, modelProvider: seat ? nativeProvider : modelProvider })
-    if (seat) profile.model.metadata = { credentialSource: 'subscription' }
+    const profile = authoredProfile ?? profileFor({ kind, model, runner, modelProvider })
     const profileFile = `profile-${kindId}.json`
     const profilePath = join(profileDirectory, profileFile)
     const now = timestamp()
@@ -343,10 +355,6 @@ export async function prepareProductionWorkspace({
       createdAt: now,
       updatedAt: now,
       lastHealth: { status: 'unknown' },
-    }
-    if (seat) {
-      delete connection.providerOptions.routing
-      connection.providerOptions.modelCredentials = seat
     }
     await mkdir(profileDirectory, { recursive: true, mode: 0o700 })
     await writeFile(databaseKeyFile, `${randomBytes(32).toString('hex')}\n`, { mode: 0o600 })

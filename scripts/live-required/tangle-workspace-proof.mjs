@@ -23,8 +23,8 @@ import {
   safeMessage,
   scalarMeasurement,
 } from './contracts.mjs'
-import { configEvidence, prepareProductionWorkspace } from './headless.mjs'
-import { DEFAULT_TANGLE_ROUTER_MODEL, releaseProofRouting } from './model-defaults.mjs'
+import { configEvidence, prepareReleaseSandboxWorkspace } from './headless.mjs'
+import { DEFAULT_TANGLE_ROUTER_MODEL } from './model-defaults.mjs'
 import {
   configurationEnvironment,
   permissionFormAnswer,
@@ -1322,7 +1322,7 @@ async function runWorkspaceProof({
   const startedAt = new Date().toISOString()
   const trust = optionalConfidentialTrustPolicy(environment, confidential)
   const values = sandboxConfiguration(environment)
-  const config = await prepareProductionWorkspace({
+  const config = await prepareReleaseSandboxWorkspace({
     repository,
     environment,
     kind: 'tangle-sandbox',
@@ -1337,7 +1337,6 @@ async function runWorkspaceProof({
     providerOptions: {
       lifecycle: 'retained',
       idleTtlSeconds: idleTtlSeconds(environment),
-      ...releaseProofRouting(values.runner),
     },
     ...(trust === undefined ? {} : { confidentialAttestationPolicy: trust.policy }),
   })

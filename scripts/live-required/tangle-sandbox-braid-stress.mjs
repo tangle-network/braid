@@ -18,10 +18,9 @@ import {
   closeSession,
   configEvidence,
   initializedSession,
-  prepareProductionWorkspace,
+  prepareReleaseSandboxWorkspace,
   resolveBinary,
 } from './headless.mjs'
-import { releaseProofRouting } from './model-defaults.mjs'
 import { listAllSandboxes } from './provider-observation.mjs'
 import {
   argument,
@@ -1537,7 +1536,7 @@ export async function runBraidSandboxStress({
     binary = suppliedBinary ?? (await resolveBinary(suppliedRepository, environment))
     binarySha256 = sha256(await readFile(binary))
     config = await phase('workspace', () =>
-      prepareProductionWorkspace({
+      prepareReleaseSandboxWorkspace({
         repository: suppliedRepository,
         environment: withoutEnvironment(environment, SECRET_ENVIRONMENT_NAMES),
         ...values,
@@ -1545,7 +1544,6 @@ export async function runBraidSandboxStress({
         providerOptions: {
           lifecycle: RETAINED_LIFECYCLE,
           idleTtlSeconds,
-          ...releaseProofRouting(values.runner),
         },
       }),
     )

@@ -10,16 +10,15 @@ import {
 } from '../live-bridge/protocol.mjs'
 import { installPackedBraid } from '../packed-binary.mjs'
 import { safeJson } from './contracts.mjs'
-import { configEvidence, initializedSession, prepareProductionWorkspace } from './headless.mjs'
-import { releaseProofRouting } from './model-defaults.mjs'
+import { configEvidence, initializedSession, prepareReleaseSandboxWorkspace } from './headless.mjs'
 import {
+  accountIdentity,
+  assertStableAccountIdentity,
   cleanupRetainedResourceByControlRef,
   cleanupRetainedResourceByRunId,
   providerExecutionLedgerEvidence,
   retainedBox,
   usage,
-  accountIdentity,
-  assertStableAccountIdentity,
 } from './tangle-sandbox-braid-stress.mjs'
 import {
   assertSameControlRef,
@@ -493,7 +492,7 @@ export async function runCloudInteractionProof({
       packed.tarballSha256 !== environment.BRAID_LIVE_TARBALL_SHA256
     )
       throw new Error('cloud interaction proof installed another release candidate')
-    config = await prepareProductionWorkspace({
+    config = await prepareReleaseSandboxWorkspace({
       repository,
       environment: withoutEnvironment(environment, SECRET_ENVIRONMENT_NAMES),
       kind: values.kind,
@@ -507,7 +506,6 @@ export async function runCloudInteractionProof({
       providerOptions: {
         lifecycle: 'retained',
         idleTtlSeconds,
-        ...releaseProofRouting('opencode'),
       },
     })
     client = new Sandbox({ baseUrl: values.endpoint, apiKey: values.credentialValue })
