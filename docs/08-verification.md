@@ -515,6 +515,12 @@ Model discovery does not make every advertised model a release gate.
 | LIVE-11 | Runtime supervisor | Real root and worker stream, spend and status update, typed steering effect, typed cancellation effect, and reconnectable control |
 | LIVE-12 | `agent-eval` trace analysis | Real source run freezes, the selected profile and connection execute analyst model calls through `agent-runtime`, usage and cost receipts settle, citations resolve, source remains unchanged, and selected finding promotion records provenance |
 
+#### Protected Tangle proof configuration
+
+`BRAID_TANGLE_MODEL` selects LIVE-06's direct `cli-base` model. The existing GLM route pins Z.ai and requires an account entitled to direct API use. For the free lane, select an exact `owner/model:free` ID from the first-party Router's authenticated `GET /v1/models` catalog. Before sending a turn, Braid checks the system OpenRouter chat route and its current published rate card, including cache reads and writes. The completion must record the selected model and measured usage. The receipt records the route, rates and any billed amount the run reports. Both routes forbid a substitute provider or model.
+
+`BRAID_TANGLE_SANDBOX_MODEL` independently selects the native model. For the company's stored GLM plan, set it to the bare model ID, and set `BRAID_TANGLE_SANDBOX_MODEL_CREDENTIALS` to a JSON string with the public stored reference `{"apiKeyEnv":"STORED_PLAN_NAME","baseUrl":"https://api.z.ai/api/coding/paas/v4"}`. The Sandbox account owns the host- and path-restricted secret. OpenCode uses its `zai-coding-plan` provider and Pi uses `zai`. Each generated profile declares its subscription intent. Without the descriptor, the existing managed profiles and Sandbox routing apply. The release still requires every row, including both terminal and cloud interaction evidence in LIVE-08.
+
 `LIVE-08` requires separate native terminal and canonical cloud interaction observations from the same candidate tarball.
 The native Pi proof checks terminal input, detach, reconnect, provider readback, and cleanup.
 The cloud proof starts an OpenCode turn with an advertised question response capability.

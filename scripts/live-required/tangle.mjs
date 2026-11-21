@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import { ProofWindow, createProtectedWork, protectedSpan } from '../proof-tools.mjs'
+import { createProtectedWork, ProofWindow, protectedSpan } from '../proof-tools.mjs'
 import { connectionConfiguration } from './configuration.mjs'
 import {
   classifyExternalFailure,
@@ -11,6 +11,7 @@ import {
   safeMessage,
   scalarMeasurement,
 } from './contracts.mjs'
+import { directRouterEvidence } from './direct-router.mjs'
 import {
   admittedCancellationSupport,
   closeSession,
@@ -21,7 +22,7 @@ import {
   runHeadlessTurn,
   verifyUnavailableCancellation,
 } from './headless.mjs'
-import { releaseProofRouting } from './model-defaults.mjs'
+import { directProofRouting } from './model-defaults.mjs'
 import { assertMultirunProof } from './multirun-contract.mjs'
 import {
   interactiveFailureMessages,
@@ -263,7 +264,7 @@ function tokenMarker(name) {
   return `LIVE_BRAID_${name}_OK`
 }
 
-async function runInference({ repository, environment, binary, invocationId }) {
+export async function runInference({ repository, environment, binary, invocationId }) {
   const startedAt = new Date().toISOString()
   const values = connectionConfiguration(environment, {
     prefix: 'BRAID_TANGLE',
@@ -279,12 +280,13 @@ async function runInference({ repository, environment, binary, invocationId }) {
     repository,
     environment,
     ...values,
-    providerOptions: releaseProofRouting(values.runner, 'tangle-inference'),
+    providerOptions: directProofRouting(values.model),
   })
   let normal
   let cancelled
   let cancellation
   try {
+    const router = await directRouterEvidence(repository, environment, config)
     normal = await runHeadlessTurn({
       binary,
       config,
@@ -317,6 +319,17 @@ async function runInference({ repository, environment, binary, invocationId }) {
         startedAt,
         completedAt: new Date().toISOString(),
         config: configEvidence(config),
+        observations: {
+          router,
+          completion: {
+            runId: normal.run.id,
+            model: normal.run.model ?? null,
+            input: normal.run.tokensKnown === false ? null : normal.run.inputTokens,
+            output: normal.run.tokensKnown === false ? null : normal.run.outputTokens,
+            billedUsd: normal.run.usdKnown === false ? null : (normal.run.costUsd ?? null),
+          },
+        },
+        environment,
         runIds,
         materializationDigest: normal.run.materializationDigest,
         facts: {

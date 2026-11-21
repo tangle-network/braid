@@ -14,6 +14,7 @@ import {
 } from '../live-bridge/protocol.mjs'
 import { resolveModelProvider } from './configuration.mjs'
 import { endpointEvidence, protectedUnavailable, safeMessage } from './contracts.mjs'
+import { sandboxProofSeat } from './model-defaults.mjs'
 import { lastRunStatusDetail } from './tangle-sandbox-braid-stress-support.mjs'
 
 const AUTH_ENVIRONMENT_NAMES = Object.freeze([
@@ -317,8 +318,17 @@ export async function prepareProductionWorkspace({
         : `credential-live-${kindId}-${randomUUID().replaceAll('-', '')}`
     const selectedCredentialId = generatedCredentialId ?? credentialRef
     if (selectedCredentialId !== undefined) validCredentialId(selectedCredentialId)
-    // An authored profile, such as a published operator, replaces the generated release profile.
-    const profile = authoredProfile ?? profileFor({ kind, model, runner, modelProvider })
+    // The generated release profile can explicitly select the native plan on the Sandbox.
+    // Authored profiles keep their own credential intent.
+    const seat =
+      kind === 'tangle-sandbox' && authoredProfile === undefined
+        ? sandboxProofSeat(environment, runner, model)
+        : undefined
+    const nativeProvider = runner === 'opencode' ? 'zai-coding-plan' : 'zai'
+    const profile =
+      authoredProfile ??
+      profileFor({ kind, model, runner, modelProvider: seat ? nativeProvider : modelProvider })
+    if (seat) profile.model.metadata = { credentialSource: 'subscription' }
     const profileFile = `profile-${kindId}.json`
     const profilePath = join(profileDirectory, profileFile)
     const now = timestamp()
@@ -333,6 +343,10 @@ export async function prepareProductionWorkspace({
       createdAt: now,
       updatedAt: now,
       lastHealth: { status: 'unknown' },
+    }
+    if (seat) {
+      delete connection.providerOptions.routing
+      connection.providerOptions.modelCredentials = seat
     }
     await mkdir(profileDirectory, { recursive: true, mode: 0o700 })
     await writeFile(databaseKeyFile, `${randomBytes(32).toString('hex')}\n`, { mode: 0o600 })

@@ -11,7 +11,7 @@
 // publish=true. --dry-run prints the plan and the read-only preflight (credential files, account state) only.
 //
 // Two subcommands run on the Beelink and are started by the driver, not by hand:
-//   observe          one account observation (stdin module over ssh); exit 0 when settled
+//   observe          one account observation using the installed Sandbox SDK; exit 0 when settled
 //   live-run <n>     one live-tangle run in a beelink-gate checkout; exit 0 only when the LIVE-07 row passed
 // Credential values are read from owner-only files in --key-dir on the Beelink and never printed.
 
@@ -40,8 +40,7 @@ const LIVE_CONFIG = {
   BRAID_TANGLE_SANDBOX_RUNNER: 'opencode',
 }
 
-// model-defaults.mjs owns the model. It is imported only by a live run, which executes this file in a
-// gate checkout: `observe` reaches the Beelink as a module on stdin, where a relative import cannot resolve.
+// Model defaults belong to the proof and each can be overridden independently.
 async function liveModels() {
   const { DEFAULT_TANGLE_ROUTER_MODEL, DEFAULT_TANGLE_ROUTER_MODEL_ID } = await import(
     new URL('../live-required/model-defaults.mjs', import.meta.url).href
@@ -323,20 +322,31 @@ class Driver {
   }
 
   async observe() {
-    const remote = [
-      'mkdir -p /tmp/braid-inspect && cd /tmp/braid-inspect',
-      'ln -sfn ~/.cache/beelink-gate/github.com/tangle-network/braid/node_modules node_modules',
-      `exec node --input-type=module - observe --key-dir ${this.o.keyDir}`,
-    ].join(' && ')
-    const source = fs.readFileSync(new URL(import.meta.url), 'utf8')
-    const r = await run(
-      'timeout',
-      ['120', 'ssh', '-o', 'ConnectTimeout=20', '-o', 'BatchMode=yes', this.o.ssh, remote],
-      {
-        input: source,
-      },
+    // A PR can be unreviewed at preflight. Read the account with one trusted main revision
+    // and its own locked SDK for this entire release, including after the candidate gate exits.
+    this.observerSha ??= await this.gh(['api', `repos/${REPO}/commits/main`, '--jq', '.sha'])
+    const result = await run('beelink-gate', [
+      '--dev',
+      '--pin-host',
+      '--retry',
+      '15',
+      this.o.host,
+      REPO_URL,
+      this.observerSha,
+      '--',
+      'node',
+      'scripts/release/live-release.mjs',
+      'observe',
+      '--key-dir',
+      this.o.keyDir,
+    ])
+    const lines = result.out.trim().split('\n')
+    const observed = lines.findLast((line) => /^(?:SETTLED|BUSY) ids=/.test(line))
+    if (observed && result.code === (observed.startsWith('SETTLED') ? 0 : 1)) return observed
+    const reason = lines.find((line) =>
+      /^(?:Error|TypeError|Error \[)|^beelink-gate: .*unavailable/i.test(line),
     )
-    return r.out.trim().split('\n').at(-1) ?? ''
+    return `account observation failed (exit ${result.code}): ${reason ?? lines.at(-1)}`
   }
 
   async waitSettled() {

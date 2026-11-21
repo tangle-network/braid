@@ -401,7 +401,7 @@ A Tangle Sandbox or Tangle inference connection can set `routing` to pin the Tan
 For a Tangle Sandbox, Braid sends it on every environment create; the Sandbox fixes it for the environment's lifetime and accepts it only for Router-backed OpenCode.
 For Tangle inference, Braid passes it to Runtime's Router executor, which sends it on every Router request, and adds it to the model verification request.
 Validation refuses an empty `only`, a non-boolean flag, an unknown field, and `routing` on other connection kinds.
-The release proofs, including the Tangle inference row, set `{"only": ["zai"], "allowFallbacks": false, "requireModel": true}` through `releaseProofRouting` in `scripts/live-required/model-defaults.mjs`, so a Z.ai limit fails a proof instead of spending on a metered provider.
+The protected release selects its direct Router route independently of its native Sandbox profiles. The direct proof pins one provider and model on each request. Its free lane requires a qualified model ID ending in `:free` and the Router's published zero rates. See [protected Tangle proof configuration](08-verification.md#protected-tangle-proof-configuration).
 
 The ephemeral path deletes its environment after one turn.
 
