@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join, relative } from 'node:path'
@@ -135,6 +136,7 @@ const finalEvent = (text) => ({
 async function scenario(columns, rows, outcome) {
   const statusGate = held()
   const replayGate = held()
+  const finalGate = held()
   const execution = {
     streamIdleMs: 300,
     statusTimeoutMs: 2_000,
@@ -156,6 +158,7 @@ async function scenario(columns, rows, outcome) {
       async *[Symbol.asyncIterator]() {
         await replayGate.promise
         yield envelope(input.runId, 3, { type: 'text_delta', text: 'Tests passed. ' })
+        await finalGate.promise
         yield envelope(
           input.runId,
           4,
@@ -201,6 +204,7 @@ async function scenario(columns, rows, outcome) {
     await snap('streaming')
     await waitFor(() => status() === 'reconnecting', 'reconnecting after silence')
     await snap('reconnecting')
+    assert.match(frames.reconnecting.screen, /› input unavailable/u)
     statusGate.release()
     if (outcome === 'unknown') {
       await waitFor(() => status() === 'unknown', 'unknown')
@@ -209,6 +213,10 @@ async function scenario(columns, rows, outcome) {
       await new Promise((resolve) => setTimeout(resolve, 100))
       await snap('replaying')
       replayGate.release()
+      await waitFor(() => status() === 'streaming', 'replay progress')
+      await snap('resumed')
+      assert.match(frames.resumed.screen, /› queue #1/u)
+      finalGate.release()
       await waitFor(() => status() === 'completed', 'completed')
       await snap('completed')
     }
@@ -216,6 +224,7 @@ async function scenario(columns, rows, outcome) {
   } finally {
     statusGate.release()
     replayGate.release()
+    finalGate.release()
     view.stop()
     await done
     await app.close().catch(() => undefined)

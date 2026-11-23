@@ -473,6 +473,72 @@ function withWatchdogBounds(execution: ExecutionPort, boundMs: number): Executio
   })
 }
 
+test('fresh CLI Bridge replay progress restores input after silence in the same turn', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-retained-stall-'))
+  const options = { holdStreams: true, holdStatus: false, responseText: ['Before. ', 'After.'] }
+  const bridge = await startRuntimeBridgeServer(options)
+  const configuration = production(bridge.endpoint)
+  let durable: DurableBraidApplication | undefined
+  try {
+    durable = await createDurableBraidApplication({
+      path: join(root, 'braid.db'),
+      workspaceRoot: root,
+      credentialStore: new MemoryCredentialStore(),
+      production: configuration,
+      execution: withWatchdogBounds(
+        createProductionComposition({ ...configuration, workspaceRoot: root }).execution,
+        500,
+      ),
+      ids: new RandomIds(),
+    })
+    const { app } = durable
+    app.initialize(root)
+    await app.whenDurable()
+    const send = app.send({ operationId: 'stall-send', text: 'Keep working.' })
+    await send.admissionReady
+    const run = () => app.state().runs[0]
+    const controller = createApplicationUiController(app)
+    await waitFor(() => run()?.lastCursor === '1:0')
+    assert.equal(controller.view().capabilities['run.queue']?.available, true)
+    const initialReads = bridge.replays.length
+    // The live probe has returned and opened a replay, but it has no new content yet.
+    await waitFor(() => bridge.replays.length > initialReads)
+    assert.equal(run()?.status, 'reconnecting')
+    assert.equal(controller.view().capabilities['run.queue']?.available, false)
+    assert.equal(controller.view().capabilities['run.steer']?.available, false)
+
+    bridge.releaseProgress(send.runId)
+    await waitFor(() => run()?.lastCursor === '2:0')
+    await waitFor(() => run()?.status === 'streaming')
+    const resumed = run()
+    assert.ok(resumed)
+    assert.equal(resumed.id, send.runId)
+    for (const control of ['queue', 'steer'] as const)
+      assert.equal(
+        controller.view().capabilities[`run.${control}`]?.available,
+        resumed.capabilities.controls[control],
+      )
+    const queued = await controller.dispatch({
+      type: 'queue',
+      operationId: 'stall-follow-up',
+      text: 'Check the result.',
+    })
+    assert.equal(queued.kind, 'accepted', JSON.stringify(queued))
+    assert.equal(app.state().queuedInputs[0]?.runId, send.runId)
+    assert.equal(bridge.requests.length, 1)
+
+    // A later silence without a provider answer is still a lost stream, not a live run.
+    options.holdStatus = true
+    await send.completion
+    assert.equal(run()?.status, 'unknown')
+  } finally {
+    bridge.complete()
+    await durable?.app.close().catch(() => undefined)
+    await bridge.close()
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test('a restarted reconnect fails typed within the bound when the provider never answers, then acknowledges a provider-confirmed re-attach', async () => {
   const root = await mkdtemp(join(tmpdir(), 'braid-retained-reattach-bound-'))
   const bridgeOptions = { holdStreams: true, holdStatus: false }

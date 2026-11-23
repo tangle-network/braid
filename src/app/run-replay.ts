@@ -1,6 +1,6 @@
 import { setTimeout as sleep } from 'node:timers/promises'
 import { canonicalDigest } from '../domain/canonical.js'
-import type { BraidState } from '../domain/state.js'
+import type { BraidState, RunStatus } from '../domain/state.js'
 import type { ProviderRunSnapshot } from '../ports/execution.js'
 import type { ReconcileInput, ReconnectInput, ReplayPort } from './application-ports.js'
 import { AppError } from './errors.js'
@@ -80,6 +80,7 @@ export async function reconnectRun(
     let terminalProbes = 0
     const stopped = () => abort.signal.aborted || context.ledger.isDetached(run.id)
     for (;;) {
+      let restoreStatus: RunStatus | undefined
       if (probeFirst) {
         const verdict = await probeProvider(context, run.id, abort.signal)
         // Right after a refused connection, `unknown` is the same restart seen through the status
@@ -92,6 +93,8 @@ export async function reconnectRun(
           break
         }
         attached()
+        if (verdict.kind === 'live' && input.stallDetail !== undefined)
+          restoreStatus = verdict.status
         if (verdict.kind === 'terminal') {
           // A terminal provider whose replay also stalls yields its result from the status read.
           terminalProbes += 1
@@ -110,9 +113,23 @@ export async function reconnectRun(
       let outcome: PumpOutcome
       try {
         // Only a newly committed event resets the window; a live status read alone does not.
-        outcome = await replayFromCursor(context, run.id, abort, () => {
+        outcome = await replayFromCursor(context, run.id, abort, async (eventRunId) => {
           reachability.reset()
           attached()
+          if (restoreStatus === undefined || eventRunId !== run.id) return
+          const status = restoreStatus
+          restoreStatus = undefined
+          if (
+            !stopped() &&
+            !context.ledger.isExplicitlyCancelled(run.id) &&
+            context.findRun(run.id).status === 'reconnecting'
+          )
+            await context.commitAndWait({
+              kind: 'run.status.changed',
+              runId: run.id,
+              status,
+              detail: 'provider replay resumed',
+            })
         })
       } catch (error) {
         if (!isProviderUnreachable(error) || stopped() || !(await reachability.wait(abort.signal)))
@@ -168,7 +185,7 @@ async function replayFromCursor(
   context: ReplayPort,
   runId: string,
   abort: AbortController,
-  attached: () => void,
+  onProgress: (eventRunId: string) => Promise<void>,
 ): Promise<PumpOutcome> {
   // The cursor is read at each pass: events committed by an earlier, stalled pass count.
   const run = context.findRun(runId)
@@ -198,7 +215,7 @@ async function replayFromCursor(
     async (envelope) => {
       const result = await context.ingestRuntimeEvent(envelope)
       // A newly committed event proves the stream re-attached; a re-sent duplicate proves less.
-      if (result.accepted) attached()
+      if (result.accepted) await onProgress(envelope.runId)
       if (result.accepted && envelope.event.type === 'final') sawTerminal = true
       return 'continue' as const
     },
@@ -207,7 +224,7 @@ async function replayFromCursor(
 }
 
 type ProviderVerdict =
-  | { readonly kind: 'live' }
+  | { readonly kind: 'live'; readonly status: RunStatus }
   | { readonly kind: 'terminal' }
   | { readonly kind: 'lost'; readonly detail: string }
   | { readonly kind: 'unreachable'; readonly detail: string }
@@ -303,7 +320,9 @@ async function probeProvider(
       kind: 'unknown',
       detail: safeSnapshotDetail(snapshot.detail, 'the provider state is unknown'),
     }
-  return context.isTerminal(snapshot.status) ? { kind: 'terminal' } : { kind: 'live' }
+  return context.isTerminal(snapshot.status)
+    ? { kind: 'terminal' }
+    : { kind: 'live', status: snapshot.status }
 }
 
 async function commitUnknownIfLive(

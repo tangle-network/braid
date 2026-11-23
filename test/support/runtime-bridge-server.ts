@@ -40,7 +40,10 @@ export interface RuntimeBridgeServerOptions {
     readonly backend: string
   }>
   readonly expectedBearer?: string
-  readonly responseText?: string | ((body: Readonly<Record<string, unknown>>) => string)
+  readonly responseText?:
+    | string
+    | readonly string[]
+    | ((body: Readonly<Record<string, unknown>>) => string)
   readonly estimatedCostUsd?: number
   readonly usage?: {
     readonly promptTokens: number
@@ -78,6 +81,7 @@ export interface RuntimeBridgeServer {
   readonly closedSessions: string[]
   readonly cancellations: RuntimeBridgeCancellationRequest[]
   readonly replays: RuntimeBridgeReplayRequest[]
+  releaseProgress(runId: string): void
   complete(runId?: string): void
   close(): Promise<void>
 }
@@ -308,7 +312,7 @@ interface RuntimeResponseFrame {
 
 function runtimeResponseFrames(
   body: Readonly<Record<string, unknown>>,
-  responseText: string,
+  chunks: readonly string[],
   estimatedCostUsd?: number,
   usage?: RuntimeBridgeServerOptions['usage'],
 ): readonly RuntimeResponseFrame[] {
@@ -333,12 +337,12 @@ function runtimeResponseFrames(
     profile_materialization: profileMaterialization(body),
   }
   return [
-    {
-      id: 1,
-      wire: `id: 1\ndata: ${JSON.stringify({ choices: [{ delta: { content: responseText }, finish_reason: null }] })}\n\n`,
-    },
-    { id: 2, wire: `id: 2\ndata: ${JSON.stringify(terminal)}\n\n` },
-  ]
+    ...chunks.map((content) => ({ choices: [{ delta: { content }, finish_reason: null }] })),
+    terminal,
+  ].map((data, index) => ({
+    id: index + 1,
+    wire: `id: ${index + 1}\ndata: ${JSON.stringify(data)}\n\n`,
+  }))
 }
 
 function runtimeResponseStream(frames: readonly RuntimeResponseFrame[]): string {
@@ -373,12 +377,13 @@ function runtimeResponseResult(
   }
 }
 
-function responseText(
+function responseChunks(
   configured: RuntimeBridgeServerOptions['responseText'],
   body: Readonly<Record<string, unknown>>,
-): string {
-  if (typeof configured === 'function') return configured(body)
-  return configured ?? 'production response'
+): readonly string[] {
+  const text =
+    typeof configured === 'function' ? configured(body) : (configured ?? 'production response')
+  return typeof text === 'string' ? [text] : text
 }
 
 function closeServer(server: Server): Promise<void> {
@@ -511,15 +516,18 @@ export async function startRuntimeBridgeServer(
     run.readers.clear()
   }
 
+  const releaseFrames = (run: RetainedFixtureRun, count: number): void => {
+    for (const frame of run.pendingFrames.splice(0, count)) {
+      run.frames.push(frame)
+      for (const reader of run.readers) reader.write(frame.wire)
+    }
+  }
+
   const completeRun = (run: RetainedFixtureRun): void => {
     if (run.terminal) return
-    const terminalFrames = run.pendingFrames.splice(0)
-    run.frames.push(...terminalFrames)
+    releaseFrames(run, run.pendingFrames.length)
     run.status = 'done'
     run.terminal = true
-    for (const reader of run.readers) {
-      for (const frame of terminalFrames) reader.write(frame.wire)
-    }
     finishReaders(run)
   }
 
@@ -903,10 +911,10 @@ export async function startRuntimeBridgeServer(
         model: session.model,
         ...(session.body.cwd === undefined ? {} : { cwd: session.body.cwd }),
       }
-      const text = responseText(options.responseText, body)
+      const chunks = responseChunks(options.responseText, body)
       const frames = runtimeResponseFrames(
         materialization,
-        text,
+        chunks,
         options.estimatedCostUsd,
         options.usage,
       )
@@ -963,8 +971,8 @@ export async function startRuntimeBridgeServer(
         ? { sessionId: request.headers['x-session-id'] }
         : {}),
     })
-    const text = responseText(options.responseText, body)
-    const frames = runtimeResponseFrames(body, text, options.estimatedCostUsd, options.usage)
+    const chunks = responseChunks(options.responseText, body)
+    const frames = runtimeResponseFrames(body, chunks, options.estimatedCostUsd, options.usage)
     const run =
       existing ??
       ({
@@ -982,7 +990,9 @@ export async function startRuntimeBridgeServer(
       runs.set(runId, run)
       response.writeHead(200, { 'content-type': 'application/json', ...coordinateHeaders(run) })
       response.end(
-        JSON.stringify(runtimeResponseResult(body, text, options.estimatedCostUsd, options.usage)),
+        JSON.stringify(
+          runtimeResponseResult(body, chunks.join(''), options.estimatedCostUsd, options.usage),
+        ),
       )
       return
     }
@@ -1003,6 +1013,12 @@ export async function startRuntimeBridgeServer(
     closedSessions,
     cancellations,
     replays,
+    releaseProgress: (runId) => {
+      const run = runs.get(runId)
+      if (!run || run.terminal || run.pendingFrames.length < 2)
+        throw new Error('No held nonterminal frame')
+      releaseFrames(run, 1)
+    },
     complete: (runId) => {
       if (runId !== undefined) {
         const run = runs.get(runId)
