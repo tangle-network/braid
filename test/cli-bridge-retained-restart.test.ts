@@ -494,7 +494,7 @@ test('fresh CLI Bridge replay progress restores input after silence in the same 
     const { app } = durable
     app.initialize(root)
     await app.whenDurable()
-    const send = app.send({ operationId: 'stall-send', text: 'Keep working.' })
+    const send = app.send({ operationId: 'operation-stall-send', text: 'Keep working.' })
     await send.admissionReady
     const run = () => app.state().runs[0]
     const controller = createApplicationUiController(app)
@@ -520,7 +520,7 @@ test('fresh CLI Bridge replay progress restores input after silence in the same 
       )
     const queued = await controller.dispatch({
       type: 'queue',
-      operationId: 'stall-follow-up',
+      operationId: 'operation-stall-follow-up',
       text: 'Check the result.',
     })
     assert.equal(queued.kind, 'accepted', JSON.stringify(queued))
