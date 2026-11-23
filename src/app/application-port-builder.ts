@@ -12,7 +12,6 @@ import type {
   NativeContinuationPort,
   QueuePort,
   ReplayPort,
-  RestartPort,
   RuntimeEventEnvelopeLike,
   RuntimeEventIngestionResult,
   RuntimeIngestionAccess,
@@ -30,7 +29,6 @@ import { ApplicationStreamSanitizer } from './run-stream-sanitizer.js'
 export interface PortViews {
   readonly state: StateReader
   readonly journal: JournalWriter
-  readonly restart: RestartPort
   readonly queue: QueuePort
   readonly control: ControlPort
   readonly ingestion: IngestionPort & RuntimeIngestionAccess
@@ -75,11 +73,6 @@ export interface PortBuilderInput {
 
 export function buildPortViews(input: PortBuilderInput): PortViews {
   const streamSanitizer = new ApplicationStreamSanitizer()
-  const restart: RestartPort = {
-    ...input.state,
-    ...input.journal,
-    execution: input.execution,
-  }
   const queue: QueuePort = { ...input.state, ...input.journal }
   const control: ControlPort = {
     ...input.state,
@@ -152,7 +145,6 @@ export function buildPortViews(input: PortBuilderInput): PortViews {
   return {
     state: input.state,
     journal: input.journal,
-    restart,
     queue,
     control,
     ingestion,

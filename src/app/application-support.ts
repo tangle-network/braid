@@ -11,12 +11,7 @@ import { type BraidState, isLiveRunStatus } from '../domain/state.js'
 import type { Clock } from '../ports/clock.js'
 import type { EffectStoragePort, JournalPort } from '../ports/effect-storage.js'
 import type { ControlAcknowledgement } from '../ports/execution.js'
-import type {
-  ExecutionRunPort,
-  JournalWriter,
-  RestartPort,
-  StateReader,
-} from './application-ports.js'
+import type { ExecutionRunPort, ReplayPort, StateReader } from './application-ports.js'
 import type { AppSubscriber, SendReceipt } from './application-types.js'
 import type { EffectDispatchResult, SerializedEffectCoordinator } from './effect-coordinator.js'
 import { AppError } from './errors.js'
@@ -26,13 +21,15 @@ import {
   shutdownRequestDigest,
 } from './operation-ledger.js'
 import { snapshotFailure } from './provider-snapshot.js'
-import { runtimeFailure } from './provider-values.js'
-import { isTerminal } from './run-status.js'
+import { isProviderUnreachable, runtimeFailure } from './provider-values.js'
 import { RUN_EFFECT_KIND, runEffectRequest } from './run-admission.js'
 import { executeRun } from './run-execution.js'
 import type { RunExecutionSnapshot } from './run-execution-snapshot.js'
+import { recoverPendingFinalResults } from './run-final-recovery.js'
 import type { RunLedger } from './run-ledger.js'
-import { retainedExecutionRecoveryContext } from './run-recovery-context.js'
+import { readProviderStatus } from './run-replay.js'
+import { STALLED } from './run-stall.js'
+import { isTerminal } from './run-status.js'
 
 export interface ApplicationJournal {
   readonly all: () => readonly BraidEventEnvelope[]
@@ -272,22 +269,32 @@ export function restoreApplicationOperations(
 }
 
 export async function reconcileRestartRun(
-  context: RestartPort,
-  claim: (runId: string) => boolean = () => true,
+  context: ReplayPort,
+  journal: ApplicationJournal,
+  reconnect: (runId: string, retryStatus?: boolean) => void,
 ): Promise<void> {
-  const runIds = context
+  const claim = journal.runOwnership?.claim
+  const runs = context
     .currentState()
-    .runs.filter((run) => isLiveRunStatus(run.status) && claim(run.id))
-    .map((run) => run.id)
-  await Promise.all(runIds.map((runId) => reconcileRestartRunFor(context, runId)))
+    .runs.filter((run) => isLiveRunStatus(run.status) && claim?.(run.id) !== false)
+  await Promise.all([
+    recoverPendingFinalResults(context, journal.loadEvents?.bind(journal), undefined, claim),
+    ...runs.map((run) => reconcileRestartRunFor(context, run, reconnect)),
+  ])
 }
 
-async function reconcileRestartRunFor(context: RestartPort, runId: string): Promise<void> {
-  const run = context.currentState().runs.find((candidate) => candidate.id === runId)
-  if (!run || (isTerminal(run.status) && run.status !== 'unknown')) return
-  if (!context.execution.status) {
-    if (canReplayAfterRestart(context, run)) return markRestartReconnecting(context, runId)
-    const unknown = context.commitAndWait({
+async function reconcileRestartRunFor(
+  context: ReplayPort,
+  run: BraidState['runs'][number],
+  reconnect: (runId: string, retryStatus?: boolean) => void,
+): Promise<void> {
+  const runId = run.id
+  const replayable =
+    run.capabilities.streaming.replay &&
+    run.capabilities.events.cursor &&
+    context.execution.reconnect !== undefined
+  if (!context.execution.status && !replayable) {
+    await context.commitAndWait({
       kind: 'run.finished',
       runId,
       status: 'unknown',
@@ -295,28 +302,29 @@ async function reconcileRestartRunFor(context: RestartPort, runId: string): Prom
       usage: usageSnapshotForRun(run),
       error: 'The execution path cannot reconcile provider state after restart',
     })
-    if (unknown !== undefined) await unknown
     return
   }
-  await reconcileRestartSnapshot(context, runId)
-}
-
-async function reconcileRestartSnapshot(context: RestartPort, runId: string): Promise<void> {
-  const status = context.execution.status
-  if (!status) return
-  let snapshot: Awaited<ReturnType<NonNullable<typeof context.execution.status>>>
-  try {
-    const run = context.findRun(runId)
-    snapshot = await status({
+  if (run.status !== 'reconnecting') {
+    await context.commitAndWait({
+      kind: 'run.reconnecting',
       runId,
-      ...(run.providerSessionId === undefined ? {} : { providerSessionId: run.providerSessionId }),
-      ...(run.controlRef === undefined ? {} : { controlRef: run.controlRef }),
-      ...retainedExecutionRecoveryContext(run, context.currentState().workspace),
+      ...(run.lastCursor === undefined ? {} : { after: run.lastCursor }),
     })
+  }
+  if (!context.execution.status) return
+  // A continuation proof or partial admission alone is not proof the turn was dispatched.
+  const bound =
+    run.controlRef !== undefined ||
+    run.retainedAdmission?.phase === 'dispatched' ||
+    run.retainedAdmission?.phase === 'interactive_started'
+  let snapshot: Awaited<ReturnType<typeof readProviderStatus>>
+  try {
+    snapshot = await readProviderStatus(context, run)
+    if (snapshot === STALLED) throw new Error('The provider status read timed out')
   } catch (error) {
-    await markRestartReconnecting(context, runId)
-    if (canReplayAfterRestart(context, context.findRun(runId))) return
-    await commitRequired(context, {
+    if (!isLiveRunStatus(context.findRun(runId).status) || context.ledger.isDetached(runId)) return
+    if (bound && replayable && isProviderUnreachable(error)) return reconnect(runId, true)
+    await context.commitAndWait({
       kind: 'run.unknown',
       runId,
       detail: `provider reconciliation failed after restart: ${runtimeFailure(error, 'RUNTIME_RECONCILIATION_ERROR').text}`,
@@ -324,32 +332,40 @@ async function reconcileRestartSnapshot(context: RestartPort, runId: string): Pr
     return
   }
   const current = context.findRun(runId)
+  if (!isLiveRunStatus(current.status) || context.ledger.isDetached(runId)) return
   if (
     !snapshot ||
     snapshot.runId !== runId ||
     (current.providerSessionId !== undefined && snapshot.sessionId !== current.providerSessionId)
   ) {
-    await markRestartReconnecting(context, runId)
-    if (canReplayAfterRestart(context, current)) return
-    await commitRequired(context, {
+    await context.commitAndWait({
       kind: 'run.unknown',
       runId,
       detail: 'Provider reconciliation returned no matching run identity',
     })
     return
   }
-  await markRestartReconnecting(context, runId)
+  if (replayable) {
+    // Runtime can report unknown when its exact status request lost the connection.
+    if (snapshot.status === 'unknown') {
+      if (bound) reconnect(runId, true)
+      return
+    }
+    if (isLiveRunStatus(snapshot.status) && (bound || snapshot.status !== 'reconnecting')) {
+      reconnect(runId)
+      return
+    }
+  }
   await reconcileSnapshot(context, runId, snapshot)
 }
 
 async function reconcileSnapshot(
-  context: RestartPort,
+  context: ReplayPort,
   runId: string,
   snapshot: NonNullable<Awaited<ReturnType<NonNullable<typeof context.execution.status>>>>,
 ): Promise<void> {
   const current = context.currentState().runs.find((candidate) => candidate.id === runId)
   if (!current) return
-  if (snapshot.status === 'unknown' && canReplayAfterRestart(context, current)) return
   const evidence = canonicalDigest({
     runId,
     sessionId: snapshot.sessionId ?? null,
@@ -357,7 +373,7 @@ async function reconcileSnapshot(
     status: snapshot.status,
     detail: snapshot.detail ?? null,
   })
-  await commitRequired(context, {
+  await context.commitAndWait({
     kind: 'run.reconciled',
     runId,
     status: snapshot.status,
@@ -367,7 +383,7 @@ async function reconcileSnapshot(
     ...(snapshot.detail === undefined ? {} : { detail: snapshot.detail }),
   })
   if (isTerminal(snapshot.status)) {
-    await commitRequired(context, {
+    await context.commitAndWait({
       kind: 'run.finished',
       runId,
       status: snapshot.status,
@@ -376,28 +392,6 @@ async function reconcileSnapshot(
       ...snapshotFailure(snapshot, 'RUNTIME_RECONCILIATION_ERROR', 'RUNTIME_RECONCILIATION_STATUS'),
     })
   }
-}
-
-function canReplayAfterRestart(context: RestartPort, run: BraidState['runs'][number]): boolean {
-  return Boolean(
-    run.capabilities.streaming.replay &&
-      run.capabilities.events.cursor &&
-      context.execution.reconnect,
-  )
-}
-
-async function markRestartReconnecting(context: RestartPort, runId: string): Promise<void> {
-  const run = context.findRun(runId)
-  if (run.status === 'reconnecting') return
-  await commitRequired(context, {
-    kind: 'run.reconnecting',
-    runId,
-    ...(run.lastCursor === undefined ? {} : { after: run.lastCursor }),
-  })
-}
-
-async function commitRequired(context: JournalWriter, event: BraidEvent): Promise<void> {
-  await context.commitAndWait(event)
 }
 
 export function admitPersistedSend(input: {

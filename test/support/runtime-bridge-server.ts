@@ -50,6 +50,8 @@ export interface RuntimeBridgeServerOptions {
     readonly reasoningTokens?: number
   }
   readonly holdStreams?: boolean
+  readonly expireReplay?: boolean
+  readonly dropRunRead?: () => boolean
   readonly statusFailureStatus?: number
   /** Never answer a run status read, as a provider whose control plane hangs; close ends them. */
   readonly holdStatus?: boolean
@@ -679,6 +681,10 @@ export async function startRuntimeBridgeServer(
       )
       return
     }
+    if (request.method === 'GET' && path.startsWith('/v1/runs/') && options.dropRunRead?.()) {
+      request.socket.destroy()
+      return
+    }
     const eventsMatch = /^\/v1\/runs\/([^/]+)\/events$/u.exec(path)
     if (request.method === 'GET' && eventsMatch !== null) {
       const runId = decodeURIComponent(eventsMatch[1] ?? '')
@@ -696,6 +702,10 @@ export async function startRuntimeBridgeServer(
         return
       }
       replays.push({ runId, afterSequence })
+      if (options.expireReplay && cursor !== undefined) {
+        writeJson(response, 410, { error: { type: 'cursor_expired' } })
+        return
+      }
       attachReader(run, response, afterSequence)
       return
     }

@@ -17,6 +17,13 @@ import type { WorkspaceRequest } from './workspace-request.js'
 
 export type AppSubscriber = (state: BraidState, envelope: BraidEventEnvelope) => void
 
+export interface ActiveReconnect {
+  readonly operationId: string | undefined
+  readonly completion: Promise<BraidState>
+  readonly attached: () => boolean
+  readonly onAttached: (callback: () => void) => void
+}
+
 export interface SendInput {
   readonly workspaceRequest?: Readonly<WorkspaceRequest>
   readonly operationId: string

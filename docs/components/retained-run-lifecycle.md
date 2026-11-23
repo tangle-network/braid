@@ -28,7 +28,9 @@ Reconnect uses the saved exact control reference and the last accepted event seq
 
 Replay rejects duplicates before reduction and records sequence gaps without inventing provider output.
 
-Detach closes only the local reader and leaves the provider run active.
+When Braid reopens its database after a crash, it checks the provider and automatically reads each matching live, replayable run from its committed cursor. It does not resend the turn. If the exact provider cannot be reached, recovery uses the same bounded retry window as a manual reconnect.
+
+Detach closes only the local reader and leaves the provider run active. An explicitly detached run stays detached across restart until the operator reconnects.
 
 Cancel uses one stable operation identifier and reconciles an ambiguous acknowledgement through exact provider status.
 
@@ -86,6 +88,8 @@ Credentials and raw provider payloads never enter the journal, frame captures, o
 ## Proof
 
 Tests cover intent, environment, and dispatch crashes; restart; replay; duplicate events; sequence gaps; detach; reconnect; cancel; and interaction recovery.
+
+`pnpm run test:coordination` kills Braid after a durable Bridge cursor and records the restarted terminal without sending a command (`artifacts/verification/retained-restart/raw/80x24-restart.cast`). The Bridge is a loopback fixture, not a live provider deployment.
 
 Live proof kills the first Braid process, reconnects from another process, advances the same session, cancels, and cleans the exact environment.
 

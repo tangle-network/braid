@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { spawn } from 'node:child_process'
+import { once } from 'node:events'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
+import { TuiMainScreen } from '@earendil-works/pi-tui'
 import { defineAgentProfile } from '@tangle-network/agent-interface'
 import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
@@ -19,6 +23,10 @@ import { createConnectionId } from '../src/domain/ids.js'
 import { isRuntimeEventEnvelope } from '../src/domain/runtime-events.js'
 import type { ExecutionPort, RetainedRunAdmissionRecord } from '../src/ports/execution.js'
 import { RandomIds } from '../src/ports/ids.js'
+import { BraidTerminalApp } from '../src/views/tui/terminal-app.js'
+import { createBraidTheme } from '../src/views/tui/theme.js'
+import { FileCredentialStore } from './support/file-credentials.js'
+import { RecordingTerminal } from './support/recording-terminal.js'
 import { startRuntimeBridgeServer } from './support/runtime-bridge-server.js'
 
 const now = '2026-08-11T12:00:00.000Z'
@@ -56,8 +64,140 @@ async function waitFor(predicate: () => boolean, timeoutMs = 2_000): Promise<voi
   while (!predicate()) {
     if (performance.now() >= deadline)
       throw new Error('Timed out waiting for retained CLI Bridge state')
-    await new Promise((resolve) => setTimeout(resolve, 1))
+    await new Promise((resolve) => setTimeout(resolve, 10))
   }
+}
+
+for (const scenario of [
+  'live',
+  'expired cursor',
+  'foreign identity',
+  'transient outage',
+  'sustained outage',
+]) {
+  test(`after SIGKILL, Braid reopens its database without a reconnect command: ${scenario}`, async () => {
+    const root = await mkdtemp(join(tmpdir(), 'braid-retained-kill-'))
+    let offline = false
+    let dropped = 0
+    const options = {
+      expireReplay: false,
+      ...(scenario === 'foreign identity' ? { statusRunId: 'foreign-provider-run' } : {}),
+      holdStreams: true,
+      responseText: 'SURVIVED_RESTART',
+      dropRunRead: () => {
+        if (offline) dropped++
+        return offline
+      },
+    }
+    const bridge = await startRuntimeBridgeServer(options)
+    const configuration = production(bridge.endpoint)
+    let restarted: DurableBraidApplication | undefined
+    let view: BraidTerminalApp | undefined
+    try {
+      const child = spawn(
+        process.execPath,
+        [
+          fileURLToPath(new URL('./support/retained-restart-child.js', import.meta.url)),
+          root,
+          JSON.stringify(configuration),
+        ],
+        { stdio: 'inherit', timeout: 20_000 },
+      )
+      assert.deepEqual(await once(child, 'exit'), [null, 'SIGKILL'])
+      const admission = bridge.requests[0]
+      assert.ok(admission?.sessionId)
+      const before = bridge.replays.length
+      options.expireReplay = scenario === 'expired cursor'
+      offline = scenario.endsWith('outage')
+      const started = performance.now()
+      restarted = await createDurableBraidApplication({
+        path: join(root, 'braid.db'),
+        workspaceRoot: root,
+        credentialStore: new FileCredentialStore(join(root, 'credentials')),
+        production: configuration,
+      })
+      const { app } = restarted
+      const terminal = new RecordingTerminal(80, 24)
+      if (scenario === 'live') {
+        view = new BraidTerminalApp({
+          controller: createApplicationUiController(app),
+          tui: new TuiMainScreen(terminal),
+          theme: createBraidTheme(false),
+          workspace: root,
+          nextOperationId: () => 'operation-restart-view',
+        })
+        void view.start()
+        await terminal.waitForRender()
+      }
+      if (scenario === 'transient outage') {
+        await waitFor(() => dropped >= 2, 10_000)
+        offline = false
+      }
+      if (scenario === 'live' || scenario === 'transient outage') {
+        await waitFor(() => bridge.replays.length > before, 10_000)
+        assert.deepEqual(bridge.replays.slice(before), [
+          { runId: admission.runId, afterSequence: 0 },
+        ])
+        let ready = false
+        void app.whenDurable().then(() => {
+          ready = true
+        })
+        await waitFor(() => ready)
+        bridge.complete(admission.runId)
+        await waitFor(() => app.events().some(({ event }) => event.kind === 'run.finished'), 5_000)
+        const state = app.state()
+        assert.equal(state.runs[0]?.status, 'completed')
+        assert.equal(state.runs[0]?.providerSessionId, admission.sessionId)
+        assert.equal(state.runs[0]?.llmCalls, 1)
+        assert.equal(state.runs[0]?.inputTokens, 2)
+        assert.equal(state.runs[0]?.outputTokens, 3)
+        assert.deepEqual(
+          state.messages.map((message) => message.text),
+          ['Keep working while Braid restarts.', 'SURVIVED_RESTART'],
+        )
+        assert.deepEqual(state.missingHistory, [])
+        assert.equal(
+          (await restarted.storage.events()).filter((row) => row.kind === 'run.finished').length,
+          1,
+        )
+        if (scenario === 'live') {
+          await terminal.waitForRender()
+          const out = join('artifacts', 'verification', 'retained-restart', 'raw')
+          await mkdir(out, { recursive: true })
+          await writeFile(
+            join(out, '80x24-restart.cast'),
+            terminal.cast(
+              'Braid restarts on a live run without a reconnect command (loopback Bridge)',
+            ),
+          )
+        }
+      } else {
+        await waitFor(
+          () => app.state().runs[0]?.status === 'unknown',
+          scenario === 'expired cursor' ? 5_000 : 40_000,
+        )
+        assert.equal(app.state().runs[0]?.lastProviderSequence, 2)
+        if (scenario === 'foreign identity') assert.equal(bridge.replays.length, before)
+        if (scenario === 'expired cursor') {
+          assert.ok(bridge.replays.length > before)
+          assert.match(app.state().lastError ?? '', /410/u)
+        }
+        if (scenario === 'sustained outage') {
+          assert.ok(dropped > 1)
+          assert.ok(performance.now() - started >= 30_000)
+        }
+      }
+      assert.equal(bridge.requests.length, 1)
+      assert.equal(app.storageFailure(), undefined)
+    } finally {
+      offline = false
+      bridge.complete()
+      view?.stop()
+      await restarted?.app.close()
+      await bridge.close()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
 }
 
 test('durable Braid detaches, restarts, and resumes one retained CLI Bridge job exactly once', async () => {

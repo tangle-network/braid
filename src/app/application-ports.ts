@@ -165,8 +165,6 @@ export interface StateChangeAccess {
 
 export type StatusPort = StateReader & LedgerAccess & StateChangeAccess
 
-export type RestartPort = StateReader & JournalWriter & ExecutionAccess
-
 export interface ControlEffectRequest {
   readonly operationId: string
   readonly runId: string
