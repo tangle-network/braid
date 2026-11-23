@@ -54,6 +54,8 @@ export interface RuntimeBridgeServerOptions {
   /** Never answer a run status read, as a provider whose control plane hangs; close ends them. */
   readonly holdStatus?: boolean
   readonly statusRunId?: string
+  /** Answer a run event replay with this HTTP status, as a provider past its retained window. */
+  readonly replayFailureStatus?: number
   readonly cancellation?: {
     readonly mode?: 'acknowledged' | 'rejected'
     readonly delayMs?: number
@@ -696,6 +698,11 @@ export async function startRuntimeBridgeServer(
         return
       }
       replays.push({ runId, afterSequence })
+      if (options.replayFailureStatus !== undefined) {
+        response.writeHead(options.replayFailureStatus, { 'content-type': 'application/json' })
+        response.end(JSON.stringify({ error: { type: 'replay_unavailable' } }))
+        return
+      }
       attachReader(run, response, afterSequence)
       return
     }
