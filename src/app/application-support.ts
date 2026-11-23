@@ -12,6 +12,7 @@ import type { Clock } from '../ports/clock.js'
 import type { EffectStoragePort, JournalPort } from '../ports/effect-storage.js'
 import type { ControlAcknowledgement } from '../ports/execution.js'
 import type {
+  CommitCondition,
   ExecutionRunPort,
   JournalWriter,
   RestartPort,
@@ -530,7 +531,7 @@ export function commitApplicationEventAsync(
 export async function commitApplicationEventsAsync(
   input: Omit<CommitApplicationEventInput, 'event'>,
   events: readonly BraidEvent[],
-  validate: (state: BraidState) => void = () => {},
+  when?: CommitCondition,
 ): Promise<BraidState> {
   const commit = async (foreign: readonly BraidEventEnvelope[]) => {
     let state = input.state
@@ -540,7 +541,7 @@ export async function commitApplicationEventsAsync(
       if (key) input.providerEventKeys.addProviderEvent(key)
     }
     if (foreign.length > 0) input.publishState(state)
-    validate(state)
+    if (when?.(state) === false) return state
     for (const event of events)
       state = await commitApplicationEventUnlocked({ ...input, state, event })
     return state

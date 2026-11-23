@@ -70,6 +70,7 @@
     "test:rpc:packed:deterministic": "pnpm run build && node scripts/test-rpc-packed.mjs --deterministic-only",
     "test:virtual-terminal": "pnpm run test -- --scope virtual-terminal",
     "test:pty": "pnpm run build && node scripts/test-pty.mjs",
+    "test:stream-stall": "BRAID_CAPTURE_OUT=.tmp/stream-stall pnpm run capture:stream-stall && node --test --test-name-pattern='fresh CLI Bridge replay progress' .test-dist-stream-stall/test/cli-bridge-retained-restart.test.js && cd .tmp/stream-stall && cat 80x24-reconnecting.txt 80x24-resumed.txt && gzip -c raw/80x24-reconnect.cast >80x24-reconnect.cast.gz && base64 <80x24-reconnect.cast.gz",
     "test:storage": "pnpm run test -- --scope storage",
     "test:crash": "pnpm run test -- --scope crash",
     "test:security": "pnpm run test -- --scope security && pnpm run boundaries && pnpm run dependencies:check && pnpm run attribution",

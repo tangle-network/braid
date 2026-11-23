@@ -527,7 +527,12 @@ test('fresh CLI Bridge replay progress restores input after silence in the same 
     assert.equal(app.state().queuedInputs[0]?.runId, send.runId)
     assert.equal(bridge.requests.length, 1)
 
-    // A later silence without a provider answer is still a lost stream, not a live run.
+    // A second silence closes input again, even after another successful live probe.
+    const resumedReads = bridge.replays.length
+    await waitFor(() => bridge.replays.length > resumedReads)
+    assert.equal(run()?.status, 'reconnecting')
+    assert.equal(controller.view().capabilities['run.queue']?.available, false)
+    assert.equal(controller.view().capabilities['run.steer']?.available, false)
     options.holdStatus = true
     await send.completion
     assert.equal(run()?.status, 'unknown')

@@ -1,6 +1,6 @@
 import { setTimeout as sleep } from 'node:timers/promises'
 import { canonicalDigest } from '../domain/canonical.js'
-import type { BraidState, RunStatus } from '../domain/state.js'
+import { type BraidState, isLiveRunStatus, type RunStatus } from '../domain/state.js'
 import type { ProviderRunSnapshot } from '../ports/execution.js'
 import type { ReconcileInput, ReconnectInput, ReplayPort } from './application-ports.js'
 import { AppError } from './errors.js'
@@ -49,14 +49,28 @@ export async function reconnectRun(
       'CAPABILITY_UNAVAILABLE',
       'The selected execution path does not report replay with a stable cursor',
     )
-  if (run.status !== 'reconnecting') {
-    await context.commitAndWait({
-      kind: 'run.reconnecting',
-      runId: run.id,
-      ...(run.lastCursor === undefined ? {} : { after: run.lastCursor }),
-      ...(input.stallDetail === undefined ? {} : { detail: input.stallDetail }),
-    })
+  const markReconnecting = () => {
+    const { lastCursor } = context.findRun(run.id)
+    return context.commitAndWait(
+      {
+        kind: 'run.reconnecting',
+        runId: run.id,
+        ...(lastCursor === undefined ? {} : { after: lastCursor }),
+        ...(input.stallDetail === undefined ? {} : { detail: input.stallDetail }),
+      },
+      (state) => {
+        const status = state.runs.find((candidate) => candidate.id === run.id)?.status
+        return (
+          status !== undefined &&
+          status !== 'reconnecting' &&
+          (input.stallDetail === undefined
+            ? !context.isTerminal(status) || status === 'unknown'
+            : isLiveRunStatus(status) && status !== 'cancelling')
+        )
+      },
+    )
   }
+  await markReconnecting()
   let attachedNotified = false
   const reachability = new ProviderReachability()
   const attached = () => {
@@ -119,17 +133,18 @@ export async function reconnectRun(
           if (restoreStatus === undefined || eventRunId !== run.id) return
           const status = restoreStatus
           restoreStatus = undefined
-          if (
-            !stopped() &&
-            !context.ledger.isExplicitlyCancelled(run.id) &&
-            context.findRun(run.id).status === 'reconnecting'
-          )
-            await context.commitAndWait({
+          await context.commitAndWait(
+            {
               kind: 'run.status.changed',
               runId: run.id,
               status,
               detail: 'provider replay resumed',
-            })
+            },
+            (state) =>
+              !stopped() &&
+              !context.ledger.isExplicitlyCancelled(run.id) &&
+              state.runs.find((candidate) => candidate.id === run.id)?.status === 'reconnecting',
+          )
         })
       } catch (error) {
         if (!isProviderUnreachable(error) || stopped() || !(await reachability.wait(abort.signal)))
@@ -139,6 +154,7 @@ export async function reconnectRun(
       }
       if (outcome === 'stalled') {
         if (stopped()) break
+        if (input.stallDetail !== undefined) await markReconnecting()
         probeFirst = true
         continue
       }

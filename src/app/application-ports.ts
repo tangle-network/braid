@@ -27,9 +27,11 @@ export interface StateReader {
   >
 }
 
+export type CommitCondition = (state: BraidState) => boolean
+
 export interface JournalWriter {
   readonly commit: (event: BraidEvent) => void
-  readonly commitAndWait: (event: BraidEvent) => void | Promise<void>
+  readonly commitAndWait: (event: BraidEvent, when?: CommitCondition) => void | Promise<void>
   /** Commits related events without allowing another transition between them. */
   readonly commitBatchAndWait?: (events: readonly BraidEvent[]) => Promise<void>
   /** Retry one recovery event after a durable write has already failed. */

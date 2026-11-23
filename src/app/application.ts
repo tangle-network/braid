@@ -35,6 +35,7 @@ import { ApplicationLifecycle, boundedDrain } from './application-lifecycle.js'
 import type { BraidApplicationOptions, CancelInput, CancelReceipt } from './application-options.js'
 import type { PortViews } from './application-port-builder.js'
 import type {
+  CommitCondition,
   ControlEffectRequest,
   ReconcileInput,
   ReconnectInput,
@@ -226,14 +227,11 @@ export class BraidApplication {
     // Keep startup failures observable to callers without creating an unhandled rejection when
     // no interaction action consumes the barrier.
     void interactionReconciliation.promise.catch(() => undefined)
+    const commitAndWait = this.#commitAndWait.bind(this)
     this.#interactions = new ApplicationInteractionActions({
       state: () => this.#state,
       events: () => this.#journal.all(),
-      commitAndWait: (event) => {
-        if (this.#asynchronousJournal) return this.#commitAndWait(event)
-        this.#commit(event)
-        return undefined
-      },
+      commitAndWait,
       now: () => this.#clock.now(),
       execution: this.#execution,
       ledger: this.#ledger,
@@ -254,11 +252,7 @@ export class BraidApplication {
       },
       profile: () => this.runtimeSelection.profile(),
       commit: (event) => this.#commit(event),
-      commitAndWait: (event) => {
-        if (this.#asynchronousJournal) return this.#commitAndWait(event)
-        this.#commit(event)
-        return undefined
-      },
+      commitAndWait,
       commitAndWaitRecovery: (event) => {
         if (this.#asynchronousJournal) return this.#commitAndWaitRecovery(event)
         commitEventRecovery(this.#transition, event)
@@ -321,11 +315,7 @@ export class BraidApplication {
             reference,
           ),
         commit: (event) => this.#commit(event),
-        commitAndWait: (event) => {
-          if (this.#asynchronousJournal) return this.#commitAndWait(event)
-          this.#commit(event)
-          return undefined
-        },
+        commitAndWait,
         now: () => this.#clock.now(),
         analysisExecutionTarget: (state) => {
           const profile = this.runtimeSelection.profile()
@@ -354,10 +344,7 @@ export class BraidApplication {
     this.conversations = createConversationActions({
       state: () => this.#state,
       now: () => this.#clock.now(),
-      commit: async (event) => {
-        if (this.#asynchronousJournal) await this.#commitAndWait(event)
-        else this.#commit(event)
-      },
+      commit: async (event) => commitAndWait(event),
       coordinate: (input, action) =>
         this.#conversationOperations.run(input.operationId, input.digest, action),
       profile: () => this.runtimeSelection.profile(),
@@ -941,9 +928,11 @@ export class BraidApplication {
     commitEvent(this.#transition, event)
   }
 
-  #commitAndWait(event: BraidEvent): Promise<void> {
+  #commitAndWait(event: BraidEvent, when?: CommitCondition): void | Promise<void> {
     this.#assertNotClosed()
-    return commitEventAndWait(this.#transition, event)
+    if (this.#asynchronousJournal) return commitEventAndWait(this.#transition, event, when)
+    if (when?.(this.#state) !== false) commitEvent(this.#transition, event)
+    return undefined
   }
 
   #commitAndWaitRecovery(event: BraidEvent): Promise<void> {

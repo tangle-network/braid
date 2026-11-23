@@ -1,6 +1,7 @@
 import type { BraidEvent } from '../domain/events.js'
 import type { BraidState } from '../domain/state.js'
 import type { Clock } from '../ports/clock.js'
+import type { CommitCondition } from './application-ports.js'
 import {
   type ApplicationJournal,
   commitApplicationEvent,
@@ -66,8 +67,12 @@ function commitEventInternal(host: TransitionHost, event: BraidEvent, recovery: 
   }
 }
 
-export function commitEventAndWait(host: TransitionHost, event: BraidEvent): Promise<void> {
-  return commitEventsInternal(host, [event], false)
+export function commitEventAndWait(
+  host: TransitionHost,
+  event: BraidEvent,
+  when?: CommitCondition,
+): Promise<void> {
+  return commitEventsInternal(host, [event], false, when)
 }
 
 export function commitEventAndWaitRecovery(host: TransitionHost, event: BraidEvent): Promise<void> {
@@ -81,7 +86,10 @@ export function commitEventsAndWaitAtRevision(
 ): Promise<void> {
   if (events.length === 0) return Promise.resolve()
   assertExpectedRevision(host.state(), expectedRevision)
-  return commitEventsInternal(host, events, false, expectedRevision)
+  return commitEventsInternal(host, events, false, (state) => {
+    assertExpectedRevision(state, expectedRevision)
+    return true
+  })
 }
 
 function assertExpectedRevision(state: BraidState, expectedRevision: number | undefined): void {
@@ -111,10 +119,11 @@ function commitEventsInternal(
   host: TransitionHost,
   events: readonly BraidEvent[],
   recovery: boolean,
-  expectedRevision?: number,
+  when?: CommitCondition,
 ): Promise<void> {
   if (host.readOnly === true) return Promise.reject(readOnlyRefusal())
   if (!host.asynchronous) {
+    if (when?.(host.state()) === false) return Promise.resolve()
     for (const event of events) {
       if (recovery) commitEventRecovery(host, event)
       else commitEvent(host, event)
@@ -137,7 +146,7 @@ function commitEventsInternal(
         subscribers: host.subscribers,
       },
       events,
-      (state) => assertExpectedRevision(state, expectedRevision),
+      when,
     )
   })
   const next = task.catch((error: unknown) => {
