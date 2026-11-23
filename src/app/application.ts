@@ -148,6 +148,8 @@ export class BraidApplication {
     string,
     {
       readonly operationId: string
+      /** Started by restart reconciliation, so any explicit reconnect joins it. */
+      readonly automatic: boolean
       readonly completion: Promise<BraidState>
       readonly attached: () => boolean
       readonly onAttached: (callback: () => void) => void
@@ -384,16 +386,22 @@ export class BraidApplication {
       const runReconciliation = reconcileRestartRun(
         this.#portViews.restart,
         this.#journal.runOwnership?.claim,
-      ).then(() =>
-        recoverPendingFinalResults(
+      ).then(async (replayable) => {
+        await recoverPendingFinalResults(
           this.#portViews.replay,
           this.#journal.loadEvents?.bind(this.#journal),
           undefined,
           this.#journal.runOwnership?.claim,
-        ),
-      )
+        )
+        return replayable
+      })
       this.#restartReconciliation = runReconciliation
-        .then(() => this.conversations.lifecycle.reconcilePendingDeletes())
+        .then(async (replayable) => {
+          await this.conversations.lifecycle.reconcilePendingDeletes()
+          // A run the provider still holds re-attaches by itself, exactly as `/reconnect` would;
+          // it settles unknown only on an expired cursor, another identity, or a spent window.
+          for (const runId of replayable) this.#reattachAfterRestart(runId)
+        })
         .catch((error: unknown) => {
           this.#latchStorageFailure(error)
           throw error
@@ -775,11 +783,31 @@ export class BraidApplication {
     })
   }
 
+  /** Starts the restart re-attach in the background; an explicit `/reconnect` joins it. */
+  #reattachAfterRestart(runId: string): void {
+    if (this.#lifecycle.isClosed() || this.#activeReconnects.has(runId)) return
+    const run = this.#state.runs.find((candidate) => candidate.id === runId)
+    if (run === undefined || !isLiveRunStatus(run.status)) return
+    try {
+      const completion = this.#startReconnect(
+        { operationId: `restart-reattach:${runId}`, runId },
+        true,
+      )
+      void completion.catch(() => undefined)
+    } catch {
+      // Another live Braid claimed the run meanwhile; its owner re-attaches it.
+    }
+  }
+
   reconnectRun(input: ReconnectInput): Promise<BraidState> {
     if (this.readOnly) return Promise.reject(readOnlyRefusal())
+    return this.#startReconnect(input, false)
+  }
+
+  #startReconnect(input: ReconnectInput, automatic: boolean): Promise<BraidState> {
     const existing = this.#activeReconnects.get(input.runId)
     if (existing !== undefined) {
-      if (existing.operationId !== input.operationId)
+      if (!existing.automatic && existing.operationId !== input.operationId)
         throw new AppError(
           'RECONNECT_IN_PROGRESS',
           `Run ${input.runId} already has a reconnect operation`,
@@ -805,6 +833,7 @@ export class BraidApplication {
     })
     const active = {
       operationId: input.operationId,
+      automatic,
       completion,
       attached: () => ready,
       onAttached: (callback: () => void) => listeners.add(callback),

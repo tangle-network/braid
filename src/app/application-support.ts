@@ -271,15 +271,23 @@ export function restoreApplicationOperations(
   }
 }
 
+/**
+ * Reconciles every live run this process claims and returns the runs that remain live and can
+ * be replayed from their committed cursor, so the caller re-attaches them as `/reconnect` would.
+ */
 export async function reconcileRestartRun(
   context: RestartPort,
   claim: (runId: string) => boolean = () => true,
-): Promise<void> {
+): Promise<readonly string[]> {
   const runIds = context
     .currentState()
     .runs.filter((run) => isLiveRunStatus(run.status) && claim(run.id))
     .map((run) => run.id)
   await Promise.all(runIds.map((runId) => reconcileRestartRunFor(context, runId)))
+  return runIds.filter((runId) => {
+    const run = context.currentState().runs.find((candidate) => candidate.id === runId)
+    return run !== undefined && isLiveRunStatus(run.status) && canReplayAfterRestart(context, run)
+  })
 }
 
 async function reconcileRestartRunFor(context: RestartPort, runId: string): Promise<void> {

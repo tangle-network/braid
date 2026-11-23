@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict'
+import { fork } from 'node:child_process'
+import { once } from 'node:events'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -19,6 +21,7 @@ import { createConnectionId } from '../src/domain/ids.js'
 import { isRuntimeEventEnvelope } from '../src/domain/runtime-events.js'
 import type { ExecutionPort, RetainedRunAdmissionRecord } from '../src/ports/execution.js'
 import { RandomIds } from '../src/ports/ids.js'
+import { FileCredentialStore } from './support/file-credentials.js'
 import { startRuntimeBridgeServer } from './support/runtime-bridge-server.js'
 
 const now = '2026-08-11T12:00:00.000Z'
@@ -160,6 +163,66 @@ test('durable Braid detaches, restarts, and resumes one retained CLI Bridge job 
     assert.equal(restarted.app.state().runs.at(-1)?.llmCalls, 1)
   } finally {
     await first?.app.close().catch(() => undefined)
+    await restarted?.app.close().catch(() => undefined)
+    await bridge.close()
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('a SIGKILLed Braid restarted on its database re-attaches the live retained run without /reconnect', {
+  timeout: 30_000,
+}, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-retained-killed-'))
+  const bridge = await startRuntimeBridgeServer({
+    holdStreams: true,
+    responseText: 'SURVIVED_KILL',
+  })
+  const configuration = production(bridge.endpoint)
+  let restarted: DurableBraidApplication | undefined
+  try {
+    const child = fork(new URL('./support/retained-restart-child.js', import.meta.url), [], {
+      env: {
+        ...process.env,
+        RETAINED_RESTART_ROOT: root,
+        RETAINED_RESTART_ENDPOINT: bridge.endpoint,
+      },
+      stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
+    })
+    let stderr = ''
+    child.stderr?.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString()
+    })
+    const exited = once(child, 'exit')
+    const started = await new Promise<{ readonly runId: string }>((resolve, reject) => {
+      child.once('message', (message) => resolve(message as { readonly runId: string }))
+      child.once('exit', () => reject(new Error(`Braid child exited early: ${stderr}`)))
+    })
+    child.kill('SIGKILL')
+    await exited
+    const replaysBefore = bridge.replays.length
+
+    restarted = await createDurableBraidApplication({
+      path: join(root, 'braid.db'),
+      workspaceRoot: root,
+      credentialStore: new FileCredentialStore(join(root, 'credentials')),
+      production: configuration,
+      ids: new RandomIds(),
+    })
+    // Nobody types /reconnect: the restart alone replays the run from its committed cursor.
+    await waitFor(() => bridge.replays.length > replaysBefore, 10_000)
+    assert.notEqual(restarted.app.state().runs[0]?.status, 'unknown')
+    bridge.complete(started.runId)
+    await waitFor(() => restarted?.app.state().runs[0]?.status === 'completed', 10_000)
+
+    const completed = restarted.app.state()
+    assert.equal(bridge.requests.length, 1)
+    assert.equal(completed.runs[0]?.id, started.runId)
+    assert.equal(completed.messages.at(-1)?.text, 'SURVIVED_KILL')
+    assert.deepEqual(completed.missingHistory, [])
+    const finished = restarted.app.events().filter((entry) => entry.event.kind === 'run.finished')
+    assert.equal(finished.length, 1)
+    assert.equal(restarted.app.storageFailure(), undefined)
+  } finally {
     await restarted?.app.close().catch(() => undefined)
     await bridge.close()
     await rm(root, { recursive: true, force: true })

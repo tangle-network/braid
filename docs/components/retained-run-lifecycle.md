@@ -79,6 +79,8 @@ Duplicate environments, conflicting control references, stale sessions, and malf
 
 A client crash does not imply provider cancellation.
 
+A Braid restarted on its database re-attaches each live run it owns that can replay from its committed cursor, as `/reconnect` would, without waiting for the user. It settles the run unknown only when the provider refuses the cursor, reports another identity, or stays unreachable past the retry window. A detached run waits for an explicit reconnect.
+
 A stream disconnect does not imply run failure. A terminal close with code 1001 while the provider process is still running reattaches once and does not end the run.
 
 Credentials and raw provider payloads never enter the journal, frame captures, or diagnostics.
