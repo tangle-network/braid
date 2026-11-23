@@ -564,3 +564,59 @@ test('a restarted reconnect fails typed within the bound when the provider never
     await rm(root, { recursive: true, force: true })
   }
 })
+
+test('a stalled live stream returns to running on each replayed event and to reconnecting on each later silence', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-stall-resume-'))
+  const bridge = await startRuntimeBridgeServer({ holdStreams: true, responseText: 'BEFORE_STALL' })
+  const configuration = production(bridge.endpoint)
+  let durable: DurableBraidApplication | undefined
+  try {
+    durable = await createDurableBraidApplication({
+      path: join(root, 'braid.db'),
+      workspaceRoot: root,
+      credentialStore: new MemoryCredentialStore(),
+      production: configuration,
+      execution: withWatchdogBounds(
+        createProductionComposition({ ...configuration, workspaceRoot: root }).execution,
+        200,
+      ),
+      ids: new RandomIds(),
+    })
+    const app = durable.app
+    app.initialize(root)
+    await app.whenDurable()
+    const controller = createApplicationUiController(app)
+    const send = app.send({ operationId: 'operation-stall-resume-send', text: 'Think quietly.' })
+    await send.admissionReady
+
+    // The stream goes silent past the idle bound: the run is reconnecting and input is closed.
+    await waitFor(() => app.state().runs[0]?.status === 'reconnecting', 5_000)
+    assert.equal(controller.view().capabilities['run.queue']?.available, false)
+
+    // The provider keeps working: its next event arrives through the replay.
+    bridge.progress(' AFTER_STALL')
+    await waitFor(() => app.state().runs[0]?.status === 'running', 5_000)
+    assert.equal(controller.view().capabilities['run.queue']?.available, true)
+
+    // A second silence in the same turn closes input again, and the next event reopens it.
+    await waitFor(() => app.state().runs[0]?.status === 'reconnecting', 5_000)
+    assert.equal(controller.view().capabilities['run.queue']?.available, false)
+    bridge.progress(' AGAIN')
+    await waitFor(() => app.state().runs[0]?.status === 'running', 5_000)
+    assert.equal(controller.view().capabilities['run.queue']?.available, true)
+
+    bridge.complete()
+    await send.completion
+    assert.equal(app.state().runs[0]?.status, 'completed')
+    assert.equal(app.state().messages.at(-1)?.text, 'BEFORE_STALL AFTER_STALL AGAIN')
+    assert.equal(
+      app.events().some((entry) => entry.event.kind === 'run.unknown'),
+      false,
+    )
+    assert.equal(app.storageFailure(), undefined)
+  } finally {
+    await durable?.app.close().catch(() => undefined)
+    await bridge.close()
+    await rm(root, { recursive: true, force: true })
+  }
+})
