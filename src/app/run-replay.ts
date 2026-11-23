@@ -198,12 +198,34 @@ async function replayFromCursor(
     async (envelope) => {
       const result = await context.ingestRuntimeEvent(envelope)
       // A newly committed event proves the stream re-attached; a re-sent duplicate proves less.
-      if (result.accepted) attached()
+      if (result.accepted) {
+        attached()
+        await resumeLiveStatus(context, run.id)
+      }
       if (result.accepted && envelope.event.type === 'final') sawTerminal = true
       return 'continue' as const
     },
   )
   return sawTerminal ? 'stopped' : outcome
+}
+
+/**
+ * A replay that commits a new event has re-attached a live run, so the run leaves
+ * `reconnecting` for the rest of its turn: queueing and steering are offered again. Providers
+ * such as CLI Bridge never send a `status` event, so nothing else would end the state before
+ * the turn does. An event that already moved the run on (final, waiting, a provider status)
+ * stands as it is.
+ */
+async function resumeLiveStatus(context: ReplayPort, runId: string): Promise<void> {
+  const run = context.findRun(runId)
+  if (run.status !== 'reconnecting') return
+  const committed = context.commitAndWait({
+    kind: 'run.status.changed',
+    runId: run.id,
+    status: 'streaming',
+    detail: 'provider stream resumed',
+  })
+  if (committed !== undefined) await committed
 }
 
 type ProviderVerdict =
