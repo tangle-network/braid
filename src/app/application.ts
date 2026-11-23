@@ -22,6 +22,7 @@ import {
 import type { Clock } from '../ports/clock.js'
 import type { ExecuteTurnInput, ExecutionPort } from '../ports/execution.js'
 import type { IdSource } from '../ports/ids.js'
+import { ActiveReconnects } from './active-reconnects.js'
 import { snapshotAnalysisExecutionTarget } from './analysis-execution-target.js'
 import {
   admissionIsAsync,
@@ -144,15 +145,7 @@ export class BraidApplication {
   readonly #conversationOperations = new ConversationOperationCoordinator()
   readonly #interactions: ApplicationInteractionActions
   readonly #subscribers = new Set<AppSubscriber>()
-  readonly #activeReconnects = new Map<
-    string,
-    {
-      readonly operationId: string
-      readonly completion: Promise<BraidState>
-      readonly attached: () => boolean
-      readonly onAttached: (callback: () => void) => void
-    }
-  >()
+  readonly #activeReconnects = new ActiveReconnects()
   readonly #controlOwner = `braid-control-${randomUUID()}`
   readonly #lateSteers = new Set<Promise<void>>()
   readonly #steerTimeoutMs: number
@@ -381,23 +374,34 @@ export class BraidApplication {
         fail: (error) => this.#latchStorageFailure(error),
       })
     } else {
+      let replayable: readonly string[] = []
       const runReconciliation = reconcileRestartRun(
         this.#portViews.restart,
         this.#journal.runOwnership?.claim,
-      ).then(() =>
-        recoverPendingFinalResults(
+      ).then((runIds) => {
+        replayable = runIds
+        return recoverPendingFinalResults(
           this.#portViews.replay,
           this.#journal.loadEvents?.bind(this.#journal),
           undefined,
           this.#journal.runOwnership?.claim,
-        ),
-      )
+        )
+      })
       this.#restartReconciliation = runReconciliation
         .then(() => this.conversations.lifecycle.reconcilePendingDeletes())
         .catch((error: unknown) => {
           this.#latchStorageFailure(error)
           throw error
         })
+      // A run still live in its provider re-attaches as /reconnect would, without waiting for it.
+      void this.#restartReconciliation.then(
+        () => {
+          for (const run of this.#lifecycle.isClosed() ? [] : this.#state.runs)
+            if (replayable.includes(run.id) && isLiveRunStatus(run.status))
+              ActiveReconnects.reattachAfterRestart(run.id, (input) => this.reconnectRun(input))
+        },
+        () => undefined,
+      )
       this.#automationReconciliation = this.#restartReconciliation.then(() =>
         this.#interactions.reconcile({ bypassStartupReconciliation: true }),
       )
@@ -777,46 +781,11 @@ export class BraidApplication {
 
   reconnectRun(input: ReconnectInput): Promise<BraidState> {
     if (this.readOnly) return Promise.reject(readOnlyRefusal())
-    const existing = this.#activeReconnects.get(input.runId)
-    if (existing !== undefined) {
-      if (existing.operationId !== input.operationId)
-        throw new AppError(
-          'RECONNECT_IN_PROGRESS',
-          `Run ${input.runId} already has a reconnect operation`,
-        )
-      if (input.onAttached !== undefined) {
-        if (existing.attached()) input.onAttached()
-        else existing.onAttached(input.onAttached)
-      }
-      return existing.completion
-    }
-    let ready = false
-    const listeners = new Set<() => void>()
-    if (input.onAttached !== undefined) listeners.add(input.onAttached)
-    if (this.#journal.runOwnership?.claim(input.runId) === false)
-      throw new AppError('RUN_OWNED', 'Another live Braid process owns this run')
-    const completion = reconnectRun(this.#portViews.replay, {
-      ...input,
-      onAttached: () => {
-        ready = true
-        for (const listener of listeners) listener()
-        listeners.clear()
-      },
+    return this.#activeReconnects.run(input, (attempt) => {
+      if (this.#journal.runOwnership?.claim(input.runId) === false)
+        throw new AppError('RUN_OWNED', 'Another live Braid process owns this run')
+      return reconnectRun(this.#portViews.replay, attempt)
     })
-    const active = {
-      operationId: input.operationId,
-      completion,
-      attached: () => ready,
-      onAttached: (callback: () => void) => listeners.add(callback),
-    }
-    this.#activeReconnects.set(input.runId, active)
-    void completion
-      .finally(() => {
-        if (this.#activeReconnects.get(input.runId) === active)
-          this.#activeReconnects.delete(input.runId)
-      })
-      .catch(() => undefined)
-    return completion
   }
 
   async reconcileRun(input: ReconcileInput): Promise<BraidState> {

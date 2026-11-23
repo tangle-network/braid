@@ -271,15 +271,20 @@ export function restoreApplicationOperations(
   }
 }
 
+/** Reconciles claimed live runs and returns the ones still live that replay can re-attach. */
 export async function reconcileRestartRun(
   context: RestartPort,
   claim: (runId: string) => boolean = () => true,
-): Promise<void> {
+): Promise<readonly string[]> {
   const runIds = context
     .currentState()
     .runs.filter((run) => isLiveRunStatus(run.status) && claim(run.id))
     .map((run) => run.id)
   await Promise.all(runIds.map((runId) => reconcileRestartRunFor(context, runId)))
+  return runIds.filter((runId) => {
+    const run = context.findRun(runId)
+    return isLiveRunStatus(run.status) && canReplayAfterRestart(context, run)
+  })
 }
 
 async function reconcileRestartRunFor(context: RestartPort, runId: string): Promise<void> {

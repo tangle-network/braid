@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { spawn } from 'node:child_process'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -19,6 +20,7 @@ import { createConnectionId } from '../src/domain/ids.js'
 import { isRuntimeEventEnvelope } from '../src/domain/runtime-events.js'
 import type { ExecutionPort, RetainedRunAdmissionRecord } from '../src/ports/execution.js'
 import { RandomIds } from '../src/ports/ids.js'
+import { FileCredentialStore } from './support/file-credentials.js'
 import { startRuntimeBridgeServer } from './support/runtime-bridge-server.js'
 
 const now = '2026-08-11T12:00:00.000Z'
@@ -564,6 +566,151 @@ test('a restarted reconnect fails typed within the bound when the provider never
     await rm(root, { recursive: true, force: true })
   }
 })
+
+/** Runs one turn in a separate braid process and SIGKILLs it once the provider cursor is durable. */
+async function killClientMidTurn(root: string, configuration: ProductionCompositionConfig) {
+  const child = spawn(
+    process.execPath,
+    [new URL('./support/cli-bridge-restart-child.js', import.meta.url).pathname],
+    {
+      env: {
+        ...process.env,
+        RESTART_ROOT: root,
+        RESTART_CONFIGURATION: JSON.stringify(configuration),
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  )
+  let stdout = ''
+  let stderr = ''
+  child.stderr.on('data', (chunk: Buffer) => {
+    stderr += chunk.toString('utf8')
+  })
+  const runId = await new Promise<string>((resolve, reject) => {
+    child.stdout.on('data', (chunk: Buffer) => {
+      stdout += chunk.toString('utf8')
+      const ready = /^ready (\S+)$/mu.exec(stdout)
+      if (ready?.[1] !== undefined) resolve(ready[1])
+    })
+    child.once('error', reject)
+    child.once('exit', (code, signal) =>
+      reject(new Error(`client exited early: ${String(code ?? signal)} ${stderr}`)),
+    )
+  })
+  const killed = new Promise((resolve) => child.once('exit', resolve))
+  child.kill('SIGKILL')
+  await killed
+  return runId
+}
+
+async function restartWithoutReconnect(
+  root: string,
+  configuration: ProductionCompositionConfig,
+  execution?: ExecutionPort,
+): Promise<DurableBraidApplication> {
+  return createDurableBraidApplication({
+    path: join(root, 'braid.db'),
+    workspaceRoot: root,
+    credentialStore: new FileCredentialStore(join(root, 'credentials')),
+    production: configuration,
+    ...(execution === undefined ? {} : { execution }),
+    ids: new RandomIds(),
+  })
+}
+
+test('a braid killed mid-turn re-attaches its live CLI Bridge run on restart without /reconnect', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-killed-reattach-'))
+  const bridge = await startRuntimeBridgeServer({
+    holdStreams: true,
+    responseText: 'SURVIVED_KILL',
+  })
+  const configuration = production(bridge.endpoint)
+  let restarted: DurableBraidApplication | undefined
+  try {
+    const runId = await killClientMidTurn(root, configuration)
+    const replaysBefore = bridge.replays.length
+    restarted = await restartWithoutReconnect(root, configuration)
+    const app = restarted.app
+    await waitFor(() => bridge.replays.length > replaysBefore, 10_000)
+    assert.equal(bridge.replays.at(-1)?.runId, runId)
+
+    // The user's /reconnect joins the automatic re-attach instead of failing as in progress.
+    const joined = createApplicationUiController(app).dispatch({
+      type: 'headless-command',
+      command: 'reconnect',
+      operationId: 'operation-killed-reattach-user-reconnect',
+      params: { runId },
+    })
+    bridge.complete(runId)
+    const accepted = await joined
+    assert.equal(accepted.kind, 'accepted', JSON.stringify(accepted))
+    await waitFor(() => app.state().runs[0]?.status === 'completed', 10_000)
+    const completed = app.state()
+    assert.equal(bridge.requests.length, 1)
+    assert.equal(completed.messages.at(-1)?.text, 'SURVIVED_KILL')
+    assert.deepEqual(completed.missingHistory, [])
+    assert.equal(
+      app
+        .events()
+        .filter((entry) => entry.event.kind === 'run.finished' && entry.event.runId === runId)
+        .length,
+      1,
+    )
+  } finally {
+    await restarted?.app.close().catch(() => undefined)
+    await bridge.close()
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+for (const failure of [
+  { name: 'answers the replay with 410', replayFailureStatus: 410 },
+  { name: 'reports another run identity', statusRunId: 'foreign-provider-run' },
+  { name: 'never answers its status read', holdStatus: true },
+]) {
+  test(`a restarted braid settles its killed run unknown without /reconnect when the provider ${failure.name}`, async () => {
+    const root = await mkdtemp(join(tmpdir(), 'braid-killed-unknown-'))
+    const bridgeOptions: {
+      holdStreams: boolean
+      replayFailureStatus?: number
+      statusRunId?: string
+      holdStatus?: boolean
+    } = { holdStreams: true }
+    const bridge = await startRuntimeBridgeServer(bridgeOptions)
+    const configuration = production(bridge.endpoint)
+    let restarted: DurableBraidApplication | undefined
+    try {
+      const runId = await killClientMidTurn(root, configuration)
+      if (failure.replayFailureStatus !== undefined)
+        bridgeOptions.replayFailureStatus = failure.replayFailureStatus
+      if (failure.statusRunId !== undefined) bridgeOptions.statusRunId = failure.statusRunId
+      const replaysBefore = bridge.replays.length
+      restarted = await restartWithoutReconnect(
+        root,
+        configuration,
+        withWatchdogBounds(
+          createProductionComposition({ ...configuration, workspaceRoot: root }).execution,
+          200,
+        ),
+      )
+      const app = restarted.app
+      // Restart reads the live status first; the re-attach then finds the provider silent.
+      if (failure.holdStatus === true) {
+        await waitFor(() => bridge.replays.length > replaysBefore, 10_000)
+        bridgeOptions.holdStatus = true
+      }
+      await waitFor(() => app.state().runs[0]?.status === 'unknown', 10_000)
+      assert.ok(bridge.replays.length > replaysBefore, 'the restart never asked for a replay')
+      assert.equal(bridge.requests.length, 1)
+      assert.equal(app.state().runs[0]?.id, runId)
+    } finally {
+      bridge.complete()
+      await restarted?.app.close().catch(() => undefined)
+      await bridge.close()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+}
 
 test('a stalled live stream returns to running on each replayed event and to reconnecting on each later silence', async () => {
   const root = await mkdtemp(join(tmpdir(), 'braid-stall-resume-'))
