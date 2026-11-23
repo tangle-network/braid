@@ -27,7 +27,7 @@ assert.equal(app.state().runs[0]?.lastCursor, '1:0')
 if (scenario === 'queued follow-up')
   await app.queueInput({
     runId: send.runId,
-    operationId: 'queued-before-crash',
+    operationId: 'op-queued-before-crash',
     text: 'Continue the turn.',
   }).completion
 process.kill(process.pid, 'SIGKILL')

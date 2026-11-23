@@ -181,9 +181,10 @@ for (const scenario of [
         )
         let resumed: Promise<unknown> | undefined
         if (scenario === 'detach and reconnect') {
-          await (await app.detachRun({ runId: run.id, operationId: 'detach-recovered' })).completion
+          await (await app.detachRun({ runId: run.id, operationId: 'op-detach-recovered' }))
+            .completion
           assert.equal(app.state().runs[0]?.status, 'detached')
-          resumed = app.reconnectRun({ runId: run.id, operationId: 'reattach-recovered' })
+          resumed = app.reconnectRun({ runId: run.id, operationId: 'op-reattach-recovered' })
           await waitFor(() => bridge.replays.length === before + 2)
         }
         bridge.complete(admission.runId)
