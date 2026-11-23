@@ -27,7 +27,7 @@ import { executeRun } from './run-execution.js'
 import type { RunExecutionSnapshot } from './run-execution-snapshot.js'
 import { recoverPendingFinalResults } from './run-final-recovery.js'
 import type { RunLedger } from './run-ledger.js'
-import { readProviderStatus } from './run-replay.js'
+import { type ConfirmRestart, ProviderReachability, readProviderStatus } from './run-replay.js'
 import { STALLED } from './run-stall.js'
 import { isTerminal } from './run-status.js'
 
@@ -271,7 +271,7 @@ export function restoreApplicationOperations(
 export async function reconcileRestartRun(
   context: ReplayPort,
   journal: ApplicationJournal,
-  reconnect: (runId: string, retryStatus?: boolean) => void,
+  reconnect: (runId: string, confirm: ConfirmRestart) => void,
 ): Promise<void> {
   const claim = journal.runOwnership?.claim
   const runs = context
@@ -286,7 +286,7 @@ export async function reconcileRestartRun(
 async function reconcileRestartRunFor(
   context: ReplayPort,
   run: BraidState['runs'][number],
-  reconnect: (runId: string, retryStatus?: boolean) => void,
+  reconnect: (runId: string, confirm: ConfirmRestart) => void,
 ): Promise<void> {
   const runId = run.id
   const replayable =
@@ -317,46 +317,69 @@ async function reconcileRestartRunFor(
     run.controlRef !== undefined ||
     run.retainedAdmission?.phase === 'dispatched' ||
     run.retainedAdmission?.phase === 'interactive_started'
-  let snapshot: Awaited<ReturnType<typeof readProviderStatus>>
-  try {
-    snapshot = await readProviderStatus(context, run)
-    if (snapshot === STALLED) throw new Error('The provider status read timed out')
-  } catch (error) {
-    if (!isLiveRunStatus(context.findRun(runId).status) || context.ledger.isDetached(runId)) return
-    if (bound && replayable && isProviderUnreachable(error)) return reconnect(runId, true)
-    await context.commitAndWait({
-      kind: 'run.unknown',
-      runId,
-      detail: `provider reconciliation failed after restart: ${runtimeFailure(error, 'RUNTIME_RECONCILIATION_ERROR').text}`,
-    })
-    return
-  }
-  const current = context.findRun(runId)
-  if (!isLiveRunStatus(current.status) || context.ledger.isDetached(runId)) return
-  if (
-    !snapshot ||
-    snapshot.runId !== runId ||
-    (current.providerSessionId !== undefined && snapshot.sessionId !== current.providerSessionId)
-  ) {
-    await context.commitAndWait({
-      kind: 'run.unknown',
-      runId,
-      detail: 'Provider reconciliation returned no matching run identity',
-    })
-    return
-  }
-  if (replayable) {
-    // Runtime can report unknown when its exact status request lost the connection.
-    if (snapshot.status === 'unknown') {
-      if (bound) reconnect(runId, true)
-      return
+  const retryable = replayable && (bound || run.retainedAdmission?.phase === 'environment')
+  const reachability = new ProviderReachability()
+  const active = () =>
+    isLiveRunStatus(context.findRun(runId).status) && !context.ledger.isDetached(runId)
+  const probe = async (signal?: AbortSignal): Promise<boolean | typeof STALLED> => {
+    let snapshot: Awaited<ReturnType<typeof readProviderStatus>>
+    try {
+      snapshot = await readProviderStatus(
+        context,
+        run,
+        signal,
+        retryable ? reachability.remainingMs() : undefined,
+      )
+      if (snapshot === STALLED) {
+        if (retryable) return STALLED
+        throw new Error('The provider status read timed out')
+      }
+    } catch (error) {
+      if (!active()) return false
+      if (retryable && isProviderUnreachable(error)) return STALLED
+      await context.commitAndWait({
+        kind: 'run.unknown',
+        runId,
+        detail: `provider reconciliation failed after restart: ${runtimeFailure(error, 'RUNTIME_RECONCILIATION_ERROR').text}`,
+      })
+      return false
     }
-    if (isLiveRunStatus(snapshot.status) && (bound || snapshot.status !== 'reconnecting')) {
-      reconnect(runId)
-      return
+    if (!active()) return false
+    const current = context.findRun(runId)
+    if (
+      !snapshot ||
+      snapshot.runId !== runId ||
+      (current.providerSessionId !== undefined && snapshot.sessionId !== current.providerSessionId)
+    ) {
+      await context.commitAndWait({
+        kind: 'run.unknown',
+        runId,
+        detail: 'Provider reconciliation returned no matching run identity',
+      })
+      return false
     }
+    if (replayable && snapshot.status === 'unknown') return retryable ? STALLED : false
+    await reconcileSnapshot(context, runId, snapshot)
+    return (
+      replayable &&
+      isLiveRunStatus(snapshot.status) &&
+      (bound || snapshot.status !== 'reconnecting')
+    )
   }
-  await reconcileSnapshot(context, runId, snapshot)
+  const first = await probe()
+  if (first === false || !active()) return
+  reconnect(runId, async (signal) => {
+    let confirmed: boolean | typeof STALLED = first
+    while (confirmed === STALLED && active() && (await reachability.wait(signal)))
+      confirmed = await probe(signal)
+    if (confirmed === STALLED && active() && !signal.aborted)
+      await context.commitAndWait({
+        kind: 'run.unknown',
+        runId,
+        detail: 'Provider status remained unavailable after restart',
+      })
+    return confirmed === true && active()
+  })
 }
 
 async function reconcileSnapshot(

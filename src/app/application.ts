@@ -77,13 +77,14 @@ import {
 } from './run-admission.js'
 import { resolveNativeContinuationRun } from './run-continuation.js'
 import { cancelRun, detachRun, queueRunInput, steerRun } from './run-controls.js'
+import { drainQueue } from './run-execution.js'
 import {
   snapshotRunExecution,
   snapshotRunRetry,
   snapshotSendRefusal,
 } from './run-execution-snapshot.js'
 import { createRunLedger } from './run-ledger.js'
-import { reconcileRun, reconnectRun } from './run-replay.js'
+import { type ConfirmRestart, reconcileRun, reconnectRun } from './run-replay.js'
 import { isStoppableRun, isTerminal, waitForIdle } from './run-status.js'
 import { resolveConversationTarget } from './run-targets.js'
 import { shutdownApplication } from './shutdown-controller.js'
@@ -373,19 +374,18 @@ export class BraidApplication {
         fail: (error) => this.#latchStorageFailure(error),
       })
     } else {
-      const runReconciliation = reconcileRestartRun(
+      this.#restartReconciliation = reconcileRestartRun(
         this.#portViews.replay,
         this.#journal,
-        (runId, retryStatus = false) => {
+        (runId, confirm) => {
           if (this.#activeReconnects.has(runId) || !this.#lifecycle.acceptsAdmission()) return
           const completion = this.#reconnectRun(
             { runId, operationId: this.#ids.next('operation') },
-            retryStatus,
-          )
+            confirm,
+          ).then(() => drainQueue(this.#portViews.executionRun, runId))
           this.#lifecycle.track({ runId, completion })
         },
       )
-      this.#restartReconciliation = runReconciliation
         .then(() => this.conversations.lifecycle.reconcilePendingDeletes())
         .catch((error: unknown) => {
           this.#latchStorageFailure(error)
@@ -768,11 +768,13 @@ export class BraidApplication {
     })
   }
 
-  reconnectRun(input: ReconnectInput): Promise<BraidState> {
+  async reconnectRun(input: ReconnectInput): Promise<BraidState> {
+    if (this.#ledger.isDetached(input.runId))
+      await this.#activeReconnects.get(input.runId)?.completion
     return this.#reconnectRun(input)
   }
 
-  #reconnectRun(input: ReconnectInput, retryStatus?: boolean): Promise<BraidState> {
+  #reconnectRun(input: ReconnectInput, confirmRestart?: ConfirmRestart): Promise<BraidState> {
     if (this.readOnly) return Promise.reject(readOnlyRefusal())
     const existing = this.#activeReconnects.get(input.runId)
     if (existing !== undefined) {
@@ -794,7 +796,7 @@ export class BraidApplication {
       throw new AppError('RUN_OWNED', 'Another live Braid process owns this run')
     const completion = reconnectRun(this.#portViews.replay, {
       ...input,
-      retryStatus: retryStatus === true,
+      ...(confirmRestart === undefined ? {} : { confirmRestart }),
       onAttached: () => {
         ready = true
         for (const listener of listeners) listener()
@@ -803,7 +805,7 @@ export class BraidApplication {
     })
     const active: ActiveReconnect = {
       // An explicit reconnect can join the automatic reader; it must never replace it.
-      operationId: retryStatus === undefined ? input.operationId : undefined,
+      operationId: confirmRestart === undefined ? input.operationId : undefined,
       completion,
       attached: () => ready,
       onAttached: (callback: () => void) => listeners.add(callback),

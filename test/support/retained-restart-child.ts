@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { createDurableBraidApplication } from '../../src/startup/durable-runtime.js'
 import { FileCredentialStore } from './file-credentials.js'
 
-const [root, configuration] = process.argv.slice(2)
+const [root, configuration, scenario] = process.argv.slice(2)
 assert.ok(root && configuration)
 const { app } = await createDurableBraidApplication({
   path: join(root, 'braid.db'),
@@ -24,4 +24,10 @@ const send = app.send({
 await Promise.race([cursor.promise, send.completion])
 await app.whenDurable()
 assert.equal(app.state().runs[0]?.lastCursor, '1:0')
+if (scenario === 'queued follow-up')
+  await app.queueInput({
+    runId: send.runId,
+    operationId: 'queued-before-crash',
+    text: 'Continue the turn.',
+  }).completion
 process.kill(process.pid, 'SIGKILL')

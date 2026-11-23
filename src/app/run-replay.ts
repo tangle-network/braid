@@ -22,9 +22,10 @@ import {
   withinDeadline,
 } from './run-stall.js'
 
+export type ConfirmRestart = (signal: AbortSignal) => Promise<boolean>
+
 interface RecoveryReconnectInput extends ReconnectInput {
-  /** Retry an inconclusive restart status before opening the retained stream. */
-  readonly retryStatus?: boolean
+  readonly confirmRestart?: ConfirmRestart
   readonly priorFailureDetail?: string
   /** The live stream went silent: say so, and ask the provider before replaying. */
   readonly stallDetail?: string
@@ -51,7 +52,7 @@ export async function reconnectRun(
       'CAPABILITY_UNAVAILABLE',
       'The selected execution path does not report replay with a stable cursor',
     )
-  if (run.status !== 'reconnecting') {
+  if (!input.confirmRestart && run.status !== 'reconnecting') {
     await context.commitAndWait({
       kind: 'run.reconnecting',
       runId: run.id,
@@ -68,7 +69,8 @@ export async function reconnectRun(
   }
   if (context.findRun(run.id).interactions.some((interaction) => interaction.status === 'pending'))
     attached()
-  const abort = context.ledger.getAbort(run.id) ?? new AbortController()
+  const previous = context.ledger.getAbort(run.id)
+  const abort = previous && !previous.signal.aborted ? previous : new AbortController()
   context.ledger.setAbort(run.id, abort)
   context.ledger.clearDetached(run.id)
   const stopped = () => abort.signal.aborted || context.ledger.isDetached(run.id)
@@ -79,8 +81,12 @@ export async function reconnectRun(
     // settles within streamIdleMs + statusTimeoutMs of the replay starting.
     // A provider that refuses the connection is asked again within ProviderReachability's window:
     // a Bridge restart keeps the run, and the next pass replays it from the committed cursor.
-    let retryStatus = input.retryStatus === true
-    let probeFirst = input.stallDetail !== undefined || retryStatus
+    if (input.confirmRestart) {
+      if (!(await input.confirmRestart(abort.signal)) || stopped())
+        return structuredClone(context.currentState())
+      attached()
+    }
+    let probeFirst = input.stallDetail !== undefined
     let terminalProbes = 0
     for (;;) {
       if (probeFirst) {
@@ -88,11 +94,9 @@ export async function reconnectRun(
         // Right after a refused connection, `unknown` is the same restart seen through the status
         // read, so it is asked again too; otherwise the provider's `unknown` stands.
         const retry =
-          verdict.kind === 'unreachable' ||
-          (verdict.kind === 'unknown' && (reachability.active || retryStatus))
+          verdict.kind === 'unreachable' || (verdict.kind === 'unknown' && reachability.active)
         if (retry && !stopped() && (await reachability.wait(abort.signal))) continue
         if (stopped()) break
-        retryStatus = false
         if (verdict.kind !== 'live' && verdict.kind !== 'terminal') {
           await commitUnknownIfLive(context, run.id, `provider stream lost; ${verdict.detail}`)
           break
@@ -232,15 +236,20 @@ const UNREACHABLE_WINDOW_MS = 30_000
 const UNREACHABLE_FIRST_PAUSE_MS = 250
 const UNREACHABLE_MAX_PAUSE_MS = 2_000
 
-class ProviderReachability {
+export class ProviderReachability {
   #since: number | undefined
   #pause = UNREACHABLE_FIRST_PAUSE_MS
 
-  /** Waits before the next attempt; false once the window is spent or the run was aborted. */
-  async wait(signal: AbortSignal | undefined): Promise<boolean> {
+  /** Starts the retry window on first use, including time spent reading status. */
+  remainingMs(): number {
     const now = performance.now()
     this.#since ??= now
-    const remaining = this.#since + UNREACHABLE_WINDOW_MS - now
+    return Math.max(0, this.#since + UNREACHABLE_WINDOW_MS - now)
+  }
+
+  /** Waits before the next attempt; false once the window is spent or the run was aborted. */
+  async wait(signal: AbortSignal | undefined): Promise<boolean> {
+    const remaining = this.remainingMs()
     if (remaining <= 0 || signal?.aborted === true) return false
     const pause = Math.min(this.#pause, remaining)
     this.#pause = Math.min(this.#pause * 2, UNREACHABLE_MAX_PAUSE_MS)
@@ -268,6 +277,7 @@ export function readProviderStatus(
   context: ReplayPort,
   run: BraidState['runs'][number],
   signal?: AbortSignal,
+  remaining = Infinity,
 ): Promise<ProviderRunSnapshot | null | typeof STALLED> {
   return withinDeadline(
     context.execution.status?.({
@@ -277,7 +287,7 @@ export function readProviderStatus(
       ...retainedExecutionRecoveryContext(run, context.currentState().workspace),
       ...(signal === undefined ? {} : { signal }),
     }) ?? null,
-    statusTimeoutMs(context.execution),
+    Math.min(remaining, statusTimeoutMs(context.execution)),
   )
 }
 

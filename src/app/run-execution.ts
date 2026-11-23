@@ -2,7 +2,7 @@ import { UNKNOWN_TURN_USAGE } from '../domain/run-usage.js'
 import { type BraidRuntimeEvent, isRuntimeEventEnvelope } from '../domain/runtime-events.js'
 import { activeRunForBranch } from '../domain/state.js'
 import type { ExecuteTurnInput } from '../ports/execution.js'
-import type { ExecutionRunPort, SendAccess } from './application-ports.js'
+import type { ExecutionRunPort } from './application-ports.js'
 import { type RuntimeFailure, runtimeFailure } from './provider-values.js'
 import { eventIdFor, providerMeta } from './run-event-mapper.js'
 import type { RunExecutionSnapshot } from './run-execution-snapshot.js'
@@ -136,14 +136,7 @@ export async function executeRun(
   } finally {
     context.ledger.deleteAbort(admission.runId)
     context.ledger.clearExplicitlyCancelled(admission.runId)
-    const finalRun = context.findRun(admission.runId)
-    if (
-      context.isTerminal(finalRun.status) &&
-      (finalRun.status !== 'unknown' ||
-        (finalRun.capabilities.controls.cancel && context.execution.cancelRun === undefined)) &&
-      !context.currentState().missingHistory.some((range) => range.runId === finalRun.id)
-    )
-      await drainQueue(context)
+    await drainQueue(context, admission.runId)
   }
 }
 
@@ -337,8 +330,14 @@ function finishPendingText(context: ExecutionRunPort, runId: string): string {
   return pending
 }
 
-export async function drainQueue(context: ExecutionRunPort & SendAccess): Promise<void> {
+export async function drainQueue(context: ExecutionRunPort, runId: string): Promise<void> {
   const state = context.currentState()
+  const canDrain = (run: ReturnType<typeof context.findRun>) =>
+    context.isTerminal(run.status) &&
+    (run.status !== 'unknown' ||
+      (run.capabilities.controls.cancel && context.execution.cancelRun === undefined)) &&
+    !state.missingHistory.some((range) => range.runId === run.id)
+  if (!canDrain(context.findRun(runId))) return
   const next = state.queuedInputs.find((candidate) => {
     const completed = state.runs.find((run) => run.id === candidate.runId)
     if (!completed) return false
@@ -347,14 +346,8 @@ export async function drainQueue(context: ExecutionRunPort & SendAccess): Promis
     return activeRunForBranch(state, conversationId, branchId) === undefined
   })
   if (!next) return
-  if (state.missingHistory.some((range) => range.runId === next.runId)) return
   const completed = context.findRun(next.runId)
-  if (
-    (completed.status === 'unknown' &&
-      (!completed.capabilities.controls.cancel || context.execution.cancelRun !== undefined)) ||
-    !context.isTerminal(completed.status)
-  )
-    return
+  if (!canDrain(completed)) return
   if (!context.ledger.claimQueueDrain(next.operationId)) return
   try {
     const receipt = context.send({

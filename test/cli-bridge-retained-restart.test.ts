@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
+import { type ChildProcess, spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -74,16 +74,31 @@ for (const scenario of [
   'foreign identity',
   'transient outage',
   'sustained outage',
+  'discovery outage',
+  'status timeout',
+  'detach and reconnect',
+  'queued follow-up',
 ]) {
   test(`after SIGKILL, Braid reopens its database without a reconnect command: ${scenario}`, async () => {
     const root = await mkdtemp(join(tmpdir(), 'braid-retained-kill-'))
     let offline = false
     let dropped = 0
+    let child: ChildProcess | undefined
+    let holdNextStatus = false
     const options = {
       expireReplay: false,
       ...(scenario === 'foreign identity' ? { statusRunId: 'foreign-provider-run' } : {}),
       holdStreams: true,
-      responseText: 'SURVIVED_RESTART',
+      responseText: () => {
+        // The provider has the turn, but its dispatch acknowledgement has not left the server.
+        if (scenario === 'discovery outage') child?.kill('SIGKILL')
+        return 'SURVIVED_RESTART'
+      },
+      get holdStatus() {
+        const hold = holdNextStatus
+        holdNextStatus = false
+        return hold
+      },
       dropRunRead: () => {
         if (offline) dropped++
         return offline
@@ -94,12 +109,13 @@ for (const scenario of [
     let restarted: DurableBraidApplication | undefined
     let view: BraidTerminalApp | undefined
     try {
-      const child = spawn(
+      child = spawn(
         process.execPath,
         [
           fileURLToPath(new URL('./support/retained-restart-child.js', import.meta.url)),
           root,
           JSON.stringify(configuration),
+          scenario,
         ],
         { stdio: 'inherit', timeout: 20_000 },
       )
@@ -109,12 +125,21 @@ for (const scenario of [
       const before = bridge.replays.length
       options.expireReplay = scenario === 'expired cursor'
       offline = scenario.endsWith('outage')
+      holdNextStatus = scenario === 'status timeout'
       const started = performance.now()
       restarted = await createDurableBraidApplication({
         path: join(root, 'braid.db'),
         workspaceRoot: root,
         credentialStore: new FileCredentialStore(join(root, 'credentials')),
         production: configuration,
+        ...(scenario === 'status timeout'
+          ? {
+              execution: withWatchdogBounds(
+                createProductionComposition({ ...configuration, workspaceRoot: root }).execution,
+                500,
+              ),
+            }
+          : {}),
       })
       const { app } = restarted
       const terminal = new RecordingTerminal(80, 24)
@@ -129,11 +154,15 @@ for (const scenario of [
         void view.start()
         await terminal.waitForRender()
       }
-      if (scenario === 'transient outage') {
+      if (scenario === 'discovery outage') {
+        assert.equal(app.state().runs[0]?.retainedAdmission?.phase, 'environment')
+        assert.equal(app.state().runs[0]?.controlRef, undefined)
+      }
+      if (scenario === 'transient outage' || scenario === 'discovery outage') {
         await waitFor(() => dropped >= 2, 10_000)
         offline = false
       }
-      if (scenario === 'live' || scenario === 'transient outage') {
+      if (!['expired cursor', 'foreign identity', 'sustained outage'].includes(scenario)) {
         await waitFor(() => bridge.replays.length > before, 10_000)
         assert.deepEqual(bridge.replays.slice(before), [
           { runId: admission.runId, afterSequence: 0 },
@@ -143,7 +172,22 @@ for (const scenario of [
           ready = true
         })
         await waitFor(() => ready)
+        const run = app.state().runs[0]
+        assert.ok(run)
+        assert.equal(run.status, 'streaming')
+        assert.equal(
+          createApplicationUiController(app).view().capabilities['run.detach']?.available,
+          true,
+        )
+        let resumed: Promise<unknown> | undefined
+        if (scenario === 'detach and reconnect') {
+          await (await app.detachRun({ runId: run.id, operationId: 'detach-recovered' })).completion
+          assert.equal(app.state().runs[0]?.status, 'detached')
+          resumed = app.reconnectRun({ runId: run.id, operationId: 'reattach-recovered' })
+          await waitFor(() => bridge.replays.length === before + 2)
+        }
         bridge.complete(admission.runId)
+        await resumed
         await waitFor(() => app.events().some(({ event }) => event.kind === 'run.finished'), 5_000)
         const state = app.state()
         assert.equal(state.runs[0]?.status, 'completed')
@@ -152,7 +196,9 @@ for (const scenario of [
         assert.equal(state.runs[0]?.inputTokens, 2)
         assert.equal(state.runs[0]?.outputTokens, 3)
         assert.deepEqual(
-          state.messages.map((message) => message.text),
+          state.messages
+            .filter((message) => message.runId === run.id)
+            .map((message) => message.text),
           ['Keep working while Braid restarts.', 'SURVIVED_RESTART'],
         )
         assert.deepEqual(state.missingHistory, [])
@@ -160,6 +206,15 @@ for (const scenario of [
           (await restarted.storage.events()).filter((row) => row.kind === 'run.finished').length,
           1,
         )
+        if (scenario === 'queued follow-up') {
+          await waitFor(
+            () => bridge.requests.length === 2 && app.state().queuedInputs.length === 0,
+            5_000,
+          )
+          assert.equal(bridge.requests[1]?.sessionId, admission.sessionId)
+          bridge.complete()
+          await waitFor(() => app.state().runs[1]?.status === 'completed', 5_000)
+        }
         if (scenario === 'live') {
           await terminal.waitForRender()
           const out = join('artifacts', 'verification', 'retained-restart', 'raw')
@@ -187,7 +242,7 @@ for (const scenario of [
           assert.ok(performance.now() - started >= 30_000)
         }
       }
-      assert.equal(bridge.requests.length, 1)
+      assert.equal(bridge.requests.length, scenario === 'queued follow-up' ? 2 : 1)
       assert.equal(app.storageFailure(), undefined)
     } finally {
       offline = false
