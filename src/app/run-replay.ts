@@ -17,6 +17,7 @@ import {
   type PumpOutcome,
   pumpWithIdleBound,
   STALLED,
+  stallDetail,
   statusTimeoutMs,
   streamIdleMs,
   withinDeadline,
@@ -122,6 +123,15 @@ export async function reconnectRun(
       }
       if (outcome === 'stalled') {
         if (stopped()) break
+        // A run that resumed and then went silent again closes its input until the next event.
+        const resumed = context.findRun(run.id)
+        if (resumed.status === 'running' || resumed.status === 'waiting')
+          await context.commitAndWait({
+            kind: 'run.reconnecting',
+            runId: run.id,
+            ...(resumed.lastCursor === undefined ? {} : { after: resumed.lastCursor }),
+            detail: stallDetail(context.execution),
+          })
         probeFirst = true
         continue
       }

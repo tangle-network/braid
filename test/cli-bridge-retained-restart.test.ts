@@ -565,7 +565,7 @@ test('a restarted reconnect fails typed within the bound when the provider never
   }
 })
 
-test('a stalled live stream returns to running once its replay commits a new event, so input can be queued again', async () => {
+test('a stalled live stream returns to running on each replayed event and to reconnecting on each later silence', async () => {
   const root = await mkdtemp(join(tmpdir(), 'braid-stall-resume-'))
   const bridge = await startRuntimeBridgeServer({ holdStreams: true, responseText: 'BEFORE_STALL' })
   const configuration = production(bridge.endpoint)
@@ -598,10 +598,17 @@ test('a stalled live stream returns to running once its replay commits a new eve
     await waitFor(() => app.state().runs[0]?.status === 'running', 5_000)
     assert.equal(controller.view().capabilities['run.queue']?.available, true)
 
+    // A second silence in the same turn closes input again, and the next event reopens it.
+    await waitFor(() => app.state().runs[0]?.status === 'reconnecting', 5_000)
+    assert.equal(controller.view().capabilities['run.queue']?.available, false)
+    bridge.progress(' AGAIN')
+    await waitFor(() => app.state().runs[0]?.status === 'running', 5_000)
+    assert.equal(controller.view().capabilities['run.queue']?.available, true)
+
     bridge.complete()
     await send.completion
     assert.equal(app.state().runs[0]?.status, 'completed')
-    assert.equal(app.state().messages.at(-1)?.text, 'BEFORE_STALL AFTER_STALL')
+    assert.equal(app.state().messages.at(-1)?.text, 'BEFORE_STALL AFTER_STALL AGAIN')
     assert.equal(
       app.events().some((entry) => entry.event.kind === 'run.unknown'),
       false,
