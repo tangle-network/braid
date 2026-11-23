@@ -762,6 +762,7 @@ A stream that stays open but delivers no event also triggers it, because an open
 Each ingested event counts as activity, and Braid arms the idle bound after the first one, because dispatch and provisioning precede it and report their own failures.
 After the idle bound (45 seconds by default, well under agent-runtime's 8-minute observation limit) Braid commits `run.reconnecting` with the plain reason, then reads the provider's status for the exact control reference within a short deadline.
 A running or finished provider is replayed from the saved cursor; a quiet long tool call therefore costs one replay, never a failure.
+The first new event that replay commits returns the run from `reconnecting` to `running` (or `waiting` with a pending interaction), so input can be queued again; a status read alone leaves it `reconnecting`.
 A status read that fails, times out, names another run or reports an unknown state ends the run as `unknown` with a plain detail such as "provider stream lost; status read failed: sandbox is gone (SANDBOX_STOPPED)", and never retries.
 A run that fails before its first event is recovered the same way; when recovery also fails, the detail names both causes, such as "the run failed: Tangle credential command failed (exit 1); recovery failed the same way".
 A provider that finished but whose replay also goes silent supplies the result from its status read.
