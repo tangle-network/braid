@@ -200,10 +200,24 @@ async function replayFromCursor(
       // A newly committed event proves the stream re-attached; a re-sent duplicate proves less.
       if (result.accepted) attached()
       if (result.accepted && envelope.event.type === 'final') sawTerminal = true
+      else if (result.accepted) await resumeLiveStatus(context, runId)
       return 'continue' as const
     },
   )
   return sawTerminal ? 'stopped' : outcome
+}
+
+/** A replayed event proves the run live again; a status read alone does not. */
+async function resumeLiveStatus(context: ReplayPort, runId: string): Promise<void> {
+  const run = context.findRun(runId)
+  if (run.status !== 'reconnecting') return
+  const waiting = run.interactions.some((interaction) => interaction.status === 'pending')
+  await context.commitAndWait({
+    kind: 'run.status.changed',
+    runId: run.id,
+    status: waiting ? 'waiting' : 'running',
+    detail: 'provider stream re-attached',
+  })
 }
 
 type ProviderVerdict =

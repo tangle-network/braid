@@ -79,6 +79,8 @@ export interface RuntimeBridgeServer {
   readonly cancellations: RuntimeBridgeCancellationRequest[]
   readonly replays: RuntimeBridgeReplayRequest[]
   complete(runId?: string): void
+  /** Streams one more content frame mid-turn, before the held terminal frame. */
+  progress(text: string, runId?: string): void
   close(): Promise<void>
 }
 
@@ -333,12 +335,16 @@ function runtimeResponseFrames(
     profile_materialization: profileMaterialization(body),
   }
   return [
-    {
-      id: 1,
-      wire: `id: 1\ndata: ${JSON.stringify({ choices: [{ delta: { content: responseText }, finish_reason: null }] })}\n\n`,
-    },
+    contentFrame(1, responseText),
     { id: 2, wire: `id: 2\ndata: ${JSON.stringify(terminal)}\n\n` },
   ]
+}
+
+function contentFrame(id: number, text: string): RuntimeResponseFrame {
+  return {
+    id,
+    wire: `id: ${id}\ndata: ${JSON.stringify({ choices: [{ delta: { content: text }, finish_reason: null }] })}\n\n`,
+  }
 }
 
 function runtimeResponseStream(frames: readonly RuntimeResponseFrame[]): string {
@@ -521,6 +527,18 @@ export async function startRuntimeBridgeServer(
       for (const frame of terminalFrames) reader.write(frame.wire)
     }
     finishReaders(run)
+  }
+
+  const progressRun = (run: RetainedFixtureRun, text: string): void => {
+    if (run.terminal) return
+    const frame = contentFrame(run.frames.length + 1, text)
+    run.frames.push(frame)
+    const held = run.pendingFrames.splice(0).map((pending, index) => {
+      const id = frame.id + 1 + index
+      return { id, wire: pending.wire.replace(/^id: \d+/u, `id: ${id}`) }
+    })
+    run.pendingFrames.push(...held)
+    for (const reader of run.readers) reader.write(frame.wire)
   }
 
   const server = createServer(async (request, response) => {
@@ -1010,6 +1028,10 @@ export async function startRuntimeBridgeServer(
         return
       }
       for (const run of runs.values()) completeRun(run)
+    },
+    progress: (text, runId) => {
+      for (const run of runs.values())
+        if (runId === undefined || run.id === runId) progressRun(run, text)
     },
     close: async () => {
       for (const run of runs.values()) finishReaders(run)

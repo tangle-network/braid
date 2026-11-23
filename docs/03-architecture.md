@@ -388,6 +388,8 @@ After process restart, an inconclusive status check cannot terminalize a run tha
 
 Braid keeps that run `reconnecting` until replay supplies a provider outcome or replay itself fails without conclusive status evidence.
 
+A replay that commits a new provider event returns the run from `reconnecting` to `running` (or `waiting` with a pending interaction); a status read alone does not.
+
 Terminal states never transition back to running under the same run identifier.
 
 A retry is a new run linked to the source run through a retry edge.
