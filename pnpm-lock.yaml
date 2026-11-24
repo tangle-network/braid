@@ -31,8 +31,8 @@ importers:
         specifier: 1.1.62
         version: 1.1.62(@tangle-network/agent-interface@5.10.27)
       '@tangle-network/agent-provider-cli-bridge':
-        specifier: 2.0.18
-        version: 2.0.18
+        specifier: 2.0.19
+        version: 2.0.19
       '@tangle-network/agent-provider-daytona':
         specifier: 0.6.1
         version: 0.6.1(@daytonaio/sdk@0.230.0(debug@4.4.3))
@@ -921,8 +921,8 @@ packages:
     peerDependencies:
       '@tangle-network/agent-interface': ^5.10.11
 
-  '@tangle-network/agent-provider-cli-bridge@2.0.18':
-    resolution: {integrity: sha512-Cj1UyzK8rY00bTHpEoWsgqwym1i1NBuuaILn1APvBgut1Z5JvAR4eqFOhg/2B31NZ82UvJgDLo6+LJRDP/yt4A==}
+  '@tangle-network/agent-provider-cli-bridge@2.0.19':
+    resolution: {integrity: sha512-LCksAWIk1lMYCPmUt9phrFay41AwD47+FNSB3YMZVuZQGkX1fBHIdCZoGqUdAW9pHmrgzhGTyw5RucqGwUaUqw==}
     engines: {node: '>=22.19.0'}
 
   '@tangle-network/agent-provider-daytona@0.6.1':
@@ -2583,7 +2583,7 @@ snapshots:
     dependencies:
       '@tangle-network/agent-interface': 5.10.27
 
-  '@tangle-network/agent-provider-cli-bridge@2.0.18':
+  '@tangle-network/agent-provider-cli-bridge@2.0.19':
     dependencies:
       '@tangle-network/agent-core': 1.0.3
       '@tangle-network/agent-interface': 5.10.27
