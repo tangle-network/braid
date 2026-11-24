@@ -31,8 +31,8 @@ importers:
         specifier: 1.1.62
         version: 1.1.62(@tangle-network/agent-interface@5.10.27)
       '@tangle-network/agent-provider-cli-bridge':
-        specifier: 2.0.16
-        version: 2.0.16
+        specifier: 2.0.18
+        version: 2.0.18
       '@tangle-network/agent-provider-daytona':
         specifier: 0.6.1
         version: 0.6.1(@daytonaio/sdk@0.230.0(debug@4.4.3))
@@ -276,6 +276,7 @@ packages:
 
   '@daytonaio/sdk@0.230.0':
     resolution: {integrity: sha512-Meb2TahjdXnu/rpSvUNhY4dERTabamoeRfCiz7rnUlz1nxjwGNSj5y3AggsvnDIaaYl8Y+zu7MQsUafXUu6EPw==}
+    deprecated: 'Moved to @daytona/sdk, same API, no breaking changes. Please update: npm uninstall @daytonaio/sdk && npm i @daytona/sdk@0'
 
   '@earendil-works/pi-codemode@1.4.0':
     resolution: {integrity: sha512-23CNAXpS9DuLzPMyYuvrXVVio46x4YhffCgCqaWmF7F5H8PooqjrQvX4ucF6M0BhUd+x2tV6r1J0dv8cCME4Cg==}
@@ -899,9 +900,6 @@ packages:
       playwright:
         optional: true
 
-  '@tangle-network/agent-interface@5.10.20':
-    resolution: {integrity: sha512-aEzAfS8iatWo/nX8dyTeZnQx+okHlumBZQyUCFLhQ6VoV+/byrRaQZzeVhMTtm3Yn89kvtOofZz4fZ5GH+vD/A==}
-
   '@tangle-network/agent-interface@5.10.27':
     resolution: {integrity: sha512-yohBbMLDBjeZR/F4w82tC6LPLuVKP9vQXN/8mGgmLl7CFfVSYp7JnP7f0aDIGg+D6ELWZEzQNfI2V/E0sVU+CA==}
 
@@ -923,8 +921,8 @@ packages:
     peerDependencies:
       '@tangle-network/agent-interface': ^5.10.11
 
-  '@tangle-network/agent-provider-cli-bridge@2.0.16':
-    resolution: {integrity: sha512-SR4KAMGEPOz2F2XLlR98xCmx2ThJSeU5Agc5C2LpWeh0QKejXkqIJokYgmHUXGgUuAI6NYoaXBo2sIczNKIQUw==}
+  '@tangle-network/agent-provider-cli-bridge@2.0.18':
+    resolution: {integrity: sha512-Cj1UyzK8rY00bTHpEoWsgqwym1i1NBuuaILn1APvBgut1Z5JvAR4eqFOhg/2B31NZ82UvJgDLo6+LJRDP/yt4A==}
     engines: {node: '>=22.19.0'}
 
   '@tangle-network/agent-provider-daytona@0.6.1':
@@ -2563,12 +2561,6 @@ snapshots:
     transitivePeerDependencies:
       - '@modelcontextprotocol/sdk'
 
-  '@tangle-network/agent-interface@5.10.20':
-    dependencies:
-      '@noble/hashes': 2.4.0
-      spdx-expression-parse: 5.0.0
-      zod: 4.6.7
-
   '@tangle-network/agent-interface@5.10.27':
     dependencies:
       '@noble/hashes': 2.4.0
@@ -2591,7 +2583,7 @@ snapshots:
     dependencies:
       '@tangle-network/agent-interface': 5.10.27
 
-  '@tangle-network/agent-provider-cli-bridge@2.0.16':
+  '@tangle-network/agent-provider-cli-bridge@2.0.18':
     dependencies:
       '@tangle-network/agent-core': 1.0.3
       '@tangle-network/agent-interface': 5.10.27
@@ -2637,7 +2629,7 @@ snapshots:
 
   '@tangle-network/cli-agent-registry@0.15.30':
     dependencies:
-      '@tangle-network/agent-interface': 5.10.20
+      '@tangle-network/agent-interface': 5.10.27
       zod: 4.6.7
 
   '@tangle-network/harness-sessions@1.0.11':

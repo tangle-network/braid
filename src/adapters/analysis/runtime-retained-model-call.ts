@@ -53,6 +53,8 @@ export async function runRetainedCliBridgeModelCall(
     baseUrl: input.baseUrl,
     bearerToken: input.bearerToken,
     defaultModel: input.model,
+    // Nobody answers an analyst prompt, so its turn admits none and the Bridge denies each one.
+    interactionPolicy: 'interactive' as const,
     fetch: globalThis.fetch,
   }
   const provider = createCliBridgeProvider(providerOptions)
@@ -66,6 +68,8 @@ export async function runRetainedCliBridgeModelCall(
     turn: {
       prompt: JSON.stringify({ messages: input.messages }),
       turnId: `analysis-turn-${digest}`,
+      // An absent map admits every advertised kind, which would wait on an answer never sent.
+      interactions: {},
       signal: input.signal,
     },
     identity: {

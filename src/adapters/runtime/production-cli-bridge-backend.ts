@@ -208,6 +208,8 @@ export async function prepareCliBridgeProviderRoute(
     baseUrl: bridgeUrl,
     bearerToken: credential ?? LOCAL_BRIDGE_BEARER,
     defaultModel: route,
+    // Braid's user answers every admitted permission prompt; the Bridge never approves beneath it.
+    interactionPolicy: 'interactive' as const,
     ...(runner === 'pi'
       ? {
           defaultExecution: {
