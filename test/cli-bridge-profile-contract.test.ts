@@ -14,6 +14,7 @@ import {
 import { ConnectionRegistry } from '../src/app/connections.js'
 import type { ConnectionRecord } from '../src/domain/entities.js'
 import { createConnectionId } from '../src/domain/ids.js'
+import { requestedInteractionsForRun } from '../src/domain/run-interactions.js'
 import type { ExecuteTurnInput, RetainedRunAdmissionRecord } from '../src/ports/execution.js'
 import { startRuntimeBridgeServer } from './support/runtime-bridge-server.js'
 
@@ -164,6 +165,10 @@ test('production CLI Bridge sends the frozen profile and complete turn identity'
     const execution = retainedExecution(options)
     const firstAdmission = await execution.admit(first)
     assert.equal(firstAdmission.providerSessionId, sessionId)
+    assert(firstAdmission.capabilities)
+    // Braid admits the advertised permission kind from the admitted capabilities, as a run does.
+    const interactions = requestedInteractionsForRun(undefined, firstAdmission.capabilities)
+    assert.deepEqual(interactions, { permission: true })
     assert.equal(firstAdmission.capabilities?.environment?.streaming.replay, true)
     assert.equal(firstAdmission.capabilities?.environment?.sessions.continue, true)
     assert.equal(firstAdmission.capabilities?.environment?.streaming.turnIdempotency, true)
@@ -173,11 +178,13 @@ test('production CLI Bridge sends the frozen profile and complete turn identity'
     assert.equal(firstAdmission.capabilities?.controls.cancel, true)
     assert.equal(firstAdmission.capabilities?.controls.status, true)
     const firstEvents = []
-    for await (const event of execution.streamTurn(first)) firstEvents.push(event)
+    const firstTurn = { ...first, interactions }
+    for await (const event of execution.streamTurn(firstTurn)) firstEvents.push(event)
     const secondAdmission = await execution.admit(second)
     assert.equal(secondAdmission.providerSessionId, sessionId)
     const secondEvents = []
-    for await (const event of execution.streamTurn(second)) secondEvents.push(event)
+    const secondTurn = { ...second, interactions }
+    for await (const event of execution.streamTurn(secondTurn)) secondEvents.push(event)
     assert.equal(firstEvents.at(-1)?.event.type, 'final')
     assert.equal(secondEvents.at(-1)?.event.type, 'final')
     assert.equal(bridge.requests.length, 2, JSON.stringify({ firstEvents, secondEvents }, null, 2))
@@ -197,6 +204,8 @@ test('production CLI Bridge sends the frozen profile and complete turn identity'
     assert.equal(session?.model, 'pi/openai-codex/gpt-5.6-luna')
     assert.equal(session?.id, sessionId)
     assert.equal(session?.body.cwd, workspaceCwd)
+    // Each permission prompt goes to Braid's user; the Bridge never answers one with allow.
+    assert.equal(session?.body.interaction_policy, 'interactive')
     assert.equal(JSON.stringify(session?.body).includes('inline-'), false)
 
     for (const [request, turn] of bridge.requests.map(
@@ -210,6 +219,7 @@ test('production CLI Bridge sends the frozen profile and complete turn identity'
       assert.equal(request.session?.id, sessionId)
       assert.equal(request.sessionId, sessionId)
       assert.equal(body.message, turn.text)
+      assert.deepEqual(body.interactions, { permission: true })
       assert.equal(JSON.stringify(body).includes('inline-'), false)
     }
     assert.deepEqual(
@@ -381,6 +391,9 @@ test('retained analysis preserves requested route and measured usage without inv
     const admission = JSON.parse(await readFile(join(root, 'admission.json'), 'utf8'))
     assert(admission.controlRef.runId)
     assert.equal(bridge.requests.length, 1)
+    // No one answers an analyst prompt: its turn admits none, so the Bridge denies each one.
+    assert.equal(bridge.sessions[0]?.body.interaction_policy, 'interactive')
+    assert.deepEqual(bridge.requests[0]?.body.interactions, {})
     assert.equal(bridge.closedSessions.length, 1)
     assert.equal(result.response.content, 'NATIVE_CONTRACT_REPLY')
     assert.equal(result.response.model, route, 'this is the requested route, not an observation')
