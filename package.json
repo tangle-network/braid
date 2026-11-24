@@ -114,7 +114,7 @@
     "@tangle-network/agent-eval": "1.0.22",
     "@tangle-network/agent-interface": "5.10.27",
     "@tangle-network/agent-profile-materialize": "1.1.62",
-    "@tangle-network/agent-provider-cli-bridge": "2.0.18",
+    "@tangle-network/agent-provider-cli-bridge": "2.0.19",
     "@tangle-network/agent-provider-daytona": "0.6.1",
     "@tangle-network/agent-provider-tangle": "5.0.15",
     "@tangle-network/agent-runtime": "8.0.0",
