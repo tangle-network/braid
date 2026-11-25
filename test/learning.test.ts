@@ -69,6 +69,8 @@ function git(cwd: string, ...args: string[]): string {
 async function repository(path: string, files: Record<string, string>, remote?: string) {
   await mkdir(path, { recursive: true })
   git(path, 'init', '-q', '-b', 'main')
+  // A throwaway fixture: the host's own commit hooks are not this test's subject.
+  git(path, 'config', 'core.hooksPath', '/dev/null')
   for (const [name, content] of Object.entries(files)) {
     await mkdir(join(path, name, '..'), { recursive: true })
     await writeFile(join(path, name), content)
