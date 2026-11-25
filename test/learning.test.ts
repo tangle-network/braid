@@ -137,6 +137,11 @@ async function agent(input: ExecuteTurnInput): Promise<AgentTurnBackend> {
   )
   const response = tidies ? `tidied: ${input.text}` : `untouched: ${input.text}`
   const { createExecutor } = await import('@tangle-network/agent-runtime/kernel')
+  const profile: AgentProfile = {
+    name: 'Invented learning agent',
+    harness: 'cli-base',
+    model: { default: 'fixture/learning', provider: 'fixture' },
+  }
   return Object.freeze({
     kind: 'executor' as const,
     factory: createExecutor({
@@ -149,11 +154,7 @@ async function agent(input: ExecuteTurnInput): Promise<AgentTurnBackend> {
         usage: { prompt_tokens: 8, completion_tokens: 4 },
       }),
     }),
-    profile: {
-      name: 'Invented learning agent',
-      harness: 'cli-base',
-      model: { default: 'fixture/learning', provider: 'fixture' },
-    },
+    profile,
     agentRunName: 'braid-learning-fixture',
   })
 }
