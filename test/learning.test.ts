@@ -342,11 +342,22 @@ test('learning reads two harnesses, measures candidates on held-out replays, pro
     assert(nodes.some((item) => item.artifactDigest === tidy.unitDigest))
 
     // Eval's procedure registry joins the ledger with the Claude Code sessions by the skill's version.
-    const cli = join(dirname(fileURLToPath(import.meta.resolve('@tangle-network/agent-eval'))), 'cli.js')
+    const cli = join(
+      dirname(fileURLToPath(import.meta.resolve('@tangle-network/agent-eval'))),
+      'cli.js',
+    )
     const registry = JSON.parse(
       execFileSync(
         process.execPath,
-        [cli, 'procedure-registry', projects, '--ledger', measurement.ledgerPath, '--format', 'json'],
+        [
+          cli,
+          'procedure-registry',
+          projects,
+          '--ledger',
+          measurement.ledgerPath,
+          '--format',
+          'json',
+        ],
         { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
       ),
     ) as {
