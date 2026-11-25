@@ -169,9 +169,57 @@ Headless clients use the same application operations:
 | `runner_advice` | Requires an operation identifier and `task`; optional `source` selects a run instead of the default `last`. An identical retry replays the first request's stored result while its frozen source remains available. |
 
 These commands retain corrections and support an explicit runner choice.
-Measured improvement requires comparisons on held-out tasks through Runtime and Eval before a profile change or selection policy can be called better.
-Accumulated feedback and those comparisons are the intended basis for learned runner selection and reusable personal AgentProfiles.
-Automatic routing, profile sharing, and cloud publication are not implemented here.
+A `/profile learn` draft is unmeasured; `/learn` below measures candidates before any of them is served.
+
+## Learn a profile version from your sessions
+
+`/learn` proposes changes to the active AgentProfile from what you and your agents did, replays your own finished tasks under each change, and promotes a change only when the replays show it helps.
+Every promotion is a new profile version you can roll back.
+
+1. **Mark held-out tasks.** After a run finishes, `/learn task [--family name] [--timeout seconds] -- <check...>` keeps its request and the check that decides whether an answer passed.
+   The check is a command you write; it runs without a shell in a fresh copy of the workspace at the last commit before the run started, with the answer's path in `BRAID_REPLAY_ANSWER`.
+   Exit 0 is a pass, any other exit is a fail, and a check that cannot run or times out has no result.
+   The candidate never sees or changes the check.
+   A family groups tasks of one kind so a change cannot buy success on one kind with failures on another.
+2. **Propose.** `/learn propose [--since days]` reads the last 30 days by default:
+   Braid's runs and feedback reasons in this workspace, and Claude Code sessions under `~/.claude/projects`, read with Eval's skill-usage reader.
+   It proposes up to four kinds of candidate, each a profile diff:
+   - a **skill** your sessions use often, pinned to the commit and SHA-256 of a clean file in a GitHub checkout, with the provenance record that Interface's `mountSkill` writes;
+   - a **workflow**: an inline skill for two skills your sessions run in that order in at least two sessions, with both skills pinned;
+   - **instructions** from feedback reasons, through the same lesson composition as `/profile learn`;
+   - a **removal** of an inline skill the profile carries.
+   A skill without a clean, pinned file is skipped with its reason.
+3. **Measure.** `/learn measure` replays every task under the active profile once, then runs Eval's skill eval for each candidate against it on the same tasks.
+   The blind judge sees each pair of answers with its check verdict and prefers a pass to a fail; anything else is a tie.
+   A removal is measured as the unit it removes, so `keep` means removing it loses answers.
+   The panel shows the decision (`keep`, `cut` or `inconclusive`) and why, wins, losses and ties, pass rates, the worst family on each side, and each side's loaded tokens.
+   Loaded tokens are an estimate (characters / 4) of the text the profile always loads: prompts, instructions, inline skills, tools, agents and commands.
+4. **Promote.** A candidate is promotable under one of two rules, and the panel names the rule it was judged by:
+   - addition (more loaded tokens): the skill eval keeps it and worst-family success does not fall;
+   - compression (equal or fewer loaded tokens): worst-family success holds or rises, and the skill eval does not keep what was removed.
+   Any task without a result blocks promotion.
+   `/learn promote [candidate]` selects the chosen candidate, by default the promotable one with the highest worst-family success and then the fewest loaded tokens, as profile version `learn.N`.
+   `--override` promotes a candidate the gate refused and records that it was overridden.
+5. **Roll back.** `/learn rollback` selects the profile the active version replaced and records the rollback.
+
+The next run on any runner uses the promoted profile, and its run receipt names the version.
+`/learn` with no action opens the panel: sources read, tasks, candidates with their measurements, versions, and the latest run served by a learned version.
+
+Everything stays in a private local store: `learn/` beside Braid's state, or `BRAID_LEARN_DIRECTORY`.
+It holds the tasks, the proposal, every measurement, each version's profile, and a search ledger per measurement at `searches/<id>/ledger.jsonl`.
+The ledger is Eval's search ledger: each candidate is a node keyed by the SHA-256 of the unit it adds, and each replay is a scored cell, so `agent-eval procedure-registry --ledger <path>` reads it.
+The procedure's own settings are hashed into each ledger, so a change to how Braid learns shows up as a new procedure revision.
+`BRAID_LEARN_CLAUDE_CODE_PROJECTS` points the reader at another transcript directory.
+
+What this does not do:
+- Replays run on the active connection and can use model quota; a subscription seat reports no price, so cost shows as unknown.
+- A small task set rarely gives `keep`: the skill eval needs enough tasks that differ between the arms, and says so when it is inconclusive.
+- Replays use a fresh git worktree of the run's workspace; a task outside a git repository replays in an empty directory.
+- Learned versions are not shared, published or routed automatically.
+
+Headless clients send `learn` with an operation identifier and `action` (`status`, `task`, `propose`, `measure`, `promote` or `rollback`).
+`task` takes `check` (a string array) and optional `runId`, `family` and `timeoutSeconds`; `propose` takes `sinceDays`; `promote` takes `candidateId` and `override`.
+Each returns the stored record the action wrote: the task, proposal, measurement or version entry, or the whole status.
 
 ## Profile picker
 

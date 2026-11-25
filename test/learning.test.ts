@@ -13,9 +13,10 @@ import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { PassThrough } from 'node:stream'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 import { readSkillFile } from '@tangle-network/agent-eval/analyst'
 import { replaySearchLedgerText } from '@tangle-network/agent-eval/campaign'
 import {
@@ -339,6 +340,32 @@ test('learning reads two harnesses, measures candidates on held-out replays, pro
     assert.equal(nodes.length, proposal.candidates.length + 1)
     assert.equal(nodes.filter((item) => item.status === 'selected').length, 1)
     assert(nodes.some((item) => item.artifactDigest === tidy.unitDigest))
+
+    // Eval's procedure registry joins the ledger with the Claude Code sessions by the skill's version.
+    const cli = join(dirname(fileURLToPath(import.meta.resolve('@tangle-network/agent-eval'))), 'cli.js')
+    const registry = JSON.parse(
+      execFileSync(
+        process.execPath,
+        [cli, 'procedure-registry', projects, '--ledger', measurement.ledgerPath, '--format', 'json'],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
+      ),
+    ) as {
+      versions: Array<{
+        digest: string | null
+        searches: Array<{ status: string | null }>
+        cells: { count: number; passed: number }
+        sessions: { invocations: number }
+      }>
+    }
+    const tidyVersion = registry.versions.find((version) => version.digest === tidy.unitDigest)
+    assert(tidyVersion !== undefined, 'the registry keys the promoted skill by its body digest')
+    assert.equal(tidyVersion.sessions.invocations, 3)
+    assert.deepEqual(
+      tidyVersion.searches.map((search) => search.status),
+      ['selected'],
+    )
+    assert.equal(tidyVersion.cells.count, 12)
+    assert.equal(tidyVersion.cells.passed, 12)
 
     const first = (await call(
       session,

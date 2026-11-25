@@ -59,6 +59,7 @@ New cloud connections delete the sandbox after one turn; choose retained executi
 | Ask what a completed run established | `/ask <question>` |
 | Record whether a finished task met your needs | `/feedback accept [reason...]` or `/feedback reject [reason...]` |
 | Review a profile draft from your corrections | `/profile learn [new-file]` |
+| Learn a measured profile version from your sessions | `/learn`, then `task`, `propose`, `measure`, `promote` or `rollback` ([how](docs/05-profiles-and-connections.md#learn-a-profile-version-from-your-sessions)) |
 | Request a runner recommendation for the next task | `/runner advice <task>` |
 | Change the next turn's runner or model | `/runner`, then `/model` |
 
