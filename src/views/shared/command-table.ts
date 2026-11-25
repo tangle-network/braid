@@ -107,6 +107,12 @@ export const SHARED_COMMAND_TABLE = [
     mutatingHeadlessCommands: ['record_feedback'],
   },
   {
+    name: 'learn',
+    requiresOperationId: true,
+    headlessCommands: ['learn'],
+    mutatingHeadlessCommands: ['learn'],
+  },
+  {
     name: 'approve',
     requiresOperationId: true,
     headlessCommands: ['respond_interaction'],

@@ -14,6 +14,7 @@ import { dispatchConversationHeadlessCommand } from './ui-conversation-dispatch.
 import { dispatchCoreIntent } from './ui-core-dispatch.js'
 import type { UiDispatchContext } from './ui-dispatch-context.js'
 import { dispatchFeedbackHeadlessCommand } from './ui-feedback-dispatch.js'
+import { dispatchLearningHeadlessCommand } from './learning-dispatch.js'
 import { projectInteractionReceipt } from './ui-interaction-receipt.js'
 
 type HeadlessCommandIntent = Extract<BraidIntent, { readonly type: 'headless-command' }>
@@ -30,6 +31,13 @@ export async function dispatchHeadlessCommand(
       retryable: false,
     }
   }
+  if (intent.command === 'learn')
+    return dispatchLearningHeadlessCommand(intent, {
+      app: context.app,
+      configuration: context.profileConnections.learning,
+      setNotice: (notice) => context.setNotice(notice),
+      notify: () => context.notify(),
+    })
   if (intent.command === 'get_graph') {
     const conversationId = stringParam(intent.command, intent.params, 'conversationId')
     const branchId = stringParam(intent.command, intent.params, 'branchId')

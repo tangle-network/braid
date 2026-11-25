@@ -90,11 +90,10 @@ function runEvidence(state: BraidState, runId: string) {
   )
   const started = record === undefined ? Number.NaN : Date.parse(record.startedAt)
   const ended = record?.terminalAt === undefined ? Number.NaN : Date.parse(record.terminalAt)
-  const snapshot = state.profileSnapshots.find((item) => item.id === record?.profileSnapshotId)
   return {
     record,
     answer: messages.map((message) => message.text).join('\n'),
-    runner: snapshot?.profile.harness ?? null,
+    runner: record?.receipt.requested.runner ?? record?.receipt.requested.profile.harness ?? null,
     trace: {
       toolCalls: calls.length,
       toolErrors: failures.length,

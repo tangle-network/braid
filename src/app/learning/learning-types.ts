@@ -122,6 +122,8 @@ export interface LearningVersion {
   readonly profileDigest: string
   readonly parentDigest: string
   readonly profilePath: string
+  /** The profile this entry replaced, so a rollback can restore it. */
+  readonly parentPath: string
   readonly candidateId: string | null
   readonly measurementId: string | null
   readonly override: boolean

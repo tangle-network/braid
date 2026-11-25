@@ -512,6 +512,20 @@ export class BraidApplication {
     return this.state()
   }
 
+  /**
+   * A fresh in-memory application over this one's execution, clock and ids, for
+   * replaying a held-out task under another profile. It records nothing in this
+   * application's journal; the caller selects its workspace and connection.
+   */
+  replayApplication(profile: Readonly<AgentProfile>): BraidApplication {
+    return new BraidApplication({
+      profile,
+      execution: this.#execution,
+      clock: this.#clock,
+      ids: this.#ids,
+    })
+  }
+
   send(input: SendInput): SendReceipt {
     this.#assertAdmissionOpen()
     assertWritable(this.#storageFailure)

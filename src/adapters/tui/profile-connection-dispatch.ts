@@ -10,6 +10,7 @@ import { ConnectionActionService, type ConnectionActions } from '../../app/conne
 import type { ConnectionProbeFactory } from '../../app/connection-probe.js'
 import { AppError } from '../../app/errors.js'
 import { type ProfileActionOptions, ProfileActionService } from '../../app/profile-actions.js'
+import type { LearningConfiguration } from '../../app/learning/learning-types.js'
 import type { LearnedProfileDraft } from '../../app/profile-learning.js'
 import type {
   ProfileDiscoveryInput,
@@ -35,6 +36,8 @@ export interface ProfileConnectionDispatchOptions {
   readonly now?: () => string
   readonly onProfileSavePhase?: ProfileActionOptions['onSavePhase']
   readonly services?: ProfileConnectionDispatchServices
+  /** The user's local learning store; `/learn` is unavailable without it. */
+  readonly learning?: LearningConfiguration
 }
 
 export interface ProfileConnectionDispatchServices {
@@ -42,6 +45,7 @@ export interface ProfileConnectionDispatchServices {
   readonly connections: ConnectionActions
   readonly revision: () => number
   readonly learnProfile?: () => Promise<LearnedProfileDraft>
+  readonly learning?: LearningConfiguration
 }
 
 export function createProfileConnectionDispatchServices(
@@ -63,6 +67,7 @@ export function createProfileConnectionDispatchServices(
         ? undefined
         : createLazyProductionConnectionAdapter(record, options.productionConnection)))
   return {
+    ...(options.learning === undefined ? {} : { learning: options.learning }),
     learnProfile: async () => {
       const { draftProfileFromFeedback } = await import('../../app/profile-learning.js')
       return draftProfileFromFeedback(app.runtimeSelection.profile(), await app.feedback.list())

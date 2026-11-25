@@ -483,6 +483,10 @@ export class TerminalOverlayController {
     this.#surfaces.openFeedback(data)
   }
 
+  openLearning(data: unknown): void {
+    this.#surfaces.openDocument('/learn', data)
+  }
+
   openIntelligenceResult(command: 'ask' | 'analyze' | 'compare', data: unknown): void {
     this.#surfaces.openIntelligenceResult(command, data)
   }

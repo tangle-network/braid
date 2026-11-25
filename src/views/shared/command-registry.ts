@@ -79,6 +79,7 @@ const INTENTS_FOR: Readonly<Record<CommandName, CommandIntentFactory>> = {
   analyze: runCommandIntent('analyze'),
   compare: runCommandIntent('compare'),
   feedback: runCommandIntent('feedback'),
+  learn: runCommandIntent('learn'),
   approve: runCommandIntent('approve'),
   reject: runCommandIntent('reject'),
   automate: runCommandIntent('automate'),
@@ -189,6 +190,14 @@ const DEFINITIONS: readonly CommandDefinition[] = [
     'Record task feedback or inspect this conversation’s feedback',
     '/feedback accept|reject [reason...] | list',
     'feedback.read',
+    'explicit',
+  ],
+  [
+    'learn',
+    [],
+    'Learn profile versions from sessions; measure them on held-out tasks',
+    '/learn [task -- <check> | propose | measure | promote [id] | rollback]',
+    'profile.select',
     'explicit',
   ],
   [

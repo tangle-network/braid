@@ -13,6 +13,23 @@ export function defaultBraidDataDirectory(environment: NodeJS.ProcessEnv = proce
   return join(environment.XDG_DATA_HOME ?? join(homedir(), '.local', 'share'), 'braid')
 }
 
+/**
+ * The user's local learning store and the Claude Code transcripts it reads.
+ * `BRAID_LEARN_DIRECTORY` and `BRAID_LEARN_CLAUDE_CODE_PROJECTS` point a
+ * recording or a test at invented data instead of the user's own.
+ */
+export function defaultLearningConfiguration(environment: NodeJS.ProcessEnv = process.env): {
+  readonly directory: string
+  readonly claudeCodeProjects: string
+} {
+  return {
+    directory:
+      environment.BRAID_LEARN_DIRECTORY || join(defaultBraidDataDirectory(environment), 'learn'),
+    claudeCodeProjects:
+      environment.BRAID_LEARN_CLAUDE_CODE_PROJECTS || join(homedir(), '.claude', 'projects'),
+  }
+}
+
 /** The stable identity shared by durable state and headless credentials. */
 export function productionWorkspaceConfigIdentity(workspace: string, configPath: string): string {
   return createHash('sha256')

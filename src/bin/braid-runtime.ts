@@ -21,7 +21,7 @@ import {
   type ProductionStartupLoadOptions,
 } from './production-startup.js'
 import { createRuntimeStartupOptions } from './runtime-startup-options.js'
-import { defaultStatePath } from './state-path.js'
+import { defaultLearningConfiguration, defaultStatePath } from './state-path.js'
 export async function runBraid(options: CliOptions): Promise<number> {
   const workspace = resolve(options.workspace)
   const previewRuntime =
@@ -116,6 +116,7 @@ async function openApplication(
       profileConnectionOptions: {
         profiles,
         connections: production.connections,
+        learning: defaultLearningConfiguration(),
         ...(production.connectionOptions === undefined
           ? {}
           : { productionConnection: production.connectionOptions }),

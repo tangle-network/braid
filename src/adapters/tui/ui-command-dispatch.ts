@@ -13,6 +13,7 @@ import { dispatchCoreIntent } from './ui-core-dispatch.js'
 import type { UiDispatchContext } from './ui-dispatch-context.js'
 import { dispatchFeedbackCommand } from './ui-feedback-dispatch.js'
 import { dispatchHeadlessCommand } from './ui-headless-dispatch.js'
+import { dispatchLearningCommand } from './learning-dispatch.js'
 
 type RunCommandIntent = Extract<BraidIntent, { readonly type: 'run-command' }>
 
@@ -32,6 +33,13 @@ export async function dispatchCommandIntent(
     return dispatchInteractionCommand(intent, context)
   }
   if (intent.command === 'feedback') return dispatchFeedbackCommand(intent, context)
+  if (intent.command === 'learn')
+    return dispatchLearningCommand(intent, {
+      app: context.app,
+      configuration: context.profileConnections.learning,
+      setNotice: (notice) => context.setNotice(notice),
+      notify: () => context.notify(),
+    })
   if (intent.command === 'automate') return dispatchAutomationCommand(intent, context)
   if (intent.command === 'help') return { kind: 'accepted', revision: context.app.state().revision }
   if (intent.command === 'quit') {

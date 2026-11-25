@@ -74,8 +74,13 @@ export class TerminalSurfaceOverlays {
   }
 
   openFeedback(data: unknown): void {
+    this.openDocument('/feedback list', data)
+  }
+
+  /** Open an entity document a command returned, such as `/feedback list` or `/learn`. */
+  openDocument(command: string, data: unknown): void {
     if (!data || typeof data !== 'object' || !('rows' in data) || !Array.isArray(data.rows)) {
-      this.openUnavailable('/feedback list', 'The feedback list could not be rendered')
+      this.openUnavailable(command, `${command} returned nothing to show`)
       return
     }
     const document = data as EntityBrowserDocument
