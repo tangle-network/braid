@@ -8,6 +8,7 @@ const UI_FIXTURES = [
   'native-children',
   'cancellation-unavailable',
   'profile-handoff',
+  'learning',
 ] as const
 
 export interface CliOptions {

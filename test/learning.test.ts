@@ -3,8 +3,8 @@
  *
  * Invented history: three Claude Code sessions ran `tidy` then `audit` from a
  * committed skills checkout, and twelve finished Braid runs carry a check. The
- * agent behind the execution port tidies only when the profile it is given
- * mounts `tidy`, and half of the checks need that. Braid reads both harnesses,
+ * walkthrough fixture's agent (shared with `--ui-fixture learning`) tidies only
+ * when the profile it is given mounts `tidy`, and half of the checks need that. Braid reads both harnesses,
  * proposes a skill, a workflow and a removal, measures them on replays at the
  * runs' commit, promotes the winner as `learn.1` with rollback, and serves a
  * new conversation on another runner whose record names the version.
@@ -19,15 +19,10 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { readSkillFile } from '@tangle-network/agent-eval/analyst'
 import { replaySearchLedgerText } from '@tangle-network/agent-eval/campaign'
-import {
-  type AgentProfile,
-  defineAgentProfile,
-  verifyResourceProvenance,
-} from '@tangle-network/agent-interface'
-import type { AgentTurnBackend } from '@tangle-network/agent-runtime/kernel'
+import { verifyResourceProvenance } from '@tangle-network/agent-interface'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import type { BraidApplication } from '../src/app/application.js'
-import { createBraidApplication } from '../src/app/composition.js'
+import { createBraidApplication, createDeterministicExecution } from '../src/app/composition.js'
 import type {
   LearningMeasurement,
   LearningProposal,
@@ -35,25 +30,17 @@ import type {
   LearningTask,
   LearningVersion,
 } from '../src/app/learning/learning-types.js'
-import { AgentRuntimeExecutionPort } from '../src/adapters/runtime/agent-runtime-execution.js'
-import type { ExecuteTurnInput } from '../src/ports/execution.js'
 import { SystemClock } from '../src/ports/clock.js'
+import {
+  LEARNING_FIXTURE_PROFILE,
+  learningFixtureResponse,
+} from '../src/testing/learning-fixture.js'
 import type { BraidResponse } from '../src/views/headless/protocol.js'
 import { runRpc } from '../src/views/headless/rpc.js'
 
 const TIDY = '---\nname: tidy\ndescription: Remove dead code.\n---\n\n# Tidy\n\nRemove dead code.\n'
 const AUDIT =
   '---\nname: audit\ndescription: Review the change.\n---\n\n# Audit\n\nReview the change.\n'
-const PROFILE: AgentProfile = defineAgentProfile({
-  name: 'Invented learning profile',
-  harness: 'pi',
-  model: { default: 'fixture/learning' },
-  prompt: { instructions: ['Keep public behavior.'] },
-  resources: {
-    skills: [{ kind: 'inline', name: 'legacy-notes', content: '# Legacy notes\n\nNothing here.' }],
-  },
-})
-
 function git(cwd: string, ...args: string[]): string {
   return execFileSync('git', ['-C', cwd, ...args], {
     encoding: 'utf8',
@@ -134,35 +121,6 @@ function transcript(sessionId: string, skills: string): string {
   return `${lines.map((item) => JSON.stringify(item)).join('\n')}\n`
 }
 
-/** The invented agent: it tidies only when its profile mounts the `tidy` skill. */
-async function agent(input: ExecuteTurnInput): Promise<AgentTurnBackend> {
-  const tidies = (input.profile.resources?.skills ?? []).some(
-    (skill) => skill.kind === 'inline' && skill.name === 'tidy',
-  )
-  const response = tidies ? `tidied: ${input.text}` : `untouched: ${input.text}`
-  const { createExecutor } = await import('@tangle-network/agent-runtime/kernel')
-  const profile: AgentProfile = {
-    name: 'Invented learning agent',
-    harness: 'cli-base',
-    model: { default: 'fixture/learning', provider: 'fixture' },
-  }
-  return Object.freeze({
-    kind: 'executor' as const,
-    factory: createExecutor({
-      backend: 'router',
-      routerBaseUrl: 'https://fixture.invalid/v1',
-      routerKey: 'fixture',
-      complete: async () => ({
-        model: 'fixture/learning',
-        choices: [{ message: { content: response }, finish_reason: 'stop' }],
-        usage: { prompt_tokens: 8, completion_tokens: 4 },
-      }),
-    }),
-    profile,
-    agentRunName: 'braid-learning-fixture',
-  })
-}
-
 interface Session {
   readonly input: PassThrough
   readonly responses: BraidResponse[]
@@ -226,9 +184,9 @@ test('learning reads two harnesses, measures candidates on held-out replays, pro
 
   const app = createBraidApplication({
     fixture: 'deterministic',
-    profile: PROFILE,
+    profile: LEARNING_FIXTURE_PROFILE,
     clock: new SystemClock(),
-    execution: new AgentRuntimeExecutionPort(agent),
+    execution: createDeterministicExecution({ chunkDelayMs: 0, respond: learningFixtureResponse }),
   })
   app.initialize(workspace)
   const input = new PassThrough({ encoding: 'utf8' })

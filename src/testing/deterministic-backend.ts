@@ -20,6 +20,8 @@ export interface DeterministicBackendOptions {
    * stay active use this instead of a delay, so the run cannot finish early on a slow machine.
    */
   readonly release?: PromiseLike<void>
+  /** The reply for one turn, when it should depend on the profile the turn was given. */
+  readonly respond?: (profile: Readonly<AgentProfile>, text: string) => string
 }
 
 /** Resolves when `release` settles; rejects like `timers/promises` if `signal` aborts first. */
@@ -69,7 +71,7 @@ export async function deterministicBackend(
         : { reasoningEffort: input.profile.model.reasoningEffort }),
     },
   }
-  const response = responseFor(input.profile, input.text)
+  const response = (options.respond ?? responseFor)(input.profile, input.text)
   const { createExecutor } = await import('@tangle-network/agent-runtime/kernel')
   return Object.freeze({
     kind: 'executor' as const,
