@@ -134,7 +134,7 @@
     {
       "license": "MIT",
       "name": "@earendil-works/pi-codemode",
-      "version": "1.4.0"
+      "version": "1.5.0"
     },
     {
       "license": "MIT",
@@ -429,27 +429,22 @@
     {
       "license": "MIT",
       "name": "@tangle-network/agent-eval",
-      "version": "1.0.22"
+      "version": "2.0.12"
     },
     {
       "license": "MIT",
       "name": "@tangle-network/agent-interface",
-      "version": "5.10.27"
+      "version": "5.10.31"
     },
     {
       "license": "MIT",
       "name": "@tangle-network/agent-knowledge",
-      "version": "23.0.0"
+      "version": "23.0.7"
     },
     {
       "license": "Unknown",
       "name": "@tangle-network/agent-profile-materialize",
-      "version": "1.1.55"
-    },
-    {
-      "license": "Unknown",
-      "name": "@tangle-network/agent-profile-materialize",
-      "version": "1.1.62"
+      "version": "1.1.222"
     },
     {
       "license": "MIT",
@@ -469,7 +464,7 @@
     {
       "license": "MIT",
       "name": "@tangle-network/agent-runtime",
-      "version": "8.0.0"
+      "version": "10.0.16"
     },
     {
       "license": "MIT",
@@ -489,7 +484,7 @@
     {
       "license": "MIT",
       "name": "@tangle-network/harness-sessions",
-      "version": "1.0.11"
+      "version": "1.0.17"
     },
     {
       "license": "MIT",
