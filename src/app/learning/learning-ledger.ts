@@ -1,11 +1,7 @@
 import type { AgentProfile } from '@tangle-network/agent-interface'
 import { diffAgentProfiles } from '@tangle-network/agent-interface'
 import type { TaskReplay } from './learning-replay.js'
-import type {
-  CandidateMeasurement,
-  LearningCandidate,
-  LearningTask,
-} from './learning-types.js'
+import type { CandidateMeasurement, LearningCandidate, LearningTask } from './learning-types.js'
 
 type Digest = `sha256:${string}`
 
@@ -62,7 +58,10 @@ export async function recordLearningLedger(round: LedgerRound): Promise<void> {
         direction: 'maximize',
         judge: { uri: 'braid:task-check', revision: taskSet },
         claim: {
-          population: { id: 'braid-learn-tasks', description: 'tasks the user marked with a check' },
+          population: {
+            id: 'braid-learn-tasks',
+            description: 'tasks the user marked with a check',
+          },
           samplingFrame: 'every task with a check in the local learning store',
           independentUnit: 'id',
           generalization: 'new-units',

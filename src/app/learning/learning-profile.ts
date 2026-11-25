@@ -68,7 +68,9 @@ export function withSkills(profile: AgentProfile, mounts: readonly MountedSkill[
         (record) => !names.has(String(record.name)),
       )
     : []
-  const added = mounts.flatMap((mount) => (mount.provenance === undefined ? [] : [mount.provenance]))
+  const added = mounts.flatMap((mount) =>
+    mount.provenance === undefined ? [] : [mount.provenance],
+  )
   return {
     ...profile,
     resources: { ...profile.resources, skills: [...kept, ...mounts.map((mount) => mount.skill)] },

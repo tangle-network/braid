@@ -86,7 +86,8 @@ function runEvidence(state: BraidState, runId: string) {
   const parts = state.messageParts.filter((part) => messageIds.has(part.messageId))
   const calls = parts.filter((part) => part.kind === 'tool-call')
   const failures = parts.filter(
-    (part) => (part.kind === 'tool-call' || part.kind === 'tool-result') && part.status === 'failed',
+    (part) =>
+      (part.kind === 'tool-call' || part.kind === 'tool-result') && part.status === 'failed',
   )
   const started = record === undefined ? Number.NaN : Date.parse(record.startedAt)
   const ended = record?.terminalAt === undefined ? Number.NaN : Date.parse(record.terminalAt)
@@ -98,8 +99,7 @@ function runEvidence(state: BraidState, runId: string) {
       toolCalls: calls.length,
       toolErrors: failures.length,
       wallMs: Number.isFinite(started) && Number.isFinite(ended) ? ended - started : null,
-      costUsd:
-        record === undefined || record.usdKnown === false ? null : (record.costUsd ?? null),
+      costUsd: record === undefined || record.usdKnown === false ? null : (record.costUsd ?? null),
     },
     tokens: {
       input: record?.inputTokens ?? 0,
@@ -114,7 +114,11 @@ async function runCheck(
   task: LearningTask,
   work: string,
   answerPath: string,
-): Promise<{ readonly pass: boolean | null; readonly error: string | null; readonly output: string }> {
+): Promise<{
+  readonly pass: boolean | null
+  readonly error: string | null
+  readonly output: string
+}> {
   const [command, ...args] = task.check.argv
   if (command === undefined) return { pass: null, error: 'the task has no check', output: '' }
   try {

@@ -41,7 +41,8 @@ import type { BraidResponse } from '../src/views/headless/protocol.js'
 import { runRpc } from '../src/views/headless/rpc.js'
 
 const TIDY = '---\nname: tidy\ndescription: Remove dead code.\n---\n\n# Tidy\n\nRemove dead code.\n'
-const AUDIT = '---\nname: audit\ndescription: Review the change.\n---\n\n# Audit\n\nReview the change.\n'
+const AUDIT =
+  '---\nname: audit\ndescription: Review the change.\n---\n\n# Audit\n\nReview the change.\n'
 const PROFILE: AgentProfile = defineAgentProfile({
   name: 'Invented learning profile',
   harness: 'pi',
@@ -376,9 +377,7 @@ test('learning reads two harnesses, measures candidates on held-out replays, pro
       () =>
         app
           .state()
-          .runs.some(
-            (run) => run.operationId === 'op-learning-next' && run.status === 'completed',
-          ),
+          .runs.some((run) => run.operationId === 'op-learning-next' && run.status === 'completed'),
       'the served run',
     )
     const status = (await call(

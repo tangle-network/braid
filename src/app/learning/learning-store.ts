@@ -66,7 +66,9 @@ export class LearningStore {
   measurement(id?: string): LearningMeasurement | null {
     const target = id ?? this.#readJson<{ id: string }>('measurement.json')?.id
     if (target === undefined) return null
-    return this.#readJson<LearningMeasurement>(join('measurements', `${safeName(target)}.json`)) ?? null
+    return (
+      this.#readJson<LearningMeasurement>(join('measurements', `${safeName(target)}.json`)) ?? null
+    )
   }
 
   saveMeasurement(measurement: LearningMeasurement): void {
@@ -113,7 +115,10 @@ export class LearningStore {
     try {
       return JSON.parse(bytes.toString('utf8')) as T
     } catch {
-      throw new AppError('LEARNING_STORE_INVALID', `The learning store file ${relative} is not JSON`)
+      throw new AppError(
+        'LEARNING_STORE_INVALID',
+        `The learning store file ${relative} is not JSON`,
+      )
     }
   }
 

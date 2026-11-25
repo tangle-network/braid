@@ -78,7 +78,8 @@ export async function pinSkillFile(name: string, skillFile: string): Promise<Pin
     const content = await git(root, ['show', `${commit}:${path}`])
     const { readSkillFile } = await import('@tangle-network/agent-eval/analyst')
     const read = readSkillFile(file)
-    if (!read.succeeded) return { pinned: false, reason: `the skill file is unreadable: ${read.error}` }
+    if (!read.succeeded)
+      return { pinned: false, reason: `the skill file is unreadable: ${read.error}` }
     return {
       pinned: true,
       skill: { name, repository, commit, path, content, bodySha256: read.bodySha256 },

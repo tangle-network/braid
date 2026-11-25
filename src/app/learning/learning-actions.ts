@@ -83,9 +83,13 @@ function finishedRun(state: BraidState, runId: string | undefined) {
 /** The commit the run started from: the last commit on HEAD before it began. */
 async function baseCommit(root: string, startedAt: string): Promise<string | undefined> {
   try {
-    const { stdout } = await run('git', ['-C', root, 'rev-list', '-1', `--before=${startedAt}`, 'HEAD'], {
-      timeout: 10_000,
-    })
+    const { stdout } = await run(
+      'git',
+      ['-C', root, 'rev-list', '-1', `--before=${startedAt}`, 'HEAD'],
+      {
+        timeout: 10_000,
+      },
+    )
     const commit = stdout.trim()
     return /^[0-9a-f]{40}$/u.test(commit) ? commit : undefined
   } catch {
@@ -318,9 +322,7 @@ export function createLearningActions(
         candidateId,
         measurementId: measurement.id,
         override: !result.gate.promotable,
-        reason: result.gate.promotable
-          ? result.gate.reason
-          : `override: ${result.gate.reason}`,
+        reason: result.gate.promotable ? result.gate.reason : `override: ${result.gate.reason}`,
       }
       store.appendVersion(entry)
       return entry

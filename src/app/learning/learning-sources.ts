@@ -1,9 +1,6 @@
 import { stat } from 'node:fs/promises'
 import type { FeedbackTrajectory } from '@tangle-network/agent-eval'
-import type {
-  SkillSessionRecord,
-  SkillUsageReport,
-} from '@tangle-network/agent-eval/analyst'
+import type { SkillSessionRecord, SkillUsageReport } from '@tangle-network/agent-eval/analyst'
 import type { BraidState } from '../../domain/state.js'
 import type { LearningHarnessSource } from './learning-types.js'
 

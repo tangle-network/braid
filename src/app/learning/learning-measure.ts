@@ -70,7 +70,8 @@ export function armSummary(
         )
   let costUsd: number | null = results.length === 0 ? null : 0
   for (const result of results)
-    costUsd = costUsd === null || result.trace.costUsd === null ? null : costUsd + result.trace.costUsd
+    costUsd =
+      costUsd === null || result.trace.costUsd === null ? null : costUsd + result.trace.costUsd
   return {
     profileDigest,
     loadedTokens,
