@@ -30,7 +30,7 @@
  */
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { PassThrough } from 'node:stream'
@@ -690,11 +690,22 @@ async function learningHarness(names?: string[]) {
   const workspace = join(root, 'workspace')
   const projects = join(root, 'projects')
   const store = join(root, 'learn')
+  // tidy carries its directory: a reference, an executable script and a binary file.
   await repository(
     skills,
-    { 'tidy/SKILL.md': TIDY, 'audit/SKILL.md': AUDIT, 'notes/SKILL.md': NOTES },
+    {
+      'tidy/SKILL.md': TIDY,
+      'tidy/references/format.md': '# Format\n\nOne change per commit.\n',
+      'tidy/scripts/check.sh': '#!/bin/sh\nexit 0\n',
+      'tidy/icon.png': '\u0089PNG\u0000\u0001',
+      'audit/SKILL.md': AUDIT,
+      'notes/SKILL.md': NOTES,
+    },
     'https://github.com/example/skills.git',
   )
+  await chmod(join(skills, 'tidy', 'scripts', 'check.sh'), 0o755)
+  git(skills, 'add', '-A')
+  git(skills, 'commit', '-q', '-m', 'executable check')
   await repository(workspace, { 'README.md': '# Invented workspace\n' })
   await mkdir(join(projects, '-work-app'), { recursive: true })
   for (const id of ['s1', 's2', 's3'])
@@ -904,6 +915,30 @@ test('the learner is a versioned profile: a variant whose pick wins on held-out 
     )) as LearningProposal
     assert.deepEqual(next.learner, { version: 'learner.1', digest: wider.learnerDigest })
     assert.deepEqual(skillNames(next), ['audit', 'notes', 'tidy'])
+    // tidy mounts with its directory: the text files beside SKILL.md, pinned to the same commit.
+    const tidyMount = next.candidates.find(
+      (candidate) => candidate.kind === 'skill' && candidate.name === 'tidy',
+    )
+    assert(tidyMount !== undefined)
+    assert.deepEqual(
+      (tidyMount.profile.resources?.files ?? []).map((file) => [
+        file.path,
+        file.executable === true,
+      ]),
+      [
+        ['.pi/skills/tidy/references/format.md', false],
+        ['.pi/skills/tidy/scripts/check.sh', true],
+      ],
+      'siblings mount under the profile harness skill directory, executable bit kept',
+    )
+    assert.deepEqual(await verifyResourceProvenance(tidyMount.profile), [])
+    assert(
+      tidyMount.evidence.includes(
+        'mounted with 2 files beside SKILL.md, each pinned to the same commit',
+      ),
+      tidyMount.evidence.join('\n'),
+    )
+    assert(tidyMount.evidence.includes('not mounted: icon.png: binary, so it has no inline form'))
     const measured = (await call(
       session,
       'learn',
@@ -911,10 +946,7 @@ test('the learner is a versioned profile: a variant whose pick wins on held-out 
       'op-learner-profile-measure',
     )) as LearningMeasurement
     assert.equal(measured.procedureDigest, wider.learnerDigest)
-    const tidy = next.candidates.find(
-      (candidate) => candidate.kind === 'skill' && candidate.name === 'tidy',
-    )
-    assert.equal(measured.selected, tidy?.id)
+    assert.equal(measured.selected, tidyMount.id)
     const learned = (await call(
       session,
       'learn',
@@ -952,6 +984,16 @@ test('the learner is a versioned profile: a variant whose pick wins on held-out 
       'op-learner-propose-2',
     )) as LearningProposal
     assert.deepEqual(restored.learner, before.active)
+    // Removing a skill mounted with its directory removes its files and records too.
+    const removal = restored.candidates.find(
+      (candidate) => candidate.kind === 'removal' && candidate.name === 'tidy',
+    )
+    assert(
+      removal !== undefined,
+      'the promoted profile carries tidy, so tidy is a removal candidate',
+    )
+    assert.deepEqual(removal.profile.resources?.files ?? [], [])
+    assert.deepEqual(await verifyResourceProvenance(removal.profile), [])
   } finally {
     await close()
   }

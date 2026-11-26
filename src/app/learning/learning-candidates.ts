@@ -1,10 +1,19 @@
 import { execFile } from 'node:child_process'
 import { realpath } from 'node:fs/promises'
-import { dirname, relative } from 'node:path'
+import { dirname, posix, relative, sep } from 'node:path'
 import { promisify } from 'node:util'
 import type { FeedbackTrajectory } from '@tangle-network/agent-eval'
 import type { SkillUsageRow } from '@tangle-network/agent-eval/analyst'
-import { type AgentProfile, mountSkill } from '@tangle-network/agent-interface'
+import {
+  type AgentProfile,
+  type AgentProfileSkillFile,
+  mountSkill,
+  mountSkillDirectory,
+} from '@tangle-network/agent-interface'
+import {
+  isMaterializerHarness,
+  skillDirForHarness,
+} from '@tangle-network/agent-profile-materialize'
 import { draftProfileFromFeedback } from '../profile-learning.js'
 import { DEFAULT_LEARNER_SETTINGS } from './learner-profile.js'
 import {
@@ -33,13 +42,17 @@ import type {
 
 const run = promisify(execFile)
 
-/** A skill file pinned to the commit it came from, ready for `mountSkill`. */
+/** A skill pinned to the commit it came from: `SKILL.md` and the text files beside it. */
 export interface PinnedSkill {
   readonly name: string
   readonly repository: string
   readonly commit: string
   readonly path: string
   readonly content: string
+  /** Every other committed text file in the skill's directory, by path inside it. */
+  readonly siblings: readonly AgentProfileSkillFile[]
+  /** Files in the skill's directory that are not mounted, with the reason. */
+  readonly omitted: readonly string[]
   /** agent-eval's body digest: the version the procedure registry keys a skill by. */
   readonly bodySha256: string
 }
@@ -56,6 +69,68 @@ async function git(cwd: string, args: readonly string[]): Promise<string> {
   return stdout
 }
 
+async function gitBytes(cwd: string, args: readonly string[]): Promise<Buffer> {
+  const { stdout } = await run('git', ['-C', cwd, ...args], {
+    timeout: 10_000,
+    maxBuffer: 8 * 1024 * 1024,
+    encoding: 'buffer',
+  })
+  return stdout
+}
+
+const MAX_SIBLINGS = 64
+const MAX_SIBLING_BYTES = 1024 * 1024
+
+/**
+ * The committed files beside a skill's `SKILL.md` at one commit. Only text
+ * files mount inline, so a binary file, a link or a submodule is omitted with
+ * its reason, as is everything past the size limits.
+ */
+async function skillSiblings(
+  root: string,
+  commit: string,
+  skillPath: string,
+): Promise<{ readonly files: AgentProfileSkillFile[]; readonly omitted: string[] }> {
+  const directory = posix.dirname(skillPath)
+  if (directory === '.')
+    return { files: [], omitted: ['the skill is the repository root, so no sibling is mounted'] }
+  const listing = (await gitBytes(root, ['ls-tree', '-r', '-z', commit, '--', `${directory}/`]))
+    .toString('utf8')
+    .split('\0')
+    .filter((entry) => entry !== '')
+  const files: AgentProfileSkillFile[] = []
+  const omitted: string[] = []
+  let bytes = 0
+  for (const entry of listing) {
+    const tab = entry.indexOf('\t')
+    const [mode, type] = entry.slice(0, tab).split(' ')
+    const path = entry.slice(tab + 1)
+    const inside = path.slice(directory.length + 1)
+    if (inside === 'SKILL.md') continue
+    if (type !== 'blob' || (mode !== '100644' && mode !== '100755')) {
+      omitted.push(`${inside}: a ${mode === '120000' ? 'symbolic link' : type} has no inline form`)
+      continue
+    }
+    if (files.length >= MAX_SIBLINGS) {
+      omitted.push(`${inside}: past the ${MAX_SIBLINGS}-file limit`)
+      continue
+    }
+    const content = await gitBytes(root, ['show', `${commit}:${path}`])
+    const text = content.toString('utf8')
+    if (content.includes(0) || !Buffer.from(text, 'utf8').equals(content)) {
+      omitted.push(`${inside}: binary, so it has no inline form`)
+      continue
+    }
+    if (bytes + content.length > MAX_SIBLING_BYTES) {
+      omitted.push(`${inside}: past the ${MAX_SIBLING_BYTES}-byte limit`)
+      continue
+    }
+    bytes += content.length
+    files.push({ path: inside, content: text, ...(mode === '100755' ? { executable: true } : {}) })
+  }
+  return { files, omitted }
+}
+
 /** `owner/repo` from a GitHub remote URL, or undefined for any other remote. */
 export function githubRepository(remote: string): string | undefined {
   const match =
@@ -66,8 +141,9 @@ export function githubRepository(remote: string): string | undefined {
 }
 
 /**
- * Pin a skill file to the commit it came from. The file must be committed and
- * unchanged, so the mounted bytes are exactly the bytes at that commit.
+ * Pin a skill to the commit it came from. Its directory's tracked files must
+ * be committed and unchanged, so the mounted bytes are exactly the bytes at
+ * that commit; files beside `SKILL.md` mount with it.
  */
 export async function pinSkillFile(name: string, skillFile: string): Promise<PinResult> {
   let file: string
@@ -79,32 +155,96 @@ export async function pinSkillFile(name: string, skillFile: string): Promise<Pin
   try {
     const root = (await git(dirname(file), ['rev-parse', '--show-toplevel'])).trim()
     const path = relative(await realpath(root), file)
+      .split(sep)
+      .join('/')
     const commit = (await git(root, ['rev-parse', 'HEAD'])).trim()
     const repository = githubRepository(await git(root, ['remote', 'get-url', 'origin']))
     if (repository === undefined)
       return { pinned: false, reason: 'its checkout has no GitHub origin to pin to' }
     if ((await git(root, ['status', '--porcelain', '--', path])).trim() !== '')
       return { pinned: false, reason: 'the skill file has uncommitted changes' }
+    const directory = posix.dirname(path)
+    if (
+      directory !== '.' &&
+      (
+        await git(root, ['status', '--porcelain', '--untracked-files=no', '--', `${directory}/`])
+      ).trim() !== ''
+    )
+      return { pinned: false, reason: 'a file beside the skill has uncommitted changes' }
     const content = await git(root, ['show', `${commit}:${path}`])
+    const { files: siblings, omitted } = await skillSiblings(root, commit, path)
     const { readSkillFile } = await import('@tangle-network/agent-eval/analyst')
     const read = readSkillFile(file)
     if (!read.succeeded)
       return { pinned: false, reason: `the skill file is unreadable: ${read.error}` }
     return {
       pinned: true,
-      skill: { name, repository, commit, path, content, bodySha256: read.bodySha256 },
+      skill: {
+        name,
+        repository,
+        commit,
+        path,
+        content,
+        siblings,
+        omitted,
+        bodySha256: read.bodySha256,
+      },
     }
   } catch {
     return { pinned: false, reason: 'the skill file is not in a git checkout' }
   }
 }
 
-function mounted(skill: PinnedSkill): MountedSkill {
-  const { skill: resource, provenance } = mountSkill(
-    { repository: skill.repository, ref: skill.commit, path: skill.path, name: skill.name },
-    skill.content,
+/**
+ * Where siblings mount: the profile's harness's skill directory. A runner that
+ * reads skills elsewhere gets them beside its own copy of the skill from the
+ * materializer, which keeps a skill's files with it.
+ */
+export function skillsDirectoryFor(profile: AgentProfile): string {
+  const harness = profile.harness
+  return (
+    (harness !== undefined && isMaterializerHarness(harness)
+      ? skillDirForHarness(harness)
+      : null) ?? '.claude/skills'
   )
-  return { skill: resource, provenance: { ...provenance } }
+}
+
+function mounted(skill: PinnedSkill, skillsDirectory: string): MountedSkill {
+  if (skill.siblings.length === 0) {
+    const { skill: resource, provenance } = mountSkill(
+      { repository: skill.repository, ref: skill.commit, path: skill.path, name: skill.name },
+      skill.content,
+    )
+    return { skill: resource, provenance: [{ ...provenance }] }
+  }
+  const directory = posix.dirname(skill.path)
+  const mount = mountSkillDirectory(
+    {
+      repository: skill.repository,
+      ref: skill.commit,
+      directory: directory === '.' ? '' : directory,
+      name: skill.name,
+    },
+    [{ path: 'SKILL.md', content: skill.content }, ...skill.siblings],
+    { skillsDirectory },
+  )
+  return {
+    skill: mount.skill,
+    files: mount.files,
+    provenance: mount.provenance.map((record) => ({ ...record })),
+  }
+}
+
+/** The evidence line for a skill's directory: what mounted beside `SKILL.md`, and what did not. */
+function siblingEvidence(skill: PinnedSkill): string[] {
+  return [
+    ...(skill.siblings.length === 0
+      ? []
+      : [
+          `mounted with ${skill.siblings.length} files beside SKILL.md, each pinned to the same commit`,
+        ]),
+    ...skill.omitted.map((reason) => `not mounted: ${reason}`),
+  ]
 }
 
 async function candidate(
@@ -197,6 +337,7 @@ export async function proposeCandidates(
 ): Promise<{ readonly candidates: LearningCandidate[]; readonly skipped: string[] }> {
   const pin = input.pin ?? pinSkillFile
   const settings = input.settings ?? DEFAULT_LEARNER_SETTINGS.candidates
+  const skillsDirectory = skillsDirectoryFor(input.base)
   const proposes = (kind: LearningCandidateKind) => settings.kinds.includes(kind)
   const candidates: LearningCandidate[] = []
   const skipped: string[] = []
@@ -235,10 +376,11 @@ export async function proposeCandidates(
           `${row.invocations.total} invocations in ${row.sessions} sessions: ${invocationsByHarness(input.harness, row)}`,
           changeEvidence(changes, `invoked ${skill.name}`),
           `pinned to ${skill.repository}@${skill.commit.slice(0, 12)}:${skill.path}`,
+          ...siblingEvidence(skill),
         ],
         unitText: skill.content,
         unitDigest: `sha256:${skill.bodySha256}`,
-        profile: withSkills(input.base, [mounted(skill)]),
+        profile: withSkills(input.base, [mounted(skill, skillsDirectory)]),
         changes,
       }),
     )
@@ -265,7 +407,7 @@ export async function proposeCandidates(
       .join(', ')
     const components = [pair.first, pair.second].flatMap((name) => {
       const skill = pinned.get(name)
-      return skill === undefined ? [] : [mounted(skill)]
+      return skill === undefined ? [] : [mounted(skill, skillsDirectory)]
     })
     candidates.push(
       await candidate('workflow', {
