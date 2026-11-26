@@ -1,0 +1,24 @@
+ Learning · 20           12 held-out tasks · 4 candidates · active base profile 
+────────────────────────────────────────────────────────────────────────────────
+ › · Sources · sources · read · last 30 days · 2 harnesses                      
+   · task-852252b6f041 · task · cleanup · replays at commit                     
+   · task-cf60979ae874 · task · reading · replays at commit                     
+   · task-450e6797c238 · task · cleanup · replays at commit                     
+   · task-d075cf9998c0 · task · reading · replays at commit                     
+   · task-89d94adf1e51 · task · cleanup · replays at commit                     
+   · task-5833b7206123 · task · reading · replays at commit                     
+   · task-710254b6e432 · task · cleanup · replays at commit                     
+   · task-b2fffdf84801 · task · reading · replays at commit                     
+   · task-d03a99333591 · task · cleanup · replays at commit                     
+   · task-2ec453e5d2d6 · task · reading · replays at commit                     
+   · task-bb56a8dff9fe · task · cleanup · replays at commit                     
+   · task-1085a2c54878 · task · reading · replays at commit                     
+   · audit · skill · inconclusive · 34 tokens                                   
+   · tidy · skill · keep · promotable · current · 33 tokens                     
+   · tidy-then-audit · workflow · keep · promotable · 137 tokens                
+   · legacy-notes · removal · inconclusive · promotable · 6 tokens              
+   · learn.2 · promoted · measured · 2026-11-26 19:56:54                        
+   · unversioned · rolled back to · measured · 2026-11-26 19:56:53              
+   · learn.1 · promoted · measured · 2026-11-26 19:56:53                        
+────────────────────────────────────────────────────────────────────────────────
+ ↑↓ move · enter/→ open · ←/esc close                                           

@@ -1,0 +1,40 @@
+ Learning › audit                                                12 held-out tasks · 4 candidates · active base profile 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ! Measured. skill-84adc75da1 passed the gate: /learn promote                                                           
+   · Sources · sources · last 30 days ·…│ Mount audit from example/skills@ded11f307b24                                  
+   · task-852252b6f041 · task · replays…│ Candidate: skill-88e413611f                                                   
+   · task-cf60979ae874 · task · replays…│ Procedure version:                                                            
+   · task-450e6797c238 · task · replays…│ sha256:4d94e5422118efe858b2373628c53d8113a87ee75fe06d9b89d70f3893025a73       
+   · task-d075cf9998c0 · task · replays…│ Evidence: 3 invocations in 3 Claude Code sessions                             
+   · task-89d94adf1e51 · task · replays…│ Evidence: pinned to example/skills@ded11f307b24:audit/SKILL.md                
+   · task-5833b7206123 · task · replays…│ Skill eval: inconclusive. The net preference for `with` is -24.2% to 24.2% (0 
+   · task-710254b6e432 · task · replays…│ to 0, 12 ties): it includes both no preference and a gain of 10%. More cases  
+   · task-b2fffdf84801 · task · replays…│ would narrow it.                                                              
+   · task-d03a99333591 · task · replays…│ Headroom: separable: the arm without the unit passes 6 of 12 known            
+   · task-2ec453e5d2d6 · task · replays…│ Blind judge: 0 wins, 0 losses, 12 ties, 0 not judged                          
+   · task-bb56a8dff9fe · task · replays…│ Pass: candidate 6/12 (50%) · active 6/12 (50%)                                
+   · task-1085a2c54878 · task · replays…│ Worst family: candidate cleanup 0/6 (0%) · active cleanup 0/6 (0%)            
+ › · audit · skill · 34 tokens          │ Loaded tokens (estimated): candidate 34 · active 13                           
+   · tidy · skill · current · 33 tokens │ Gate: not promotable. the skill eval is inconclusive                          
+   · tidy-then-audit · workflow · 137 t…│ Rule: Addition: promote only when the skill eval keeps the unit and           
+   · legacy-notes · removal · 6 tokens  │ worst-family success does not fall.                                           
+                                        │ Ledger:                                                                       
+                                        │ /tmp/braid-learn-EoW8rY/learn/searches/measure-a249ca9c-59b2-4690-9db5-ba04cda
+                                        │ 35b8a/ledger.jsonl                                                            
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ↑↓ select · PgUp/PgDn detail · home/end jump · ←/esc close                                                             

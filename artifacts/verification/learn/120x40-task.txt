@@ -1,0 +1,40 @@
+ Learning › task-852252b6f041                                     1 held-out tasks · 0 candidates · active base profile 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ! Task task-852252b6f041 added from run run-000001                                                                     
+ Run: run-000001                                                                                                        
+ Family: cleanup                                                                                                        
+ Check: node /tmp/braid-learn-EoW8rY/checks/tidy.mjs (timeout 300 s)                                                    
+ Workspace: /tmp/braid-learn-EoW8rY/workspace at 057aa6198fd0                                                           
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ PgUp/PgDn detail · ←/esc close                                                                                         
