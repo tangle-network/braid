@@ -1,5 +1,9 @@
 import { createHash } from 'node:crypto'
-import type { AgentProfile, AgentProfileResourceRef } from '@tangle-network/agent-interface'
+import type {
+  AgentProfile,
+  AgentProfileFileMount,
+  AgentProfileResourceRef,
+} from '@tangle-network/agent-interface'
 import { canonicalAgentProfileDigestHex } from '../../adapters/agent-interface/profile-runtime.js'
 
 export function sha256Hex(text: string): string {
@@ -52,29 +56,63 @@ function provenanceNamespace(profile: AgentProfile): string {
 
 export interface MountedSkill {
   readonly skill: Extract<AgentProfileResourceRef, { kind: 'inline' }>
-  readonly provenance?: Readonly<Record<string, unknown>>
+  /** The skill's sibling files, each mounted beside its `SKILL.md`. */
+  readonly files?: readonly AgentProfileFileMount[]
+  /** The skill's provenance record first, then one per sibling. */
+  readonly provenance?: readonly Readonly<Record<string, unknown>>[]
 }
 
-/** Add skills, and their provenance records, to a copy of the profile. */
-export function withSkills(profile: AgentProfile, mounts: readonly MountedSkill[]): AgentProfile {
-  const names = new Set(mounts.map((mount) => mount.skill.name))
-  const kept = (profile.resources?.skills ?? []).filter(
+/**
+ * A file mount belongs to skill `name` when its inline resource is named
+ * `name/<rel>` and it is mounted at `.../name/<rel>`: the shape Interface's
+ * `mountSkillDirectory` writes for a skill's sibling files.
+ */
+function isSiblingOf(mount: AgentProfileFileMount, names: ReadonlySet<string>): boolean {
+  const resource = mount.resource
+  if (resource.kind !== 'inline') return false
+  const slash = resource.name.indexOf('/')
+  if (slash <= 0) return false
+  return (
+    names.has(resource.name.slice(0, slash)) &&
+    (mount.path === resource.name || mount.path.endsWith(`/${resource.name}`))
+  )
+}
+
+/** A provenance record for skill `name` itself or for one of its sibling files. */
+function isRecordOf(record: Readonly<Record<string, unknown>>, names: ReadonlySet<string>) {
+  return names.has(String(record.name)) || names.has(String(record.skill))
+}
+
+/** Replace skills by name in a copy of the profile: their files and provenance records go with them. */
+function replaceSkills(
+  profile: AgentProfile,
+  names: ReadonlySet<string>,
+  mounts: readonly MountedSkill[],
+): AgentProfile {
+  const skills = (profile.resources?.skills ?? []).filter(
     (resource) => resource.kind !== 'inline' || !names.has(resource.name),
   )
+  const files = (profile.resources?.files ?? []).filter((mount) => !isSiblingOf(mount, names))
+  const addedFiles = mounts.flatMap((mount) => mount.files ?? [])
   const namespace = provenanceNamespace(profile)
-  const extension = profile.extensions?.[namespace] ?? {}
-  const records = Array.isArray(extension.resourceProvenance)
-    ? (extension.resourceProvenance as Array<Record<string, unknown>>).filter(
-        (record) => !names.has(String(record.name)),
-      )
-    : []
-  const added = mounts.flatMap((mount) =>
-    mount.provenance === undefined ? [] : [mount.provenance],
-  )
+  const extension = profile.extensions?.[namespace]
+  const existing = Array.isArray(extension?.resourceProvenance)
+    ? (extension.resourceProvenance as Array<Record<string, unknown>>)
+    : undefined
+  const records = (existing ?? []).filter((record) => !isRecordOf(record, names))
+  const added = mounts.flatMap((mount) => mount.provenance ?? [])
+  const nextFiles = [...files, ...addedFiles]
   return {
     ...profile,
-    resources: { ...profile.resources, skills: [...kept, ...mounts.map((mount) => mount.skill)] },
-    ...(added.length === 0 && records.length === 0
+    resources: {
+      ...profile.resources,
+      skills: [...skills, ...mounts.map((mount) => mount.skill)],
+      // A profile that mounted no files keeps no files key, so its digest is unchanged.
+      ...(nextFiles.length === 0 && profile.resources?.files === undefined
+        ? {}
+        : { files: nextFiles }),
+    },
+    ...(existing === undefined && added.length === 0
       ? {}
       : {
           extensions: {
@@ -85,30 +123,14 @@ export function withSkills(profile: AgentProfile, mounts: readonly MountedSkill[
   }
 }
 
-/** Remove one inline skill, and its provenance record, from a copy of the profile. */
+/** Add skills, their sibling files and their provenance records to a copy of the profile. */
+export function withSkills(profile: AgentProfile, mounts: readonly MountedSkill[]): AgentProfile {
+  return replaceSkills(profile, new Set(mounts.map((mount) => mount.skill.name)), mounts)
+}
+
+/** Remove one inline skill, its sibling files and their provenance records from a copy of the profile. */
 export function withoutSkill(profile: AgentProfile, name: string): AgentProfile {
-  const skills = (profile.resources?.skills ?? []).filter(
-    (resource) => resource.kind !== 'inline' || resource.name !== name,
-  )
-  const namespace = provenanceNamespace(profile)
-  const extension = profile.extensions?.[namespace]
-  const records = Array.isArray(extension?.resourceProvenance)
-    ? (extension.resourceProvenance as Array<Record<string, unknown>>).filter(
-        (record) => record.name !== name,
-      )
-    : undefined
-  return {
-    ...profile,
-    resources: { ...profile.resources, skills },
-    ...(extension === undefined || records === undefined
-      ? {}
-      : {
-          extensions: {
-            ...profile.extensions,
-            [namespace]: { ...extension, resourceProvenance: records },
-          },
-        }),
-  }
+  return replaceSkills(profile, new Set([name]), [])
 }
 
 export function inlineSkills(
