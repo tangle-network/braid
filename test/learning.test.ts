@@ -353,7 +353,12 @@ test('learning reads Claude Code and Codex sessions with their change ledger, me
       }),
       ledgerRow({ harness: 'codex', sessionId: c3, action: 'observed' }),
       bridge({ action: 'observed' }),
-      bridge({ action: 'turn', incomplete: null, headBefore: 'c'.repeat(40), head: 'd'.repeat(40) }),
+      bridge({
+        action: 'turn',
+        incomplete: null,
+        headBefore: 'c'.repeat(40),
+        head: 'd'.repeat(40),
+      }),
       bridge({ action: 'commit', remote: 'example/app', sha: 'd'.repeat(40) }),
       'not a row',
     ].join('\n')}\n`,
@@ -372,7 +377,12 @@ test('learning reads Claude Code and Codex sessions with their change ledger, me
     for await (const chunk of input) yield String(chunk)
   }
   const controller = createApplicationUiController(app, {}, undefined, {
-    learning: { directory: store, claudeCodeProjects: projects, codexSessions: codex, changeLedger },
+    learning: {
+      directory: store,
+      claudeCodeProjects: projects,
+      codexSessions: codex,
+      changeLedger,
+    },
   })
   const session: Session = {
     input,
@@ -580,7 +590,11 @@ test('learning reads Claude Code and Codex sessions with their change ledger, me
     assert.equal(codexRegistry.sessions.unreadable, 1)
     const codexTidy = tidyIn(codexRegistry)
     assert.equal(codexTidy.invocations, 3)
-    assert.deepEqual(outcomes(codexTidy.changes), [3, 0, 0], 'a subagent joins the change of the session that spawned it')
+    assert.deepEqual(
+      outcomes(codexTidy.changes),
+      [3, 0, 0],
+      'a subagent joins the change of the session that spawned it',
+    )
     // One invocation per session here, so the registry's counts are Braid's.
     assert.deepEqual(tidy.changes, {
       changed: claudeTidy.changes.joined + codexTidy.changes.joined,

@@ -160,8 +160,7 @@ function invocationsByHarness(harness: HarnessSessions, row: SkillUsageRow): str
   return harness.harnesses
     .flatMap((read) => {
       const own = read.usage.rows.find(
-        (item) =>
-          item.skill === row.skill && item.version?.bodySha256 === row.version?.bodySha256,
+        (item) => item.skill === row.skill && item.version?.bodySha256 === row.version?.bodySha256,
       )
       return own === undefined
         ? []

@@ -133,7 +133,8 @@ export async function readHarnessSessions(
       changes: countChanges(read.sessions, index),
     })),
     sessions,
-    usage: harnesses.length === 0 ? null : await analyst.buildSkillUsageReport(reads(sessions), options),
+    usage:
+      harnesses.length === 0 ? null : await analyst.buildSkillUsageReport(reads(sessions), options),
     harnesses,
     changeLedger:
       ledgerFile === undefined
@@ -152,7 +153,9 @@ export async function readHarnessSessions(
 export type SessionIndex = ReadonlyMap<string, SkillSessionRecord>
 
 export function sessionIndex(sessions: readonly SkillSessionRecord[]): SessionIndex {
-  return new Map(sessions.map((session) => [sessionKey(session.harness, session.sessionId), session]))
+  return new Map(
+    sessions.map((session) => [sessionKey(session.harness, session.sessionId), session]),
+  )
 }
 
 /**

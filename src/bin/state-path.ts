@@ -39,7 +39,8 @@ export function defaultLearningConfiguration(environment: NodeJS.ProcessEnv = pr
     changeLedger:
       environment.BRAID_LEARN_CHANGE_LEDGER ||
       join(
-        environment.CHANGE_LEDGER_DIR?.trim() || join(homedir(), '.local', 'state', 'change-ledger'),
+        environment.CHANGE_LEDGER_DIR?.trim() ||
+          join(homedir(), '.local', 'state', 'change-ledger'),
         'changes.jsonl',
       ),
   }
@@ -58,7 +59,8 @@ export function namedLearningConfiguration(
   readonly codexSessions?: string
   readonly changeLedger?: string
 } {
-  const named = (value: string | undefined) => (value === undefined || value === '' ? undefined : value)
+  const named = (value: string | undefined) =>
+    value === undefined || value === '' ? undefined : value
   const claudeCodeProjects = named(environment.BRAID_LEARN_CLAUDE_CODE_PROJECTS)
   const codexSessions = named(environment.BRAID_LEARN_CODEX_SESSIONS)
   const changeLedger = named(environment.BRAID_LEARN_CHANGE_LEDGER)
