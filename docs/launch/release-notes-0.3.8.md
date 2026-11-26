@@ -1,5 +1,20 @@
 # Braid 0.3.8 release notes
 
+## `/learn`: profiles that improve from your own work
+
+- `/learn` reads your Braid runs and task feedback and your Claude Code sessions.
+  It proposes profile changes: mount a skill you already use, compose two skills
+  you run in order, add lessons from your feedback, or remove a skill.
+- Each change is replayed on your own finished tasks. It is promoted only when it
+  keeps your worst task family's success rate, and every promotion is a version
+  you can roll back.
+- Every later run's receipt names the learned version it ran, on any runner.
+
+## First published here: the 0.3.7 changes
+
+0.3.7 was not published to npm, so its changes ship in 0.3.8: recovery across a
+provider restart and read-only attach. See the [0.3.7 notes](release-notes-0.3.7.md).
+
 ## Published Discovery Operator 1.4.0
 
 - Braid bundles the same `discovery-operator` profile as the Disco device and
