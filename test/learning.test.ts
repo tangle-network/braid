@@ -972,6 +972,16 @@ test('the learner is a versioned profile: a variant whose pick wins on held-out 
       'siblings mount under the profile harness skill directory, executable bit kept',
     )
     assert.deepEqual(await verifyResourceProvenance(tidyMount.profile), [])
+    // Served on another runner, tidy's files still land beside its SKILL.md there.
+    const codexSkill = materializeProfile({ ...tidyMount.profile, harness: 'codex' }, 'codex')
+      .files.filter((file) => file.relPath.startsWith('.codex/skills/tidy/'))
+      .map((file) => [file.relPath, file.mode === 0o755])
+      .sort()
+    assert.deepEqual(codexSkill, [
+      ['.codex/skills/tidy/SKILL.md', false],
+      ['.codex/skills/tidy/references/format.md', false],
+      ['.codex/skills/tidy/scripts/check.sh', true],
+    ])
     assert(
       tidyMount.evidence.includes(
         'mounted with 2 files beside SKILL.md, each pinned to the same commit',
