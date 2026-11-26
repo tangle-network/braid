@@ -342,7 +342,10 @@ try {
       ['promote', 'learn.2'],
     ],
   )
-  const measurement = JSON.parse(await readFile(join(invented.store, 'measurement.json'), 'utf8'))
+  const pointer = JSON.parse(await readFile(join(invented.store, 'measurement.json'), 'utf8'))
+  const measurement = JSON.parse(
+    await readFile(join(invented.store, 'measurements', `${pointer.id}.json`), 'utf8'),
+  )
 
   // The stored panel at every supported terminal size, from a fresh process.
   for (const [columns, rows] of [
