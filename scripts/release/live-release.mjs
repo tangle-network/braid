@@ -147,7 +147,17 @@ async function observe(keyDir) {
   const { Sandbox } = await import('@tangle-network/sandbox')
   const apiKey = fs.readFileSync(path.join(home(keyDir), KEY_FILES.sandbox), 'utf8').trim()
   const client = new Sandbox({ baseUrl: RELEASE_LIVE_CONFIG.BRAID_TANGLE_SANDBOX_ENDPOINT, apiKey })
-  const live = await client.list({ status: ['pending', 'provisioning', 'running'] })
+  let live
+  try {
+    live = await client.list({ status: ['pending', 'provisioning', 'running'] })
+  } catch (error) {
+    // One line the driver can read: an expired or revoked key is status 401.
+    const status = error?.status ?? error?.statusCode ?? error?.code ?? 'unknown'
+    console.log(
+      `OBSERVATION_FAILED status=${status} ${error?.name ?? 'Error'}: ${redact(error?.message)}`,
+    )
+    process.exit(2)
+  }
   const created = (box) => new Date(box.createdAt).getTime()
   const newest = Math.max(0, ...live.map(created))
   const ageMin = newest === 0 ? Number.POSITIVE_INFINITY : (Date.now() - newest) / MINUTE
@@ -353,9 +363,9 @@ class Driver {
     const lines = result.out.trim().split('\n')
     const observed = lines.findLast((line) => /^(?:SETTLED|BUSY) ids=/.test(line))
     if (observed && result.code === (observed.startsWith('SETTLED') ? 0 : 1)) return observed
-    const reason = lines.find((line) =>
-      /^(?:Error|TypeError|Error \[)|^beelink-gate: .*unavailable/i.test(line),
-    )
+    const reason =
+      lines.find((line) => line.startsWith('OBSERVATION_FAILED ')) ??
+      lines.find((line) => /^(?:Error|TypeError|Error \[)|^beelink-gate: .*unavailable/i.test(line))
     return `account observation failed (exit ${result.code}): ${reason ?? lines.at(-1)}`
   }
 
