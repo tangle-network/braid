@@ -11,7 +11,7 @@ import { proposeCandidates } from './learning-candidates.js'
 import { recordLearningLedger } from './learning-ledger.js'
 import { measureCandidates } from './learning-measure.js'
 import { loadedTokens, profileDigest, sha256Hex } from './learning-profile.js'
-import { braidHistory, readClaudeCodeSessions } from './learning-sources.js'
+import { braidHistory, readHarnessSessions } from './learning-sources.js'
 import { LearningStore } from './learning-store.js'
 import type {
   LearningConfiguration,
@@ -36,7 +36,15 @@ const VERSION_PREFIX = 'learn.'
  */
 export const LEARNING_PROCEDURE = Object.freeze({
   name: 'braid-learn',
-  sources: ['braid-feedback', 'braid-task-checks', 'claude-code-sessions'],
+  sources: [
+    'braid-feedback',
+    'braid-task-checks',
+    'claude-code-sessions',
+    'codex-sessions',
+    'change-ledger',
+  ],
+  changes:
+    'per session, with the sessions that spawned it: changed; none when the change ledger observed it; otherwise unknown',
   candidates: ['skill', 'workflow', 'instructions', 'removal'],
   measure: 'agent-eval runSkillEval; judge: check pass beats fail, otherwise tie',
   gate: 'addition: keep and worst-family success does not fall; compression: worst-family success holds at equal or fewer loaded tokens',
@@ -189,7 +197,7 @@ export function createLearningActions(
       const sinceMs = Date.now() - days * DAY_MS
       const profile = base()
       const feedback = await app.feedback.list({ scope: 'workspace' })
-      const harness = await readClaudeCodeSessions(configuration.claudeCodeProjects, sinceMs)
+      const harness = await readHarnessSessions(configuration, sinceMs)
       const history = braidHistory(app.state(), feedback, sinceMs)
       const { candidates, skipped } = await proposeCandidates({ base: profile, harness, feedback })
       const digest = profileDigest(profile)
@@ -207,6 +215,7 @@ export function createLearningActions(
             tasks: store.tasks().length,
           },
           harnesses: harness.sources,
+          changeLedger: harness.changeLedger,
         },
         candidates,
         skipped,

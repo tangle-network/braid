@@ -14,19 +14,61 @@ export function defaultBraidDataDirectory(environment: NodeJS.ProcessEnv = proce
 }
 
 /**
- * The user's local learning store and the Claude Code transcripts it reads.
- * `BRAID_LEARN_DIRECTORY` and `BRAID_LEARN_CLAUDE_CODE_PROJECTS` point a
- * recording or a test at invented data instead of the user's own.
+ * The user's local learning store and the sessions it reads: Claude Code
+ * transcripts, Codex rollouts, and the change ledger the harness hooks and CLI
+ * Bridge append to. Each default is where its writer puts it: Codex under
+ * `CODEX_HOME`, the ledger under `CHANGE_LEDGER_DIR`. `BRAID_LEARN_DIRECTORY`,
+ * `BRAID_LEARN_CLAUDE_CODE_PROJECTS`, `BRAID_LEARN_CODEX_SESSIONS` and
+ * `BRAID_LEARN_CHANGE_LEDGER` point a recording or a test at invented data
+ * instead of the user's own.
  */
 export function defaultLearningConfiguration(environment: NodeJS.ProcessEnv = process.env): {
   readonly directory: string
   readonly claudeCodeProjects: string
+  readonly codexSessions: string
+  readonly changeLedger: string
 } {
   return {
     directory:
       environment.BRAID_LEARN_DIRECTORY || join(defaultBraidDataDirectory(environment), 'learn'),
     claudeCodeProjects:
       environment.BRAID_LEARN_CLAUDE_CODE_PROJECTS || join(homedir(), '.claude', 'projects'),
+    codexSessions:
+      environment.BRAID_LEARN_CODEX_SESSIONS ||
+      join(environment.CODEX_HOME?.trim() || join(homedir(), '.codex'), 'sessions'),
+    changeLedger:
+      environment.BRAID_LEARN_CHANGE_LEDGER ||
+      join(
+        environment.CHANGE_LEDGER_DIR?.trim() ||
+          join(homedir(), '.local', 'state', 'change-ledger'),
+        'changes.jsonl',
+      ),
+  }
+}
+
+/**
+ * A fixture's learning configuration: the store and only the sources the
+ * environment names, so a recording never reads the user's own sessions.
+ */
+export function namedLearningConfiguration(
+  directory: string,
+  environment: NodeJS.ProcessEnv = process.env,
+): {
+  readonly directory: string
+  readonly claudeCodeProjects?: string
+  readonly codexSessions?: string
+  readonly changeLedger?: string
+} {
+  const named = (value: string | undefined) =>
+    value === undefined || value === '' ? undefined : value
+  const claudeCodeProjects = named(environment.BRAID_LEARN_CLAUDE_CODE_PROJECTS)
+  const codexSessions = named(environment.BRAID_LEARN_CODEX_SESSIONS)
+  const changeLedger = named(environment.BRAID_LEARN_CHANGE_LEDGER)
+  return {
+    directory,
+    ...(claudeCodeProjects === undefined ? {} : { claudeCodeProjects }),
+    ...(codexSessions === undefined ? {} : { codexSessions }),
+    ...(changeLedger === undefined ? {} : { changeLedger }),
   }
 }
 

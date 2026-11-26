@@ -15,8 +15,19 @@ import {
   withoutSkill,
   withSkills,
 } from './learning-profile.js'
-import { type HarnessSessions, orderedSkillPairs } from './learning-sources.js'
-import type { LearningCandidate, LearningCandidateKind } from './learning-types.js'
+import {
+  countChanges,
+  type HarnessSessions,
+  harnessName,
+  orderedSkillPairs,
+  sessionIndex,
+  sessionsInvoking,
+} from './learning-sources.js'
+import type {
+  ChangeOutcomeCounts,
+  LearningCandidate,
+  LearningCandidateKind,
+} from './learning-types.js'
 
 const run = promisify(execFile)
 const MAX_SKILL_CANDIDATES = 2
@@ -106,6 +117,7 @@ async function candidate(
     readonly unitText: string
     readonly unitDigest: string
     readonly profile: AgentProfile
+    readonly changes: ChangeOutcomeCounts | null
   },
 ): Promise<LearningCandidate> {
   const digest = profileDigest(input.profile)
@@ -137,6 +149,26 @@ function workflowSkill(first: string, second: string, sessions: number): string 
   ].join('\n')
 }
 
+/** The evidence line for what a candidate's sessions came to; unknown is its own count, never folded into none. */
+function changeEvidence(counts: ChangeOutcomeCounts, sessions: string): string {
+  const total = counts.changed + counts.none + counts.unknown
+  return `Changes of the ${total} sessions that ${sessions}: ${counts.changed} made a change, ${counts.none} made none, ${counts.unknown} unknown`
+}
+
+/** Invocations of one skill version per harness: `3 in 3 Claude Code sessions, 2 in 2 Codex sessions`. */
+function invocationsByHarness(harness: HarnessSessions, row: SkillUsageRow): string {
+  return harness.harnesses
+    .flatMap((read) => {
+      const own = read.usage.rows.find(
+        (item) => item.skill === row.skill && item.version?.bodySha256 === row.version?.bodySha256,
+      )
+      return own === undefined
+        ? []
+        : [`${own.invocations.total} in ${own.sessions} ${harnessName(read.harness)} sessions`]
+    })
+    .join(', ')
+}
+
 export interface ProposeCandidatesInput {
   readonly base: AgentProfile
   readonly harness: HarnessSessions
@@ -151,10 +183,13 @@ export interface ProposeCandidatesInput {
  *
  * | Kind | Unit | From |
  * |---|---|---|
- * | `skill` | one skill the sessions invoked most, pinned by commit | another harness's sessions |
- * | `workflow` | a composed skill that runs two skills in the order sessions ran them | another harness's sessions |
+ * | `skill` | one skill the sessions invoked most, pinned by commit | Claude Code and Codex sessions |
+ * | `workflow` | a composed skill that runs two skills in the order sessions ran them | Claude Code and Codex sessions |
  * | `instructions` | lessons from task feedback reasons | Braid feedback |
  * | `removal` | one skill the profile carries | the profile itself |
+ *
+ * A skill or workflow candidate also records what its sessions came to (see
+ * `changeState`). That is evidence for the reader; the measurement decides.
  */
 export async function proposeCandidates(
   input: ProposeCandidatesInput,
@@ -167,6 +202,7 @@ export async function proposeCandidates(
     .filter((row) => !present.has(row.skill))
     .sort((left, right) => right.invocations.total - left.invocations.total)
     .slice(0, ROWS_TRIED)
+  const index = sessionIndex(input.harness.sessions)
   const pinned = new Map<string, PinnedSkill>()
   const rowOf = new Map<string, SkillUsageRow>()
   for (const row of rows) {
@@ -182,17 +218,23 @@ export async function proposeCandidates(
 
   for (const skill of [...pinned.values()].slice(0, MAX_SKILL_CANDIDATES)) {
     const row = rowOf.get(skill.name) as SkillUsageRow
+    const changes = countChanges(
+      sessionsInvoking(input.harness.sessions, skill.name, input.harness.sinceMs),
+      index,
+    )
     candidates.push(
       await candidate('skill', {
         name: skill.name,
         summary: `Mount ${skill.name} from ${skill.repository}@${skill.commit.slice(0, 12)}`,
         evidence: [
-          `${row.invocations.total} invocations in ${row.sessions} Claude Code sessions`,
+          `${row.invocations.total} invocations in ${row.sessions} sessions: ${invocationsByHarness(input.harness, row)}`,
+          changeEvidence(changes, `invoked ${skill.name}`),
           `pinned to ${skill.repository}@${skill.commit.slice(0, 12)}:${skill.path}`,
         ],
         unitText: skill.content,
         unitDigest: `sha256:${skill.bodySha256}`,
         profile: withSkills(input.base, [mounted(skill)]),
+        changes,
       }),
     )
   }
@@ -207,6 +249,13 @@ export async function proposeCandidates(
     skipped.push('workflow: no two pinnable skills ran in the same order in two or more sessions')
   } else {
     const text = workflowSkill(pair.first, pair.second, pair.sessions)
+    const changes = countChanges(pair.records, index)
+    const byHarness = [...new Set(pair.records.map((session) => session.harness))]
+      .map(
+        (name) =>
+          `${pair.records.filter((session) => session.harness === name).length} ${harnessName(name)}`,
+      )
+      .join(', ')
     const components = [pair.first, pair.second].flatMap((name) => {
       const skill = pinned.get(name)
       return skill === undefined ? [] : [mounted(skill)]
@@ -215,13 +264,17 @@ export async function proposeCandidates(
       await candidate('workflow', {
         name: `${pair.first}-then-${pair.second}`,
         summary: `Compose ${pair.first} then ${pair.second} into one workflow skill`,
-        evidence: [`${pair.sessions} Claude Code sessions ran ${pair.first} before ${pair.second}`],
+        evidence: [
+          `${pair.sessions} sessions ran ${pair.first} before ${pair.second}: ${byHarness}`,
+          changeEvidence(changes, `ran ${pair.first} before ${pair.second}`),
+        ],
         unitText: text,
         unitDigest: `sha256:${sha256Hex(text)}`,
         profile: withSkills(input.base, [
           ...components,
           { skill: { kind: 'inline', name: `${pair.first}-then-${pair.second}`, content: text } },
         ]),
+        changes,
       }),
     )
   }
@@ -237,6 +290,7 @@ export async function proposeCandidates(
         unitText: text,
         unitDigest: `sha256:${sha256Hex(text)}`,
         profile: draft.profile as AgentProfile,
+        changes: null,
       }),
     )
   } else {
@@ -252,6 +306,7 @@ export async function proposeCandidates(
         unitText: skill.content,
         unitDigest: `sha256:${sha256Hex(skill.content)}`,
         profile: withoutSkill(input.base, skill.name),
+        changes: null,
       }),
     )
   }

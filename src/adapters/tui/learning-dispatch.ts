@@ -1,9 +1,12 @@
 import type { BraidApplication } from '../../app/application.js'
 import { AppError } from '../../app/errors.js'
 import type { LearningActions } from '../../app/learning/learning-actions.js'
+import { harnessName } from '../../app/learning/learning-sources.js'
 import type {
   CandidateMeasurement,
+  ChangeOutcomeCounts,
   LearningConfiguration,
+  LearningSourceSummary,
   LearningStatus,
 } from '../../app/learning/learning-types.js'
 import type { BraidIntent, UiDispatchResult } from '../../views/shared/intents.js'
@@ -57,26 +60,44 @@ function measurementLines(result: CandidateMeasurement): string[] {
   ]
 }
 
+function plural(count: number, one: string, many = `${one}s`): string {
+  return `${count} ${count === 1 ? one : many}`
+}
+
+function changeCounts(counts: ChangeOutcomeCounts): string {
+  return `${counts.changed} made a change, ${counts.none} made none, ${counts.unknown} unknown`
+}
+
+/** Each harness read, what its sessions came to, and what the change ledger joined. */
+function sourceLines(sources: LearningSourceSummary): string[] {
+  const ledger = sources.changeLedger
+  return [
+    `Braid: ${sources.braid.runs} runs, ${sources.braid.feedback} feedback decisions, ${sources.braid.lessons} with a reason`,
+    ...(sources.harnesses.length === 0
+      ? ['Other harnesses: none read']
+      : sources.harnesses.flatMap((source) => [
+          `${harnessName(source.harness)}: ${plural(source.sessions, 'session')}, ${plural(source.skillInvocations, 'skill invocation')}, ${plural(source.unreadable, 'unreadable file')}`,
+          `${harnessName(source.harness)} changes: ${changeCounts(source.changes)}`,
+        ])),
+    ledger === null
+      ? 'Change ledger: no ledger file, so only pull requests a transcript prints are known'
+      : `Change ledger: ${plural(ledger.rows, 'row')}, joined to ${plural(ledger.joinedSessions, 'session')}${ledger.malformed === 0 ? '' : `; ${plural(ledger.malformed, 'line')} not a row`}`,
+  ]
+}
+
 /** The learning panel: sources, tasks, candidates with their measurement, versions and the served run. */
 export function learningDocument(status: LearningStatus, notice?: string): EntityBrowserDocument {
   const rows: EntityBrowserRow[] = []
   const proposal = status.proposal
   if (proposal !== null) {
-    const harnesses = proposal.sources.harnesses
-      .map(
-        (source) =>
-          `${source.harness} ${source.sessions} sessions, ${source.skillInvocations} skill invocations`,
-      )
-      .join('; ')
     rows.push({
       id: 'sources',
       kind: 'sources',
       title: 'Sources',
       status: 'read',
-      meta: `last ${proposal.sources.sinceDays} days · ${proposal.sources.harnesses.length + 1} harnesses`,
+      meta: `last ${proposal.sources.sinceDays} days · ${proposal.sources.harnesses.length + 1} harnesses${proposal.sources.changeLedger === null ? '' : ' · change ledger'}`,
       detailLines: [
-        `Braid: ${proposal.sources.braid.runs} runs, ${proposal.sources.braid.feedback} feedback decisions, ${proposal.sources.braid.lessons} with a reason`,
-        `Other harnesses: ${harnesses === '' ? 'none read' : harnesses}`,
+        ...sourceLines(proposal.sources),
         ...proposal.skipped.map((reason) => `Skipped: ${reason}`),
       ],
     })
