@@ -1,0 +1,223 @@
+{
+  "sourceCommit": "fc6eda3771d2339f3e377bf66019dd6667f045bf",
+  "generatedAt": "2026-11-26T19:57:01.543Z",
+  "command": "node artifacts/verification/learn/raw/capture.mjs <repository> <output>",
+  "binary": "clean npm install from the locally packed tarball",
+  "tarball": "tangle-network-braid-0.3.8.tgz",
+  "tarballSha256": "02bbbccd6b82e8ddf536095bd305ba02e9fba10e9d507c2a97ccb9608bcf0f39",
+  "provenance": {
+    "renderer": {
+      "package": "@earendil-works/pi-tui@1.1.0",
+      "pty": "node-pty@1.1.0-beta34",
+      "emulator": "@xterm/headless@6.0.0",
+      "node": "v24.22.1",
+      "terminal": "xterm-256color"
+    },
+    "raster": {
+      "agg": "unavailable: spawn agg ENOENT",
+      "imagemagick": "unavailable: spawn convert ENOENT",
+      "fontFamily": "DejaVu Sans Mono",
+      "font": "DejaVu Sans Mono | Book | /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+      "colorMode": "sRGB 8-bit"
+    }
+  },
+  "fixture": "offline --ui-fixture learning agent and invented sessions; no live provider integration claim",
+  "measurement": {
+    "tasks": 12,
+    "families": [
+      "cleanup",
+      "reading"
+    ],
+    "selected": "skill-84adc75da1",
+    "results": [
+      {
+        "kind": "skill",
+        "name": "audit",
+        "decision": "inconclusive",
+        "wins": 0,
+        "losses": 0,
+        "ties": 12,
+        "candidatePassed": "6/12",
+        "activePassed": "6/12",
+        "loadedTokens": {
+          "candidate": 34,
+          "active": 13
+        },
+        "promotable": false,
+        "gate": "the skill eval is inconclusive"
+      },
+      {
+        "kind": "skill",
+        "name": "tidy",
+        "decision": "keep",
+        "wins": 6,
+        "losses": 0,
+        "ties": 6,
+        "candidatePassed": "12/12",
+        "activePassed": "6/12",
+        "loadedTokens": {
+          "candidate": 33,
+          "active": 13
+        },
+        "promotable": true,
+        "gate": "kept by the skill eval; worst family cleanup 6/6 against cleanup 0/6; 20 more loaded tokens"
+      },
+      {
+        "kind": "workflow",
+        "name": "tidy-then-audit",
+        "decision": "keep",
+        "wins": 6,
+        "losses": 0,
+        "ties": 6,
+        "candidatePassed": "12/12",
+        "activePassed": "6/12",
+        "loadedTokens": {
+          "candidate": 137,
+          "active": 13
+        },
+        "promotable": true,
+        "gate": "kept by the skill eval; worst family cleanup 6/6 against cleanup 0/6; 124 more loaded tokens"
+      },
+      {
+        "kind": "removal",
+        "name": "legacy-notes",
+        "decision": "inconclusive",
+        "wins": 0,
+        "losses": 0,
+        "ties": 12,
+        "candidatePassed": "6/12",
+        "activePassed": "6/12",
+        "loadedTokens": {
+          "candidate": 6,
+          "active": 13
+        },
+        "promotable": true,
+        "gate": "success holds (worst family cleanup 0/6 against cleanup 0/6) at 6 loaded tokens against 13"
+      }
+    ]
+  },
+  "served": {
+    "version": "learn.2",
+    "runner": "codex"
+  },
+  "versions": [
+    {
+      "action": "promote",
+      "version": "learn.1"
+    },
+    {
+      "action": "rollback",
+      "version": "unversioned"
+    },
+    {
+      "action": "promote",
+      "version": "learn.2"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "120x40-task.txt",
+      "sha256": "414d70db95894858eca94d1c98b58c625347d8ae3256ad87996891e2d28910ae",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "120x40-proposed.txt",
+      "sha256": "52699c4f3f9690e85c70f987f824de2b8441ed29eb9e377c50d7b9cbeb97abb5",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "120x40-measured.txt",
+      "sha256": "6cab81dcb793798c9a4b208955714f0f8aae8e675423c25d6ffe08177e9083b1",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "120x40-removal.txt",
+      "sha256": "d39f4357064e0c216c768adbf53f5c37eebc5de1ddde29c87069a2f95209ba9e",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "120x40-workflow.txt",
+      "sha256": "0e80910205650a46a8347dfc622c9bceffeee01d49b37199f75ed9451a737832",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "120x40-skill.txt",
+      "sha256": "c56c23682f1d641c0ba6ccda5c2160bea52f8b59eef870c432422af3770f6ce6",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "120x40-ignored-skill.txt",
+      "sha256": "d438bbf086191a041ef1ce5ffe6e0304d2d8e420939df0d697a1cd4353e5372c",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "120x40-promoted.txt",
+      "sha256": "46e72b9c07ca6399017103b8f5668fdcadbf039497f7230385589d67f2b84dc4",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "120x40-rolled-back.txt",
+      "sha256": "de49900ec14def2c5ee4fb4c864f9add2d12819c82892c03e92f59fff24ee3b3",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "120x40-served.txt",
+      "sha256": "234367cfd551a104f0c25ab23fcce20acf460b81404a9d9bd14db3cad7a3ba7c",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "raw/learn-keyboard.cast",
+      "sha256": "e48238b38f4b4d1e79d3d80940bc41bcd58441703afbc8e459885ea1f3c7a08b"
+    },
+    {
+      "path": "40x12-panel.txt",
+      "sha256": "30b052ad0eec7b6ca035e7923af6b6f22b4f606cce845dabe2c54a9e47a55066",
+      "columns": 40,
+      "rows": 12
+    },
+    {
+      "path": "raw/40x12-panel.cast",
+      "sha256": "2e1ee174b274982e0676e407d9464044beeeed5757b4b27f588261d9615ddcaa"
+    },
+    {
+      "path": "80x24-panel.txt",
+      "sha256": "2263e72e51ac9dcbdf95b172fb2c88ce9475b17a8329e8183c6aecaf1b6c235d",
+      "columns": 80,
+      "rows": 24
+    },
+    {
+      "path": "raw/80x24-panel.cast",
+      "sha256": "dcd0c29794adacb5edd67de20902882d7ffcfd40df39e5b58525a7419e844c7f"
+    },
+    {
+      "path": "120x40-panel.txt",
+      "sha256": "1bad877f3904fde8b26ea6220590c65f896de58f047a8dd89aa32ec4615fde68",
+      "columns": 120,
+      "rows": 40
+    },
+    {
+      "path": "raw/120x40-panel.cast",
+      "sha256": "19769374ee4749a6d43df2971463fe2eb9cfa78a2311d3313859c5f0b5868c7e"
+    },
+    {
+      "path": "200x60-panel.txt",
+      "sha256": "c521ad771f7d8642ed0365c99d61a77d6bce7a9fa67f8dce751a88ef6e0322d1",
+      "columns": 200,
+      "rows": 60
+    },
+    {
+      "path": "raw/200x60-panel.cast",
+      "sha256": "f2233f55cfb486707b3d51697d33b09f75b534c067afbaff595c0ed8f863e3aa"
+    }
+  ]
+}

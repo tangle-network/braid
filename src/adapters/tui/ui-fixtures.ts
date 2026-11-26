@@ -23,6 +23,7 @@ export type UiFixture =
   | 'native-children'
   | 'cancellation-unavailable'
   | 'profile-handoff'
+  | 'learning'
 
 export const FIXTURE_INTERACTION: InteractionView = Object.freeze({
   runId: 'fixture-run-1',

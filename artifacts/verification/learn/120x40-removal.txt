@@ -1,0 +1,40 @@
+ Learning › legacy-notes                                         12 held-out tasks · 4 candidates · active base profile 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ! Measured. skill-84adc75da1 passed the gate: /learn promote                                                           
+   · Sources · sources · last 30 days ·…│ Remove legacy-notes                                                           
+   · task-852252b6f041 · task · replays…│ Candidate: removal-0acc22d6a7                                                 
+   · task-cf60979ae874 · task · replays…│ Procedure version:                                                            
+   · task-450e6797c238 · task · replays…│ sha256:943e3c8e0ef49be665f10d1923e2cc76ec446bdb6df8a870d1223ea08251d46e       
+   · task-d075cf9998c0 · task · replays…│ Evidence: the profile carries it; removal is kept only if success holds       
+   · task-89d94adf1e51 · task · replays…│ Skill eval: inconclusive. The net preference for `with` is -24.2% to 24.2% (0 
+   · task-5833b7206123 · task · replays…│ to 0, 12 ties): it includes both no preference and a gain of 10%. More cases  
+   · task-710254b6e432 · task · replays…│ would narrow it.                                                              
+   · task-b2fffdf84801 · task · replays…│ Headroom: separable: the arm without the unit passes 6 of 12 known            
+   · task-d03a99333591 · task · replays…│ Blind judge: 0 wins, 0 losses, 12 ties, 0 not judged                          
+   · task-2ec453e5d2d6 · task · replays…│ Pass: candidate 6/12 (50%) · active 6/12 (50%)                                
+   · task-bb56a8dff9fe · task · replays…│ Worst family: candidate cleanup 0/6 (0%) · active cleanup 0/6 (0%)            
+   · task-1085a2c54878 · task · replays…│ Loaded tokens (estimated): candidate 6 · active 13                            
+   · audit · skill · 34 tokens          │ Gate: promotable. success holds (worst family cleanup 0/6 against cleanup 0/6)
+   · tidy · skill · current · 33 tokens │ at 6 loaded tokens against 13                                                 
+   · tidy-then-audit · workflow · 137 t…│ Rule: Compression: promote only when worst-family success holds or rises at   
+ › · legacy-notes · removal · 6 tokens  │ equal or fewer loaded tokens, and the skill eval does not keep what was       
+                                        │ removed.                                                                      
+                                        │ Ledger:                                                                       
+                                        │ /tmp/braid-learn-EoW8rY/learn/searches/measure-a249ca9c-59b2-4690-9db5-ba04cda
+                                        │ 35b8a/ledger.jsonl                                                            
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+                                        │                                                                               
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ↑↓ select · PgUp/PgDn detail · home/end jump · ←/esc close                                                             
