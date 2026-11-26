@@ -12,7 +12,8 @@ export const LEARNING_FIXTURE_PROFILE: Readonly<AgentProfile> = defineAgentProfi
   name: 'Learning walkthrough',
   description: 'An invented profile for the offline learning walkthrough',
   harness: 'pi',
-  model: { default: 'fixture/learning', provider: 'fixture' },
+  // The deterministic fixture model, so the walkthrough can send without a connection.
+  model: { default: 'fixture/deterministic', provider: 'fixture' },
   prompt: { instructions: ['Keep public behavior.'] },
   resources: {
     skills: [{ kind: 'inline', name: 'legacy-notes', content: '# Legacy notes\n\nNothing here.' }],

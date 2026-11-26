@@ -253,7 +253,7 @@ try {
   const record = join(invented.root, 'state.json')
   const flow = session(packed.binary, invented, 120, 40, record)
   try {
-    await flow.wait((text) => /braid/iu.test(text), 'ready')
+    await flow.wait((text) => text.includes('type / for commands'), 'ready')
     await flow.settled()
     const tidy = ['node', join(invented.root, 'checks', 'tidy.mjs')].join(' ')
     const answered = ['node', join(invented.root, 'checks', 'answered.mjs')].join(' ')
@@ -333,7 +333,7 @@ try {
   ]) {
     const panel = session(packed.binary, invented, columns, rows)
     try {
-      await panel.wait((text) => text.trim().length > 0, 'ready')
+      await panel.wait((text) => text.includes('/ for commands'), 'ready')
       await panel.settled()
       await panel.command('/learn')
       await panel.wait((text) => /Learning/u.test(text), 'panel')
