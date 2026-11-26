@@ -302,7 +302,7 @@ export function prepareReleaseSandboxWorkspace(options) {
   }
   return prepareProductionWorkspace({
     ...options,
-    providerOptions: { ...releaseProofRouting(runner), ...options.providerOptions },
+    providerOptions: { ...releaseProofRouting(runner, model), ...options.providerOptions },
   })
 }
 

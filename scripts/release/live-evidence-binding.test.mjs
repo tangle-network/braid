@@ -1,5 +1,7 @@
 import { strict as assert } from 'node:assert'
+import { spawn } from 'node:child_process'
 import { createServer } from 'node:http'
+import { tmpdir } from 'node:os'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import {
@@ -9,6 +11,12 @@ import {
   tangleReceiptsArtifact,
 } from '../live-required/contracts.mjs'
 import { prepareReleaseSandboxWorkspace, resolveBinary } from '../live-required/headless.mjs'
+import {
+  RELEASE_SANDBOX_MODEL_ID,
+  SYNTHETIC_ROUTER_MODEL_ID,
+  SYNTHETIC_ROUTER_PROVIDER,
+  SYNTHETIC_USAGE,
+} from '../live-required/model-defaults.mjs'
 import { runInference } from '../live-required/tangle.mjs'
 import { runtimeModuleRoot } from '../live-required/tangle-workspace-proof.mjs'
 import {
@@ -16,6 +24,7 @@ import {
   liveEvidenceBinding,
   serializedLiveEvidenceBinding,
 } from './live-evidence-binding.mjs'
+import { RELEASE_LIVE_CONFIG, releaseCredentialsJson } from './live-config.mjs'
 import { assertTangleReceipts } from './live-tangle-proof.mjs'
 
 const repository = fileURLToPath(new URL('../../', import.meta.url))
@@ -161,6 +170,181 @@ test('LIVE-06 runs its exact selected Router route and rejects unpriced or subst
   const paid = structuredClone(free.evidence)
   paid.observations.completion.billedUsd = 0.01
   assert.throws(() => assertProofReceipt(paid), /reported charge/u)
+})
+
+test('LIVE-06 on the synthetic Router model reports its scripted usage, pins no provider and is cancelled', async (t) => {
+  const model = SYNTHETIC_ROUTER_MODEL_ID
+  const paths = []
+  const posts = []
+  // Answers as tangle-router's canary-echo does: the last user message that scripts a reply or
+  // usage decides the answer, and a message without one gets the no-instruction text.
+  const server = createServer(async (request, response) => {
+    paths.push(request.url)
+    if (request.headers.authorization !== 'Bearer release-test-key') {
+      response.writeHead(401).end()
+      return
+    }
+    if (request.url !== '/v1/chat/completions') {
+      response.writeHead(404).end()
+      return
+    }
+    let body = ''
+    for await (const bytes of request) body += bytes
+    const parsed = JSON.parse(body)
+    posts.push(parsed)
+    const text = (parsed.messages ?? [])
+      .filter((message) => message.role === 'user')
+      .map((message) =>
+        typeof message.content === 'string'
+          ? message.content
+          : message.content.map((part) => part.text ?? '').join(''),
+      )
+      .at(-1)
+    const reply =
+      /reply with exactly\s*(\S+?)\.?$/imu.exec(text)?.[1] ??
+      `No "Reply with exactly <text>" instruction reached ${model}.`
+    const scripted = /report usage (\d+) (\d+)/iu.exec(text)
+    const prompt = Number(scripted?.[1] ?? 0)
+    const completion = Number(scripted?.[2] ?? 0)
+    const usage = {
+      prompt_tokens: prompt,
+      completion_tokens: completion,
+      total_tokens: prompt + completion,
+      cost: 0,
+    }
+    // The canary answers at once, the cancel turn included, so the cancellation races a real answer.
+    response.setHeader('content-type', 'text/event-stream')
+    response.write(
+      `data: ${JSON.stringify({ model, choices: [{ index: 0, delta: { content: reply } }] })}\n\n`,
+    )
+    response.end(
+      `data: ${JSON.stringify({ model, choices: [{ index: 0, delta: {}, finish_reason: 'stop' }], usage })}\n\ndata: [DONE]\n\n`,
+    )
+  })
+  await new Promise((resolve, reject) =>
+    server.once('error', reject).listen(0, '127.0.0.1', resolve),
+  )
+  t.after(
+    () =>
+      new Promise((resolve) => {
+        server.close(resolve)
+        server.closeAllConnections()
+      }),
+  )
+  const binary = await resolveBinary(repository, {})
+  const environment = {
+    ...RELEASE_LIVE_CONFIG,
+    BRAID_TANGLE_ENDPOINT: `http://127.0.0.1:${server.address().port}/v1`,
+    BRAID_TANGLE_API_KEY: 'release-test-key',
+  }
+  const result = await runInference({
+    repository,
+    binary,
+    environment,
+    invocationId: 'live-required-synthetic-route',
+  })
+  const { router, completion } = result.evidence.observations
+  assert.deepEqual(router, {
+    model,
+    provider: SYNTHETIC_ROUTER_PROVIDER,
+    synthetic: true,
+    streamRequested: true,
+  })
+  assert.equal(completion.model, model)
+  assert.equal(completion.input, SYNTHETIC_USAGE.input)
+  assert.equal(completion.output, SYNTHETIC_USAGE.output)
+  assert.equal(result.evidence.facts.cancellationStatus, 'confirmed')
+  assert.ok(result.evidence.checks.includes('cancelled-turn'))
+  assert.ok(!paths.includes('/v1/models'), 'the synthetic route reads no price card')
+  assert.ok(posts.length >= 2)
+  for (const request of posts) {
+    assert.equal(request.model, model)
+    assert.equal(request.stream, true)
+    assert.equal(request.providerOptions?.gateway, undefined)
+  }
+  assertProofReceipt(result.evidence)
+  for (const [mutate, pattern] of [
+    [(evidence) => (evidence.observations.completion.output += 1), /scripted usage/u],
+    [(evidence) => (evidence.observations.completion.input = 17), /scripted usage/u],
+    [(evidence) => (evidence.observations.completion.billedUsd = 0.01), /no charge/u],
+    [(evidence) => (evidence.observations.router.provider = 'zai'), /synthetic model/u],
+    [(evidence) => (evidence.observations.router.streamRequested = false), /synthetic model/u],
+  ]) {
+    const changed = structuredClone(result.evidence)
+    mutate(changed)
+    assert.throws(() => assertProofReceipt(changed), pattern)
+  }
+})
+
+test('the release Sandbox connection pins the Fireworks GLM host and the collector takes only the two keys', async () => {
+  const model = RELEASE_LIVE_CONFIG.BRAID_TANGLE_SANDBOX_MODEL
+  assert.equal(model, `tangle-router/${RELEASE_SANDBOX_MODEL_ID}`)
+  const config = await prepareReleaseSandboxWorkspace({
+    repository,
+    environment: {},
+    kind: 'tangle-sandbox',
+    endpoint: 'https://sandbox.example',
+    runner: RELEASE_LIVE_CONFIG.BRAID_TANGLE_SANDBOX_RUNNER,
+    model,
+    modelProvider: 'tangle-router',
+    providerOptions: { lifecycle: 'retained' },
+  })
+  try {
+    const { loadProductionStartup } = await import('../../dist/bin/production-startup.js')
+    const startup = await loadProductionStartup({
+      workspace: config.workspace,
+      configPath: config.configPath,
+      databaseKeyFile: config.databaseKeyFile,
+      dataDirectory: config.dataDirectory,
+    })
+    const connection = startup.connections.find(
+      (candidate) => candidate.id === startup.connectionId,
+    )
+    assert.deepEqual(connection.providerOptions.routing, {
+      only: ['fireworks'],
+      allowFallbacks: false,
+      requireModel: true,
+    })
+    assert.equal(startup.profile.model.default, model)
+  } finally {
+    await config.cleanup()
+  }
+
+  const collect = (secret) =>
+    new Promise((resolve) => {
+      const child = spawn(
+        process.execPath,
+        [
+          'scripts/release/collect-live-evidence.mjs',
+          '--artifact-root',
+          tmpdir(),
+          '--tarball',
+          'absent.tgz',
+          '--checks',
+          'LIVE-06',
+        ],
+        { cwd: repository, env: { PATH: process.env.PATH, BRAID_LIVE_TANGLE_ENV_JSON: secret } },
+      )
+      let output = ''
+      child.stdout.on('data', (chunk) => (output += chunk))
+      child.stderr.on('data', (chunk) => (output += chunk))
+      child.on('close', (code) => resolve({ code, output }))
+    })
+  for (const secret of [
+    '{"BRAID_TANGLE_API_KEY":"a"}',
+    '{"BRAID_TANGLE_API_KEY":"a","TANGLE_API_KEY":"b","BRAID_TANGLE_SANDBOX_MODEL":"glm-5.3"}',
+    '{"BRAID_TANGLE_API_KEY":"a","TANGLE_API_KEY":""}',
+    '["a","b"]',
+  ]) {
+    const refused = await collect(secret)
+    assert.notEqual(refused.code, 0)
+    assert.match(refused.output, /release credential/u)
+  }
+  const accepted = await collect(
+    releaseCredentialsJson({ router: 'router-test-key', sandbox: 'sandbox-test-key' }),
+  )
+  assert.notEqual(accepted.code, 0, 'an absent candidate still fails collection')
+  assert.doesNotMatch(accepted.output, /release credential/u)
 })
 
 test('protected Sandbox profiles retain each native harness and put only the stored plan reference on its connection', async () => {

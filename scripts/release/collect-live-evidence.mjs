@@ -2,14 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
 import { collectReleaseEvidence } from './collector.mjs'
-
-const PROCESS_INJECTION_NAMES = new Set([
-  'BASH_ENV',
-  'ENV',
-  'LD_PRELOAD',
-  'NODE_OPTIONS',
-  'NODE_PATH',
-])
+import { RELEASE_LIVE_CONFIG, releaseCredentials } from './live-config.mjs'
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
@@ -35,27 +28,12 @@ assert(tarballPath, '--tarball is required')
 assert(checks, '--checks is required')
 assert(protectedEnvironment, 'BRAID_LIVE_TANGLE_ENV_JSON is required')
 
-let parsedEnvironment
-try {
-  parsedEnvironment = JSON.parse(protectedEnvironment)
-} catch (error) {
-  throw new Error('BRAID_LIVE_TANGLE_ENV_JSON is not valid JSON', { cause: error })
-}
-assert(
-  parsedEnvironment && typeof parsedEnvironment === 'object' && !Array.isArray(parsedEnvironment),
-  'BRAID_LIVE_TANGLE_ENV_JSON must contain an object',
-)
-for (const [name, value] of Object.entries(parsedEnvironment)) {
-  assert(/^[A-Z][A-Z0-9_]*$/u.test(name), `Protected live environment name is invalid: ${name}`)
-  assert(
-    !PROCESS_INJECTION_NAMES.has(name),
-    `Protected live environment name is not allowed: ${name}`,
-  )
-  assert(typeof value === 'string', `Protected live environment ${name} is not text`)
-}
+// The secret holds only the two keys; every public value comes from the committed configuration.
+const credentials = releaseCredentials(protectedEnvironment)
 const environment = {
   ...process.env,
-  ...parsedEnvironment,
+  ...RELEASE_LIVE_CONFIG,
+  ...credentials,
   BRAID_PROTECTED_OVERLAP: process.env.BRAID_PROTECTED_OVERLAP ?? 'off',
   BRAID_PROTECTED_COUNTERS: process.env.BRAID_PROTECTED_COUNTERS ?? '0',
   BRAID_PROTECTED_ROLLOUT: process.env.BRAID_PROTECTED_ROLLOUT ?? 'internal',
