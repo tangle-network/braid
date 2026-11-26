@@ -1,4 +1,9 @@
-import { directProofRouting } from './model-defaults.mjs'
+import {
+  directProofRouting,
+  isSyntheticRouterModel,
+  SYNTHETIC_ROUTER_PROVIDER,
+  SYNTHETIC_USAGE,
+} from './model-defaults.mjs'
 
 const TOKEN_PRICES = ['prompt', 'completion', 'input_cache_read', 'input_cache_write']
 
@@ -8,6 +13,16 @@ function explicitZero(rate) {
 }
 
 export function assertDirectProofRoute(model, route) {
+  if (isSyntheticRouterModel(model)) {
+    if (
+      route?.model !== model ||
+      route.provider !== SYNTHETIC_ROUTER_PROVIDER ||
+      route.synthetic !== true ||
+      route.streamRequested !== true
+    )
+      throw new Error('Synthetic Router proof must stream the exact synthetic model')
+    return
+  }
   const { routing } = directProofRouting(model)
   if (
     route?.model !== model ||
@@ -41,11 +56,24 @@ export function validatePassedTangleInferenceReceipt(receipt) {
   const router = receipt.observations?.router
   if (
     router !== undefined ||
-    (typeof model === 'string' && directProofRouting(model).routing.only[0] === 'openrouter')
+    isSyntheticRouterModel(model) ||
+    (typeof model === 'string' && directProofRouting(model).routing?.only[0] === 'openrouter')
   ) {
     assertDirectProofRoute(model, router)
     const completion = receipt.observations.completion
-    if (
+    if (router.synthetic === true) {
+      // The synthetic answer reports exactly the usage its prompt scripted, and costs nothing.
+      if (
+        completion?.runId !== facts.normalRunId ||
+        completion.model !== model ||
+        completion.input !== SYNTHETIC_USAGE.input ||
+        completion.output !== SYNTHETIC_USAGE.output ||
+        (completion.billedUsd !== null && completion.billedUsd !== 0)
+      )
+        throw new Error(
+          'Synthetic Router completion needs the exact model, the scripted usage and no charge',
+        )
+    } else if (
       completion?.runId !== facts.normalRunId ||
       completion.model !== model ||
       !Number.isSafeInteger(completion.input) ||

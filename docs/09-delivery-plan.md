@@ -484,6 +484,10 @@ With `--pr`, the command runs these steps in order and stops at the first failur
 `--commit` runs step 5 only.
 The router and Sandbox keys are read on the Beelink from `router.key` and `sandbox.key` in `--key-dir` (default `~/.braid-live`).
 Preflight refuses a key file that is not mode `600`.
+With `--keys-from <dir>`, the operator passes keys minted for this release: the minter writes `router.key` and `sandbox.key` there with `--key-file`.
+Before anything runs, the command installs both on the Beelink through `ssh` standard input and sets the `release-live` secret to exactly the two keys.
+A dry run checks the folder and installs nothing.
+When the account observation is refused with 401, preflight says the Sandbox key expired or was revoked.
 Key values are never printed, and every line the command prints or posts is redacted.
 Progress, run logs, PR comment bodies, and the final line live in `~/.local/state/braid-live-release/<sha>/`.
 The PR head must already contain the script, because each live run executes `live-release.mjs live-run <n>` inside its gate checkout.

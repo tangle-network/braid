@@ -3,6 +3,7 @@
 //
 //   node scripts/release/live-release.mjs --pr <n> [--runs 3] [--host beelink1] [--gh gh-drew] [--dry-run]
 //   node scripts/release/live-release.mjs --commit <main-sha> [--host beelink1] [--gh gh-drew] [--dry-run]
+//   add --keys-from <dir> to install keys minted for this release before anything runs
 //
 // With --pr: full code gate at the PR head on the pinned Beelink, then --runs consecutive LIVE-07 runs, each
 // started only once the shared Sandbox account has settled; results go to the PR as comments. At N/N with an
@@ -14,11 +15,14 @@
 //   observe          one account observation using the installed Sandbox SDK; exit 0 when settled
 //   live-run <n>     one live-tangle run in a beelink-gate checkout; exit 0 only when the LIVE-07 row passed
 // Credential values are read from owner-only files in --key-dir on the Beelink and never printed.
+// With --keys-from, the operator's freshly minted router.key and sandbox.key replace those files
+// and the release-live secret first, so a release never depends on keys placed by hand earlier.
 
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { RELEASE_CREDENTIALS, RELEASE_LIVE_CONFIG, releaseCredentialsJson } from './live-config.mjs'
 
 const REPO = 'tangle-network/braid'
 const REPO_URL = `git@github.com:${REPO}.git`
@@ -33,24 +37,6 @@ const CODE_GATE = [
   'pnpm test',
   'pnpm run test:property',
 ].join('; ')
-// The protected live configuration; the environment overrides each value.
-const LIVE_CONFIG = {
-  BRAID_TANGLE_ENDPOINT: 'https://router.tangle.tools/v1',
-  BRAID_TANGLE_SANDBOX_ENDPOINT: 'https://sandbox.tangle.tools',
-  BRAID_TANGLE_SANDBOX_RUNNER: 'opencode',
-}
-
-// Model defaults belong to the proof and each can be overridden independently.
-async function liveModels() {
-  const { DEFAULT_TANGLE_ROUTER_MODEL, DEFAULT_TANGLE_ROUTER_MODEL_ID } = await import(
-    new URL('../live-required/model-defaults.mjs', import.meta.url).href
-  )
-  return {
-    BRAID_TANGLE_MODEL: DEFAULT_TANGLE_ROUTER_MODEL_ID,
-    BRAID_TANGLE_SANDBOX_MODEL: DEFAULT_TANGLE_ROUTER_MODEL,
-  }
-}
-
 // A gate starts its own process environment. Forward only explicitly chosen public
 // selectors. The two release keys always come from their existing files on the host.
 async function operatorModelArguments(environment) {
@@ -111,6 +97,7 @@ function parseArgs(argv) {
     else if (flag === '--ssh') o.ssh = value()
     else if (flag === '--gh') o.gh = value()
     else if (flag === '--key-dir') o.keyDir = value()
+    else if (flag === '--keys-from') o.keysFrom = value()
     else if (flag === '--hours') o.hours = Number(value())
     else if (flag === '--dry-run') o.dryRun = true
     else fail(`unknown option ${flag}`)
@@ -159,8 +146,18 @@ async function observe(keyDir) {
   const { createHash } = await import('node:crypto')
   const { Sandbox } = await import('@tangle-network/sandbox')
   const apiKey = fs.readFileSync(path.join(home(keyDir), KEY_FILES.sandbox), 'utf8').trim()
-  const client = new Sandbox({ baseUrl: LIVE_CONFIG.BRAID_TANGLE_SANDBOX_ENDPOINT, apiKey })
-  const live = await client.list({ status: ['pending', 'provisioning', 'running'] })
+  const client = new Sandbox({ baseUrl: RELEASE_LIVE_CONFIG.BRAID_TANGLE_SANDBOX_ENDPOINT, apiKey })
+  let live
+  try {
+    live = await client.list({ status: ['pending', 'provisioning', 'running'] })
+  } catch (error) {
+    // One line the driver can read: an expired or revoked key is status 401.
+    const status = error?.status ?? error?.statusCode ?? error?.code ?? 'unknown'
+    console.log(
+      `OBSERVATION_FAILED status=${status} ${error?.name ?? 'Error'}: ${redact(error?.message)}`,
+    )
+    process.exit(2)
+  }
   const created = (box) => new Date(box.createdAt).getTime()
   const newest = Math.max(0, ...live.map(created))
   const ageMin = newest === 0 ? Number.POSITIVE_INFINITY : (Date.now() - newest) / MINUTE
@@ -267,13 +264,12 @@ async function liveRun(n, keyDir) {
   fs.rmSync(receipts, { force: true })
   const key = (name) => fs.readFileSync(path.join(dir, name), 'utf8').trim()
   const env = {
-    ...LIVE_CONFIG,
-    ...(await liveModels()),
+    ...RELEASE_LIVE_CONFIG,
     ...process.env,
     BRAID_LIVE_TANGLE_RECEIPTS: receipts,
   }
-  env.BRAID_TANGLE_API_KEY = key(KEY_FILES.router)
-  env.TANGLE_API_KEY = key(KEY_FILES.sandbox)
+  env[RELEASE_CREDENTIALS.router] = key(KEY_FILES.router)
+  env[RELEASE_CREDENTIALS.sandbox] = key(KEY_FILES.sandbox)
   const start = Date.now()
   const code = await new Promise((resolve) => {
     const out = fs.openSync(logFile, 'w')
@@ -367,9 +363,9 @@ class Driver {
     const lines = result.out.trim().split('\n')
     const observed = lines.findLast((line) => /^(?:SETTLED|BUSY) ids=/.test(line))
     if (observed && result.code === (observed.startsWith('SETTLED') ? 0 : 1)) return observed
-    const reason = lines.find((line) =>
-      /^(?:Error|TypeError|Error \[)|^beelink-gate: .*unavailable/i.test(line),
-    )
+    const reason =
+      lines.find((line) => line.startsWith('OBSERVATION_FAILED ')) ??
+      lines.find((line) => /^(?:Error|TypeError|Error \[)|^beelink-gate: .*unavailable/i.test(line))
     return `account observation failed (exit ${result.code}): ${reason ?? lines.at(-1)}`
   }
 
@@ -484,6 +480,57 @@ class Driver {
       .catch(() => false)
   }
 
+  // The operator's minter writes this release's keys with `--key-file` into one owner-only folder.
+  // They are read from there, never from arguments or the environment, and never printed.
+  readMintedKeys() {
+    const dir = home(this.o.keysFrom)
+    const keys = {}
+    for (const [role, file] of Object.entries(KEY_FILES)) {
+      const source = path.join(dir, file)
+      let stat
+      try {
+        stat = fs.statSync(source)
+      } catch {
+        fail(`--keys-from needs ${source}`)
+      }
+      if ((stat.mode & 0o077) !== 0) fail(`${source} must be owner-only (mode 600)`)
+      keys[role] = fs.readFileSync(source, 'utf8').trim()
+    }
+    return { keys, secret: releaseCredentialsJson(keys) }
+  }
+
+  // Replace the host's key files and the protected secret before any proof or workflow starts.
+  async installKeys() {
+    const { keys, secret } = this.readMintedKeys()
+    for (const [role, file] of Object.entries(KEY_FILES)) {
+      const target = `${this.o.keyDir}/${file}`
+      const r = await run(
+        'ssh',
+        [
+          '-o',
+          'ConnectTimeout=20',
+          '-o',
+          'BatchMode=yes',
+          this.o.ssh,
+          `umask 077 && mkdir -p ${this.o.keyDir} && cat > ${target}.next && chmod 600 ${target}.next && mv ${target}.next ${target}`,
+        ],
+        { input: `${keys[role]}\n` },
+      )
+      if (r.code !== 0)
+        this.finish(
+          `could not install the ${role} key on ${this.o.ssh}: ${r.out.trim().slice(0, 300)}`,
+        )
+    }
+    const r = await run(
+      this.o.gh,
+      ['secret', 'set', 'BRAID_LIVE_TANGLE_ENV_JSON', '--env', 'release-live', '-R', REPO],
+      { input: secret },
+    )
+    if (r.code !== 0)
+      this.finish(`could not set the release-live secret: ${r.out.trim().slice(0, 300)}`)
+    this.log(`installed this release's keys on ${this.o.ssh} and in the release-live secret`)
+  }
+
   async preflight() {
     const files = Object.values(KEY_FILES)
       .map((f) => `${this.o.keyDir}/${f}`)
@@ -502,6 +549,10 @@ class Driver {
     if (r.code !== 0 || r.out.split('\n').some((l) => l && !l.startsWith('600 '))) return false
     const account = await this.observe()
     this.log(`account now: ${account}`)
+    if (/\b401\b|AuthError|Unauthorized/iu.test(account))
+      this.log(
+        "the Sandbox key was refused (expired or revoked): mint this release's keys and pass --keys-from",
+      )
     // A crashed observation prints a stack, not SETTLED or BUSY; every later settle wait would spin on it.
     return /^(SETTLED|BUSY) /.test(account)
   }
@@ -533,12 +584,23 @@ class Driver {
     this.log(`live release for ${target}; host ${o.host} (ssh ${o.ssh}); state ${this.dir}`)
 
     if (o.dryRun) {
+      if (o.keysFrom) {
+        this.readMintedKeys()
+        this.log(
+          `keys in ${o.keysFrom} are owner-only and well formed; a real run installs them first`,
+        )
+      }
       let ok = await this.preflight()
       if (pr && !(await this.hasLiveRun(sha))) {
         this.log(`PR head ${sha} lacks scripts/release/live-release.mjs; merge main into it first`)
         ok = false
       }
       const steps = [
+        ...(o.keysFrom
+          ? [
+              `install router.key and sandbox.key from ${o.keysFrom} on ${o.ssh} (mode 600) and as the release-live secret`,
+            ]
+          : []),
         ...(pr
           ? [
               `code gate: beelink-gate --pin-host ${o.host} ${REPO_URL} ${sha} -- bash -c '<format, lint, typecheck, boundaries, live-required imports, pnpm test, test:property>'`,
@@ -558,6 +620,7 @@ class Driver {
         ok ? 0 : 1,
       )
     }
+    if (o.keysFrom) await this.installKeys()
     if (!(await this.preflight()))
       this.finish('preflight failed: credential files missing or not owner-only')
 
