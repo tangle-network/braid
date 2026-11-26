@@ -23,7 +23,11 @@ import {
   runHeadlessTurn,
   verifyUnavailableCancellation,
 } from './headless.mjs'
-import { directProofRouting } from './model-defaults.mjs'
+import {
+  directProofRouting,
+  isSyntheticRouterModel,
+  syntheticUsageInstruction,
+} from './model-defaults.mjs'
 import { assertMultirunProof } from './multirun-contract.mjs'
 import {
   interactiveFailureMessages,
@@ -291,11 +295,15 @@ export async function runInference({ repository, environment, binary, invocation
   let cancellation
   try {
     const router = await directRouterEvidence(repository, environment, config)
+    const reply = `Reply with exactly ${tokenMarker('TANGLE_INFERENCE')}.`
     normal = await runHeadlessTurn({
       binary,
       config,
       marker: tokenMarker('TANGLE_INFERENCE'),
-      prompt: `Reply with exactly ${tokenMarker('TANGLE_INFERENCE')}.`,
+      // The synthetic model reports the usage this line scripts; the receipt must carry it exactly.
+      prompt: isSyntheticRouterModel(values.model)
+        ? `${reply}\n${syntheticUsageInstruction()}`
+        : reply,
     })
     if (admittedCancellationSupport(normal.run, normal.response.admission)) {
       cancelled = await runHeadlessCancellation({

@@ -1,11 +1,18 @@
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { assertDirectProofRoute } from './direct-router-contract.mjs'
+import { isSyntheticRouterModel, SYNTHETIC_ROUTER_PROVIDER } from './model-defaults.mjs'
 import { runtimeModuleRoot } from './tangle-workspace-proof.mjs'
 
 /** Read the same Router and origin-bound credential the candidate will use for the turn. */
 export async function directRouterEvidence(repository, environment, config) {
   const model = config.profile.model.default
+  const streamRequested = config.profile.model.metadata?.stream === true
+  if (isSyntheticRouterModel(model)) {
+    const route = { model, provider: SYNTHETIC_ROUTER_PROVIDER, synthetic: true, streamRequested }
+    assertDirectProofRoute(model, route)
+    return route
+  }
   const { only, allowFallbacks, requireModel } = config.connection.providerOptions.routing
   if (only?.length !== 1) throw new Error('Direct Router proof must select exactly one provider')
   const route = {
@@ -13,7 +20,7 @@ export async function directRouterEvidence(repository, environment, config) {
     provider: only[0],
     allowFallbacks,
     requireModel,
-    streamRequested: config.profile.model.metadata?.stream === true,
+    streamRequested,
   }
   if (route.provider === 'openrouter') {
     const dist = runtimeModuleRoot(repository, environment)

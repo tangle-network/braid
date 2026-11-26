@@ -1,4 +1,5 @@
 import { protectedUnavailable } from './contracts.mjs'
+import { isSyntheticRouterModel } from './model-defaults.mjs'
 
 function textValue(value) {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined
@@ -55,9 +56,14 @@ export function connectionConfiguration(
 ) {
   const endpoint =
     firstValue(environment, [`${prefix}_ENDPOINT`, ...endpointNames]) ?? fallbackEndpoint
-  // A direct free-lane selection belongs to LIVE-06. Other proofs keep their own model.
+  // A direct free-lane or synthetic selection belongs to LIVE-06. Other proofs keep their own model.
   const inheritedModels = modelNames.filter(
-    (name) => !(name === 'BRAID_TANGLE_MODEL' && /:free$/iu.test(environment[name]?.trim() ?? '')),
+    (name) =>
+      !(
+        name === 'BRAID_TANGLE_MODEL' &&
+        (/:free$/iu.test(environment[name]?.trim() ?? '') ||
+          isSyntheticRouterModel(environment[name]))
+      ),
   )
   const model = firstValue(environment, [`${prefix}_MODEL`, ...inheritedModels]) ?? fallbackModel
   const runner = firstValue(environment, [`${prefix}_RUNNER`, ...runnerNames]) ?? fallbackRunner
