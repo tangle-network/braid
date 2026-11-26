@@ -517,6 +517,8 @@ Model discovery does not make every advertised model a release gate.
 
 #### Protected Tangle proof configuration
 
+The release's public configuration is committed in `scripts/release/live-config.mjs`: both endpoints, the Sandbox runner and both models. The protected `BRAID_LIVE_TANGLE_ENV_JSON` secret holds exactly `BRAID_TANGLE_API_KEY` and `TANGLE_API_KEY`, and the evidence collector refuses it when it holds anything else. The release runs LIVE-06 on the Router's synthetic `tangle/canary-echo`. The Router answers that model before routing, with no provider and no charge. Its prompt scripts the reply and the usage, so the receipt must carry exactly the scripted token counts, and the cancelled turn must still end aborted or cancelled. The Sandbox proofs run an agent that uses tools across turns, so they run the GLM-5.3 weights per token on Fireworks (`fireworks/glm-5p3`), pinned to that host. The release account is internal, and the Router refuses internal owners the shared Z.ai plan.
+
 `BRAID_TANGLE_MODEL` selects LIVE-06's direct `cli-base` model. Its release profile requests Runtime's HTTP stream with usage. The existing GLM route pins Z.ai and requires an account entitled to direct API use. For the free lane, select an exact `owner/model:free` ID from the first-party Router's authenticated `GET /v1/models` catalog. Before sending a turn, Braid checks the system OpenRouter chat route and its current published rate card, including cache reads and writes. The completion must record the selected model and measured usage. The receipt records the route, rates and any billed amount the run reports. Both routes forbid a substitute provider or model.
 
 `BRAID_TANGLE_SANDBOX_MODEL` independently selects the native model. For the company's stored GLM plan, set it to the bare model ID, and set `BRAID_TANGLE_SANDBOX_MODEL_CREDENTIALS` to a JSON string with the public stored reference `{"apiKeyEnv":"STORED_PLAN_NAME","baseUrl":"https://api.z.ai/api/coding/paas/v4"}`. The Sandbox account owns the host- and path-restricted secret. OpenCode uses its `zai-coding-plan` provider and Pi uses `zai`. Each generated profile declares its subscription intent. Without the descriptor, the existing managed profiles and Sandbox routing apply. The release still requires every row, including both terminal and cloud interaction evidence in LIVE-08.
@@ -907,7 +909,7 @@ The publish job accepts only that fixed artifact after it verifies the producer 
 
 A missing, stale, tampered, or unavailable protected live-evidence run fails the publish job and leaves publication blocked.
 
-The protected `release-live` environment supplies `BRAID_LIVE_TANGLE_ENV_JSON`; the regular Release workflow never receives live-provider credentials.
+The protected `release-live` environment supplies `BRAID_LIVE_TANGLE_ENV_JSON`, which holds only the two release keys; the regular Release workflow never receives live-provider credentials.
 
 A code-free job endorses that exact package before publication.
 
