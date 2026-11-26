@@ -35,6 +35,22 @@ export interface LearningCandidate {
   readonly profile: AgentProfile
   readonly profileDigest: string
   readonly loadedTokens: number
+  /** What the sessions behind a skill or workflow came to; null for a candidate no session suggested. */
+  readonly changes: ChangeOutcomeCounts | null
+}
+
+/**
+ * What recorded sessions came to, one count per session. A session's changes
+ * are its own and those of the sessions that spawned it, as Eval's procedure
+ * registry joins them. `unknown` is never counted as `none`.
+ */
+export interface ChangeOutcomeCounts {
+  /** The change ledger or the transcript names at least one commit or pull request. */
+  readonly changed: number
+  /** The ledger's writer observed the session, and it recorded no change. */
+  readonly none: number
+  /** Never observed, a change the ledger could not place, or a turn its writer marked incomplete. */
+  readonly unknown: number
 }
 
 export interface LearningHarnessSource {
@@ -42,6 +58,16 @@ export interface LearningHarnessSource {
   readonly sessions: number
   readonly skillInvocations: number
   readonly unreadable: number
+  readonly changes: ChangeOutcomeCounts
+}
+
+/** The change ledger the proposal joined to the sessions. */
+export interface LearningChangeLedgerSource {
+  readonly rows: number
+  /** Lines that are not rows of the ledger format; Eval counts them and reads nothing from them. */
+  readonly malformed: number
+  /** Sessions read from the harnesses that the ledger holds rows for. */
+  readonly joinedSessions: number
 }
 
 export interface LearningSourceSummary {
@@ -53,6 +79,8 @@ export interface LearningSourceSummary {
     readonly tasks: number
   }
   readonly harnesses: readonly LearningHarnessSource[]
+  /** null when no change ledger file exists. */
+  readonly changeLedger: LearningChangeLedgerSource | null
 }
 
 export interface LearningProposal {
@@ -154,6 +182,10 @@ export interface LearningConfiguration {
   readonly directory: string
   /** Claude Code's transcript root, usually `~/.claude/projects`. */
   readonly claudeCodeProjects?: string
+  /** Codex's rollout root, usually `~/.codex/sessions`. */
+  readonly codexSessions?: string
+  /** The change ledger the harness hooks and CLI Bridge append to, usually `~/.local/state/change-ledger/changes.jsonl`. */
+  readonly changeLedger?: string
   /** Sessions older than this are not read. Default 30. */
   readonly sinceDays?: number
   /** Per-replay agent deadline. Default 15 minutes. */
