@@ -144,12 +144,11 @@ const uuid = (n: number): string => `0000000${n}-0000-7000-8000-00000000000${n}`
  * call that reads a skill's `SKILL.md` is the invocation.
  */
 class Rollout {
+  readonly id: string
   readonly lines: Array<Record<string, unknown>> = []
   private tick = 0
-  constructor(
-    readonly id: string,
-    parent: string | null = null,
-  ) {
+  constructor(id: string, parent: string | null = null) {
+    this.id = id
     this.push('session_meta', {
       id,
       session_id: id,
@@ -294,7 +293,9 @@ test('learning reads Claude Code and Codex sessions with their change ledger, me
   const rollout = (id: string) => join(day, `rollout-2026-11-10T10-00-00-${id}.jsonl`)
   const tidyFile = join(skills, 'tidy', 'SKILL.md')
   const auditFile = join(skills, 'audit', 'SKILL.md')
-  const [c1, c2, c3] = [uuid(1), uuid(2), uuid(3)]
+  const c1 = uuid(1)
+  const c2 = uuid(2)
+  const c3 = uuid(3)
   const ran = (id: string) =>
     new Rollout(id)
       .turn('Invented request.')

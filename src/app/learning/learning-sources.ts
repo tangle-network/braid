@@ -18,20 +18,22 @@ import type {
 /** The harnesses Braid reads sessions from; Eval owns the reader for each. */
 export type SessionHarness = 'claude-code' | 'codex'
 
-const HARNESS_NAMES: Readonly<Record<SessionHarness, string>> = {
+const HARNESS_NAMES: Readonly<Record<string, string>> = {
   'claude-code': 'Claude Code',
   codex: 'Codex',
 }
 
 /** A harness as a person reads it: `Claude Code`, `Codex`. */
 export function harnessName(harness: string): string {
-  return HARNESS_NAMES[harness as SessionHarness] ?? harness
+  return HARNESS_NAMES[harness] ?? harness
 }
 
 /** One harness's sessions in the window, with the change ledger joined. */
 export interface HarnessRead {
   readonly harness: SessionHarness
   readonly sessions: readonly SkillSessionRecord[]
+  /** Files or folders the reader could not read. */
+  readonly unreadable: number
   readonly usage: SkillUsageReport
 }
 
@@ -101,22 +103,21 @@ export async function readHarnessSessions(
   }
   const options = { sinceMs, readSkillFile: analyst.readSkillFile }
   const harnesses: HarnessRead[] = []
-  const unreadable = new Map<SessionHarness, number>()
   for (const [harness, directory] of directories) {
     const source: SkillSessionSource =
       harness === 'claude-code'
         ? analyst.claudeCodeSkillSessions(directory, { sinceMs })
         : analyst.codexSkillSessions(directory, { sinceMs })
     const sessions: SkillSessionRecord[] = []
-    let failed = 0
+    let unreadable = 0
     for await (const read of analyst.withChangeLedger(source, ledger)) {
       if (read.succeeded) sessions.push(read.value)
-      else failed += 1
+      else unreadable += 1
     }
-    unreadable.set(harness, failed)
     harnesses.push({
       harness,
       sessions,
+      unreadable,
       usage: await analyst.buildSkillUsageReport(reads(sessions), options),
     })
   }
@@ -128,7 +129,7 @@ export async function readHarnessSessions(
       harness: read.harness,
       sessions: read.sessions.length,
       skillInvocations: read.usage.invocations.total,
-      unreadable: unreadable.get(read.harness) ?? 0,
+      unreadable: read.unreadable,
       changes: countChanges(read.sessions, index),
     })),
     sessions,
