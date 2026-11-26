@@ -10,7 +10,10 @@ import {
   mountSkill,
   mountSkillDirectory,
 } from '@tangle-network/agent-interface'
-import { isMaterializerHarness, skillDirForHarness } from '@tangle-network/agent-profile-materialize'
+import {
+  isMaterializerHarness,
+  skillDirForHarness,
+} from '@tangle-network/agent-profile-materialize'
 import { draftProfileFromFeedback } from '../profile-learning.js'
 import { DEFAULT_LEARNER_SETTINGS } from './learner-profile.js'
 import {
@@ -151,7 +154,9 @@ export async function pinSkillFile(name: string, skillFile: string): Promise<Pin
   }
   try {
     const root = (await git(dirname(file), ['rev-parse', '--show-toplevel'])).trim()
-    const path = relative(await realpath(root), file).split(sep).join('/')
+    const path = relative(await realpath(root), file)
+      .split(sep)
+      .join('/')
     const commit = (await git(root, ['rev-parse', 'HEAD'])).trim()
     const repository = githubRepository(await git(root, ['remote', 'get-url', 'origin']))
     if (repository === undefined)
@@ -161,8 +166,9 @@ export async function pinSkillFile(name: string, skillFile: string): Promise<Pin
     const directory = posix.dirname(path)
     if (
       directory !== '.' &&
-      (await git(root, ['status', '--porcelain', '--untracked-files=no', '--', `${directory}/`])).trim() !==
-        ''
+      (
+        await git(root, ['status', '--porcelain', '--untracked-files=no', '--', `${directory}/`])
+      ).trim() !== ''
     )
       return { pinned: false, reason: 'a file beside the skill has uncommitted changes' }
     const content = await git(root, ['show', `${commit}:${path}`])
@@ -197,8 +203,9 @@ export async function pinSkillFile(name: string, skillFile: string): Promise<Pin
 export function skillsDirectoryFor(profile: AgentProfile): string {
   const harness = profile.harness
   return (
-    (harness !== undefined && isMaterializerHarness(harness) ? skillDirForHarness(harness) : null) ??
-    '.claude/skills'
+    (harness !== undefined && isMaterializerHarness(harness)
+      ? skillDirForHarness(harness)
+      : null) ?? '.claude/skills'
   )
 }
 
@@ -233,7 +240,9 @@ function siblingEvidence(skill: PinnedSkill): string[] {
   return [
     ...(skill.siblings.length === 0
       ? []
-      : [`mounted with ${skill.siblings.length} files beside SKILL.md, each pinned to the same commit`]),
+      : [
+          `mounted with ${skill.siblings.length} files beside SKILL.md, each pinned to the same commit`,
+        ]),
     ...skill.omitted.map((reason) => `not mounted: ${reason}`),
   ]
 }

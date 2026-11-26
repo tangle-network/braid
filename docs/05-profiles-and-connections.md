@@ -190,11 +190,14 @@ Every promotion is a new profile version you can roll back.
    The harness hooks and CLI Bridge append to that file: one row for each commit and pull request a session made, and from CLI Bridge one row per turn.
    A missing directory or ledger file reads as no source.
    It proposes up to four kinds of candidate, each a profile diff:
-   - a **skill** your sessions use often, pinned to the commit and SHA-256 of a clean file in a GitHub checkout, with the provenance record that Interface's `mountSkill` writes;
+   - a **skill** your sessions use often, pinned to the commit and SHA-256 of a clean file in a GitHub checkout, with the provenance record that Interface's `mountSkill` writes.
+     The committed text files beside its `SKILL.md`, such as `references/` and scripts, mount with it through Interface's `mountSkillDirectory`, each pinned to the same commit with its own record and its executable bit.
+     They mount under the profile harness's skill directory; a binary file, a link or a submodule is not mounted, and the candidate's evidence says which;
    - a **workflow**: an inline skill for two skills your sessions run in that order in at least two sessions, with both skills pinned;
    - **instructions** from feedback reasons, through the same lesson composition as `/profile learn`;
    - a **removal** of an inline skill the profile carries.
-   A skill without a clean, pinned file is skipped with its reason.
+   A skill without a clean, pinned file, or with uncommitted changes to a tracked file beside it, is skipped with its reason.
+   A removal takes the skill's files and records with it.
    Invocations of one skill version are counted together across harnesses, and the evidence gives each harness's share.
    A skill or workflow candidate also records what the sessions behind it came to, one count per session:
    - **made a change**: the ledger, or a pull request URL the transcript prints, names a commit or pull request of the session or of a session that spawned it;

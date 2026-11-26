@@ -7,6 +7,8 @@
   It proposes profile changes: mount a skill you already use, compose two skills
   you run in order, add lessons from your feedback, or remove a skill. A skill or
   workflow shows how many of its sessions made a change, made none, or are unknown.
+  A mounted skill brings the text files beside its `SKILL.md`, such as its
+  references, each pinned to the same commit.
 - Each change is replayed on your own finished tasks. It is promoted only when it
   keeps your worst task family's success rate, and every promotion is a version
   you can roll back.

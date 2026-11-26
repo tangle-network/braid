@@ -921,7 +921,10 @@ test('the learner is a versioned profile: a variant whose pick wins on held-out 
     )
     assert(tidyMount !== undefined)
     assert.deepEqual(
-      (tidyMount.profile.resources?.files ?? []).map((file) => [file.path, file.executable === true]),
+      (tidyMount.profile.resources?.files ?? []).map((file) => [
+        file.path,
+        file.executable === true,
+      ]),
       [
         ['.pi/skills/tidy/references/format.md', false],
         ['.pi/skills/tidy/scripts/check.sh', true],
@@ -985,7 +988,10 @@ test('the learner is a versioned profile: a variant whose pick wins on held-out 
     const removal = restored.candidates.find(
       (candidate) => candidate.kind === 'removal' && candidate.name === 'tidy',
     )
-    assert(removal !== undefined, 'the promoted profile carries tidy, so tidy is a removal candidate')
+    assert(
+      removal !== undefined,
+      'the promoted profile carries tidy, so tidy is a removal candidate',
+    )
     assert.deepEqual(removal.profile.resources?.files ?? [], [])
     assert.deepEqual(await verifyResourceProvenance(removal.profile), [])
   } finally {
