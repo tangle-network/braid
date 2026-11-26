@@ -181,14 +181,28 @@ Every promotion is a new profile version you can roll back.
    Exit 0 is a pass, any other exit is a fail, and a check that cannot run or times out has no result.
    The candidate never sees or changes the check.
    A family groups tasks of one kind so a change cannot buy success on one kind with failures on another.
-2. **Propose.** `/learn propose [--since days]` reads the last 30 days by default:
-   Braid's runs and feedback reasons in this workspace, and Claude Code sessions under `~/.claude/projects`, read with Eval's skill-usage reader.
+2. **Propose.** `/learn propose [--since days]` reads the last 30 days by default.
+   It reads Braid's runs and feedback reasons in this workspace, and two other harnesses through Eval's session readers.
+   Claude Code sessions come from `~/.claude/projects`.
+   Codex sessions come from `~/.codex/sessions`, or `$CODEX_HOME/sessions` when that is set.
+   Codex has no skill tool, so a shell command that reads a skill's `SKILL.md` counts as invoking it.
+   Both harnesses' sessions are joined to the change ledger at `$CHANGE_LEDGER_DIR/changes.jsonl`, which defaults to `~/.local/state/change-ledger/changes.jsonl`.
+   The harness hooks and CLI Bridge append to that file: one row for each commit and pull request a session made, and from CLI Bridge one row per turn.
+   A missing directory or ledger file reads as no source.
    It proposes up to four kinds of candidate, each a profile diff:
    - a **skill** your sessions use often, pinned to the commit and SHA-256 of a clean file in a GitHub checkout, with the provenance record that Interface's `mountSkill` writes;
    - a **workflow**: an inline skill for two skills your sessions run in that order in at least two sessions, with both skills pinned;
    - **instructions** from feedback reasons, through the same lesson composition as `/profile learn`;
    - a **removal** of an inline skill the profile carries.
    A skill without a clean, pinned file is skipped with its reason.
+   Invocations of one skill version are counted together across harnesses, and the evidence gives each harness's share.
+   A skill or workflow candidate also records what the sessions behind it came to, one count per session:
+   - **made a change**: the ledger, or a pull request URL the transcript prints, names a commit or pull request of the session or of a session that spawned it;
+   - **made none**: the ledger's writer observed the session and recorded no change;
+   - **unknown**: no writer observed the session, the ledger has a change it could not place in the session, or a CLI Bridge turn said its changes may be incomplete.
+   Unknown is never counted as none: a transcript that shows no change proves nothing about commits.
+   This is the join Eval's procedure registry makes, and it is evidence for you to read; the measurement decides what is kept.
+   A change made is not a change merged: Braid does not read whether a change merged.
 3. **Measure.** `/learn measure` replays every task under the active profile once, then runs Eval's skill eval for each candidate against it on the same tasks.
    The blind judge sees each pair of answers with its check verdict and prefers a pass to a fail; anything else is a tie.
    A removal is measured as the unit it removes, so `keep` means removing it loses answers.
@@ -204,12 +218,14 @@ Every promotion is a new profile version you can roll back.
 
 The next run on any runner uses the promoted profile, and its run receipt names the version.
 `/learn` with no action opens the panel: sources read, tasks, candidates with their measurements, versions, and the latest run served by a learned version.
+The Sources row gives each harness's sessions, skill invocations and unreadable files, and what its sessions came to, then the change ledger's rows, the sessions it joined, and lines that are not rows.
 
 Everything stays in a private local store: `learn/` beside Braid's state, or `BRAID_LEARN_DIRECTORY`.
 It holds the tasks, the proposal, every measurement, each version's profile, and a search ledger per measurement at `searches/<id>/ledger.jsonl`.
 The ledger is Eval's search ledger: each candidate is a node keyed by the SHA-256 of the unit it adds, and each replay is a scored cell, so `agent-eval procedure-registry --ledger <path>` reads it.
 Each ledger names the learner that wrote it by the SHA-256 of the learner's settings, so a change to how Braid learns shows up as a new procedure revision.
-`BRAID_LEARN_CLAUDE_CODE_PROJECTS` points the reader at another transcript directory.
+`BRAID_LEARN_CLAUDE_CODE_PROJECTS`, `BRAID_LEARN_CODEX_SESSIONS` and `BRAID_LEARN_CHANGE_LEDGER` point the readers at another Claude Code projects directory, Codex sessions directory or ledger file.
+`agent-eval procedure-registry <sessions> [--harness codex] --change-ledger <ledger> --ledger <path>` reads the same sessions, ledger and search ledger.
 
 What this does not do:
 - Replays run on the active connection and can use model quota; a subscription seat reports no price, so cost shows as unknown.

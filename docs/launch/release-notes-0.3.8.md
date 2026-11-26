@@ -2,9 +2,11 @@
 
 ## `/learn`: profiles that improve from your own work
 
-- `/learn` reads your Braid runs and task feedback and your Claude Code sessions.
+- `/learn` reads your Braid runs and task feedback and your Claude Code and Codex
+  sessions, joined to the change ledger the harness hooks and CLI Bridge write.
   It proposes profile changes: mount a skill you already use, compose two skills
-  you run in order, add lessons from your feedback, or remove a skill.
+  you run in order, add lessons from your feedback, or remove a skill. A skill or
+  workflow shows how many of its sessions made a change, made none, or are unknown.
 - Each change is replayed on your own finished tasks. It is promoted only when it
   keeps your worst task family's success rate, and every promotion is a version
   you can roll back.

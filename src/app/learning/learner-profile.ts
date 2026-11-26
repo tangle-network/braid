@@ -16,7 +16,15 @@ const EXTENSION = 'braid'
 const KINDS: readonly LearningCandidateKind[] = ['skill', 'workflow', 'instructions', 'removal']
 
 export const DEFAULT_LEARNER_SETTINGS: LearnerSettings = Object.freeze({
-  sources: Object.freeze(['braid-feedback', 'braid-task-checks', 'claude-code-sessions']),
+  sources: Object.freeze([
+    'braid-feedback',
+    'braid-task-checks',
+    'claude-code-sessions',
+    'codex-sessions',
+    'change-ledger',
+  ]),
+  changes:
+    'per session, with the sessions that spawned it: changed; none when the change ledger observed it; otherwise unknown',
   candidates: Object.freeze({
     kinds: Object.freeze([...KINDS]),
     maxSkills: 2,
@@ -76,6 +84,7 @@ export function learnerSettings(profile: AgentProfile): LearnerSettings {
     throw new AppError('LEARNER_PROFILE_INVALID', "The learner's sources must be names")
   return {
     sources: [...sources],
+    changes: text(raw.changes, 'changes'),
     candidates: {
       kinds: KINDS.filter((kind) => kinds.includes(kind)),
       maxSkills: count(candidates.maxSkills, 'maxSkills', 0, 16),

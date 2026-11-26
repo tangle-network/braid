@@ -13,7 +13,7 @@ import {
 } from '../testing/profile-handoff-fixture.js'
 import { createSupervisionUiFixture } from '../testing/supervision-ui-fixture.js'
 import type { CliOptions } from './args.js'
-import { defaultLearningConfiguration } from './state-path.js'
+import { namedLearningConfiguration } from './state-path.js'
 
 export function openFixtureApplication(options: CliOptions) {
   if (options.fixture === undefined) throw new Error('Fixture application requires a fixture')
@@ -54,9 +54,10 @@ export function openFixtureApplication(options: CliOptions) {
       : {}),
     chunkDelayMs,
   })
-  // A fixture never reads or writes the user's learning store: `/learn` needs an explicit one.
+  // A fixture never reads or writes the user's learning data: `/learn` needs an
+  // explicit store, and reads only the session sources named beside it.
   const learningStore = process.env.BRAID_LEARN_DIRECTORY
-    ? { learning: defaultLearningConfiguration() }
+    ? { learning: namedLearningConfiguration(process.env.BRAID_LEARN_DIRECTORY) }
     : {}
   return {
     app,

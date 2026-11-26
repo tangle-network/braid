@@ -21,7 +21,7 @@ import { proposeCandidates } from './learning-candidates.js'
 import { recordLearnerLedger, recordLearningLedger } from './learning-ledger.js'
 import { measureCandidates } from './learning-measure.js'
 import { loadedTokens, profileDigest, sha256Hex } from './learning-profile.js'
-import { braidHistory, readClaudeCodeSessions } from './learning-sources.js'
+import { braidHistory, readHarnessSessions } from './learning-sources.js'
 import { LearningStore } from './learning-store.js'
 import type {
   LearnerMeasurement,
@@ -168,7 +168,7 @@ export function createLearningActions(
   const readSources = async (days: number) => {
     const sinceMs = Date.now() - days * DAY_MS
     const feedback = await app.feedback.list({ scope: 'workspace' })
-    const harness = await readClaudeCodeSessions(configuration.claudeCodeProjects, sinceMs)
+    const harness = await readHarnessSessions(configuration, sinceMs)
     return { sinceMs, feedback, harness }
   }
 
@@ -261,6 +261,7 @@ export function createLearningActions(
             tasks: store.tasks().length,
           },
           harnesses: harness.sources,
+          changeLedger: harness.changeLedger,
         },
         candidates,
         skipped,
