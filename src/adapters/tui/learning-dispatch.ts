@@ -3,6 +3,8 @@ import { AppError } from '../../app/errors.js'
 import type { LearningActions } from '../../app/learning/learning-actions.js'
 import type {
   CandidateMeasurement,
+  LearnerArm,
+  LearnerStatus,
   LearningConfiguration,
   LearningStatus,
 } from '../../app/learning/learning-types.js'
@@ -10,7 +12,7 @@ import type { BraidIntent, UiDispatchResult } from '../../views/shared/intents.j
 import type { EntityBrowserDocument, EntityBrowserRow } from '../../views/tui/entity-browser.js'
 
 const USAGE =
-  '/learn [status | task [--family name] [--timeout seconds] -- <check...> | propose [--since days] | measure | promote [candidate] [--override] | rollback]'
+  '/learn [status | task [--family name] [--timeout seconds] -- <check...> | propose [--since days] | measure | promote [candidate] [--override] | rollback | learner [status | measure | promote [variant] [--override] | rollback]]'
 
 export interface LearningDispatchContext {
   readonly app: BraidApplication
@@ -55,6 +57,77 @@ function measurementLines(result: CandidateMeasurement): string[] {
     `Rule: ${result.gate.rule}`,
     ...result.failures.slice(0, 5).map((failure) => `Not judged: ${failure}`),
   ]
+}
+
+function learnerArmLines(arm: LearnerArm): string[] {
+  const worst = (summary: LearnerArm['heldOut']) =>
+    summary.worstFamily === null
+      ? 'unknown'
+      : `${summary.worstFamily.family} ${percent(summary.worstFamily.passed, summary.worstFamily.known)}`
+  const { candidates } = arm.settings
+  return [
+    arm.summary,
+    `Learner: ${arm.learnerDigest}`,
+    `Proposes: ${candidates.kinds.join(', ')}; up to ${candidates.maxSkills} skills and ${candidates.maxRemovals} removals from ${candidates.rowsTried} rows; workflows from ${candidates.workflowMinSessions} sessions`,
+    `Proposed ${arm.candidates} candidates; picked ${arm.pick.name}${arm.pick.candidateId === null ? '' : ` (${arm.pick.candidateId})`}`,
+    `Selection tasks: ${percent(arm.selection.passed, arm.selection.known)}, worst family ${worst(arm.selection)}`,
+    `Held-out tasks: ${percent(arm.heldOut.passed, arm.heldOut.known)}, worst family ${worst(arm.heldOut)}`,
+    `Gate: ${arm.gate.promotable ? 'promotable' : 'not promotable'}. ${arm.gate.reason}`,
+    `Rule: ${arm.gate.rule}`,
+    ...arm.skipped.map((reason) => `Skipped: ${reason}`),
+  ]
+}
+
+/** The learner's rows: the active learner, the latest round's arms and the learner versions. */
+function learnerRows(learner: LearnerStatus): EntityBrowserRow[] {
+  const rows: EntityBrowserRow[] = []
+  const { candidates } = learner.settings
+  rows.push({
+    id: 'learner',
+    kind: 'learner',
+    title: learner.active.version ?? 'default learner',
+    status: 'active',
+    meta: candidates.kinds.join(', '),
+    detailLines: [
+      `Learner: ${learner.active.digest}`,
+      `Reads: ${learner.settings.sources.join(', ')}`,
+      `Proposes: ${candidates.kinds.join(', ')}; up to ${candidates.maxSkills} skills and ${candidates.maxRemovals} removals`,
+      `Measures: ${learner.settings.measure}`,
+      `Gate: ${learner.settings.gate}`,
+      'Measure variants of it: /learn learner measure',
+    ],
+  })
+  const measurement = learner.measurement
+  if (measurement !== null)
+    for (const arm of measurement.arms)
+      rows.push({
+        id: `learner-${arm.name}`,
+        kind: arm.name === 'active' ? 'learner (active)' : 'learner variant',
+        title: arm.name,
+        status: arm.gate.promotable ? 'promotable' : 'measured',
+        meta: `picks ${arm.pick.name}`,
+        current: measurement.selected === arm.name,
+        detailLines: [
+          ...learnerArmLines(arm),
+          `Round: ${measurement.selectionTasks.length} selection and ${measurement.heldOutTasks.length} held-out tasks, seed ${measurement.seed}`,
+          `Ledger: ${measurement.ledgerPath}`,
+        ],
+      })
+  for (const version of [...learner.versions].reverse())
+    rows.push({
+      id: `learner-${version.action}-${version.at}`,
+      kind: version.action === 'promote' ? 'learner promoted' : 'learner rolled back to',
+      title: version.version,
+      status: version.override ? 'override' : 'measured',
+      meta: version.at.slice(0, 19).replace('T', ' '),
+      detailLines: [
+        `Profile: ${version.profileDigest}`,
+        `Replaced: ${version.parentDigest}`,
+        `File: ${version.profilePath}`,
+        `Reason: ${version.reason}`,
+      ],
+    })
+  return rows
 }
 
 /** The learning panel: sources, tasks, candidates with their measurement, versions and the served run. */
@@ -154,9 +227,10 @@ export function learningDocument(status: LearningStatus, notice?: string): Entit
       ],
     })
   }
+  rows.push(...learnerRows(status.learner))
   return {
     title: 'Learning',
-    context: `${status.tasks.length} held-out tasks · ${proposal?.candidates.length ?? 0} candidates · active ${status.active?.version ?? 'base profile'}`,
+    context: `${status.tasks.length} held-out tasks · ${proposal?.candidates.length ?? 0} candidates · active ${status.active?.version ?? 'base profile'} · learner ${status.learner.active.version ?? 'default'}`,
     ...(notice === undefined ? {} : { notice }),
     emptyMessage:
       'Nothing learned yet. Mark a finished run: /learn task -- <check>, then /learn propose',
@@ -239,6 +313,8 @@ export async function dispatchLearningCommand(
     if (args.length > 0) throw new AppError('INVALID_PARAMS', USAGE)
     const version = await actions.rollback({ operationId: intent.operationId ?? '' })
     notice = `Rolled back: ${version.reason}`
+  } else if (action === 'learner') {
+    notice = await learnerCommand(actions, args, context)
   } else {
     throw new AppError('INVALID_PARAMS', USAGE)
   }
@@ -251,6 +327,48 @@ export async function dispatchLearningCommand(
     revision: context.app.state().revision,
     data: learningDocument(actions.status(), notice),
   }
+}
+
+async function learnerCommand(
+  actions: LearningActions,
+  args: string[],
+  context: LearningDispatchContext,
+): Promise<string | undefined> {
+  const [step = 'status', ...rest] = args
+  const override = rest.includes('--override')
+  const positional = rest.filter((arg) => arg !== '--override')
+  if (step === 'status') {
+    if (rest.length > 0) throw new AppError('INVALID_PARAMS', USAGE)
+    return undefined
+  }
+  if (step === 'measure') {
+    if (rest.length > 0) throw new AppError('INVALID_PARAMS', USAGE)
+    context.setNotice('Measuring learner variants: each picks on selection tasks, then its pick replays on held-out tasks…')
+    context.notify()
+    const measurement = await actions.learner.measure({
+      onProgress: (text) => {
+        context.setNotice(text)
+        context.notify()
+      },
+    })
+    return measurement.selected === null
+      ? 'Measured. No learner variant beat the active learner on held-out tasks; it stays.'
+      : `Measured. Learner ${measurement.selected} beat the active learner: /learn learner promote`
+  }
+  if (step === 'promote') {
+    if (positional.length > 1) throw new AppError('INVALID_PARAMS', USAGE)
+    const version = await actions.learner.promote({
+      ...(positional[0] === undefined ? {} : { variant: positional[0] }),
+      override,
+    })
+    return `Learner ${version.version} promoted${version.override ? ' (override)' : ''}. The next /learn propose uses it. Rollback: /learn learner rollback`
+  }
+  if (step === 'rollback') {
+    if (rest.length > 0) throw new AppError('INVALID_PARAMS', USAGE)
+    const version = await actions.learner.rollback()
+    return `Learner rolled back: ${version.reason}`
+  }
+  throw new AppError('INVALID_PARAMS', USAGE)
 }
 
 function optionalString(params: Readonly<Record<string, unknown>>, name: string) {
@@ -314,10 +432,40 @@ export async function dispatchLearningHeadlessCommand(
       const version = await actions.rollback({ operationId: intent.operationId ?? '' })
       return { kind: 'accepted', revision: revision(), data: version }
     }
+    case 'learner':
+      return { kind: 'accepted', revision: revision(), data: await learnerHeadless(actions, params) }
     default:
       throw new AppError(
         'INVALID_PARAMS',
-        'learn action must be status, task, propose, measure, promote or rollback',
+        'learn action must be status, task, propose, measure, promote, rollback or learner',
       )
+  }
+}
+
+/** `learn` with `action: 'learner'`: `step` is status, measure, promote or rollback. */
+async function learnerHeadless(
+  actions: LearningActions,
+  params: Readonly<Record<string, unknown>>,
+): Promise<unknown> {
+  const step = optionalString(params, 'step') ?? 'status'
+  switch (step) {
+    case 'status':
+      return actions.learner.status()
+    case 'measure':
+      return actions.learner.measure()
+    case 'promote': {
+      const variant = optionalString(params, 'variant')
+      const override = params.override
+      if (override !== undefined && typeof override !== 'boolean')
+        throw new AppError('INVALID_PARAMS', 'override must be a boolean')
+      return actions.learner.promote({
+        ...(variant === undefined ? {} : { variant }),
+        ...(override === undefined ? {} : { override }),
+      })
+    }
+    case 'rollback':
+      return actions.learner.rollback()
+    default:
+      throw new AppError('INVALID_PARAMS', 'learner step must be status, measure, promote or rollback')
   }
 }

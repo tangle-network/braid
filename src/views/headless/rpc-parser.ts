@@ -81,6 +81,8 @@ const PARAMETER_TYPES: Readonly<
     sinceDays: 'number',
     candidateId: 'string',
     override: 'boolean',
+    step: 'string',
+    variant: 'string',
   },
   respond_interaction: { runId: 'string', interactionId: 'string', response: 'record' },
   cancel_interaction: { runId: 'string', interactionId: 'string' },

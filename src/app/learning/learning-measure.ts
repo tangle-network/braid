@@ -26,6 +26,8 @@ export interface MeasureInput {
   readonly seed: number
   readonly concurrency: number
   readonly onProgress?: (text: string) => void
+  /** Replays shared with other measurements in the same round, keyed by profile digest and task. */
+  readonly replayer?: Replayer
 }
 
 export interface MeasureOutput {
@@ -123,7 +125,7 @@ export function promotionGate(
   }
 }
 
-async function mapLimit<T>(
+export async function mapLimit<T>(
   items: readonly T[],
   limit: number,
   each: (item: T) => Promise<void>,
@@ -139,6 +141,43 @@ async function mapLimit<T>(
   )
 }
 
+export interface Replayer {
+  readonly replays: Map<string, TaskReplay>
+  replay(profile: AgentProfile, digest: string, task: LearningTask): Promise<TaskReplay>
+}
+
+/** Replays each profile on each task at most once, however many measurements ask for it. */
+export function createReplayer(
+  input: Pick<MeasureInput, 'host' | 'replayRoot' | 'timeoutMs' | 'onProgress'>,
+): Replayer {
+  const replays = new Map<string, TaskReplay>()
+  const pending = new Map<string, Promise<TaskReplay>>()
+  return {
+    replays,
+    replay(profile, digest, task) {
+      const key = `${digest}:${task.id}`
+      let result = pending.get(key)
+      if (result === undefined) {
+        result = replayTask({
+          host: input.host,
+          profile,
+          task,
+          replayRoot: input.replayRoot,
+          timeoutMs: input.timeoutMs,
+        }).then((value) => {
+          replays.set(key, value)
+          input.onProgress?.(
+            `Replayed ${task.id} under ${digest.slice(7, 19)}: ${value.pass === null ? `no result (${value.error})` : value.pass ? 'passed' : 'failed'}`,
+          )
+          return value
+        })
+        pending.set(key, result)
+      }
+      return result
+    },
+  }
+}
+
 /**
  * Measure every candidate against the base profile on the held-out tasks with
  * agent-eval's skill eval. The base replays once per task and is shared by every
@@ -147,29 +186,9 @@ async function mapLimit<T>(
  */
 export async function measureCandidates(input: MeasureInput): Promise<MeasureOutput> {
   const { runSkillEval } = await import('@tangle-network/agent-eval')
-  const replays = new Map<string, TaskReplay>()
-  const pending = new Map<string, Promise<TaskReplay>>()
-  const replay = (profile: AgentProfile, digest: string, task: LearningTask) => {
-    const key = `${digest}:${task.id}`
-    let result = pending.get(key)
-    if (result === undefined) {
-      result = replayTask({
-        host: input.host,
-        profile,
-        task,
-        replayRoot: input.replayRoot,
-        timeoutMs: input.timeoutMs,
-      }).then((value) => {
-        replays.set(key, value)
-        input.onProgress?.(
-          `Replayed ${task.id} under ${digest.slice(7, 19)}: ${value.pass === null ? `no result (${value.error})` : value.pass ? 'passed' : 'failed'}`,
-        )
-        return value
-      })
-      pending.set(key, result)
-    }
-    return result
-  }
+  const replayer = input.replayer ?? createReplayer(input)
+  const { replays } = replayer
+  const replay = replayer.replay
 
   input.onProgress?.(`Replaying ${input.tasks.length} tasks under the active profile`)
   await mapLimit(input.tasks, input.concurrency, async (task) => {
