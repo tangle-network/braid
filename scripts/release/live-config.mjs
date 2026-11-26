@@ -52,7 +52,10 @@ export function releaseCredentials(source) {
 export function releaseCredentialsJson({ router, sandbox }) {
   return JSON.stringify(
     releaseCredentials(
-      JSON.stringify({ [RELEASE_CREDENTIALS.router]: router, [RELEASE_CREDENTIALS.sandbox]: sandbox }),
+      JSON.stringify({
+        [RELEASE_CREDENTIALS.router]: router,
+        [RELEASE_CREDENTIALS.sandbox]: sandbox,
+      }),
     ),
   )
 }

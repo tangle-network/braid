@@ -507,7 +507,9 @@ class Driver {
         { input: `${keys[role]}\n` },
       )
       if (r.code !== 0)
-        this.finish(`could not install the ${role} key on ${this.o.ssh}: ${r.out.trim().slice(0, 300)}`)
+        this.finish(
+          `could not install the ${role} key on ${this.o.ssh}: ${r.out.trim().slice(0, 300)}`,
+        )
     }
     const r = await run(
       this.o.gh,
@@ -539,7 +541,7 @@ class Driver {
     this.log(`account now: ${account}`)
     if (/\b401\b|AuthError|Unauthorized/iu.test(account))
       this.log(
-        'the Sandbox key was refused (expired or revoked): mint this release\'s keys and pass --keys-from',
+        "the Sandbox key was refused (expired or revoked): mint this release's keys and pass --keys-from",
       )
     // A crashed observation prints a stack, not SETTLED or BUSY; every later settle wait would spin on it.
     return /^(SETTLED|BUSY) /.test(account)
@@ -574,7 +576,9 @@ class Driver {
     if (o.dryRun) {
       if (o.keysFrom) {
         this.readMintedKeys()
-        this.log(`keys in ${o.keysFrom} are owner-only and well formed; a real run installs them first`)
+        this.log(
+          `keys in ${o.keysFrom} are owner-only and well formed; a real run installs them first`,
+        )
       }
       let ok = await this.preflight()
       if (pr && !(await this.hasLiveRun(sha))) {

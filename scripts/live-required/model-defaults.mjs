@@ -2,7 +2,10 @@ export const DEFAULT_TANGLE_ROUTER_MODEL_ID = 'glm-5.3'
 export const DEFAULT_TANGLE_ROUTER_MODEL = `tangle-router/${DEFAULT_TANGLE_ROUTER_MODEL_ID}`
 
 /** A model id as the Router reads it, without Braid's `tangle-router/` profile prefix. */
-const routerModelId = (model) => String(model ?? '').trim().replace(/^tangle-router\//u, '')
+const routerModelId = (model) =>
+  String(model ?? '')
+    .trim()
+    .replace(/^tangle-router\//u, '')
 
 // The Router's synthetic model (tangle-router lib/synthetic-models.ts). The Router writes its
 // answer before any routing, pricing or provider call and charges nothing. "Reply with exactly
