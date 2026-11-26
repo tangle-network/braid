@@ -382,7 +382,8 @@ export async function recordLearnerLedger(round: LearnerLedgerRound): Promise<vo
               source: { uri: 'braid:learner', revision: digestOf(root.learnerDigest) },
             },
       proposalKey: arm.name,
-      rationale: index === 0 ? { unknown: 'the active learner when the round started' } : arm.summary,
+      rationale:
+        index === 0 ? { unknown: 'the active learner when the round started' } : arm.summary,
       diffs:
         index === 0
           ? []

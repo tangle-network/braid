@@ -343,7 +343,9 @@ async function learnerCommand(
   }
   if (step === 'measure') {
     if (rest.length > 0) throw new AppError('INVALID_PARAMS', USAGE)
-    context.setNotice('Measuring learner variants: each picks on selection tasks, then its pick replays on held-out tasks…')
+    context.setNotice(
+      'Measuring learner variants: each picks on selection tasks, then its pick replays on held-out tasks…',
+    )
     context.notify()
     const measurement = await actions.learner.measure({
       onProgress: (text) => {
@@ -433,7 +435,11 @@ export async function dispatchLearningHeadlessCommand(
       return { kind: 'accepted', revision: revision(), data: version }
     }
     case 'learner':
-      return { kind: 'accepted', revision: revision(), data: await learnerHeadless(actions, params) }
+      return {
+        kind: 'accepted',
+        revision: revision(),
+        data: await learnerHeadless(actions, params),
+      }
     default:
       throw new AppError(
         'INVALID_PARAMS',
@@ -466,6 +472,9 @@ async function learnerHeadless(
     case 'rollback':
       return actions.learner.rollback()
     default:
-      throw new AppError('INVALID_PARAMS', 'learner step must be status, measure, promote or rollback')
+      throw new AppError(
+        'INVALID_PARAMS',
+        'learner step must be status, measure, promote or rollback',
+      )
   }
 }

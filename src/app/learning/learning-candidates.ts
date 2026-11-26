@@ -17,11 +17,7 @@ import {
   withSkills,
 } from './learning-profile.js'
 import { type HarnessSessions, orderedSkillPairs } from './learning-sources.js'
-import type {
-  LearnerSettings,
-  LearningCandidate,
-  LearningCandidateKind,
-} from './learning-types.js'
+import type { LearnerSettings, LearningCandidate, LearningCandidateKind } from './learning-types.js'
 
 const run = promisify(execFile)
 

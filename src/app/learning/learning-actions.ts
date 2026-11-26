@@ -157,7 +157,11 @@ export function createLearningActions(
         ? learnerProfile(DEFAULT_LEARNER_SETTINGS)
         : learnerStore.readProfile(latest.profilePath)
     const settings = learnerSettings(profile)
-    return { ref: { version: profile.version ?? null, digest: learnerDigest(settings) }, settings, profile }
+    return {
+      ref: { version: profile.version ?? null, digest: learnerDigest(settings) },
+      settings,
+      profile,
+    }
   }
   const sameLearner = (left: LearnerRef, right: LearnerRef) => left.digest === right.digest
 

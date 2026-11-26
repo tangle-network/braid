@@ -61,14 +61,12 @@ export interface MeasureLearnersOutput {
   readonly replays: ReadonlyMap<string, TaskReplay>
 }
 
-function learnerGate(
-  active: ArmSummary,
-  measured: ArmSummary,
-  tasks: number,
-): LearnerArm['gate'] {
+function learnerGate(active: ArmSummary, measured: ArmSummary, tasks: number): LearnerArm['gate'] {
   const refuse = (reason: string) => ({ promotable: false, rule: LEARNER_RULE, reason })
   if (measured.known < tasks)
-    return refuse(`${tasks - measured.known} of ${tasks} held-out replays of its pick have no result`)
+    return refuse(
+      `${tasks - measured.known} of ${tasks} held-out replays of its pick have no result`,
+    )
   if (active.known < tasks)
     return refuse(
       `${tasks - active.known} of ${tasks} held-out replays of the active learner's pick have no result`,

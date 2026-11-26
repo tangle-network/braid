@@ -535,7 +535,10 @@ test('the learner is a versioned profile: a variant whose pick wins on held-out 
     })
     assert(panel.kind === 'accepted')
     const rows = (panel.data as EntityBrowserDocument).rows
-    assert.equal(rows.find((row) => row.current === true && row.kind === 'learner variant')?.title, 'skills-4')
+    assert.equal(
+      rows.find((row) => row.current === true && row.kind === 'learner variant')?.title,
+      'skills-4',
+    )
 
     const promoted = (await call(
       session,
