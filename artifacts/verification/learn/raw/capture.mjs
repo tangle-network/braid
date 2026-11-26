@@ -274,9 +274,15 @@ try {
     await flow.command('/learn measure')
     await flow.wait((text) => text.includes('passed the gate'), 'measurement', 120_000)
     await flow.frame('measured')
-    await flow.key('\r')
-    await flow.frame('evidence')
-    await flow.key('\u001b')
+    // Rows end with the candidates: audit, tidy, tidy-then-audit, legacy-notes.
+    await flow.key('\u001b[F')
+    await flow.frame('removal')
+    await flow.key('\u001b[A')
+    await flow.frame('workflow')
+    await flow.key('\u001b[A')
+    await flow.frame('skill')
+    await flow.key('\u001b[A')
+    await flow.frame('ignored-skill')
     await flow.key('\u001b')
     await flow.command('/learn promote')
     await flow.wait((text) => text.includes('Promoted learn.1'), 'promotion')
@@ -295,7 +301,8 @@ try {
     await flow.command('Invented follow-up task')
     await flow.wait((text) => text.includes('tidied: Invented follow-up task'), 'served run')
     await flow.command('/learn')
-    await flow.wait((text) => text.includes('Served learn.2'), 'served row')
+    await flow.wait((text) => text.includes('learn.2 on codex'), 'served row')
+    await flow.key('\u001b[F')
     await flow.frame('served')
     await flow.key('\u001b')
     await flow.close()
@@ -306,10 +313,23 @@ try {
     flow.dispose()
   }
 
-  const state = JSON.parse(await readFile(record, 'utf8')).state
-  const served = state.runs.find((run) => run.receipt.requested.text === 'Invented follow-up task')
-  assert.equal(served?.receipt.requested.profile.version, 'learn.2')
-  assert.equal(served?.receipt.requested.runner, 'codex')
+  // The served run's admission names the version and the runner, wherever the record keeps it.
+  const find = (value, predicate) => {
+    if (value === null || typeof value !== 'object') return undefined
+    if (predicate(value)) return value
+    for (const child of Object.values(value)) {
+      const hit = find(child, predicate)
+      if (hit !== undefined) return hit
+    }
+    return undefined
+  }
+  const requested = find(
+    JSON.parse(await readFile(record, 'utf8')),
+    (node) => node.text === 'Invented follow-up task' && typeof node.profile === 'object',
+  )
+  assert.equal(requested?.profile?.version, 'learn.2')
+  assert.equal(requested?.runner, 'codex')
+  const served = { receipt: { requested } }
   const versions = (await readFile(join(invented.store, 'versions.jsonl'), 'utf8'))
     .trim()
     .split('\n')

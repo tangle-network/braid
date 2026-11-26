@@ -71,9 +71,9 @@ export function learningDocument(status: LearningStatus, notice?: string): Entit
     rows.push({
       id: 'sources',
       kind: 'sources',
-      title: `Sources · last ${proposal.sources.sinceDays} days`,
+      title: 'Sources',
       status: 'read',
-      meta: `${proposal.sources.harnesses.length + 1} harnesses`,
+      meta: `last ${proposal.sources.sinceDays} days · ${proposal.sources.harnesses.length + 1} harnesses`,
       detailLines: [
         `Braid: ${proposal.sources.braid.runs} runs, ${proposal.sources.braid.feedback} feedback decisions, ${proposal.sources.braid.lessons} with a reason`,
         `Other harnesses: ${harnesses === '' ? 'none read' : harnesses}`,
@@ -85,9 +85,9 @@ export function learningDocument(status: LearningStatus, notice?: string): Entit
     rows.push({
       id: task.id,
       kind: 'task',
-      title: `Task ${task.id} · ${task.family}`,
-      status: task.workspace.kind === 'git' ? 'replays at commit' : 'replays in empty dir',
-      meta: `check: ${task.check.argv[0] ?? ''}`,
+      title: task.id,
+      status: task.family,
+      meta: task.workspace.kind === 'git' ? 'replays at commit' : 'replays in empty dir',
       detailLines: [
         `Run: ${task.runId}`,
         `Family: ${task.family}`,
@@ -107,7 +107,7 @@ export function learningDocument(status: LearningStatus, notice?: string): Entit
     rows.push({
       id: candidate.id,
       kind: candidate.kind,
-      title: `${candidate.kind} · ${candidate.name}`,
+      title: candidate.name,
       status:
         result === undefined
           ? 'unmeasured'
@@ -127,8 +127,8 @@ export function learningDocument(status: LearningStatus, notice?: string): Entit
   for (const version of [...status.versions].reverse()) {
     rows.push({
       id: `${version.action}-${version.at}`,
-      kind: 'version',
-      title: `${version.action === 'promote' ? 'Promoted' : 'Rolled back to'} ${version.version}`,
+      kind: version.action === 'promote' ? 'promoted' : 'rolled back to',
+      title: version.version,
       status: version.override ? 'override' : 'measured',
       meta: version.at.slice(0, 19).replace('T', ' '),
       current: status.active === version,
@@ -144,7 +144,7 @@ export function learningDocument(status: LearningStatus, notice?: string): Entit
     rows.push({
       id: `served-${status.served.runId}`,
       kind: 'served',
-      title: `Served ${status.served.version} on ${status.served.runner ?? 'runtime default'}`,
+      title: `${status.served.version} on ${status.served.runner ?? 'runtime default'}`,
       status: status.served.status,
       runId: status.served.runId,
       detailLines: [
