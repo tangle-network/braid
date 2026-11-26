@@ -426,7 +426,8 @@ function workflowSkill(first: string, second: string, sessions: number): string 
 function sessionsByHarness(records: readonly { readonly harness: string }[]): string {
   return [...new Set(records.map((session) => session.harness))]
     .map(
-      (name) => `${records.filter((session) => session.harness === name).length} ${harnessName(name)}`,
+      (name) =>
+        `${records.filter((session) => session.harness === name).length} ${harnessName(name)}`,
     )
     .join(', ')
 }
@@ -682,7 +683,13 @@ async function childProfileCandidates(
         profile: withSubagent(
           input.base,
           { description: definition.description, prompt: definition.prompt },
-          { name: start.type, repository: agent.repository, ref: agent.commit, path: agent.path, sha256 },
+          {
+            name: start.type,
+            repository: agent.repository,
+            ref: agent.commit,
+            path: agent.path,
+            sha256,
+          },
         ),
         changes,
       }),

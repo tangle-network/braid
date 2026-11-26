@@ -1050,7 +1050,7 @@ test('a subagent the sessions start becomes a child profile: pinned, measured, p
   ])
   try {
     await call(session, 'initialize', { workspace })
-    await addTasks(app, session, 8)
+    await addTasks(app, session, 12)
 
     const proposal = (await call(
       session,
