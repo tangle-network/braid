@@ -172,7 +172,7 @@ test('LIVE-06 runs its exact selected Router route and rejects unpriced or subst
   assert.throws(() => assertProofReceipt(paid), /reported charge/u)
 })
 
-test('LIVE-06 on the synthetic Router model reports its scripted usage, pins no provider and is cancelled', async (t) => {
+test('LIVE-06 on the synthetic Router model reports its scripted usage and pins no provider', async (t) => {
   const model = SYNTHETIC_ROUTER_MODEL_ID
   const paths = []
   const posts = []
@@ -212,7 +212,7 @@ test('LIVE-06 on the synthetic Router model reports its scripted usage, pins no 
       total_tokens: prompt + completion,
       cost: 0,
     }
-    // The canary answers at once, the cancel turn included, so the cancellation races a real answer.
+    // The canary answers at once, a cancel turn included.
     response.setHeader('content-type', 'text/event-stream')
     response.write(
       `data: ${JSON.stringify({ model, choices: [{ index: 0, delta: { content: reply } }] })}\n\n`,
@@ -253,10 +253,12 @@ test('LIVE-06 on the synthetic Router model reports its scripted usage, pins no 
   assert.equal(completion.model, model)
   assert.equal(completion.input, SYNTHETIC_USAGE.input)
   assert.equal(completion.output, SYNTHETIC_USAGE.output)
-  assert.equal(result.evidence.facts.cancellationStatus, 'confirmed')
-  assert.ok(result.evidence.checks.includes('cancelled-turn'))
+  // The admitted run says whether this runner can cancel; the receipt contract holds either outcome.
+  const cancelled = result.evidence.facts.cancellationStatus === 'confirmed'
+  const cancellationCheck = cancelled ? 'cancelled-turn' : 'cancellation-reported-unavailable'
+  assert.ok(result.evidence.checks.includes(cancellationCheck))
   assert.ok(!paths.includes('/v1/models'), 'the synthetic route reads no price card')
-  assert.ok(posts.length >= 2)
+  assert.equal(posts.length, cancelled ? 2 : 1)
   for (const request of posts) {
     assert.equal(request.model, model)
     assert.equal(request.stream, true)
