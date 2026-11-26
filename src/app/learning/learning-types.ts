@@ -19,7 +19,7 @@ export interface LearningTask {
     | { readonly kind: 'empty' }
 }
 
-export type LearningCandidateKind = 'skill' | 'workflow' | 'instructions' | 'removal'
+export type LearningCandidateKind = 'skill' | 'workflow' | 'instructions' | 'removal' | 'subagent'
 
 export interface LearningCandidate {
   readonly id: string
@@ -194,6 +194,8 @@ export interface LearnerSettings {
     readonly rowsTried: number
     /** Sessions that must run two skills in the same order before they become a workflow. */
     readonly workflowMinSessions: number
+    /** Child-profile candidates, one per subagent type the sessions started that has a pinnable definition. */
+    readonly maxSubagents: number
   }
   readonly measure: string
   readonly gate: string

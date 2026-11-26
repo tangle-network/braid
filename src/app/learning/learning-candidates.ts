@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
-import { realpath } from 'node:fs/promises'
-import { dirname, posix, relative, sep } from 'node:path'
+import { readdir, readFile, realpath } from 'node:fs/promises'
+import { dirname, join, posix, relative, sep } from 'node:path'
 import { promisify } from 'node:util'
 import type { FeedbackTrajectory } from '@tangle-network/agent-eval'
 import type { SkillUsageRow } from '@tangle-network/agent-eval/analyst'
@@ -24,6 +24,7 @@ import {
   sha256Hex,
   withoutSkill,
   withSkills,
+  withSubagent,
 } from './learning-profile.js'
 import {
   countChanges,
@@ -32,6 +33,7 @@ import {
   orderedSkillPairs,
   sessionIndex,
   sessionsInvoking,
+  subagentStarts,
 } from './learning-sources.js'
 import type {
   ChangeOutcomeCounts,
@@ -145,12 +147,25 @@ export function githubRepository(remote: string): string | undefined {
  * be committed and unchanged, so the mounted bytes are exactly the bytes at
  * that commit; files beside `SKILL.md` mount with it.
  */
-export async function pinSkillFile(name: string, skillFile: string): Promise<PinResult> {
+/** A file committed and unchanged in a GitHub checkout, read at that commit. */
+type CommittedFile =
+  | {
+      readonly pinned: true
+      readonly file: string
+      readonly root: string
+      readonly repository: string
+      readonly commit: string
+      readonly path: string
+      readonly content: string
+    }
+  | { readonly pinned: false; readonly reason: string }
+
+async function pinCommittedFile(source: string, what: string): Promise<CommittedFile> {
   let file: string
   try {
-    file = await realpath(skillFile)
+    file = await realpath(source)
   } catch {
-    return { pinned: false, reason: 'the skill file no longer exists' }
+    return { pinned: false, reason: `the ${what} no longer exists` }
   }
   try {
     const root = (await git(dirname(file), ['rev-parse', '--show-toplevel'])).trim()
@@ -162,7 +177,19 @@ export async function pinSkillFile(name: string, skillFile: string): Promise<Pin
     if (repository === undefined)
       return { pinned: false, reason: 'its checkout has no GitHub origin to pin to' }
     if ((await git(root, ['status', '--porcelain', '--', path])).trim() !== '')
-      return { pinned: false, reason: 'the skill file has uncommitted changes' }
+      return { pinned: false, reason: `the ${what} has uncommitted changes` }
+    const content = await git(root, ['show', `${commit}:${path}`])
+    return { pinned: true, file, root, repository, commit, path, content }
+  } catch {
+    return { pinned: false, reason: `the ${what} is not in a git checkout` }
+  }
+}
+
+export async function pinSkillFile(name: string, skillFile: string): Promise<PinResult> {
+  const pinned = await pinCommittedFile(skillFile, 'skill file')
+  if (!pinned.pinned) return pinned
+  const { file, root, repository, commit, path, content } = pinned
+  try {
     const directory = posix.dirname(path)
     if (
       directory !== '.' &&
@@ -171,7 +198,6 @@ export async function pinSkillFile(name: string, skillFile: string): Promise<Pin
       ).trim() !== ''
     )
       return { pinned: false, reason: 'a file beside the skill has uncommitted changes' }
-    const content = await git(root, ['show', `${commit}:${path}`])
     const { files: siblings, omitted } = await skillSiblings(root, commit, path)
     const { readSkillFile } = await import('@tangle-network/agent-eval/analyst')
     const read = readSkillFile(file)
@@ -191,8 +217,29 @@ export async function pinSkillFile(name: string, skillFile: string): Promise<Pin
       },
     }
   } catch {
-    return { pinned: false, reason: 'the skill file is not in a git checkout' }
+    return { pinned: false, reason: 'the skill directory could not be read at its commit' }
   }
+}
+
+/** A subagent definition pinned to the commit it came from. */
+export interface PinnedAgent {
+  readonly name: string
+  readonly repository: string
+  readonly commit: string
+  readonly path: string
+  readonly content: string
+}
+
+export type AgentPinResult =
+  | { readonly pinned: true; readonly agent: PinnedAgent }
+  | { readonly pinned: false; readonly reason: string }
+
+/** Pin a subagent definition file, committed and unchanged, to its commit. */
+export async function pinAgentFile(name: string, agentFile: string): Promise<AgentPinResult> {
+  const pinned = await pinCommittedFile(agentFile, 'definition file')
+  if (!pinned.pinned) return pinned
+  const { repository, commit, path, content } = pinned
+  return { pinned: true, agent: { name, repository, commit, path, content } }
 }
 
 /**
@@ -200,6 +247,92 @@ export async function pinSkillFile(name: string, skillFile: string): Promise<Pin
  * reads skills elsewhere gets them beside its own copy of the skill from the
  * materializer, which keeps a skill's files with it.
  */
+const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)([\s\S]*)$/
+/** The subagent names every runner's materializer accepts. */
+const SUBAGENT_NAME = /^[a-z0-9][a-z0-9_-]*$/
+
+/** A subagent definition as Claude Code writes one: flat frontmatter, then the prompt. */
+export type AgentDefinition =
+  | {
+      readonly read: true
+      readonly description: string
+      readonly prompt: string
+      /** Every frontmatter field, by key. */
+      readonly fields: Readonly<Record<string, string>>
+    }
+  | { readonly read: false; readonly reason: string }
+
+function scalar(raw: string): string | undefined {
+  const value = raw.trim()
+  if (value.startsWith('"')) {
+    try {
+      const parsed: unknown = JSON.parse(value)
+      return typeof parsed === 'string' ? parsed : undefined
+    } catch {
+      return undefined
+    }
+  }
+  if (value.startsWith("'"))
+    return value.length >= 2 && value.endsWith("'")
+      ? value.slice(1, -1).replaceAll("''", "'")
+      : undefined
+  // A block scalar or a nested value is not flat.
+  return value.startsWith('|') || value.startsWith('>') ? undefined : value
+}
+
+/**
+ * Read a subagent definition. Only flat `key: value` frontmatter is read; a
+ * definition with nested or block values is refused rather than half read.
+ */
+export function readAgentDefinition(content: string): AgentDefinition {
+  const match = FRONTMATTER.exec(content)
+  if (match === null) return { read: false, reason: 'it has no frontmatter block' }
+  const fields: Record<string, string> = {}
+  for (const line of (match[1] as string).split(/\r?\n/)) {
+    if (line.trim() === '' || line.trimStart().startsWith('#')) continue
+    const pair = /^([A-Za-z][\w-]*):(.*)$/.exec(line)
+    const value = pair === null ? undefined : scalar(pair[2] as string)
+    if (pair === null || value === undefined)
+      return { read: false, reason: 'its frontmatter is not flat `key: value` lines' }
+    fields[pair[1] as string] = value
+  }
+  const description = fields.description ?? ''
+  const prompt = (match[2] as string).trim()
+  if (description === '') return { read: false, reason: 'it has no description' }
+  if (prompt === '') return { read: false, reason: 'it has no prompt' }
+  return { read: true, description, prompt, fields }
+}
+
+/**
+ * Definition files by the subagent name their frontmatter gives, from the
+ * first directory that defines each name: the order Claude Code gives a
+ * project's agents over the user's. A directory that cannot be read defines none.
+ */
+async function agentDefinitionFiles(directories: readonly string[]): Promise<Map<string, string>> {
+  const files = new Map<string, string>()
+  for (const directory of directories) {
+    let entries: string[]
+    try {
+      entries = (await readdir(directory)).filter((entry) => entry.endsWith('.md')).sort()
+    } catch {
+      continue
+    }
+    for (const entry of entries) {
+      const file = join(directory, entry)
+      let content: string
+      try {
+        content = await readFile(file, 'utf8')
+      } catch {
+        continue
+      }
+      const definition = readAgentDefinition(content)
+      const name = definition.read ? definition.fields.name : undefined
+      if (name !== undefined && !files.has(name)) files.set(name, file)
+    }
+  }
+  return files
+}
+
 export function skillsDirectoryFor(profile: AgentProfile): string {
   const harness = profile.harness
   return (
@@ -289,6 +422,15 @@ function workflowSkill(first: string, second: string, sessions: number): string 
 }
 
 /** The evidence line for what a candidate's sessions came to; unknown is its own count, never folded into none. */
+/** Sessions per harness: `2 Claude Code, 1 Codex`. */
+function sessionsByHarness(records: readonly { readonly harness: string }[]): string {
+  return [...new Set(records.map((session) => session.harness))]
+    .map(
+      (name) => `${records.filter((session) => session.harness === name).length} ${harnessName(name)}`,
+    )
+    .join(', ')
+}
+
 function changeEvidence(counts: ChangeOutcomeCounts, sessions: string): string {
   const total = counts.changed + counts.none + counts.unknown
   return `Changes of the ${total} sessions that ${sessions}: ${counts.changed} made a change, ${counts.none} made none, ${counts.unknown} unknown`
@@ -316,6 +458,8 @@ export interface ProposeCandidatesInput {
   readonly pin?: (name: string, skillFile: string) => Promise<PinResult>
   /** What the active learner proposes. */
   readonly settings?: LearnerSettings['candidates']
+  /** Where subagent definitions live, most specific first: the workspace's, then the user's. */
+  readonly agentDirectories?: readonly string[]
 }
 
 /**
@@ -328,6 +472,7 @@ export interface ProposeCandidatesInput {
  * | `workflow` | a composed skill that runs two skills in the order sessions ran them | Claude Code and Codex sessions |
  * | `instructions` | lessons from task feedback reasons | Braid feedback |
  * | `removal` | one skill the profile carries | the profile itself |
+ * | `subagent` | a child profile from the definition of a subagent type the sessions started, pinned by commit | Claude Code sessions |
  *
  * A skill or workflow candidate also records what its sessions came to (see
  * `changeState`). That is evidence for the reader; the measurement decides.
@@ -341,7 +486,7 @@ export async function proposeCandidates(
   const proposes = (kind: LearningCandidateKind) => settings.kinds.includes(kind)
   const candidates: LearningCandidate[] = []
   const skipped: string[] = []
-  for (const kind of ['skill', 'workflow', 'instructions', 'removal'] as const)
+  for (const kind of ['skill', 'workflow', 'instructions', 'removal', 'subagent'] as const)
     if (!proposes(kind)) skipped.push(`${kind}: the learner does not propose this kind`)
   const present = new Set(inlineSkills(input.base).map((skill) => skill.name))
   const rows = (input.harness.usage?.rows ?? [])
@@ -399,12 +544,6 @@ export async function proposeCandidates(
   } else if (proposes('workflow') && pair !== undefined) {
     const text = workflowSkill(pair.first, pair.second, pair.sessions)
     const changes = countChanges(pair.records, index)
-    const byHarness = [...new Set(pair.records.map((session) => session.harness))]
-      .map(
-        (name) =>
-          `${pair.records.filter((session) => session.harness === name).length} ${harnessName(name)}`,
-      )
-      .join(', ')
     const components = [pair.first, pair.second].flatMap((name) => {
       const skill = pinned.get(name)
       return skill === undefined ? [] : [mounted(skill, skillsDirectory)]
@@ -414,7 +553,7 @@ export async function proposeCandidates(
         name: `${pair.first}-then-${pair.second}`,
         summary: `Compose ${pair.first} then ${pair.second} into one workflow skill`,
         evidence: [
-          `${pair.sessions} sessions ran ${pair.first} before ${pair.second}: ${byHarness}`,
+          `${pair.sessions} sessions ran ${pair.first} before ${pair.second}: ${sessionsByHarness(pair.records)}`,
           changeEvidence(changes, `ran ${pair.first} before ${pair.second}`),
         ],
         unitText: text,
@@ -465,5 +604,89 @@ export async function proposeCandidates(
       }),
     )
   }
+  candidates.push(...(await childProfileCandidates(input, settings, skipped)))
   return { candidates, skipped }
+}
+
+/**
+ * Child-profile candidates: each subagent type the sessions started that the
+ * profile lacks, whose definition is committed in a GitHub checkout, becomes a
+ * subagent of the profile. The child carries the definition's description and
+ * prompt; its other settings are Claude Code's own names, so they are listed
+ * as not carried and the child runs with the parent's tools, permissions and model.
+ */
+async function childProfileCandidates(
+  input: ProposeCandidatesInput,
+  settings: LearnerSettings['candidates'],
+  skipped: string[],
+): Promise<LearningCandidate[]> {
+  if (!settings.kinds.includes('subagent')) return []
+  const starts = subagentStarts(input.harness.sessions, input.harness.sinceMs)
+    .filter((start) => input.base.subagents?.[start.type] === undefined)
+    .slice(0, settings.rowsTried)
+  if (starts.length === 0) {
+    skipped.push('subagent: the sessions started no subagent type the profile lacks')
+    return []
+  }
+  const directories = input.agentDirectories ?? []
+  const definitions = await agentDefinitionFiles(directories)
+  const index = sessionIndex(input.harness.sessions)
+  const candidates: LearningCandidate[] = []
+  for (const start of starts) {
+    if (candidates.length >= settings.maxSubagents) break
+    const where = `subagent ${start.type}`
+    if (!SUBAGENT_NAME.test(start.type)) {
+      skipped.push(`${where}: not a name a profile can carry, so no definition of it is mounted`)
+      continue
+    }
+    const file = definitions.get(start.type)
+    if (file === undefined) {
+      skipped.push(
+        `${where}: no definition names it in ${directories.length === 0 ? 'any agents directory' : directories.join(' or ')}; a built-in type has none`,
+      )
+      continue
+    }
+    const pinned = await pinAgentFile(start.type, file)
+    if (!pinned.pinned) {
+      skipped.push(`${where}: ${pinned.reason}`)
+      continue
+    }
+    const { agent } = pinned
+    const definition = readAgentDefinition(agent.content)
+    if (!definition.read || definition.fields.name !== start.type) {
+      skipped.push(
+        `${where}: ${definition.read ? 'the committed definition names another subagent' : definition.reason}`,
+      )
+      continue
+    }
+    const sha256 = sha256Hex(agent.content)
+    const pin = `${agent.repository}@${agent.commit.slice(0, 12)}`
+    const notCarried = Object.entries(definition.fields).filter(
+      ([key]) => key !== 'name' && key !== 'description',
+    )
+    const changes = countChanges(start.records, index)
+    candidates.push(
+      await candidate('subagent', {
+        name: start.type,
+        summary: `Add the ${start.type} child profile from ${pin}`,
+        evidence: [
+          `${start.calls} starts in ${start.records.length} sessions: ${sessionsByHarness(start.records)}`,
+          changeEvidence(changes, `started ${start.type}`),
+          `pinned to ${pin}:${agent.path}`,
+          notCarried.length === 0
+            ? "carries the definition's description and prompt"
+            : `not carried: ${notCarried.map(([key, value]) => `${key} (${value})`).join(', ')}; the child runs with the parent's tools, permissions and model`,
+        ],
+        unitText: agent.content,
+        unitDigest: `sha256:${sha256}`,
+        profile: withSubagent(
+          input.base,
+          { description: definition.description, prompt: definition.prompt },
+          { name: start.type, repository: agent.repository, ref: agent.commit, path: agent.path, sha256 },
+        ),
+        changes,
+      }),
+    )
+  }
+  return candidates
 }

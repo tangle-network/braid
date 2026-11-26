@@ -214,6 +214,41 @@ export function sessionsInvoking(
   )
 }
 
+/** A subagent type the sessions started inside the window, with the calls that started it. */
+export interface SubagentStarts {
+  readonly type: string
+  readonly calls: number
+  readonly records: readonly SkillSessionRecord[]
+}
+
+/**
+ * Subagent types started inside the window, most sessions first. A start is a
+ * tool call Eval's reader names a subagent type on, which the harness did not
+ * refuse, dated at or after `sinceMs`.
+ */
+export function subagentStarts(
+  sessions: readonly SkillSessionRecord[],
+  sinceMs: number,
+): SubagentStarts[] {
+  const starts = new Map<string, { type: string; calls: number; records: SkillSessionRecord[] }>()
+  for (const session of sessions) {
+    for (const event of session.events) {
+      if (event.kind !== 'tool' || event.subagent === undefined || event.failed === true) continue
+      if (event.at === null || Date.parse(event.at) < sinceMs) continue
+      const entry = starts.get(event.subagent) ?? { type: event.subagent, calls: 0, records: [] }
+      entry.calls += 1
+      if (entry.records.at(-1) !== session) entry.records.push(session)
+      starts.set(event.subagent, entry)
+    }
+  }
+  return [...starts.values()].sort(
+    (left, right) =>
+      right.records.length - left.records.length ||
+      right.calls - left.calls ||
+      left.type.localeCompare(right.type),
+  )
+}
+
 /** Ordered skill pairs, A then B, counted once per session that ran both in that order. */
 export function orderedSkillPairs(sessions: readonly SkillSessionRecord[]): Array<{
   readonly first: string
