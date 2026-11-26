@@ -24,6 +24,8 @@ import { createApplicationUiController } from '../src/adapters/tui/application-u
 import type { BraidApplication } from '../src/app/application.js'
 import { createBraidApplication, createDeterministicExecution } from '../src/app/composition.js'
 import type {
+  LearnerMeasurement,
+  LearnerStatus,
   LearningMeasurement,
   LearningProposal,
   LearningStatus,
@@ -36,11 +38,18 @@ import {
   learningFixtureResponse,
 } from '../src/testing/learning-fixture.js'
 import type { BraidResponse } from '../src/views/headless/protocol.js'
+import type { EntityBrowserDocument } from '../src/views/tui/entity-browser.js'
 import { runRpc } from '../src/views/headless/rpc.js'
 
 const TIDY = '---\nname: tidy\ndescription: Remove dead code.\n---\n\n# Tidy\n\nRemove dead code.\n'
 const AUDIT =
   '---\nname: audit\ndescription: Review the change.\n---\n\n# Audit\n\nReview the change.\n'
+const NOTES = '---\nname: notes\ndescription: Keep notes.\n---\n\n# Notes\n\nKeep notes.\n'
+const BODIES: Record<string, string> = {
+  tidy: '# Tidy\n\nRemove dead code.',
+  audit: '# Audit\n\nReview the change.',
+  notes: '# Notes\n\nKeep notes.',
+}
 function git(cwd: string, ...args: string[]): string {
   return execFileSync('git', ['-C', cwd, ...args], {
     encoding: 'utf8',
@@ -68,8 +77,8 @@ async function repository(path: string, files: Record<string, string>, remote?: 
   if (remote !== undefined) git(path, 'remote', 'add', 'origin', remote)
 }
 
-/** One invented Claude Code transcript: `tidy`, then `audit`, each loaded from the checkout. */
-function transcript(sessionId: string, skills: string): string {
+/** One invented Claude Code transcript: each named skill in order, each loaded from the checkout. */
+function transcript(sessionId: string, skills: string, names = ['tidy', 'audit']): string {
   const lines: unknown[] = []
   let previous: string | null = null
   let tick = 0
@@ -91,7 +100,7 @@ function transcript(sessionId: string, skills: string): string {
     previous = uuid
   }
   line('user', `${sessionId}-u`, { role: 'user', content: 'Invented request.' })
-  for (const [index, name] of ['tidy', 'audit'].entries()) {
+  for (const [index, name] of names.entries()) {
     const id = `toolu_${sessionId}_${index}`
     line('assistant', `${sessionId}-a${index}`, {
       id: `msg_${sessionId}_${index}`,
@@ -105,7 +114,7 @@ function transcript(sessionId: string, skills: string): string {
       role: 'user',
       content: [{ type: 'tool_result', tool_use_id: id, content: 'ok' }],
     })
-    const body = name === 'tidy' ? '# Tidy\n\nRemove dead code.' : '# Audit\n\nReview the change.'
+    const body = BODIES[name] as string
     line(
       'user',
       `${sessionId}-l${index}`,
@@ -166,7 +175,8 @@ async function finishRun(app: BraidApplication, text: string, operationId: strin
   return receipt.runId
 }
 
-test('learning reads two harnesses, measures candidates on held-out replays, promotes a version with rollback and serves it on another runner', async () => {
+/** An invented workspace, skills checkout and Claude Code sessions, served by the fixture agent over headless RPC. */
+async function learningHarness(names?: string[]) {
   const root = await mkdtemp(join(tmpdir(), 'braid-learning-'))
   const skills = join(root, 'skills')
   const workspace = join(root, 'workspace')
@@ -174,13 +184,13 @@ test('learning reads two harnesses, measures candidates on held-out replays, pro
   const store = join(root, 'learn')
   await repository(
     skills,
-    { 'tidy/SKILL.md': TIDY, 'audit/SKILL.md': AUDIT },
+    { 'tidy/SKILL.md': TIDY, 'audit/SKILL.md': AUDIT, 'notes/SKILL.md': NOTES },
     'https://github.com/example/skills.git',
   )
   await repository(workspace, { 'README.md': '# Invented workspace\n' })
   await mkdir(join(projects, '-work-app'), { recursive: true })
   for (const id of ['s1', 's2', 's3'])
-    await writeFile(join(projects, '-work-app', `${id}.jsonl`), transcript(id, skills))
+    await writeFile(join(projects, '-work-app', `${id}.jsonl`), transcript(id, skills, names))
 
   const app = createBraidApplication({
     fixture: 'deterministic',
@@ -213,32 +223,56 @@ test('learning reads two harnesses, measures candidates on held-out replays, pro
       },
     }),
   }
+  return {
+    root,
+    skills,
+    workspace,
+    projects,
+    app,
+    controller,
+    session,
+    async close() {
+      input.end()
+      await session.completion
+      await app.close()
+      await rm(root, { recursive: true, force: true })
+    },
+  }
+}
+
+/** Finished runs become held-out tasks: even ones need the skill, odd ones pass either way. */
+async function addTasks(app: BraidApplication, session: Session, count: number): Promise<void> {
+  const node = process.execPath
+  const needsTidy = [
+    node,
+    '-e',
+    "process.exit(require('fs').readFileSync(process.env.BRAID_REPLAY_ANSWER,'utf8').startsWith('tidied')?0:1)",
+  ]
+  const anyAnswer = [node, '-e', "require('fs').statSync('README.md');process.exit(0)"]
+  for (let index = 0; index < count; index++) {
+    const runId = await finishRun(app, `Invented task ${index}`, `op-learning-run-${index}`)
+    const task = (await call(
+      session,
+      'learn',
+      {
+        action: 'task',
+        runId,
+        check: index % 2 === 0 ? needsTidy : anyAnswer,
+        family: index % 2 === 0 ? 'cleanup' : 'reading',
+      },
+      `op-learning-task-${index}`,
+    )) as LearningTask
+    assert.equal(task.workspace.kind, 'git', 'a run in a repository replays at its commit')
+  }
+}
+
+test('learning reads two harnesses, measures candidates on held-out replays, promotes a version with rollback and serves it on another runner', async () => {
+  const { skills, workspace, projects, app, session, close } = await learningHarness()
   try {
     await call(session, 'initialize', { workspace })
 
     // Twelve finished runs become held-out tasks: six need the skill, six pass either way.
-    const node = process.execPath
-    const needsTidy = [
-      node,
-      '-e',
-      "process.exit(require('fs').readFileSync(process.env.BRAID_REPLAY_ANSWER,'utf8').startsWith('tidied')?0:1)",
-    ]
-    const anyAnswer = [node, '-e', "require('fs').statSync('README.md');process.exit(0)"]
-    for (let index = 0; index < 12; index++) {
-      const runId = await finishRun(app, `Invented task ${index}`, `op-learning-run-${index}`)
-      const task = (await call(
-        session,
-        'learn',
-        {
-          action: 'task',
-          runId,
-          check: index % 2 === 0 ? needsTidy : anyAnswer,
-          family: index % 2 === 0 ? 'cleanup' : 'reading',
-        },
-        `op-learning-task-${index}`,
-      )) as LearningTask
-      assert.equal(task.workspace.kind, 'git', 'a run in a repository replays at its commit')
-    }
+    await addTasks(app, session, 12)
 
     const proposal = (await call(
       session,
@@ -396,9 +430,186 @@ test('learning reads two harnesses, measures candidates on held-out replays, pro
       ],
     )
   } finally {
-    input.end()
-    await session.completion
-    await app.close()
-    await rm(root, { recursive: true, force: true })
+    await close()
+  }
+})
+
+test('the learner is a versioned profile: a variant whose pick wins on held-out tasks is promoted, drives the next proposal and rolls back', async () => {
+  // Each session runs audit and notes twice and tidy once, so the default learner's two skill
+  // candidates are the two the agent ignores, and only a learner that proposes more finds tidy.
+  const { app, controller, session, workspace, close } = await learningHarness([
+    'audit',
+    'notes',
+    'audit',
+    'notes',
+    'tidy',
+  ])
+  const skillNames = (proposal: LearningProposal) =>
+    proposal.candidates
+      .filter((candidate) => candidate.kind === 'skill')
+      .map((candidate) => candidate.name)
+      .sort()
+  try {
+    await call(session, 'initialize', { workspace })
+    await addTasks(app, session, 24)
+
+    const before = (await call(
+      session,
+      'learn',
+      { action: 'learner', step: 'status' },
+      'op-learner-status-0',
+    )) as LearnerStatus
+    assert.equal(before.active.version, null, "Braid's default learner is active")
+    assert.equal(before.settings.candidates.maxSkills, 2)
+    const first = (await call(
+      session,
+      'learn',
+      { action: 'propose' },
+      'op-learner-propose-0',
+    )) as LearningProposal
+    assert.deepEqual(first.learner, before.active)
+    assert.deepEqual(skillNames(first), ['audit', 'notes'])
+
+    const round = (await call(
+      session,
+      'learn',
+      { action: 'learner', step: 'measure' },
+      'op-learner-measure',
+    )) as LearnerMeasurement
+    assert.equal(round.selectionTasks.length, 12)
+    assert.equal(round.heldOutTasks.length, 12)
+    assert.equal(
+      new Set([...round.selectionTasks, ...round.heldOutTasks]).size,
+      24,
+      'no task both picks and judges',
+    )
+    assert.deepEqual(
+      round.arms.map((arm) => arm.name),
+      [
+        'active',
+        'skills-4',
+        'without-skill',
+        'without-workflow',
+        'without-instructions',
+        'without-removal',
+      ],
+    )
+    const arm = (name: string) => {
+      const found = round.arms.find((item) => item.name === name)
+      assert(found !== undefined, name)
+      return found
+    }
+    const active = arm('active')
+    assert.equal(active.pick.kind, 'removal', "the default learner's best pick only compresses")
+    assert.equal(active.heldOut.worstFamily?.family, 'cleanup')
+    assert.equal(active.heldOut.worstFamily?.passed, 0)
+    const wider = arm('skills-4')
+    assert.equal(wider.pick.name, 'tidy')
+    assert.equal(wider.heldOut.known, 12)
+    assert.equal(wider.heldOut.worstFamily?.rate, 1)
+    assert.equal(wider.gate.promotable, true, wider.gate.reason)
+    for (const other of round.arms.slice(2))
+      assert.equal(other.gate.promotable, false, `${other.name}: ${other.gate.reason}`)
+    assert.equal(round.selected, 'skills-4')
+
+    // The round is an Eval search ledger whose artifacts are learner profiles.
+    const state = replaySearchLedgerText(
+      await readFile(round.ledgerPath, 'utf8'),
+      round.searchId,
+      round.ledgerPath,
+    )
+    assert.notEqual(state.closed, null)
+    const nodes = state.nodes()
+    assert.equal(nodes.length, round.arms.length)
+    assert.deepEqual(
+      nodes.filter((node) => node.status === 'selected').map((node) => node.artifactDigest),
+      [wider.learnerDigest],
+    )
+
+    // The terminal shows the round.
+    const panel = await controller.dispatch({
+      type: 'run-command',
+      command: 'learn',
+      args: ['learner'],
+      operationId: 'op-learner-panel',
+    })
+    assert(panel.kind === 'accepted')
+    const rows = (panel.data as EntityBrowserDocument).rows
+    assert.equal(rows.find((row) => row.current === true && row.kind === 'learner variant')?.title, 'skills-4')
+
+    const promoted = (await call(
+      session,
+      'learn',
+      { action: 'learner', step: 'promote' },
+      'op-learner-promote',
+    )) as LearningVersion
+    assert.equal(promoted.version, 'learner.1')
+    assert.equal(promoted.candidateId, 'skills-4')
+    assert.equal(promoted.override, false)
+    assert.equal(
+      app.runtimeSelection.profile().version,
+      undefined,
+      'a learner version changes how Braid learns, not the profile it serves',
+    )
+
+    // The promoted learner proposes the skill the default one never reached; its pick is measured and served.
+    const next = (await call(
+      session,
+      'learn',
+      { action: 'propose' },
+      'op-learner-propose-1',
+    )) as LearningProposal
+    assert.deepEqual(next.learner, { version: 'learner.1', digest: wider.learnerDigest })
+    assert.deepEqual(skillNames(next), ['audit', 'notes', 'tidy'])
+    const measured = (await call(
+      session,
+      'learn',
+      { action: 'measure' },
+      'op-learner-profile-measure',
+    )) as LearningMeasurement
+    assert.equal(measured.procedureDigest, wider.learnerDigest)
+    const tidy = next.candidates.find(
+      (candidate) => candidate.kind === 'skill' && candidate.name === 'tidy',
+    )
+    assert.equal(measured.selected, tidy?.id)
+    const learned = (await call(
+      session,
+      'learn',
+      { action: 'promote' },
+      'op-learner-profile-promote',
+    )) as LearningVersion
+    assert.equal(learned.version, 'learn.1')
+    assert.deepEqual(learned.learner, next.learner, 'the profile version names its learner')
+
+    const back = (await call(
+      session,
+      'learn',
+      { action: 'learner', step: 'rollback' },
+      'op-learner-rollback',
+    )) as LearningVersion
+    assert.equal(back.version, 'default')
+    const after = (await call(
+      session,
+      'learn',
+      { action: 'learner', step: 'status' },
+      'op-learner-status-1',
+    )) as LearnerStatus
+    assert.deepEqual(after.active, before.active)
+    assert.deepEqual(
+      after.versions.map((version) => [version.action, version.version]),
+      [
+        ['promote', 'learner.1'],
+        ['rollback', 'default'],
+      ],
+    )
+    const restored = (await call(
+      session,
+      'learn',
+      { action: 'propose' },
+      'op-learner-propose-2',
+    )) as LearningProposal
+    assert.deepEqual(restored.learner, before.active)
+  } finally {
+    await close()
   }
 })

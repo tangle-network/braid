@@ -378,6 +378,7 @@ export function createLearningActions(
         parentPath,
         candidateId,
         measurementId: measurement.id,
+        learner: measurement.learner,
         override: !result.gate.promotable,
         reason: result.gate.promotable ? result.gate.reason : `override: ${result.gate.reason}`,
       }

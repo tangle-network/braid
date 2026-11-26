@@ -90,9 +90,13 @@ export function learnerSettings(profile: AgentProfile): LearnerSettings {
   }
 }
 
-/** The procedure revision every ledger names: what the learner does, not what it is called. */
+/**
+ * The procedure revision every ledger names: what the learner does, not what
+ * it is called. The settings are read back in their fixed order first, so the
+ * digest does not depend on how they were built or stored.
+ */
 export function learnerDigest(settings: LearnerSettings): `sha256:${string}` {
-  return `sha256:${sha256Hex(JSON.stringify(settings))}`
+  return `sha256:${sha256Hex(JSON.stringify(learnerSettings(learnerProfile(settings))))}`
 }
 
 export interface LearnerVariant {

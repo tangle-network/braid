@@ -135,6 +135,8 @@ export interface LearningVersion {
   readonly parentPath: string
   readonly candidateId: string | null
   readonly measurementId: string | null
+  /** The learner whose measurement chose this profile version; absent on learner versions. */
+  readonly learner?: LearnerRef
   readonly override: boolean
   readonly reason: string
 }
