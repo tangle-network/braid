@@ -11,6 +11,10 @@
   keeps your worst task family's success rate, and every promotion is a version
   you can roll back.
 - Every later run's receipt names the learned version it ran, on any runner.
+- How Braid learns is a versioned profile too. `/learn learner measure` builds
+  one-change variants of the learner. Each variant picks a change on some of your
+  tasks, and the pick is judged on the tasks it held out. `/learn learner promote`
+  keeps a learner only when its pick does better there, and you can roll it back.
 
 ## First published here: the 0.3.7 changes
 

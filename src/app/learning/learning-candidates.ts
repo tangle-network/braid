@@ -6,6 +6,7 @@ import type { FeedbackTrajectory } from '@tangle-network/agent-eval'
 import type { SkillUsageRow } from '@tangle-network/agent-eval/analyst'
 import { type AgentProfile, mountSkill } from '@tangle-network/agent-interface'
 import { draftProfileFromFeedback } from '../profile-learning.js'
+import { DEFAULT_LEARNER_SETTINGS } from './learner-profile.js'
 import {
   inlineSkills,
   loadedTokens,
@@ -25,14 +26,12 @@ import {
 } from './learning-sources.js'
 import type {
   ChangeOutcomeCounts,
+  LearnerSettings,
   LearningCandidate,
   LearningCandidateKind,
 } from './learning-types.js'
 
 const run = promisify(execFile)
-const MAX_SKILL_CANDIDATES = 2
-const MAX_REMOVAL_CANDIDATES = 2
-const ROWS_TRIED = 8
 
 /** A skill file pinned to the commit it came from, ready for `mountSkill`. */
 export interface PinnedSkill {
@@ -175,6 +174,8 @@ export interface ProposeCandidatesInput {
   readonly feedback: readonly FeedbackTrajectory[]
   /** Pins a skill file; the default reads git. */
   readonly pin?: (name: string, skillFile: string) => Promise<PinResult>
+  /** What the active learner proposes. */
+  readonly settings?: LearnerSettings['candidates']
 }
 
 /**
@@ -195,13 +196,17 @@ export async function proposeCandidates(
   input: ProposeCandidatesInput,
 ): Promise<{ readonly candidates: LearningCandidate[]; readonly skipped: string[] }> {
   const pin = input.pin ?? pinSkillFile
+  const settings = input.settings ?? DEFAULT_LEARNER_SETTINGS.candidates
+  const proposes = (kind: LearningCandidateKind) => settings.kinds.includes(kind)
   const candidates: LearningCandidate[] = []
   const skipped: string[] = []
+  for (const kind of ['skill', 'workflow', 'instructions', 'removal'] as const)
+    if (!proposes(kind)) skipped.push(`${kind}: the learner does not propose this kind`)
   const present = new Set(inlineSkills(input.base).map((skill) => skill.name))
   const rows = (input.harness.usage?.rows ?? [])
     .filter((row) => !present.has(row.skill))
     .sort((left, right) => right.invocations.total - left.invocations.total)
-    .slice(0, ROWS_TRIED)
+    .slice(0, proposes('skill') || proposes('workflow') ? settings.rowsTried : 0)
   const index = sessionIndex(input.harness.sessions)
   const pinned = new Map<string, PinnedSkill>()
   const rowOf = new Map<string, SkillUsageRow>()
@@ -216,7 +221,7 @@ export async function proposeCandidates(
     else skipped.push(`skill ${row.skill}: ${result.reason}`)
   }
 
-  for (const skill of [...pinned.values()].slice(0, MAX_SKILL_CANDIDATES)) {
+  for (const skill of [...pinned.values()].slice(0, proposes('skill') ? settings.maxSkills : 0)) {
     const row = rowOf.get(skill.name) as SkillUsageRow
     const changes = countChanges(
       sessionsInvoking(input.harness.sessions, skill.name, input.harness.sinceMs),
@@ -241,13 +246,15 @@ export async function proposeCandidates(
 
   const pair = orderedSkillPairs(input.harness.sessions).find(
     (entry) =>
-      entry.sessions >= 2 &&
+      entry.sessions >= settings.workflowMinSessions &&
       (present.has(entry.first) || pinned.has(entry.first)) &&
       (present.has(entry.second) || pinned.has(entry.second)),
   )
-  if (pair === undefined) {
-    skipped.push('workflow: no two pinnable skills ran in the same order in two or more sessions')
-  } else {
+  if (proposes('workflow') && pair === undefined) {
+    skipped.push(
+      `workflow: no two pinnable skills ran in the same order in ${settings.workflowMinSessions} or more sessions`,
+    )
+  } else if (proposes('workflow') && pair !== undefined) {
     const text = workflowSkill(pair.first, pair.second, pair.sessions)
     const changes = countChanges(pair.records, index)
     const byHarness = [...new Set(pair.records.map((session) => session.harness))]
@@ -279,7 +286,10 @@ export async function proposeCandidates(
     )
   }
 
-  if (input.feedback.some((item) => item.labels.some((label) => (label.reason ?? '') !== ''))) {
+  const reasoned = input.feedback.some((item) =>
+    item.labels.some((label) => (label.reason ?? '') !== ''),
+  )
+  if (proposes('instructions') && reasoned) {
     const draft = await draftProfileFromFeedback(input.base, input.feedback)
     const text = draft.lessons.map((lesson) => lesson.instruction).join('\n')
     candidates.push(
@@ -293,11 +303,14 @@ export async function proposeCandidates(
         changes: null,
       }),
     )
-  } else {
+  } else if (proposes('instructions')) {
     skipped.push('instructions: no task feedback with a reason')
   }
 
-  for (const skill of inlineSkills(input.base).slice(0, MAX_REMOVAL_CANDIDATES)) {
+  for (const skill of inlineSkills(input.base).slice(
+    0,
+    proposes('removal') ? settings.maxRemovals : 0,
+  )) {
     candidates.push(
       await candidate('removal', {
         name: skill.name,

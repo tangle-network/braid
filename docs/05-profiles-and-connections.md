@@ -223,7 +223,7 @@ The Sources row gives each harness's sessions, skill invocations and unreadable 
 Everything stays in a private local store: `learn/` beside Braid's state, or `BRAID_LEARN_DIRECTORY`.
 It holds the tasks, the proposal, every measurement, each version's profile, and a search ledger per measurement at `searches/<id>/ledger.jsonl`.
 The ledger is Eval's search ledger: each candidate is a node keyed by the SHA-256 of the unit it adds, and each replay is a scored cell, so `agent-eval procedure-registry --ledger <path>` reads it.
-The procedure's own settings are hashed into each ledger, so a change to how Braid learns shows up as a new procedure revision.
+Each ledger names the learner that wrote it by the SHA-256 of the learner's settings, so a change to how Braid learns shows up as a new procedure revision.
 `BRAID_LEARN_CLAUDE_CODE_PROJECTS`, `BRAID_LEARN_CODEX_SESSIONS` and `BRAID_LEARN_CHANGE_LEDGER` point the readers at another Claude Code projects directory, Codex sessions directory or ledger file.
 `agent-eval procedure-registry <sessions> [--harness codex] --change-ledger <ledger> --ledger <path>` reads the same sessions, ledger and search ledger.
 
@@ -233,9 +233,32 @@ What this does not do:
 - Replays use a fresh git worktree of the run's workspace; a task outside a git repository replays in an empty directory.
 - Learned versions are not shared, published or routed automatically.
 
-Headless clients send `learn` with an operation identifier and `action` (`status`, `task`, `propose`, `measure`, `promote` or `rollback`).
+### The learner is a profile too
+
+How Braid learns is itself an AgentProfile, `braid-learner`, with its settings under `extensions.braid.learning`: the sources it reads, the candidate kinds it proposes, how many skills and removals, how many session rows it tries, how many sessions a workflow needs, and the seed and concurrency of its replays.
+`/learn propose` and `/learn measure` use the active learner, and each proposal and measurement records it.
+Braid's default learner is active until a learner version is promoted.
+
+1. **Measure.** `/learn learner measure` splits your tasks per family by the learner's seed: the larger half of each family is held out, the rest are selection tasks.
+   It builds up to five one-change variants of the active learner: bring back a kind it dropped, propose twice as many skills, or stop proposing one kind.
+   Every learner, the active one first, proposes from the same sources, measures its candidates on the selection tasks under the rules above and picks one, or keeps the active profile when none passes.
+   Each pick then replays on the held-out tasks.
+   Replays are shared by profile, so a candidate or pick that several learners share runs once.
+2. **Promote.** A variant is promotable only when its pick's worst-family success on the held-out tasks is higher than the active learner's pick, with every held-out replay known; a tie keeps the active learner.
+   `/learn learner promote [variant]` saves it as learner version `learner.N`, by default the promotable variant with the highest held-out worst-family success and then the fewest candidates.
+   `--override` promotes a refused variant and records that.
+   The promoted learner changes what the next `/learn propose` proposes; it does not change the active agent profile.
+3. **Roll back.** `/learn learner rollback` restores the learner the active version replaced.
+
+The learner's rounds, versions and profiles live in `learner/` inside the learning store, with a search ledger per round at `learner/searches/<id>/ledger.jsonl`.
+In that ledger each learner is a node keyed by its settings' SHA-256, with the active learner as the root and each variant's profile diff on its edge; the selection tasks are the train split, and each node's cells are its pick's held-out replays.
+The held-out tasks judge picks the learners never chose on, but they also choose between learners, so a promoted learner's held-out score is the score it was selected by, not a fresh estimate.
+A round costs one replay per distinct profile per task: the active profile on every selection task, each distinct candidate on the selection tasks, and each distinct pick on the held-out tasks.
+
+Headless clients send `learn` with an operation identifier and `action` (`status`, `task`, `propose`, `measure`, `promote`, `rollback` or `learner`).
 `task` takes `check` (a string array) and optional `runId`, `family` and `timeoutSeconds`; `propose` takes `sinceDays`; `promote` takes `candidateId` and `override`.
-Each returns the stored record the action wrote: the task, proposal, measurement or version entry, or the whole status.
+`learner` takes `step` (`status`, `measure`, `promote` or `rollback`); its `promote` takes `variant` and `override`.
+Each returns the stored record the action wrote: the task, proposal, measurement, learner round or version entry, or the whole status.
 
 ## Profile picker
 

@@ -29,6 +29,7 @@ const MAX_RECORD_BYTES = 64 * 1024 * 1024
  * | `versions.jsonl` | promotions and rollbacks, oldest first |
  * | `profiles/<version>.json` | each promoted or restored profile |
  * | `replays/` | replay directories while a measurement runs |
+ * | `learner/` | the learner's own store: its rounds, versions and profiles, in the same layout |
  */
 export class LearningStore {
   readonly directory: string
@@ -63,15 +64,14 @@ export class LearningStore {
     this.#writeJson('proposal.json', proposal)
   }
 
-  measurement(id?: string): LearningMeasurement | null {
+  /** The latest measurement, or one by id. The learner sub-store keeps learner rounds here. */
+  measurement<T extends { readonly id: string } = LearningMeasurement>(id?: string): T | null {
     const target = id ?? this.#readJson<{ id: string }>('measurement.json')?.id
     if (target === undefined) return null
-    return (
-      this.#readJson<LearningMeasurement>(join('measurements', `${safeName(target)}.json`)) ?? null
-    )
+    return this.#readJson<T>(join('measurements', `${safeName(target)}.json`)) ?? null
   }
 
-  saveMeasurement(measurement: LearningMeasurement): void {
+  saveMeasurement(measurement: { readonly id: string }): void {
     this.ensure('measurements')
     this.#writeJson(join('measurements', `${safeName(measurement.id)}.json`), measurement)
     this.#writeJson('measurement.json', { id: measurement.id })

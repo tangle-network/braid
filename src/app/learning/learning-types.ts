@@ -83,9 +83,16 @@ export interface LearningSourceSummary {
   readonly changeLedger: LearningChangeLedgerSource | null
 }
 
+/** The learner a proposal or measurement ran under: its version, or null for Braid's default. */
+export interface LearnerRef {
+  readonly version: string | null
+  readonly digest: string
+}
+
 export interface LearningProposal {
   readonly id: string
   readonly createdAt: string
+  readonly learner: LearnerRef
   readonly baseProfileDigest: string
   readonly baseLoadedTokens: number
   readonly sources: LearningSourceSummary
@@ -133,6 +140,8 @@ export interface LearningMeasurement {
   readonly id: string
   readonly proposalId: string
   readonly createdAt: string
+  readonly learner: LearnerRef
+  /** The learner's digest: the procedure revision the ledger names. */
   readonly procedureDigest: string
   readonly tasks: number
   readonly families: readonly string[]
@@ -154,6 +163,8 @@ export interface LearningVersion {
   readonly parentPath: string
   readonly candidateId: string | null
   readonly measurementId: string | null
+  /** The learner whose measurement chose this profile version; absent on learner versions. */
+  readonly learner?: LearnerRef
   readonly override: boolean
   readonly reason: string
 }
@@ -167,6 +178,76 @@ export interface ServedRun {
   readonly status: string
 }
 
+/** What the learner proposes and how it measures, carried in the learner profile's `extensions.braid.learning`. */
+export interface LearnerSettings {
+  /** What it reads. Recorded with the procedure; the sources themselves decide what is present. */
+  readonly sources: readonly string[]
+  /** How a session's changes are counted for a candidate's evidence. */
+  readonly changes: string
+  readonly candidates: {
+    readonly kinds: readonly LearningCandidateKind[]
+    /** Skill candidates mounted from the most-invoked pinnable skills. */
+    readonly maxSkills: number
+    /** Removal candidates, one per carried skill. */
+    readonly maxRemovals: number
+    /** Skill rows read from the sessions before pinning. */
+    readonly rowsTried: number
+    /** Sessions that must run two skills in the same order before they become a workflow. */
+    readonly workflowMinSessions: number
+  }
+  readonly measure: string
+  readonly gate: string
+  readonly seed: number
+  readonly concurrency: number
+}
+
+/** One learner in a learner round: what it proposed, what it picked, and how the pick did on tasks it never saw. */
+export interface LearnerArm {
+  /** `active`, or the variant's name. */
+  readonly name: string
+  readonly summary: string
+  readonly learnerDigest: string
+  readonly settings: LearnerSettings
+  readonly candidates: number
+  readonly skipped: readonly string[]
+  readonly pick: {
+    readonly candidateId: string | null
+    readonly kind: LearningCandidateKind | null
+    readonly name: string
+    readonly profileDigest: string
+    readonly loadedTokens: number
+  }
+  /** The pick on the tasks the learner chose it on. */
+  readonly selection: ArmSummary
+  /** The pick on the held-out tasks. */
+  readonly heldOut: ArmSummary
+  readonly gate: { readonly promotable: boolean; readonly rule: string; readonly reason: string }
+}
+
+export interface LearnerMeasurement {
+  readonly id: string
+  readonly createdAt: string
+  readonly active: LearnerRef
+  readonly seed: number
+  /** Each learner picks a candidate on these. */
+  readonly selectionTasks: readonly string[]
+  /** Each pick is judged on these. */
+  readonly heldOutTasks: readonly string[]
+  readonly families: readonly string[]
+  readonly arms: readonly LearnerArm[]
+  /** The variant the round selected, or null when the active learner stays. */
+  readonly selected: string | null
+  readonly searchId: string
+  readonly ledgerPath: string
+}
+
+export interface LearnerStatus {
+  readonly active: LearnerRef
+  readonly settings: LearnerSettings
+  readonly measurement: LearnerMeasurement | null
+  readonly versions: readonly LearningVersion[]
+}
+
 export interface LearningStatus {
   readonly directory: string
   readonly tasks: readonly LearningTask[]
@@ -175,6 +256,7 @@ export interface LearningStatus {
   readonly versions: readonly LearningVersion[]
   readonly active: LearningVersion | null
   readonly served: ServedRun | null
+  readonly learner: LearnerStatus
 }
 
 export interface LearningConfiguration {
