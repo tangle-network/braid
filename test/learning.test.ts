@@ -27,9 +27,16 @@
  * `notes` more often than `tidy`, so Braid's default learner never proposes the
  * one skill the agent uses; the variant that proposes more skills picks `tidy`
  * on the selection tasks, wins on the held-out ones, and is promoted.
+ *
+ * The third test learns a child profile. Its sessions start a `tidier`
+ * subagent whose definition the user keeps in a committed checkout, a built-in
+ * type and a type no profile can name. The agent tidies when its profile
+ * carries `tidier`, so the child profile wins and is promoted, and every
+ * runner that has subagents writes it.
  */
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -39,6 +46,7 @@ import { fileURLToPath } from 'node:url'
 import { readSkillFile } from '@tangle-network/agent-eval/analyst'
 import { replaySearchLedgerText } from '@tangle-network/agent-eval/campaign'
 import { verifyResourceProvenance } from '@tangle-network/agent-interface'
+import { materializeProfile } from '@tangle-network/agent-profile-materialize'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { learningDocument } from '../src/adapters/tui/learning-dispatch.js'
 import type { BraidApplication } from '../src/app/application.js'
@@ -65,6 +73,9 @@ const TIDY = '---\nname: tidy\ndescription: Remove dead code.\n---\n\n# Tidy\n\n
 const AUDIT =
   '---\nname: audit\ndescription: Review the change.\n---\n\n# Audit\n\nReview the change.\n'
 const NOTES = '---\nname: notes\ndescription: Keep notes.\n---\n\n# Notes\n\nKeep notes.\n'
+/** A Claude Code subagent definition: the child profile the third test learns. */
+const TIDIER =
+  '---\nname: tidier\ndescription: Tidy a change.\ntools: Read, Edit\nmodel: sonnet\n---\n\n# Tidier\n\nRemove dead code, one change per commit.\n'
 const BODIES: Record<string, string> = {
   tidy: '# Tidy\n\nRemove dead code.',
   audit: '# Audit\n\nReview the change.',
@@ -97,7 +108,10 @@ async function repository(path: string, files: Record<string, string>, remote?: 
   if (remote !== undefined) git(path, 'remote', 'add', 'origin', remote)
 }
 
-/** One invented Claude Code transcript: each named skill in order, each loaded from the checkout. */
+/**
+ * One invented Claude Code transcript: each named skill in order, each loaded
+ * from the checkout. A name `agent:<type>` starts a subagent of that type instead.
+ */
 function transcript(sessionId: string, skills: string, names = ['tidy', 'audit']): string {
   const lines: unknown[] = []
   let previous: string | null = null
@@ -122,6 +136,28 @@ function transcript(sessionId: string, skills: string, names = ['tidy', 'audit']
   line('user', `${sessionId}-u`, { role: 'user', content: 'Invented request.' })
   for (const [index, name] of names.entries()) {
     const id = `toolu_${sessionId}_${index}`
+    if (name.startsWith('agent:')) {
+      line('assistant', `${sessionId}-a${index}`, {
+        id: `msg_${sessionId}_${index}`,
+        type: 'message',
+        role: 'assistant',
+        model: 'claude-sonnet-4-20250514',
+        content: [
+          {
+            type: 'tool_use',
+            id,
+            name: 'Agent',
+            input: { description: 'Invented subtask', subagent_type: name.slice('agent:'.length) },
+          },
+        ],
+        usage: { input_tokens: 100, output_tokens: 10 },
+      })
+      line('user', `${sessionId}-r${index}`, {
+        role: 'user',
+        content: [{ type: 'tool_result', tool_use_id: id, content: 'done' }],
+      })
+      continue
+    }
     line('assistant', `${sessionId}-a${index}`, {
       id: `msg_${sessionId}_${index}`,
       type: 'message',
@@ -700,9 +736,13 @@ async function learningHarness(names?: string[]) {
       'tidy/icon.png': '\u0089PNG\u0000\u0001',
       'audit/SKILL.md': AUDIT,
       'notes/SKILL.md': NOTES,
+      'agents/tidier.md': TIDIER,
     },
     'https://github.com/example/skills.git',
   )
+  // The user's Claude Code home beside the transcripts links its subagent definitions from the checkout.
+  await mkdir(join(root, 'agents'), { recursive: true })
+  await symlink(join(skills, 'agents', 'tidier.md'), join(root, 'agents', 'tidier.md'))
   await chmod(join(skills, 'tidy', 'scripts', 'check.sh'), 0o755)
   git(skills, 'add', '-A')
   git(skills, 'commit', '-q', '-m', 'executable check')
@@ -994,6 +1034,109 @@ test('the learner is a versioned profile: a variant whose pick wins on held-out 
     )
     assert.deepEqual(removal.profile.resources?.files ?? [], [])
     assert.deepEqual(await verifyResourceProvenance(removal.profile), [])
+  } finally {
+    await close()
+  }
+})
+
+test('a subagent the sessions start becomes a child profile: pinned, measured, promoted and written by every runner with subagents', async () => {
+  // Each session invokes audit and starts three subagents: tidier, whose definition is committed,
+  // a built-in type with no definition, and a type no profile can name.
+  const { app, session, workspace, root, skills, close } = await learningHarness([
+    'audit',
+    'agent:tidier',
+    'agent:general-purpose',
+    'agent:Explore',
+  ])
+  try {
+    await call(session, 'initialize', { workspace })
+    await addTasks(app, session, 12)
+
+    const proposal = (await call(
+      session,
+      'learn',
+      { action: 'propose' },
+      'op-child-propose',
+    )) as LearningProposal
+    const child = proposal.candidates.find((candidate) => candidate.kind === 'subagent')
+    assert(child !== undefined, proposal.skipped.join('\n'))
+    assert.equal(child.name, 'tidier')
+    assert.deepEqual(child.profile.subagents?.tidier, {
+      description: 'Tidy a change.',
+      prompt: '# Tidier\n\nRemove dead code, one change per commit.',
+    })
+    const commit = git(skills, 'rev-parse', 'HEAD').trim()
+    const sha256 = createHash('sha256').update(TIDIER).digest('hex')
+    assert.equal(child.unitDigest, `sha256:${sha256}`)
+    assert.deepEqual(child.profile.extensions?.[LEARNING_FIXTURE_PROFILE.name as string], {
+      subagentSources: [
+        {
+          name: 'tidier',
+          repository: 'example/skills',
+          ref: commit,
+          path: 'agents/tidier.md',
+          sha256,
+        },
+      ],
+    })
+    assert.deepEqual(child.evidence, [
+      '3 starts in 3 sessions: 3 Claude Code',
+      'Changes of the 3 sessions that started tidier: 0 made a change, 0 made none, 3 unknown',
+      `pinned to example/skills@${commit.slice(0, 12)}:agents/tidier.md`,
+      "not carried: tools (Read, Edit), model (sonnet); the child runs with the parent's tools, permissions and model",
+    ])
+    assert(
+      proposal.skipped.includes(
+        `subagent general-purpose: no definition names it in ${join(app.state().workspace as string, '.claude', 'agents')} or ${join(root, 'agents')}; a built-in type has none`,
+      ),
+      proposal.skipped.join('\n'),
+    )
+    assert(
+      proposal.skipped.includes(
+        'subagent Explore: not a name a profile can carry, so no definition of it is mounted',
+      ),
+      proposal.skipped.join('\n'),
+    )
+
+    const measured = (await call(
+      session,
+      'learn',
+      { action: 'measure' },
+      'op-child-measure',
+    )) as LearningMeasurement
+    const result = measured.results.find((item) => item.candidateId === child.id)
+    assert(result !== undefined)
+    assert.equal(result.gate.promotable, true, result.gate.reason)
+    assert.equal(result.candidate.worstFamily?.rate, 1)
+    assert.equal(result.base.worstFamily?.rate, 0)
+    assert.equal(measured.selected, child.id)
+
+    const promoted = (await call(
+      session,
+      'learn',
+      { action: 'promote' },
+      'op-child-promote',
+    )) as LearningVersion
+    assert.equal(promoted.version, 'learn.1')
+    assert.equal(promoted.candidateId, child.id)
+    const served = app.runtimeSelection.profile()
+    assert.equal(served.version, 'learn.1')
+    assert.deepEqual(served.subagents?.tidier, child.profile.subagents?.tidier)
+
+    // Every runner with subagents writes the child in its own format.
+    const written = (harness: 'claude-code' | 'codex', path: string) => {
+      const plan = materializeProfile({ ...served, harness }, harness)
+      const file = plan.files.find((item) => item.relPath === path)
+      assert(file !== undefined, `${harness} writes ${path}`)
+      return file.content
+    }
+    const claude = written('claude-code', '.claude/agents/tidier.md')
+    assert.match(claude, /^description: "Tidy a change\."$/m)
+    assert.match(claude, /^Remove dead code, one change per commit\.$/m)
+    assert.match(
+      written('codex', '.codex/agents/tidier.toml'),
+      /^developer_instructions = .*Remove dead code, one change per commit\./m,
+    )
   } finally {
     await close()
   }

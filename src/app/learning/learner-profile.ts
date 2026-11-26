@@ -13,7 +13,13 @@ export const LEARNER_PROFILE_NAME = 'braid-learner'
 export const LEARNER_VERSION_PREFIX = 'learner.'
 const EXTENSION = 'braid'
 
-const KINDS: readonly LearningCandidateKind[] = ['skill', 'workflow', 'instructions', 'removal']
+const KINDS: readonly LearningCandidateKind[] = [
+  'skill',
+  'workflow',
+  'instructions',
+  'removal',
+  'subagent',
+]
 
 export const DEFAULT_LEARNER_SETTINGS: LearnerSettings = Object.freeze({
   sources: Object.freeze([
@@ -31,6 +37,7 @@ export const DEFAULT_LEARNER_SETTINGS: LearnerSettings = Object.freeze({
     maxRemovals: 2,
     rowsTried: 8,
     workflowMinSessions: 2,
+    maxSubagents: 2,
   }),
   measure: 'agent-eval runSkillEval; judge: check pass beats fail, otherwise tie',
   gate: 'addition: keep and worst-family success does not fall; compression: worst-family success holds at equal or fewer loaded tokens',
@@ -91,6 +98,7 @@ export function learnerSettings(profile: AgentProfile): LearnerSettings {
       maxRemovals: count(candidates.maxRemovals, 'maxRemovals', 0, 16),
       rowsTried: count(candidates.rowsTried, 'rowsTried', 1, 64),
       workflowMinSessions: count(candidates.workflowMinSessions, 'workflowMinSessions', 1, 100),
+      maxSubagents: count(candidates.maxSubagents, 'maxSubagents', 0, 16),
     },
     measure: text(raw.measure, 'measure'),
     gate: text(raw.gate, 'gate'),

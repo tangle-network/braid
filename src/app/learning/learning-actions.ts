@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
 import type { AgentProfile } from '@tangle-network/agent-interface'
 import type { BraidState } from '../../domain/state.js'
@@ -169,7 +169,15 @@ export function createLearningActions(
     const sinceMs = Date.now() - days * DAY_MS
     const feedback = await app.feedback.list({ scope: 'workspace' })
     const harness = await readHarnessSessions(configuration, sinceMs)
-    return { sinceMs, feedback, harness }
+    // Claude Code's subagent definitions: the workspace's, then the user's beside the transcripts.
+    const workspace = app.state().workspace
+    const agentDirectories = [
+      ...(workspace ? [join(workspace, '.claude', 'agents')] : []),
+      ...(configuration.claudeCodeProjects === undefined
+        ? []
+        : [join(dirname(configuration.claudeCodeProjects), 'agents')]),
+    ]
+    return { sinceMs, feedback, harness, agentDirectories }
   }
 
   const learnerStatus = (): LearnerStatus => {
@@ -237,13 +245,14 @@ export function createLearningActions(
       const days = input.sinceDays ?? sinceDays
       const profile = base()
       const learner = activeLearner()
-      const { sinceMs, feedback, harness } = await readSources(days)
+      const { sinceMs, feedback, harness, agentDirectories } = await readSources(days)
       const history = braidHistory(app.state(), feedback, sinceMs)
       const { candidates, skipped } = await proposeCandidates({
         base: profile,
         harness,
         feedback,
         settings: learner.settings.candidates,
+        agentDirectories,
       })
       const digest = profileDigest(profile)
       const proposal: LearningProposal = {
@@ -431,7 +440,7 @@ export function createLearningActions(
             'A learner round needs a family with at least two tasks: one to pick on and one held out. /learn task --family <name> -- <check command>',
           )
         const profile = base()
-        const { feedback, harness } = await readSources(sinceDays)
+        const { feedback, harness, agentDirectories } = await readSources(sinceDays)
         const output = await measureLearners({
           host: app,
           base: profile,
@@ -440,7 +449,7 @@ export function createLearningActions(
           active: learner.settings,
           variants: learnerVariants(learner.settings),
           tasks,
-          sources: { harness, feedback },
+          sources: { harness, feedback, agentDirectories },
           replayRoot: store.ensure('replays'),
           timeoutMs: configuration.replayTimeoutMs ?? DEFAULT_REPLAY_TIMEOUT_MS,
           ...(input.onProgress === undefined ? {} : { onProgress: input.onProgress }),

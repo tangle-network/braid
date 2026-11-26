@@ -47,7 +47,10 @@ export interface MeasureLearnersInput {
   readonly variants: readonly LearnerVariant[]
   readonly tasks: readonly LearningTask[]
   /** What every learner reads: the same sessions and feedback. */
-  readonly sources: Pick<ProposeCandidatesInput, 'harness' | 'feedback' | 'pin'>
+  readonly sources: Pick<
+    ProposeCandidatesInput,
+    'harness' | 'feedback' | 'pin' | 'agentDirectories'
+  >
   readonly replayRoot: string
   readonly timeoutMs: number
   readonly onProgress?: (text: string) => void

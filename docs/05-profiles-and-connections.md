@@ -189,17 +189,24 @@ Every promotion is a new profile version you can roll back.
    Both harnesses' sessions are joined to the change ledger at `$CHANGE_LEDGER_DIR/changes.jsonl`, which defaults to `~/.local/state/change-ledger/changes.jsonl`.
    The harness hooks and CLI Bridge append to that file: one row for each commit and pull request a session made, and from CLI Bridge one row per turn.
    A missing directory or ledger file reads as no source.
-   It proposes up to four kinds of candidate, each a profile diff:
+   It proposes up to five kinds of candidate, each a profile diff:
    - a **skill** your sessions use often, pinned to the commit and SHA-256 of a clean file in a GitHub checkout, with the provenance record that Interface's `mountSkill` writes.
      The committed text files beside its `SKILL.md`, such as `references/` and scripts, mount with it through Interface's `mountSkillDirectory`, each pinned to the same commit with its own record and its executable bit.
      They mount under the profile harness's skill directory; a binary file, a link or a submodule is not mounted, and the candidate's evidence says which;
    - a **workflow**: an inline skill for two skills your sessions run in that order in at least two sessions, with both skills pinned;
    - **instructions** from feedback reasons, through the same lesson composition as `/profile learn`;
-   - a **removal** of an inline skill the profile carries.
+   - a **removal** of an inline skill the profile carries;
+   - a **child profile**: a subagent type your Claude Code sessions start, added to the profile's `subagents`.
+     Its definition is the Claude Code file whose frontmatter `name` is that type, from the workspace's `.claude/agents`, then `agents` beside the Claude Code projects folder (`~/.claude/agents`).
+     The file must be clean in a GitHub checkout; it is pinned to its commit, with the file's SHA-256 recorded under `subagentSources` in the profile's extension.
+     The child carries the definition's description and prompt.
+     The definition's other settings, such as `tools` and `model`, are Claude Code names, so they are not carried; the evidence lists them, and the child runs with the parent's tools, permissions and model.
+     Every runner whose materializer writes subagents writes the child in its own format: Claude Code, Codex, OpenCode and Gemini.
+     A built-in type, a plugin's type and any type that is not a lowercase name have no definition to mount and are skipped with the reason.
    A skill without a clean, pinned file, or with uncommitted changes to a tracked file beside it, is skipped with its reason.
    A removal takes the skill's files and records with it.
    Invocations of one skill version are counted together across harnesses, and the evidence gives each harness's share.
-   A skill or workflow candidate also records what the sessions behind it came to, one count per session:
+   A skill, workflow or child-profile candidate also records what the sessions behind it came to, one count per session:
    - **made a change**: the ledger, or a pull request URL the transcript prints, names a commit or pull request of the session or of a session that spawned it;
    - **made none**: the ledger's writer observed the session and recorded no change;
    - **unknown**: no writer observed the session, the ledger has a change it could not place in the session, or a CLI Bridge turn said its changes may be incomplete.
@@ -238,7 +245,7 @@ What this does not do:
 
 ### The learner is a profile too
 
-How Braid learns is itself an AgentProfile, `braid-learner`, with its settings under `extensions.braid.learning`: the sources it reads, the candidate kinds it proposes, how many skills and removals, how many session rows it tries, how many sessions a workflow needs, and the seed and concurrency of its replays.
+How Braid learns is itself an AgentProfile, `braid-learner`, with its settings under `extensions.braid.learning`: the sources it reads, the candidate kinds it proposes, how many skills, removals and child profiles, how many session rows it tries, how many sessions a workflow needs, and the seed and concurrency of its replays.
 `/learn propose` and `/learn measure` use the active learner, and each proposal and measurement records it.
 Braid's default learner is active until a learner version is promoted.
 

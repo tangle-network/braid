@@ -3,6 +3,7 @@ import type {
   AgentProfile,
   AgentProfileFileMount,
   AgentProfileResourceRef,
+  AgentSubagentProfile,
 } from '@tangle-network/agent-interface'
 import { canonicalAgentProfileDigestHex } from '../../adapters/agent-interface/profile-runtime.js'
 
@@ -131,6 +132,42 @@ export function withSkills(profile: AgentProfile, mounts: readonly MountedSkill[
 /** Remove one inline skill, its sibling files and their provenance records from a copy of the profile. */
 export function withoutSkill(profile: AgentProfile, name: string): AgentProfile {
   return replaceSkills(profile, new Set([name]), [])
+}
+
+/**
+ * Where a child profile came from: the definition file at one commit, and the
+ * sha256 of that file's bytes. The child carries a translation of the file,
+ * not the file, so Interface's `resourceProvenance`, which hashes inline
+ * resources, cannot hold it; the record sits beside it as `subagentSources`.
+ */
+export interface SubagentSource {
+  /** The subagent's name in `profile.subagents`. */
+  readonly name: string
+  readonly repository: string
+  readonly ref: string
+  readonly path: string
+  readonly sha256: string
+}
+
+/** Add one child profile and its source record to a copy of the profile, replacing any of that name. */
+export function withSubagent(
+  profile: AgentProfile,
+  child: AgentSubagentProfile,
+  source: SubagentSource,
+): AgentProfile {
+  const namespace = provenanceNamespace(profile)
+  const extension = profile.extensions?.[namespace]
+  const sources = Array.isArray(extension?.subagentSources)
+    ? (extension.subagentSources as SubagentSource[]).filter((item) => item.name !== source.name)
+    : []
+  return {
+    ...profile,
+    subagents: { ...profile.subagents, [source.name]: child },
+    extensions: {
+      ...profile.extensions,
+      [namespace]: { ...extension, subagentSources: [...sources, source] },
+    },
+  }
 }
 
 export function inlineSkills(
