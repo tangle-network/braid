@@ -192,7 +192,7 @@ Every promotion is a new profile version you can roll back.
    It proposes up to five kinds of candidate, each a profile diff:
    - a **skill** your sessions use often, pinned to the commit and SHA-256 of a clean file in a GitHub checkout, with the provenance record that Interface's `mountSkill` writes.
      The committed text files beside its `SKILL.md`, such as `references/` and scripts, mount with it through Interface's `mountSkillDirectory`, each pinned to the same commit with its own record and its executable bit.
-     They mount under the profile harness's skill directory; a binary file, a link or a submodule is not mounted, and the candidate's evidence says which;
+     They mount under the profile harness's skill directory, and every runner's materializer writes them beside the skill's `SKILL.md` in its own skills directory, so relative links hold on any runner; a binary file, a link or a submodule is not mounted, and the candidate's evidence says which;
    - a **workflow**: an inline skill for two skills your sessions run in that order in at least two sessions, with both skills pinned;
    - **instructions** from feedback reasons, through the same lesson composition as `/profile learn`;
    - a **removal** of an inline skill the profile carries;
