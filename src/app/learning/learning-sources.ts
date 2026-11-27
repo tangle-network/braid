@@ -1,5 +1,5 @@
 import { stat } from 'node:fs/promises'
-import type { FeedbackTrajectory } from '@tangle-network/agent-eval'
+import type { FeedbackTrajectory, TraceContract } from '@tangle-network/agent-eval'
 import type {
   ChangeLedger,
   SkillSessionRead,
@@ -70,6 +70,7 @@ function reads(sessions: readonly SkillSessionRecord[]): SkillSessionRead[] {
 export async function readHarnessSessions(
   paths: HarnessSessionPaths,
   sinceMs: number,
+  checks: { readonly contracts?: readonly TraceContract[] } = {},
 ): Promise<HarnessSessions> {
   const directories: Array<readonly [SessionHarness, string]> = []
   for (const [harness, directory] of [
@@ -106,8 +107,8 @@ export async function readHarnessSessions(
   for (const [harness, directory] of directories) {
     const source: SkillSessionSource =
       harness === 'claude-code'
-        ? analyst.claudeCodeSkillSessions(directory, { sinceMs })
-        : analyst.codexSkillSessions(directory, { sinceMs })
+        ? analyst.claudeCodeSkillSessions(directory, { sinceMs, ...checks })
+        : analyst.codexSkillSessions(directory, { sinceMs, ...checks })
     const sessions: SkillSessionRecord[] = []
     let unreadable = 0
     for await (const read of analyst.withChangeLedger(source, ledger)) {

@@ -43,6 +43,8 @@ export const HELP = `braid — a universal terminal interface for agent profiles
 Usage:
   braid [options]
   braid rpc [options]
+  braid assign <task-id> --skill <name> --repository <owner/name>
+  braid canary pack|seal|status   (braid assign --help)
 
 Options:
   --workspace <path>          Workspace to open (default: current directory)
