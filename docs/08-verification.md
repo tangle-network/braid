@@ -267,6 +267,7 @@ Do not maintain tests of private helper choreography, source spelling, documenta
 Normal execution still compiles the complete source and test tree before selecting the requested scope.
 The scoped runner owns its file inventory; the default command discovers every TypeScript test and runs the retained process and release-evidence JavaScript suites.
 
+`node --test` runs as many files at once as the gate's workers when `BEELINK_GATE_CORES` names them (its `default_workers`, else its `reserved` cores), and otherwise one per CPU from `os.availableParallelism()`; the run prints the number it chose.
 Normal test runs print `BRAID_TEST_SUMMARY` with the source test-file catalog count, catalog lines, wall seconds (including compilation and cleanup), and pass/fail status. The catalog includes all `*.test.ts` and `*.test.mjs` files under `test/` and `scripts/`; a scoped run still reports the whole catalog. `--list` remains compilation-free.
 
 The legacy `test:unit` command includes focused persistence and package checks alongside the few retained adversarial units. `test:rpc` delegates to the existing packed-binary deterministic process proof.
