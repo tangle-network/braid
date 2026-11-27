@@ -54,6 +54,7 @@ import {
   assertProviderObservationDeadline,
   createProviderObservationDeadline,
   observeSandboxInventory,
+  presentSandbox,
   waitForProviderObservation,
 } from './provider-observation.mjs'
 import { runCloudInteractionProof } from './tangle-sandbox-braid-cloud-interaction.mjs'
@@ -395,7 +396,7 @@ async function cleanupInteractiveByRunId(
   for (const resource of listed) {
     const exact = await waitForProviderObservation(
       `Interactive Sandbox cleanup identity ${resource.id}`,
-      () => client.get(resource.id),
+      () => presentSandbox(client, resource.id),
       timeoutMs,
       { deadline },
     )
@@ -427,7 +428,7 @@ async function cleanupInteractiveByRunId(
     )
     const remaining = await waitForProviderObservation(
       `Interactive Sandbox deletion verification ${resource.id}`,
-      () => client.get(resource.id),
+      () => presentSandbox(client, resource.id),
       timeoutMs,
       { deadline },
     )

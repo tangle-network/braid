@@ -198,6 +198,18 @@ test('moved cleanup helpers stay callable (a missing import fails here, not in p
     2_000,
   )
   assert.equal(released?.cleanup.confirmed, true)
+  // After a delete the Sandbox API answers with a `deleted` record rather than a 404.
+  const deletedRecord = {
+    get: async () => ({ id: 'env-gone', status: 'deleted' }),
+    list: async () => [],
+  }
+  const releasedDeleted = await stopEvidenceModule.releasedByStopCleanup(
+    deletedRecord,
+    { environmentId: 'env-gone' },
+    'run-x',
+    2_000,
+  )
+  assert.equal(releasedDeleted?.cleanup.confirmed, true)
   const stillThere = { get: async () => ({ id: 'env-gone' }), list: async () => [] }
   assert.equal(
     await stopEvidenceModule.releasedByStopCleanup(

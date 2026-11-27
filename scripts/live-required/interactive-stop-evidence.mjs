@@ -7,7 +7,7 @@ import { assertSameInteractiveRef } from './tangle-sandbox-interactive-continuit
 import { sleep } from '../live-bridge/process.mjs'
 import { safeMessage } from './contracts.mjs'
 import { MissingIntegrationError } from './tangle-sandbox-braid-stress-support.mjs'
-import { observeSandboxInventory } from './provider-observation.mjs'
+import { observeSandboxInventory, presentSandbox } from './provider-observation.mjs'
 import {
   interactiveResourceName,
   isOwnedInteractiveResource,
@@ -111,7 +111,7 @@ export async function releasedByStopCleanup(client, controlRef, runId, timeoutMs
   const environmentId = controlRef.environmentId
   let absent = false
   try {
-    const box = await client.get(environmentId)
+    const box = await presentSandbox(client, environmentId)
     absent = box === null || box === undefined || box.id !== environmentId
   } catch {
     absent = true
@@ -173,7 +173,7 @@ export async function interactiveRetainedBox(client, controlRef, runId, label) {
     })
   }
   const expectedName = interactiveResourceName(runId)
-  const box = await client.get(controlRef.environmentId)
+  const box = await presentSandbox(client, controlRef.environmentId)
   if (
     !box ||
     box.id !== controlRef.environmentId ||

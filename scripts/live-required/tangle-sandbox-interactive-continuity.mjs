@@ -11,6 +11,7 @@ import {
   safeJson,
   safeMessage,
 } from './contracts.mjs'
+import { presentSandbox } from './provider-observation.mjs'
 import { argument } from './tangle-sandbox-braid-stress-support.mjs'
 
 const OPERATION = 'tangle.sandbox.interactive-continuity'
@@ -461,7 +462,7 @@ async function waitForDeleted(client, boxId, timeoutMs) {
   return waitFor(
     `Sandbox ${boxId} deletion`,
     async () => {
-      const current = await client.get(boxId)
+      const current = await presentSandbox(client, boxId)
       if (current !== null) {
         assert.equal(current.id, boxId, `deletion lookup returned a different Sandbox for ${boxId}`)
         return false
