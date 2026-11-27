@@ -13,7 +13,8 @@
  * a readout joins them by assignment and session.
  */
 
-import type { SkillSessionRecord, TraceContractSpec } from '@tangle-network/agent-eval'
+import type { TraceContractSpec } from '@tangle-network/agent-eval'
+import type { SkillSessionRecord } from '@tangle-network/agent-eval/analyst'
 import { canonicalJson } from '../../domain/canonical.js'
 import { AppError } from '../errors.js'
 import { type HarnessSessionPaths, readHarnessSessions } from '../learning/learning-sources.js'
@@ -61,7 +62,10 @@ export interface CanaryObservations {
 
 function lineOf(text: string): Set<string> {
   const found = new Set<string>()
-  const pattern = new RegExp(`^[ \\t>*-]*${ASSIGNMENT_LINE_PREFIX}[ \\t]*(ba-[0-9a-f]{16})[ \\t]*$`, 'gmu')
+  const pattern = new RegExp(
+    `^[ \\t>*-]*${ASSIGNMENT_LINE_PREFIX}[ \\t]*(ba-[0-9a-f]{16})[ \\t]*$`,
+    'gmu',
+  )
   for (const match of text.matchAll(pattern)) found.add(match[1] as string)
   return found
 }
@@ -126,8 +130,14 @@ export async function observeCanary(
         for (const session of sessions)
           for (const [rule, count] of Object.entries(session.mistakes ?? {}))
             byRule[rule] = (byRule[rule] ?? 0) + count
-      const firsts = sessions.map((session) => session.firstAt).filter((at) => at !== null).sort()
-      const lasts = sessions.map((session) => session.lastAt).filter((at) => at !== null).sort()
+      const firsts = sessions
+        .map((session) => session.firstAt)
+        .filter((at) => at !== null)
+        .sort()
+      const lasts = sessions
+        .map((session) => session.lastAt)
+        .filter((at) => at !== null)
+        .sort()
       const firstAt = firsts[0] ?? null
       const lastAt = lasts.at(-1) ?? null
       return {
@@ -144,7 +154,8 @@ export async function observeCanary(
         outputTokens: found ? sum(sessions.map((session) => session.outputTokens)) : null,
         firstAt,
         lastAt,
-        wallMs: firstAt !== null && lastAt !== null ? Date.parse(lastAt) - Date.parse(firstAt) : null,
+        wallMs:
+          firstAt !== null && lastAt !== null ? Date.parse(lastAt) - Date.parse(firstAt) : null,
       }
     })
   return {

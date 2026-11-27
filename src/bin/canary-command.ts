@@ -185,7 +185,9 @@ async function run(argv: readonly string[]): Promise<number> {
     })
     if (format === 'json') json(result)
     else {
-      process.stdout.write(`${result.experimentId}: read ${result.sessionsRead} sessions since the seal\n`)
+      process.stdout.write(
+        `${result.experimentId}: read ${result.sessionsRead} sessions since the seal\n`,
+      )
       for (const row of result.rows) {
         const mistakes = row.procedureMistakes ?? 'unknown'
         const tokens =
