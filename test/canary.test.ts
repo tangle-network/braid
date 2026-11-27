@@ -156,6 +156,8 @@ test('a learned pack is sealed, served to one arm, and every assignment holds ac
       GIT_AUTHOR_EMAIL: 'fixture@example.invalid',
       GIT_COMMITTER_NAME: 'Fixture',
       GIT_COMMITTER_EMAIL: 'fixture@example.invalid',
+      // The host's commit hooks still run on these throwaway ledgers; this is how they admit a fixture identity.
+      GIT_ALLOW_TEST_IDENTITY: '1',
     }
     const braid = (args: readonly string[]) => {
       try {
