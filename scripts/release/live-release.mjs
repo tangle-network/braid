@@ -611,6 +611,15 @@ class Driver {
         this.log(`PR head ${sha} lacks scripts/release/live-release.mjs; merge main into it first`)
         ok = false
       }
+      if (!pr) {
+        const head = await this.gh(['api', `repos/${REPO}/commits/main`, '--jq', '.sha'])
+        if (head !== sha) {
+          this.log(
+            `main's head is ${head}, not ${sha}; the release workflows refuse any other commit`,
+          )
+          ok = false
+        }
+      }
       const steps = [
         ...(o.keysFrom
           ? [
@@ -783,7 +792,18 @@ class Driver {
     return merged
   }
 
+  // Both workflows run from main and refuse a commit that is not main's head, so a merge during a
+  // release fails each later dispatch in seconds. Stop on the moved head instead of retrying it.
+  async requireMainHead(commit, step) {
+    const head = await this.gh(['api', `repos/${REPO}/commits/main`, '--jq', '.sha'])
+    if (head !== commit)
+      this.finish(
+        `main moved to ${head} before ${step}; not published: rerun with --commit ${head} once it passes the full gate`,
+      )
+  }
+
   async release(commit) {
+    await this.requireMainHead(commit, 'the candidate')
     const candidate = await this.dispatch('release.yml', { commit, publish: 'false' })
     if (candidate.conclusion !== 'success')
       this.finish(
@@ -796,6 +816,7 @@ class Driver {
         this.finish(
           `candidate ${candidate.id} passed; account never settled for live evidence; not published`,
         )
+      await this.requireMainHead(commit, `live evidence attempt ${attempt}`)
       evidence = await this.dispatch('release-live-evidence.yml', {
         commit,
         candidate_run_id: candidate.id,
@@ -804,6 +825,7 @@ class Driver {
     }
     if (evidence.conclusion !== 'success')
       this.finish(`live evidence ${evidence.id} ended ${evidence.conclusion} twice; not published`)
+    await this.requireMainHead(commit, 'publish')
     const publish = await this.dispatch('release.yml', {
       commit,
       publish: 'true',
