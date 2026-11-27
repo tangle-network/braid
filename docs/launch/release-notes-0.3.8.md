@@ -31,6 +31,12 @@
   beside `.braid/config.json` before the directory existed. The lock now creates
   the private directory first.
 
+- A profile that mounts a large resource library now starts. Braid kept a
+  redacted copy of the profile in its state and run receipts with limits sized
+  for event payloads (256 entries, depth 8), so a profile with more entries was
+  cut down with markers and refused as "not a canonical AgentProfile". The copy
+  now uses the profile's own limits, and a profile past them is refused by name.
+
 ## Native terminals
 
 - Keys you type right after Ctrl+] now reach Braid. Braid's terminal splits one
