@@ -24,6 +24,13 @@
   tasks, and the pick is judged on the tasks it held out. `/learn learner promote`
   keeps a learner only when its pick does better there, and you can roll it back.
 
+## First run
+
+- Setup in a workspace without a `.braid` directory now saves. "Apply and start"
+  failed with `ENOENT: openat '.braid'`, because it took the configuration lock
+  beside `.braid/config.json` before the directory existed. The lock now creates
+  the private directory first.
+
 ## Native terminals
 
 - Keys you type right after Ctrl+] now reach Braid. Braid's terminal splits one

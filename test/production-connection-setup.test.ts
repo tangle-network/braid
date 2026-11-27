@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { once } from 'node:events'
-import { access, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { createServer, request as requestHttp } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -12,6 +12,7 @@ import xterm from '@xterm/headless'
 import * as pty from 'node-pty'
 import { createProductionConnectionAdapter } from '../src/adapters/connections/production-connections.js'
 import { MemoryCredentialStore } from '../src/adapters/credentials/memory.js'
+import { withProductionConfigMutationLock } from '../src/bin/production-config-mutation-lock.js'
 import { createProductionCredentialContext } from '../src/bin/production-credential-context.js'
 import {
   prepareProductionSelection,
@@ -209,6 +210,38 @@ test('Tangle setup stores supplied bytes and persists every secret-free candidat
     )
     assert.doesNotMatch(await readFile(setup.configPath, 'utf8'), /tangle-setup-secret-canary/u)
     assert.equal(credentials.has(credentialRef(`cred:v1:${credentialId ?? 'missing'}`)), true)
+  } finally {
+    secret.fill(0)
+  }
+})
+
+// The setup view holds the mutation lock while it prepares and publishes the selection, so its
+// first save in a fresh workspace takes the lock, beside `.braid/config.json`, before `.braid` exists.
+test('a first setup save in a fresh workspace creates a private .braid under the mutation lock', async () => {
+  const { workspace, setup, selection } = await setupSelection('tangle-inference')
+  const credentials = new MemoryCredentialStore()
+  const secret = Buffer.from('tangle-first-save-canary', 'utf8')
+  try {
+    assert.equal(setup.configPath, join(workspace, '.braid', 'config.json'))
+    await assert.rejects(() => access(join(workspace, '.braid')))
+    await withProductionConfigMutationLock(setup.configPath, async (mutationLock) => {
+      const prepared = await prepareProductionSelection(
+        { workspace, credentialStore: credentials },
+        selection,
+        setup.configPath,
+        secret,
+      )
+      await saveProductionStartupSelection(setup.configPath, prepared.selection, {
+        connections: setup.connections,
+        mutationLock,
+      })
+      await prepared.commit()
+    })
+    const document = JSON.parse(await readFile(setup.configPath, 'utf8')) as {
+      readonly connectionId?: string
+    }
+    assert.equal(document.connectionId, selection.connection.id)
+    assert.equal((await stat(join(workspace, '.braid'))).mode & 0o777, 0o700)
   } finally {
     secret.fill(0)
   }

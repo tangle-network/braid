@@ -1,11 +1,8 @@
-import { mkdir } from 'node:fs/promises'
-import { dirname, resolve } from 'node:path'
+import { resolve } from 'node:path'
 import type { AgentProfile } from '@tangle-network/agent-interface'
 import { canonicalCandidateJson } from '@tangle-network/agent-interface'
 import { snapshotAgentProfile } from '@tangle-network/agent-interface/profile-snapshot'
 import {
-  assertNoSymlinkPath,
-  assertSafeDirectory,
   readNoFollow,
   removePrivateFile,
   replacePrivateFile,
@@ -259,11 +256,6 @@ export async function persistProductionStartupSelection(
   options: ProductionStartupPersistenceOptions = {},
 ): Promise<ProductionStartupPersistence> {
   const target = resolve(configPath)
-  const directory = dirname(target)
-  assertNoSymlinkPath(directory)
-  await mkdir(directory, { recursive: true, mode: 0o700 })
-  assertNoSymlinkPath(directory)
-  assertSafeDirectory(directory)
   const publishSelection = async (
     lock: ProductionConfigMutationLock,
   ): Promise<ProductionStartupPersistence> => {
