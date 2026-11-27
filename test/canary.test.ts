@@ -70,7 +70,8 @@ function session(
     })
   }
   tool(`${id}-skill`, 'Skill', { skill })
-  for (const [index, command] of commands.entries()) tool(`${id}-bash-${index}`, 'Bash', { command })
+  for (const [index, command] of commands.entries())
+    tool(`${id}-bash-${index}`, 'Bash', { command })
   push({
     type: 'assistant',
     message: {
