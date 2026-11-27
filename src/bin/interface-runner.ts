@@ -201,7 +201,7 @@ export async function runInterface(input: InterfaceRunnerInput): Promise<number>
       return nativeLifecycle.signals
     },
     suspend: () => nativeLifecycle.view?.suspend(),
-    resume: () => nativeLifecycle.view?.resume(),
+    resume: (input) => nativeLifecycle.view?.resume(input),
     nextOperationId,
     holderId: `braid-terminal-${randomUUID()}`,
   })

@@ -47,6 +47,7 @@ async function runTransport(
   let forwardingBusy = false
   let forwardingTail = Promise.resolve()
   let detachRequested = false
+  const pendingInput: string[] = []
   let settleOutcome: (value: NativeTerminalTransportOutcome) => void = () => {}
   const outcomeReady = new Promise<NativeTerminalTransportOutcome>((resolve) => {
     settleOutcome = resolve
@@ -82,13 +83,22 @@ async function runTransport(
     finish({ kind: 'detached', sessionId, trigger: 'user' })
   }
   const onInput = (data: string): void => {
+    // A host that splits a read into key sequences delivers the keys typed right after the chord
+    // in the same tick, before the terminal is released; they are Braid's, not the remote's.
+    if (detachRequested) {
+      pendingInput.push(data)
+      return
+    }
     if (finished) return
     const chordAt = data.indexOf(detachChord)
     const forwarded = chordAt < 0 ? data : data.slice(0, chordAt)
     if (forwarded.length > 0) {
       enqueue('input', () => session.input({ data: forwarded }, { signal: transportAbort.signal }))
     }
-    if (chordAt >= 0) requestDetach()
+    if (chordAt < 0) return
+    requestDetach()
+    const rest = data.slice(chordAt + detachChord.length)
+    if (rest.length > 0) pendingInput.push(rest)
   }
   const onResize = (): void => {
     if (finished) return
@@ -208,6 +218,7 @@ async function runTransport(
       remote: remoteCleanup,
       issues: Object.freeze(issues),
     },
+    pendingInput: Object.freeze([...pendingInput]),
   }
 }
 function shouldDetach(outcome: NativeTerminalTransportOutcome): boolean {

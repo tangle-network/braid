@@ -17,6 +17,8 @@ interface Reply {
   readonly result?: {
     readonly acknowledgement?: { readonly outcome: string }
     readonly replayed?: boolean
+    readonly presented?: { readonly kind: string; readonly outcome?: string }
+    readonly resumed?: readonly string[]
   }
   readonly state: BraidState
   readonly events?: readonly BraidEventEnvelope[]
@@ -298,6 +300,30 @@ test('a 1001 terminal close reattaches a live run and stop destroys that sandbox
     )
     assert.deepEqual(server.fixture.stopEnvironmentIds, [controlRef.environmentId])
     assert.deepEqual(server.fixture.destroyedIds, [controlRef.environmentId])
+    assert.equal(owner.lateError(), undefined, owner.lateError() ?? '')
+  } finally {
+    await Promise.all(children.map((value) => value.kill()))
+    await server.close()
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('keys typed right after Ctrl+] reach Braid when it takes the terminal back', {
+  timeout: 60_000,
+}, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-terminal-detach-keys-'))
+  const server = await interactiveProviderServer()
+  const children: Awaited<ReturnType<typeof child>>[] = []
+  try {
+    const owner = await child(root, server.endpoint)
+    children.push(owner)
+    const detached = await owner.request('view-and-detach', { text: '/help the workspace.' })
+    assert.deepEqual(detached.result?.presented, {
+      kind: 'returned',
+      runId: detached.state.runs[0]?.id,
+      outcome: 'detached',
+    })
+    assert.deepEqual(detached.result?.resumed, ['/', 'h', 'e', 'l', 'p'])
     assert.equal(owner.lateError(), undefined, owner.lateError() ?? '')
   } finally {
     await Promise.all(children.map((value) => value.kill()))

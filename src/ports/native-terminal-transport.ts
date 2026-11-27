@@ -65,6 +65,12 @@ export interface NativeTerminalCleanup {
 export interface NativeTerminalTransportResult {
   readonly outcome: NativeTerminalTransportOutcome
   readonly cleanup: NativeTerminalCleanup
+  /**
+   * Input that followed the detach chord before the local terminal was released, in the order the
+   * host delivered it. It is meant for Braid, which takes it when it reclaims the terminal; the
+   * remote PTY never receives it. Empty unless the user pressed the chord.
+   */
+  readonly pendingInput: readonly string[]
 }
 
 export interface NativeTerminalTransportInput {
