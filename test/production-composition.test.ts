@@ -452,6 +452,73 @@ test('durable composition uses the configured backend on the normal startup path
   }
 })
 
+// A profile that mounts a skill library holds hundreds of entries nested five deep. State, the
+// run receipt and the journal must keep it whole: a cut-down copy is not a canonical AgentProfile.
+test('a profile that mounts a large resource library runs a turn and restarts intact', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'braid-production-large-profile-'))
+  const bridge = await startRuntimeBridgeServer()
+  const files = Array.from({ length: 64 }, (_, index) => ({
+    path: `library/note-${String(index).padStart(2, '0')}.md`,
+    resource: {
+      kind: 'github' as const,
+      repository: 'example/library',
+      path: `notes/note-${index}.md`,
+      ref: 'a'.repeat(40),
+    },
+  }))
+  const skills = Array.from({ length: 16 }, (_, index) => ({
+    kind: 'github' as const,
+    name: `skill-${index}`,
+    repository: 'example/library',
+    path: `skills/skill-${index}/SKILL.md`,
+    ref: 'b'.repeat(40),
+  }))
+  const large = defineAgentProfile({
+    ...profile(),
+    name: 'large library profile',
+    resources: { files, skills },
+  })
+  const digest = canonicalAgentProfileDigest(large)
+  const credentialStore = new MemoryCredentialStore()
+  const record = connection('cli-bridge', 'large-profile', bridge.endpoint)
+  const open = () =>
+    createDurableBraidApplication({
+      path: join(root, 'braid.db'),
+      workspaceRoot: root,
+      credentialStore,
+      production: composition(record, {}, large),
+    })
+  try {
+    const first = await open()
+    try {
+      first.app.initialize(root)
+      await first.app.whenDurable()
+      const state = await first.app.send({
+        operationId: 'op-large-profile-turn',
+        text: 'run with the large profile',
+      }).completion
+      assert.equal(state.runs[0]?.status, 'completed')
+      assert.equal(canonicalAgentProfileDigest(state.profile), digest)
+      assert.deepEqual(state.profile.resources?.files, files)
+      assert.equal(state.runs[0]?.receipt.profileDigest, digest.replace(/^sha256:/u, ''))
+      assert.deepEqual(state.runs[0]?.receipt.requested.profile.resources?.files, files)
+    } finally {
+      await first.app.close()
+    }
+    const restarted = await open()
+    try {
+      const state = restarted.app.state()
+      assert.equal(state.runs[0]?.status, 'completed')
+      assert.equal(canonicalAgentProfileDigest(state.profile), digest)
+      assert.deepEqual(state.runs[0]?.receipt.requested.profile.resources?.skills, skills)
+    } finally {
+      await restarted.app.close()
+    }
+  } finally {
+    await bridge.close()
+  }
+})
+
 test('production rejects remote cleartext endpoints unless an explicit policy accepts them', () => {
   const remote = connection('cli-bridge', 'remote-cleartext', 'http://bridge.example.test')
   assert.throws(

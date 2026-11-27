@@ -153,11 +153,31 @@ export interface StructuredRedactionLimits {
   readonly maxBytes?: number
   readonly redactionMarker?: string
   readonly stringTransform?: (value: string) => string
+  /**
+   * `mark` (the default) replaces whatever a limit cuts off with a visible marker. `reject` throws
+   * a `StructuredValueLimitError` instead, for values whose schema a marker would break.
+   */
+  readonly overflow?: 'mark' | 'reject'
+}
+
+export type StructuredValueLimit = 'depth' | 'items' | 'bytes'
+
+/** A value reached a redaction limit under `overflow: 'reject'`. */
+export class StructuredValueLimitError extends Error {
+  constructor(
+    readonly limit: StructuredValueLimit,
+    readonly bound: number,
+  ) {
+    super(`The value exceeds the ${limit} limit of ${bound}`)
+    this.name = 'StructuredValueLimitError'
+  }
 }
 
 interface RedactionContext {
   readonly maxDepth: number
+  readonly maxItems: number
   readonly maxBytes: number
+  readonly reject: boolean
   readonly preserveNumericTelemetry: boolean
   readonly redactionMarker: string
   readonly stringTransform: (value: string) => string
@@ -171,6 +191,7 @@ function boundedString(value: string, context: RedactionContext): string {
   const sanitized = redactSensitiveText(value, context.maxBytes)
   let output = context.stringTransform(sanitized)
   if (Buffer.byteLength(output, 'utf8') > remaining) {
+    if (context.reject) throw new StructuredValueLimitError('bytes', context.maxBytes)
     const marker = '… [truncated]'
     const markerBytes = Buffer.byteLength(marker, 'utf8')
     const prefixBytes = Math.max(0, remaining - markerBytes)
@@ -246,7 +267,10 @@ function sanitize(
   }
   if (value === null || typeof value === 'boolean') return value
   if (typeof value === 'number') return Number.isFinite(value) ? value : '[unavailable: number]'
-  if (depth >= context.maxDepth) return '[unavailable: depth limit]'
+  if (depth >= context.maxDepth) {
+    if (context.reject) throw new StructuredValueLimitError('depth', context.maxDepth)
+    return '[unavailable: depth limit]'
+  }
   if (typeof value !== 'object') return '[unavailable]'
   if (value instanceof Uint8Array) return '[unavailable: binary]'
   if (context.seen.has(value)) return '[unavailable: cycle]'
@@ -256,7 +280,10 @@ function sanitize(
       const output: unknown[] = []
       let index = 0
       for (; index < value.length; index += 1) {
-        if (context.remainingItems <= 0) break
+        if (context.remainingItems <= 0) {
+          if (context.reject) throw new StructuredValueLimitError('items', context.maxItems)
+          break
+        }
         context.remainingItems -= 1
         output.push(sanitize(value[index], undefined, depth + 1, context))
       }
@@ -269,6 +296,7 @@ function sanitize(
     for (const childKey in value as Record<string, unknown>) {
       if (!Object.prototype.propertyIsEnumerable.call(value, childKey)) continue
       if (context.remainingItems <= 0) {
+        if (context.reject) throw new StructuredValueLimitError('items', context.maxItems)
         truncated = true
         break
       }
@@ -281,7 +309,8 @@ function sanitize(
           outputKey,
           sanitize((value as Record<string, unknown>)[childKey], childKey, depth + 1, context),
         )
-      } catch {
+      } catch (error) {
+        if (error instanceof StructuredValueLimitError) throw error
         setOwn(output, outputKey, '[unavailable]')
       }
     }
@@ -304,7 +333,10 @@ function sanitizeNameList(
 ): readonly string[] {
   const output: string[] = []
   for (const value of values) {
-    if (context.remainingItems <= 0) break
+    if (context.remainingItems <= 0) {
+      if (context.reject) throw new StructuredValueLimitError('items', context.maxItems)
+      break
+    }
     context.remainingItems -= 1
     if (typeof value !== 'string') continue
     output.push(boundedString(value, context))
@@ -343,7 +375,9 @@ function createContext(
   const maxItems = boundedLimit(limits.maxItems, MAX_ITEMS, MAX_ALLOWED_ITEMS)
   return {
     maxDepth: boundedLimit(limits.maxDepth, MAX_DEPTH, MAX_ALLOWED_DEPTH),
+    maxItems,
     maxBytes: boundedLimit(limits.maxBytes, MAX_TOTAL_BYTES, MAX_ALLOWED_BYTES),
+    reject: limits.overflow === 'reject',
     preserveNumericTelemetry,
     redactionMarker: limits.redactionMarker ?? STRUCTURED_REDACTION_MARKER,
     stringTransform: limits.stringTransform ?? identity,

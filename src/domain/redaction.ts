@@ -2,6 +2,7 @@ import type { AgentProfile } from '@tangle-network/agent-interface'
 import {
   redactStructuredValueWithNumericTelemetry,
   STRUCTURED_REDACTION_MARKER,
+  StructuredValueLimitError,
 } from './bounded-structured.js'
 import {
   connectionCredentialReferenceProblem,
@@ -13,6 +14,10 @@ import { persistedContextTransferEventRequest } from './portable-context-persist
 import { providerCause, safeDiagnostic } from './provider-values.js'
 
 export const MAX_PROFILE_BYTES = 16 * 1024 * 1024
+// A profile that mounts a whole skill library holds hundreds of entries; the structured-value
+// defaults (256 entries, depth 8) are sized for event payloads, not profiles.
+export const MAX_PROFILE_ITEMS = 500_000
+export const MAX_PROFILE_DEPTH = 32
 export const MAX_CONVERSATION_IMPORT_EVENT_BYTES = 4 * 1024 * 1024
 // Leave room for the journal envelope inside SQLite's 4 MiB transaction limit.
 export const MAX_ANALYSIS_EVENT_BYTES = 3 * 1024 * 1024
@@ -49,13 +54,30 @@ export {
 } from './bounded-structured.js'
 export { redactSensitiveText, redactSensitiveUrls } from './secret-sanitizer.js'
 
+/**
+ * State and receipts keep this projection, and both must still be a canonical AgentProfile, so a
+ * profile past the profile limits is refused by name instead of being cut down with markers.
+ */
 export function redactProfile(profile: Readonly<AgentProfile>): Readonly<AgentProfile> {
   const modelMetadata = publicModelMetadata(profile.model?.metadata)
-  return removeProfileMetadata(
-    redactStructuredValueWithNumericTelemetry(profile, undefined, { maxBytes: MAX_PROFILE_BYTES }),
-    [],
-    modelMetadata,
-  ) as Readonly<AgentProfile>
+  let redacted: unknown
+  try {
+    redacted = redactStructuredValueWithNumericTelemetry(profile, undefined, {
+      maxBytes: MAX_PROFILE_BYTES,
+      maxItems: MAX_PROFILE_ITEMS,
+      maxDepth: MAX_PROFILE_DEPTH,
+      overflow: 'reject',
+    })
+  } catch (error) {
+    if (error instanceof StructuredValueLimitError) {
+      throw new Error(
+        `The AgentProfile exceeds Braid's profile ${error.limit} limit of ${error.bound}`,
+        { cause: error },
+      )
+    }
+    throw error
+  }
+  return removeProfileMetadata(redacted, [], modelMetadata) as Readonly<AgentProfile>
 }
 
 function removeProfileMetadata(
