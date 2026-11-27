@@ -810,6 +810,9 @@ test('/learn opens right after first-run setup applies, without a restart', {
       key,
       '--profile',
       profilePath,
+      // A startup prompt validates the selection on its first send, as the saved-target test does.
+      '--prompt',
+      'SETUP_LEARN_PROMPT',
     ],
     { cwd: workspace, env, cols: 120, rows: 40 },
   )
@@ -850,7 +853,7 @@ test('/learn opens right after first-run setup applies, without a restart', {
     child.write('\r')
     await waitFor(() => screen().includes('selection applied'))
     child.write('\r')
-    await waitFor(() => !screen().includes('braid setup'))
+    await waitFor(() => screen().includes('SETUP_LEARN_REPLY') && screen().includes('new message'))
     child.write('/learn')
     await waitFor(() => screen().includes('/learn'))
     child.write('\r')
