@@ -266,6 +266,39 @@ In that ledger each learner is a node keyed by its settings' SHA-256, with the a
 The held-out tasks judge picks the learners never chose on, but they also choose between learners, so a promoted learner's held-out score is the score it was selected by, not a fresh estimate.
 A round costs one replay per distinct profile per task: the active profile on every selection task, each distinct candidate on the selection tasks, and each distinct pick on the held-out tasks.
 
+### Test a learned procedure pack on new work
+
+Replays on finished tasks show what a change would have done.
+The canary shows what it does: each new task brief is randomly assigned to a group, and the groups' later outcomes are compared.
+Each brief that names a skill goes to one of two groups.
+In the control group the brief goes out as written.
+In the candidate group Braid appends the procedure pack it learned from that skill's past sessions.
+A procedure contract supplies the procedures: agent-eval trace-contract rules over what an agent ran and said, each with a label, plus a catalog that gives one sentence per label.
+
+1. **Learn the packs.** `braid canary pack --contract <file> --procedures <file> --out <dir> [--days <n>] [--skills <a,b>]` reads your Claude Code and Codex sessions from the last `n` days (default 30) and checks each one against the contract.
+   A skill gets a pack when 5 or more of its sessions could be checked.
+   The pack lists up to 6 procedures that 2 or more of those sessions broke, most-broken first, each with how often it was broken.
+   `manifest.json` in the output names each pack's file and digest.
+2. **Seal.** `braid canary seal --protocol <file>` writes the protocol as the ledger's first entry and seals its analysis rule with agent-eval's `sealRandomizedCanaryRule`.
+   The protocol holds the eligibility rule, the randomizer's seed commitment, every pack digest, the served Braid revision, the outcome checker's digest, the cutoff, the maturity and the readout date.
+   Nothing is assigned before the seal, and a ledger that already holds a protocol is refused.
+3. **Assign.** `braid assign <task-id> --skill <name> --repository <owner/name> [--format text|json]` prints the arm and the text to append to the brief.
+   The arm is the low bit of HMAC-SHA256(seed, experiment id, NUL, task id), so it is fixed before the task runs and can be recomputed once the seed is revealed at readout.
+   Both arms carry the line `Braid-Assignment: <id>`, which every pull request of the task repeats.
+   Asking again for the same task returns its original assignment.
+   A task is turned away (exit 3) after the cutoff, when no pack was sealed for its skill, or when its repository already holds the capped number of assignments.
+   A turned-away task is recorded too, so the ledger lists every arrival; its brief goes out as written.
+4. **Watch.** `braid canary status` verifies the ledger's chain and counts assignments by arm.
+   `braid canary observe --contract <file>` reads this host's sessions since the seal.
+   The contract must be the one the protocol sealed.
+   For each assignment, observe finds the sessions whose human turns carry its line and reports their procedure mistakes per rule, input and output tokens, and the time from first to last event.
+   A value with no evidence behind it stays null and is never counted as zero.
+
+The ledger is a hash-chained JSONL file: each entry names the digest of the one before it.
+When the ledger sits in a git checkout with an `origin`, every append is a commit pushed to `origin`'s `main`, so the remote's order is the ledger's order across hosts.
+The configuration (`--config`, else `BRAID_CANARY_CONFIG`, else `canary/config.json` in Braid's data directory) names the ledger file, the seed file (32 or more bytes, readable only by its owner) and the pack directory.
+The primary outcome is decided outside Braid, by a checker the protocol names by digest.
+
 Headless clients send `learn` with an operation identifier and `action` (`status`, `task`, `propose`, `measure`, `promote`, `rollback` or `learner`).
 `task` takes `check` (a string array) and optional `runId`, `family` and `timeoutSeconds`; `propose` takes `sinceDays`; `promote` takes `candidateId` and `override`.
 `learner` takes `step` (`status`, `measure`, `promote` or `rollback`); its `promote` takes `variant` and `override`.
