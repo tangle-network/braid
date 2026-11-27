@@ -203,6 +203,7 @@ Every promotion is a new profile version you can roll back.
      The definition's other settings, such as `tools` and `model`, are Claude Code names, so they are not carried; the evidence lists them, and the child runs with the parent's tools, permissions and model.
      Every runner whose materializer writes subagents writes the child in its own format: Claude Code, Codex, OpenCode and Gemini.
      A built-in type, a plugin's type and any type that is not a lowercase name have no definition to mount and are skipped with the reason.
+   A skill the profile already carries, inline or by a GitHub reference, is not proposed again; the proposal lists it as skipped.
    A skill without a clean, pinned file, or with uncommitted changes to a tracked file beside it, is skipped with its reason.
    A removal takes the skill's files and records with it.
    Invocations of one skill version are counted together across harnesses, and the evidence gives each harness's share.

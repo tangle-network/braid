@@ -45,7 +45,8 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { readSkillFile } from '@tangle-network/agent-eval/analyst'
 import { replaySearchLedgerText } from '@tangle-network/agent-eval/campaign'
-import { verifyResourceProvenance } from '@tangle-network/agent-interface'
+import { type AgentProfile, verifyResourceProvenance } from '@tangle-network/agent-interface'
+import { defineAgentProfile } from '@tangle-network/agent-interface/profile'
 import { materializeProfile } from '@tangle-network/agent-profile-materialize'
 import { createApplicationUiController } from '../src/adapters/tui/application-ui-controller.js'
 import { learningDocument } from '../src/adapters/tui/learning-dispatch.js'
@@ -720,7 +721,10 @@ test('learning reads Claude Code and Codex sessions with their change ledger, me
 })
 
 /** An invented workspace, skills checkout and Claude Code sessions, served by the fixture agent over headless RPC. */
-async function learningHarness(names?: string[]) {
+async function learningHarness(
+  names?: string[],
+  profile: Readonly<AgentProfile> = LEARNING_FIXTURE_PROFILE,
+) {
   const root = await mkdtemp(join(tmpdir(), 'braid-learning-'))
   const skills = join(root, 'skills')
   const workspace = join(root, 'workspace')
@@ -753,7 +757,7 @@ async function learningHarness(names?: string[]) {
 
   const app = createBraidApplication({
     fixture: 'deterministic',
-    profile: LEARNING_FIXTURE_PROFILE,
+    profile,
     clock: new SystemClock(),
     execution: createDeterministicExecution({ chunkDelayMs: 0, respond: learningFixtureResponse }),
   })
@@ -1051,13 +1055,20 @@ test('the learner is a versioned profile: a variant whose pick wins on held-out 
 
 test('a subagent the sessions start becomes a child profile: pinned, measured, promoted and written by every runner with subagents', async () => {
   // Each session invokes audit and starts three subagents: tidier, whose definition is committed,
-  // a built-in type with no definition, and a type no profile can name.
-  const { app, session, workspace, root, skills, close } = await learningHarness([
-    'audit',
-    'agent:tidier',
-    'agent:general-purpose',
-    'agent:Explore',
-  ])
+  // a built-in type with no definition, and a type no profile can name. The profile already
+  // carries audit by a GitHub reference without a name, so audit is not proposed again.
+  const { app, session, workspace, root, skills, close } = await learningHarness(
+    ['audit', 'agent:tidier', 'agent:general-purpose', 'agent:Explore'],
+    defineAgentProfile({
+      ...LEARNING_FIXTURE_PROFILE,
+      resources: {
+        skills: [
+          ...(LEARNING_FIXTURE_PROFILE.resources?.skills ?? []),
+          { kind: 'github', repository: 'example/skills', path: 'audit/SKILL.md', ref: 'main' },
+        ],
+      },
+    }),
+  )
   try {
     await call(session, 'initialize', { workspace })
     await addTasks(app, session, 12)
@@ -1105,6 +1116,14 @@ test('a subagent the sessions start becomes a child profile: pinned, measured, p
       proposal.skipped.includes(
         'subagent Explore: not a name a profile can carry, so no definition of it is mounted',
       ),
+      proposal.skipped.join('\n'),
+    )
+    assert(
+      !proposal.candidates.some((candidate) => candidate.name === 'audit'),
+      'a skill the profile carries by reference is not proposed again',
+    )
+    assert(
+      proposal.skipped.includes('skill audit: the profile carries it'),
       proposal.skipped.join('\n'),
     )
 
