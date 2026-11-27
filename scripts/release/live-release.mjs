@@ -120,16 +120,20 @@ function run(cmd, args, { input, log, echo = false } = {}) {
       stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
     })
     let out = ''
+    let stdout = ''
     const take = (chunk) => {
       const text = redact(chunk)
       out += text
       if (log) fs.appendFileSync(log, text)
       if (echo) process.stdout.write(text)
     }
-    child.stdout.on('data', take)
+    child.stdout.on('data', (chunk) => {
+      stdout += redact(chunk)
+      take(chunk)
+    })
     child.stderr.on('data', take)
     child.on('error', (error) => take(`${cmd}: ${error.message}\n`))
-    child.on('close', (code) => resolve({ code: code ?? 1, out }))
+    child.on('close', (code) => resolve({ code: code ?? 1, out, stdout }))
     if (input !== undefined) {
       // A child that exits before reading its input closes the pipe (EPIPE); its exit code reports
       // the outcome, so the write error must not crash the driver.
@@ -327,7 +331,9 @@ class Driver {
       throw new Error(
         `${this.o.gh} ${args.slice(0, 3).join(' ')} failed: ${r.out.trim().slice(0, 300)}`,
       )
-    return r.out.trim()
+    // The value is stdout alone: a wrapper or extension may note what it ran on stderr,
+    // and a commit id read with that note would fail every gate it names.
+    return r.stdout.trim()
   }
 
   gate(sha, command, log) {
