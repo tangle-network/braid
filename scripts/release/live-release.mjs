@@ -537,7 +537,9 @@ class Driver {
     this.log(`installed this release's keys on ${this.o.ssh} and in the release-live secret`)
   }
 
-  async preflight() {
+  // `installsKeys` is a dry run with --keys-from: the real run installs the keys before it reads
+  // the account, so a host that still lacks them is ready, and its account read waits for that run.
+  async preflight({ installsKeys = false } = {}) {
     const files = Object.values(KEY_FILES)
       .map((f) => `${this.o.keyDir}/${f}`)
       .join(' ')
@@ -552,7 +554,15 @@ class Driver {
     this.log(
       `credential files on ${this.o.ssh}: ${r.code === 0 ? r.out.trim().replace(/\n/g, ', ') : `missing (${r.out.trim()})`}`,
     )
-    if (r.code !== 0 || r.out.split('\n').some((l) => l && !l.startsWith('600 '))) return false
+    const ready = r.code === 0 && !r.out.split('\n').some((l) => l && !l.startsWith('600 '))
+    // ssh exits 255 when the host is unreachable; stat exits 1 when a file is missing.
+    if (!ready && installsKeys && r.code !== 255) {
+      this.log(
+        `the real run installs this release's keys on ${this.o.ssh} first, then reads the account`,
+      )
+      return true
+    }
+    if (!ready) return false
     const account = await this.observe()
     this.log(`account now: ${account}`)
     if (/\b401\b|AuthError|Unauthorized/iu.test(account))
@@ -596,7 +606,7 @@ class Driver {
           `keys in ${o.keysFrom} are owner-only and well formed; a real run installs them first`,
         )
       }
-      let ok = await this.preflight()
+      let ok = await this.preflight({ installsKeys: o.keysFrom !== undefined })
       if (pr && !(await this.hasLiveRun(sha))) {
         this.log(`PR head ${sha} lacks scripts/release/live-release.mjs; merge main into it first`)
         ok = false
