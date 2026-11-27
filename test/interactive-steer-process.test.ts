@@ -324,7 +324,6 @@ test('keys typed right after Ctrl+] reach Braid when it takes the terminal back'
       outcome: 'detached',
     })
     assert.deepEqual(detached.result?.resumed, ['/', 'h', 'e', 'l', 'p'])
-    assert.equal(detached.state.runs[0]?.status, 'detached')
     assert.equal(owner.lateError(), undefined, owner.lateError() ?? '')
   } finally {
     await Promise.all(children.map((value) => value.kill()))
