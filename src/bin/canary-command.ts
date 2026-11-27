@@ -6,6 +6,7 @@
  *   braid canary pack --contract <file> --procedures <file> --out <dir> [--days <n>]
  *   braid canary seal --protocol <file>
  *   braid canary status
+ *   braid canary observe --contract <file>
  *
  * Every command reads the canary configuration from `--config`, else
  * `BRAID_CANARY_CONFIG`, else `canary/config.json` in Braid's data directory.
@@ -20,6 +21,7 @@ import {
   readCanaryConfig,
   sealCanary,
 } from '../app/canary/canary-protocol.js'
+import { observeCanary } from '../app/canary/canary-observe.js'
 import { learnPacks } from '../app/canary/canary-pack.js'
 import { defaultBraidDataDirectory, defaultLearningConfiguration } from './state-path.js'
 
@@ -30,6 +32,7 @@ Usage:
   braid canary pack --contract <file> --procedures <file> --out <dir> [--days <n>] [--skills <a,b>]
   braid canary seal --protocol <file>
   braid canary status [--format text|json]
+  braid canary observe --contract <file> [--format text|json]
 
 Options:
   --config <path>   Canary configuration (default: BRAID_CANARY_CONFIG, else canary/config.json in Braid's data directory)
@@ -38,6 +41,10 @@ assign prints the arm and what to append to the brief: the skill's sealed pack i
 candidate arm, and in both arms the line every pull request of the task repeats.
 A task that already holds an assignment gets the same one back. Exit 3 means the
 task is not eligible; send the brief as written.
+
+observe reads this host's sessions since the seal and reports, per assignment,
+the sessions whose brief carries its line: procedure mistakes under the sealed
+contract, tokens, and the span from first to last event. Unknown stays null.
 `
 
 class UsageError extends Error {}
@@ -167,7 +174,32 @@ async function run(argv: readonly string[]): Promise<number> {
       )
     return 0
   }
-  throw new UsageError('braid canary takes pack, seal or status')
+  if (action === 'observe') {
+    const learning = defaultLearningConfiguration()
+    const result = await observeCanary(readCanaryConfig(configPath(flags)), {
+      contract: readJson(required(flags, 'contract')) as never,
+      paths: {
+        claudeCodeProjects: learning.claudeCodeProjects,
+        codexSessions: learning.codexSessions,
+      },
+    })
+    if (format === 'json') json(result)
+    else {
+      process.stdout.write(`${result.experimentId}: read ${result.sessionsRead} sessions since the seal\n`)
+      for (const row of result.rows) {
+        const mistakes = row.procedureMistakes ?? 'unknown'
+        const tokens =
+          row.inputTokens === null || row.outputTokens === null
+            ? 'unknown'
+            : row.inputTokens + row.outputTokens
+        process.stdout.write(
+          `${row.assignmentId} ${row.arm}: ${row.sessions.length} sessions, ${mistakes} procedure mistakes, ${tokens} tokens\n`,
+        )
+      }
+    }
+    return 0
+  }
+  throw new UsageError('braid canary takes pack, seal, status or observe')
 }
 
 export async function runCanaryCommand(argv: readonly string[]): Promise<number> {

@@ -9,7 +9,9 @@
  * two checkouts of that ledger (two hosts) assign tasks, some of them at the
  * same moment. Every arm is the one the seed decides, a task asked for twice
  * keeps its first arm, the repository cap and the unknown skill turn tasks
- * away on the record, and an edited entry breaks the chain.
+ * away on the record. Sessions whose briefs carry two tasks' lines give those
+ * tasks their procedure mistakes and tokens, and an edited entry breaks the
+ * chain.
  */
 
 import assert from 'node:assert/strict'
@@ -30,8 +32,10 @@ function session(
   skill: string,
   commands: readonly string[],
   answer: string,
+  options: { readonly request?: string; readonly startMs?: number } = {},
 ): void {
-  const at = (minutes: number) => new Date(Date.now() - 24 * HOUR + minutes * 60_000).toISOString()
+  const start = options.startMs ?? Date.now() - 24 * HOUR
+  const at = (minutes: number) => new Date(start + minutes * 60_000).toISOString()
   const records: unknown[] = []
   let parent: string | null = null
   const push = (record: Record<string, unknown>) => {
@@ -49,7 +53,11 @@ function session(
     })
     parent = uuid
   }
-  push({ type: 'user', message: { role: 'user', content: 'Fixture request: change the module.' } })
+  push({
+    type: 'user',
+    message: { role: 'user', content: options.request ?? 'Fixture request: change the module.' },
+  })
+  const usage = { input_tokens: 100, output_tokens: 10 }
   const tool = (toolId: string, name: string, input: unknown) => {
     push({
       type: 'assistant',
@@ -58,6 +66,7 @@ function session(
         type: 'message',
         role: 'assistant',
         model: 'fixture-model',
+        usage,
         content: [{ type: 'tool_use', id: toolId, name, input }],
       },
     })
@@ -79,6 +88,7 @@ function session(
       type: 'message',
       role: 'assistant',
       model: 'fixture-model',
+      usage,
       content: [{ type: 'text', text: answer }],
     },
   })
@@ -249,6 +259,7 @@ test('a learned pack is sealed, served to one arm, and every assignment holds ac
         definition: 'merged with its own tests green and no fix within 7 days',
         checkerDigest: `sha256:${'c'.repeat(64)}`,
       },
+      secondary: { contractDigest: learned.value.contractDigest },
       readoutAt: new Date(Date.parse(cutoff) + 14 * 24 * HOUR).toISOString(),
       analysis: {
         populationId: 'fixture-briefs',
@@ -418,6 +429,72 @@ test('a learned pack is sealed, served to one arm, and every assignment holds ac
     assert.equal(status.repositories, 5)
     assert.equal(status.dispositions, 2)
     assert.equal(status.entries, 13)
+
+    // Two sessions did task-1 and one did task-2; their briefs carry the lines. Observe reads
+    // their procedure mistakes under the sealed contract and their tokens; a task no session
+    // here did stays unknown, and a contract other than the sealed one is refused.
+    const brief = (index: number) => `Fixture brief.\n\n${String(results[index]?.append)}`
+    const now = Date.now()
+    session(projects, 'o1', 'tidy', [piped, merged], 'Merged after `read-receipt`.', {
+      request: brief(1),
+      startMs: now,
+    })
+    session(projects, 'o2', 'tidy', [clean], 'Checked.', { request: brief(1), startMs: now })
+    session(projects, 'o3', 'tidy', [clean, 'read-receipt 3', 'merge-change 3'], 'Merged.', {
+      request: brief(2),
+      startMs: now,
+    })
+    const observed = json([
+      'canary',
+      'observe',
+      '--contract',
+      join(root, 'contract.json'),
+      '--config',
+      hostB,
+    ])
+    assert.equal(observed.code, 0, JSON.stringify(observed.value))
+    type Observed = {
+      assignmentId: string
+      sessions: { sessionId: string; modelCalls: number }[]
+      procedureMistakes: number | null
+      mistakesByRule: Record<string, number> | null
+      inputTokens: number | null
+      outputTokens: number | null
+      wallMs: number | null
+    }
+    const rows = new Map(
+      (observed.value.rows as Observed[]).map((row) => [row.assignmentId, row] as const),
+    )
+    const one = rows.get(String(results[1]?.assignmentId)) as Observed
+    assert.deepEqual(one.sessions.map((row) => row.sessionId).sort(), ['o1', 'o2'])
+    assert.equal(one.procedureMistakes, 2)
+    assert.equal(one.mistakesByRule?.['check-output-piped'], 1)
+    assert.equal(one.mistakesByRule?.['merge-before-receipt'], 1)
+    const calls = one.sessions.reduce((total, row) => total + row.modelCalls, 0)
+    assert.ok(calls > 0)
+    assert.deepEqual([one.inputTokens, one.outputTokens], [100 * calls, 10 * calls])
+    assert.ok((one.wallMs ?? 0) > 0)
+    const two = rows.get(String(results[2]?.assignmentId)) as Observed
+    assert.deepEqual([two.sessions.length, two.procedureMistakes], [1, 0])
+    const none = rows.get(String(results[0]?.assignmentId)) as Observed
+    assert.deepEqual(
+      [none.sessions.length, none.procedureMistakes, none.inputTokens, none.wallMs],
+      [0, null, null, null],
+    )
+    writeFileSync(
+      join(root, 'other-contract.json'),
+      JSON.stringify({ ...CONTRACT, name: 'other-procedures' }),
+    )
+    const other = braid([
+      'canary',
+      'observe',
+      '--contract',
+      join(root, 'other-contract.json'),
+      '--config',
+      hostB,
+    ])
+    assert.equal(other.code, 1)
+    assert.match(other.out, /sealed procedure contract/u)
 
     // The remote holds every entry, in one chain; an edited entry is refused.
     const reader = checkout('reader')
