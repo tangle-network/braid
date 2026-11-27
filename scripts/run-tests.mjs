@@ -139,7 +139,8 @@ function testConcurrency() {
   if (gate) {
     try {
       const { default_workers: workers, reserved } = JSON.parse(gate)
-      for (const count of [workers, reserved]) if (Number.isSafeInteger(count) && count > 0) return count
+      for (const count of [workers, reserved])
+        if (Number.isSafeInteger(count) && count > 0) return count
     } catch {
       process.stderr.write('BEELINK_GATE_CORES is not JSON; sizing tests from this machine\n')
     }
