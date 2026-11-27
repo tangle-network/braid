@@ -18,7 +18,10 @@
 import { execFileSync } from 'node:child_process'
 import { appendFileSync, closeSync, existsSync, fsyncSync, openSync, readFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
-import { acquirePrivateFileLock, releasePrivateFileLock } from '../../adapters/persistence/safe-file.js'
+import {
+  acquirePrivateFileLock,
+  releasePrivateFileLock,
+} from '../../adapters/persistence/safe-file.js'
 import { canonicalJson } from '../../domain/canonical.js'
 import { AppError } from '../errors.js'
 import { sha256Hex } from '../learning/learning-profile.js'
@@ -101,7 +104,10 @@ export function readLedger(path: string): LedgerEntry[] {
     if (digest !== entryDigest(rest))
       throw new AppError('CANARY_LEDGER_INVALID', `ledger entry ${number + 1} was edited`)
     if ((entry.index === 0) !== (entry.kind === 'protocol'))
-      throw new AppError('CANARY_LEDGER_INVALID', 'the protocol is the first entry and only the first')
+      throw new AppError(
+        'CANARY_LEDGER_INVALID',
+        'the protocol is the first entry and only the first',
+      )
     entries.push(entry)
   }
   return entries
@@ -116,8 +122,10 @@ function git(directory: string, args: readonly string[]): string {
 
 function gitRemote(directory: string): boolean {
   try {
-    return git(directory, ['rev-parse', '--is-inside-work-tree']) === 'true' &&
+    return (
+      git(directory, ['rev-parse', '--is-inside-work-tree']) === 'true' &&
       git(directory, ['remote']).split('\n').includes('origin')
+    )
   } catch {
     return false
   }
@@ -166,7 +174,10 @@ function withLock<T>(path: string, work: () => T): T {
  */
 export function appendLedger<T>(
   path: string,
-  decide: (entries: readonly LedgerEntry[]) => { readonly append: LedgerAppend | null; readonly result: T },
+  decide: (entries: readonly LedgerEntry[]) => {
+    readonly append: LedgerAppend | null
+    readonly result: T
+  },
   now: () => Date = () => new Date(),
 ): T {
   const directory = dirname(path)

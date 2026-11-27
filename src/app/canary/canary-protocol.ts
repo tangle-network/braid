@@ -93,9 +93,11 @@ export function readCanaryConfig(path: string): CanaryConfig {
 
 function readSeed(path: string): Buffer {
   const mode = statSync(path).mode & 0o077
-  if (mode !== 0) throw new AppError('CANARY_SEED_EXPOSED', `The seed ${path} is readable by others`)
+  if (mode !== 0)
+    throw new AppError('CANARY_SEED_EXPOSED', `The seed ${path} is readable by others`)
   const seed = readFileSync(path)
-  if (seed.byteLength < 32) throw new AppError('CANARY_SEED_SHORT', 'The seed needs 32 or more bytes')
+  if (seed.byteLength < 32)
+    throw new AppError('CANARY_SEED_SHORT', 'The seed needs 32 or more bytes')
   return seed
 }
 
@@ -124,7 +126,10 @@ function readManifest(directory: string): PackManifest {
 function packText(directory: string, file: string, digest: string): string {
   const text = readFileSync(join(directory, file), 'utf8')
   if (canaryDigest(text) !== digest)
-    throw new AppError('CANARY_PACK_CHANGED', `The pack ${file} no longer matches its sealed digest`)
+    throw new AppError(
+      'CANARY_PACK_CHANGED',
+      `The pack ${file} no longer matches its sealed digest`,
+    )
   return text
 }
 
@@ -145,7 +150,8 @@ export async function sealCanary(
   const seed = readSeed(config.seed)
   const manifest = readManifest(config.packs)
   const skills = Object.keys(manifest.skills).sort()
-  if (skills.length === 0) throw new AppError('CANARY_PACKS_EMPTY', 'The pack manifest names no skill')
+  if (skills.length === 0)
+    throw new AppError('CANARY_PACKS_EMPTY', 'The pack manifest names no skill')
   const packs: Record<string, string> = {}
   for (const skill of skills) {
     const pack = manifest.skills[skill] as { file: string; digest: string }
@@ -246,7 +252,10 @@ export interface AssignResult {
 function protocolOf(entries: readonly LedgerEntry[]): ProtocolEntry {
   const first = entries[0]
   if (first === undefined || first.kind !== 'protocol')
-    throw new AppError('CANARY_NOT_SEALED', 'The ledger holds no sealed protocol; nothing is assigned before the seal')
+    throw new AppError(
+      'CANARY_NOT_SEALED',
+      'The ledger holds no sealed protocol; nothing is assigned before the seal',
+    )
   return first
 }
 
@@ -279,7 +288,10 @@ export function assignTask(
       )
       const result = (
         status: AssignResult['status'],
-        entry: Pick<AssignmentEntry, 'assignmentId' | 'arm' | 'skill' | 'packDigest' | 'repository'>,
+        entry: Pick<
+          AssignmentEntry,
+          'assignmentId' | 'arm' | 'skill' | 'packDigest' | 'repository'
+        >,
       ): AssignResult => {
         const manifest = readManifest(config.packs)
         const file = manifest.skills[entry.skill]?.file
@@ -329,7 +341,8 @@ export function assignTask(
       if (now().getTime() >= Date.parse(eligibility.acceptsUntil))
         return turnedAway(`the cutoff ${eligibility.acceptsUntil} has passed`)
       const packDigest = eligibility.skills[request.skill]
-      if (packDigest === undefined) return turnedAway(`no sealed pack for the skill ${request.skill}`)
+      if (packDigest === undefined)
+        return turnedAway(`no sealed pack for the skill ${request.skill}`)
       const inRepository = entries.filter(
         (entry) => entry.kind === 'assignment' && entry.repository === request.repository,
       ).length
@@ -370,7 +383,9 @@ export function canaryStatus(config: CanaryConfig): CanaryStatus {
   syncLedger(config.ledger)
   const entries = readLedger(config.ledger)
   const sealed = protocolOf(entries)
-  const assignments = entries.filter((entry): entry is AssignmentEntry => entry.kind === 'assignment')
+  const assignments = entries.filter(
+    (entry): entry is AssignmentEntry => entry.kind === 'assignment',
+  )
   return {
     experimentId: sealed.experimentId,
     protocolDigest: sealed.protocolDigest,

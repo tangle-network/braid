@@ -16,7 +16,11 @@ import { join } from 'node:path'
 import type { TraceContractSpec } from '@tangle-network/agent-eval'
 import { canonicalJson } from '../../domain/canonical.js'
 import { AppError } from '../errors.js'
-import { type HarnessSessionPaths, readHarnessSessions, sessionsInvoking } from '../learning/learning-sources.js'
+import {
+  type HarnessSessionPaths,
+  readHarnessSessions,
+  sessionsInvoking,
+} from '../learning/learning-sources.js'
 import { canaryDigest } from './canary-ledger.js'
 import type { PackManifest } from './canary-protocol.js'
 
@@ -69,7 +73,9 @@ function packText(
     `Braid read ${sessions} sessions from ${since.slice(0, 10)} to ${until.slice(0, 10)} that used ${skill}.`,
     'Agents in them broke these procedures. Follow each one in this task.',
     '',
-    ...lines.map((line) => `- ${line.procedure} (broken in ${line.sessions} of ${sessions} sessions)`),
+    ...lines.map(
+      (line) => `- ${line.procedure} (broken in ${line.sessions} of ${sessions} sessions)`,
+    ),
     '',
   ].join('\n')
 }
