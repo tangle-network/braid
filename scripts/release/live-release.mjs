@@ -796,7 +796,7 @@ class Driver {
     const head = await this.gh(['api', `repos/${REPO}/commits/main`, '--jq', '.sha'])
     if (head !== commit)
       this.finish(
-        `main moved from ${commit} to ${head} before ${step}; not published. Rerun with --commit ${head} after its full gate passes, and merge nothing until the release finishes`,
+        `main moved to ${head} before ${step}; not published: rerun with --commit ${head} once it passes the full gate`,
       )
   }
 
