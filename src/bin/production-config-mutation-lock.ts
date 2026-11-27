@@ -1,6 +1,9 @@
-import { resolve } from 'node:path'
+import { mkdir } from 'node:fs/promises'
+import { dirname, resolve } from 'node:path'
 import {
   acquirePrivateFileLock,
+  assertNoSymlinkPath,
+  assertSafeDirectory,
   releasePrivateFileLock,
 } from '../adapters/persistence/safe-file.js'
 
@@ -32,6 +35,13 @@ export async function withProductionConfigMutationLock<T>(
 ): Promise<T> {
   const canonicalPath = resolve(configPath)
   const path = lockPath(canonicalPath)
+  // The lock sits beside the configuration, so a first save in a fresh workspace creates
+  // `.braid` before taking it; the directory is private and no component may be a link.
+  const directory = dirname(canonicalPath)
+  assertNoSymlinkPath(directory)
+  await mkdir(directory, { recursive: true, mode: 0o700 })
+  assertNoSymlinkPath(directory)
+  assertSafeDirectory(directory)
   const handle = acquirePrivateFileLock(path, 'Production connection configuration')
   const lock: ProductionConfigMutationLock = Object.freeze({
     configPath: canonicalPath,
