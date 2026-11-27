@@ -127,6 +127,47 @@ process.on(
           sent.completion,
         )
         result = { ready: true }
+      } else if (input.command === 'view-and-detach') {
+        // The user presses Ctrl+] and types at once. A terminal that splits one read into key
+        // sequences, as Pi's ProcessTerminal does, hands Braid the chord and every key after it
+        // in the same tick.
+        app.initialize(root)
+        await app.whenDurable()
+        const sent = app.send({
+          operationId: input.operationId,
+          text: input.text,
+          mode: 'interactive',
+        })
+        await sent.admissionReady
+        while ((app.state().runs[0]?.lastProviderSequence ?? 0) < 1)
+          await new Promise((resolve) => setTimeout(resolve, 5))
+        const resumed: string[] = []
+        const presented = await presentNativeInteractiveRun(
+          {
+            current: () => ({ app, nativeInteractive: broker }),
+            terminal: {
+              columns: 80,
+              rows: 24,
+              start(onInput) {
+                setImmediate(() => {
+                  for (const key of ['\u001d', ...input.text.slice(0, 5)]) onInput(key)
+                })
+              },
+              stop() {},
+              write() {},
+            },
+            signals: () => ({ takeOver: () => () => undefined }),
+            suspend() {},
+            resume(typed) {
+              resumed.push(...typed)
+            },
+            nextOperationId: () => `${input.operationId}-terminal`,
+            holderId: 'braid',
+          },
+          sent.runId,
+          sent.completion,
+        )
+        result = { presented, resumed }
       } else if (input.command === 'reconcile') {
         await app.reconcileRun({ operationId: input.operationId, runId: input.runId })
       } else if (input.command === 'cancel') {

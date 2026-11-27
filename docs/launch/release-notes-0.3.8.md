@@ -24,6 +24,13 @@
   tasks, and the pick is judged on the tasks it held out. `/learn learner promote`
   keeps a learner only when its pick does better there, and you can roll it back.
 
+## Native terminals
+
+- Keys you type right after Ctrl+] now reach Braid. Braid's terminal splits one
+  read into separate keys, so the keys typed with the chord arrived before the
+  native session had released the terminal, and they were dropped. Braid now
+  takes them as typed when it redraws.
+
 ## Release proofs
 
 - The Sandbox release proofs treat a Sandbox that the API reports as `deleted` as

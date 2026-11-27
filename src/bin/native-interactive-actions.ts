@@ -37,7 +37,8 @@ export interface NativeInteractiveActionsOptions {
   readonly terminal: NativeTerminalHost
   readonly signals: () => NativeTerminalSignalPort
   readonly suspend: () => void
-  readonly resume: () => void
+  /** Reclaims the terminal; `input` is what the user typed after the detach chord. */
+  readonly resume: (input: readonly string[]) => void
   readonly nextOperationId: () => string
   readonly holderId: string
 }
@@ -334,14 +335,17 @@ async function presentHandle(
     rows: positiveDimension(options.terminal.rows),
   })
   options.suspend()
+  let pendingInput: readonly string[] = []
   try {
-    return await createNativeTerminalTransport({
+    const result = await createNativeTerminalTransport({
       session: terminalSession,
       terminal: options.terminal,
       signals: options.signals(),
     }).run()
+    pendingInput = result.pendingInput
+    return result
   } finally {
-    options.resume()
+    options.resume(pendingInput)
   }
 }
 

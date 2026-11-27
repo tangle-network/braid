@@ -250,8 +250,12 @@ export class BraidTerminalApp {
     this.#tui.stop({ preserveScreen: true })
   }
 
-  /** Reclaim the local terminal and redraw the same Braid application state. */
-  resume(): void {
+  /**
+   * Reclaim the local terminal and redraw the same Braid application state. `pendingInput` is what
+   * the user typed while the terminal was handed back, such as the keys after Ctrl+]; Braid takes
+   * it as typed.
+   */
+  resume(pendingInput: readonly string[] = []): void {
     if (this.#stopped || !this.#started || !this.#suspended) return
     this.#suspended = false
     this.#removeInputListener = this.#tui.addInputListener((data) => this.#handleInput(data))
@@ -260,6 +264,7 @@ export class BraidTerminalApp {
     else this.#tui.setFocus(this.#shell.editor)
     this.#render(this.#controller.view())
     this.#tui.requestRender(true)
+    for (const data of pendingInput) this.#replayInput(data)
   }
 
   stop(): void {
