@@ -28,8 +28,8 @@ importers:
         specifier: 5.10.32
         version: 5.10.32
       '@tangle-network/agent-profile-materialize':
-        specifier: 1.1.222
-        version: 1.1.222(@tangle-network/agent-interface@5.10.32)
+        specifier: 1.1.224
+        version: 1.1.224(@tangle-network/agent-interface@5.10.32)
       '@tangle-network/agent-provider-cli-bridge':
         specifier: 2.0.19
         version: 2.0.19
@@ -911,8 +911,8 @@ packages:
       '@tangle-network/agent-eval': ^1.0.0 || ^2.0.0
       '@tangle-network/agent-interface': ^5.2.0
 
-  '@tangle-network/agent-profile-materialize@1.1.222':
-    resolution: {integrity: sha512-BIIQINFPXfM9Dv0LXSZlGlVTbtfH+SXi6t3X7DTXTb+liPaFvUj5iZonE5/6FJK6zyWmgEaXz2Vyv8EnnQAsEA==}
+  '@tangle-network/agent-profile-materialize@1.1.224':
+    resolution: {integrity: sha512-BUSN92mwZKys3Eq5uWvjzY9rEf5vtI38YhiFd9ZBhheKSsDcWmvFw6Fdef87RioYXd06eRH1cB4skeu1dBcPew==}
     peerDependencies:
       '@tangle-network/agent-interface': ^5.10.28
 
@@ -2570,7 +2570,7 @@ snapshots:
       proper-lockfile: 4.1.2
       zod: 4.6.7
 
-  '@tangle-network/agent-profile-materialize@1.1.222(@tangle-network/agent-interface@5.10.32)':
+  '@tangle-network/agent-profile-materialize@1.1.224(@tangle-network/agent-interface@5.10.32)':
     dependencies:
       '@tangle-network/agent-interface': 5.10.32
 
@@ -2578,7 +2578,7 @@ snapshots:
     dependencies:
       '@tangle-network/agent-core': 1.0.3
       '@tangle-network/agent-interface': 5.10.32
-      '@tangle-network/agent-profile-materialize': 1.1.222(@tangle-network/agent-interface@5.10.32)
+      '@tangle-network/agent-profile-materialize': 1.1.224(@tangle-network/agent-interface@5.10.32)
       '@tangle-network/cli-agent-registry': 0.15.30
       undici: 8.12.3
     transitivePeerDependencies:
@@ -2602,7 +2602,7 @@ snapshots:
       '@tangle-network/agent-eval': 2.0.15
       '@tangle-network/agent-interface': 5.10.32
       '@tangle-network/agent-knowledge': 23.0.7(@tangle-network/agent-eval@2.0.15)(@tangle-network/agent-interface@5.10.32)
-      '@tangle-network/agent-profile-materialize': 1.1.222(@tangle-network/agent-interface@5.10.32)
+      '@tangle-network/agent-profile-materialize': 1.1.224(@tangle-network/agent-interface@5.10.32)
       '@tangle-network/agent-trace-contract': 2.2.2
       '@tangle-network/harness-sessions': 1.0.17
       '@tangle-network/sandbox': 1.0.282
