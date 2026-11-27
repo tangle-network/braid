@@ -24,6 +24,7 @@ import { configEvidence, prepareReleaseSandboxWorkspace, resolveBinary } from '.
 import { terminalText } from './interactive-terminal.mjs'
 import { DEFAULT_TANGLE_ROUTER_MODEL } from './model-defaults.mjs'
 import { MULTIRUN_PROOF_SCHEMA } from './multirun-contract.mjs'
+import { presentSandbox } from './provider-observation.mjs'
 import {
   cleanupRetainedResourceByControlRef,
   cleanupRetainedResourceByRunId,
@@ -402,7 +403,7 @@ async function listBraidResources(client) {
 }
 
 async function remoteStatus(client, controlRef, expectedStatus, timeoutMs) {
-  const box = await client.get(controlRef.environmentId)
+  const box = await presentSandbox(client, controlRef.environmentId)
   assert.ok(box, `provider environment ${controlRef.environmentId} was not found`)
   const session = box.session(controlRef.sessionId)
   return retryUntil(

@@ -167,6 +167,17 @@ export async function waitForProviderObservation(
   }
 }
 
+/**
+ * One Sandbox by id, or null when it is gone. After a delete the API answers
+ * with a record whose status is `deleted` and which has no name or metadata,
+ * not a 404; the SDK's own instance lookup treats that record as absent, and
+ * so does every proof that waits for a deletion or checks ownership.
+ */
+export async function presentSandbox(client, id) {
+  const box = await client.get(id)
+  return box === null || box === undefined || box.status === 'deleted' ? null : box
+}
+
 export async function listAllSandboxes(client) {
   // An unpaginated SDK list is one complete inventory. Offset pages over a
   // changing shared account can repeat or omit resources between requests.

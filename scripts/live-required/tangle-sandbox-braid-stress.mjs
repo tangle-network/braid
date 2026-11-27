@@ -21,7 +21,7 @@ import {
   prepareReleaseSandboxWorkspace,
   resolveBinary,
 } from './headless.mjs'
-import { listAllSandboxes } from './provider-observation.mjs'
+import { listAllSandboxes, presentSandbox } from './provider-observation.mjs'
 import {
   argument,
   assertEnvironmentIdentity,
@@ -338,7 +338,7 @@ export async function retainedBox(client, controlRef, label) {
       required: 'BRAID_TANGLE_SANDBOX_API_KEY or TANGLE_API_KEY',
     })
   }
-  const box = await client.get(controlRef.environmentId)
+  const box = await presentSandbox(client, controlRef.environmentId)
   if (!box || !retainedResourceIdentity(box, controlRef)) {
     throw new MissingIntegrationError(`${label} did not resolve the exact retained Sandbox`, {
       environmentId: controlRef.environmentId,
@@ -735,7 +735,7 @@ export async function observeRetainedResource(client, controlRef) {
       { required: ['controlRef.environmentId', 'controlRef.sessionId'] },
     )
   }
-  const box = await cleanupProviderCall(() => client.get(controlRef.environmentId))
+  const box = await cleanupProviderCall(() => presentSandbox(client, controlRef.environmentId))
   if (!box) {
     throw new MissingIntegrationError(
       `Sandbox environment ${controlRef.environmentId} was not visible to the cleanup client`,
@@ -757,7 +757,7 @@ export async function observeRetainedResource(client, controlRef) {
 /** Delete the exact Braid-owned retained Sandbox named by one control reference. */
 export async function cleanupRetainedResourceByControlRef(client, controlRef) {
   const observed = await observeRetainedResource(client, controlRef)
-  const box = await cleanupProviderCall(() => client.get(controlRef.environmentId))
+  const box = await cleanupProviderCall(() => presentSandbox(client, controlRef.environmentId))
   if (box === null) {
     throw new MissingIntegrationError(
       `Sandbox environment ${controlRef.environmentId} disappeared before exact cleanup`,
@@ -801,7 +801,7 @@ export async function cleanupRetainedResourceByRunId(client, firstRunId) {
     )
   }
   const listed = matches[0]
-  const exact = await cleanupProviderCall(() => client.get(listed.id))
+  const exact = await cleanupProviderCall(() => presentSandbox(client, listed.id))
   const exactExpected = expectedResourceIdentityForSession(providerSessionId, listed.id)
   if (!exact || !matchesResourceIdentity(exact, exactExpected)) {
     throw new MissingIntegrationError(
@@ -813,7 +813,7 @@ export async function cleanupRetainedResourceByRunId(client, firstRunId) {
     )
   }
   await exact.delete()
-  const remaining = await cleanupProviderCall(() => client.get(listed.id))
+  const remaining = await cleanupProviderCall(() => presentSandbox(client, listed.id))
   if (remaining !== null) {
     throw new Error(`Fail-safe retained Braid Sandbox ${listed.id} remained after delete`)
   }
@@ -836,7 +836,7 @@ function ownedByOperation(box, operationId) {
 async function deleteOwnedResource(client, box, predicate) {
   const attempts = []
   for (let attempt = 1; attempt <= 3; attempt += 1) {
-    const exact = await cleanupProviderCall(() => client.get(box.id))
+    const exact = await cleanupProviderCall(() => presentSandbox(client, box.id))
     if (exact === null) return { id: box.id, attempts, confirmed: true }
     if (!predicate(exact)) {
       throw new MissingIntegrationError(
@@ -852,7 +852,7 @@ async function deleteOwnedResource(client, box, predicate) {
     }
     const deadline = performance.now() + 5_000
     while (performance.now() < deadline) {
-      if ((await cleanupProviderCall(() => client.get(box.id))) === null) {
+      if ((await cleanupProviderCall(() => presentSandbox(client, box.id))) === null) {
         return { id: box.id, attempts, confirmed: true }
       }
       await sleep(100)
@@ -881,7 +881,7 @@ export async function cleanupOwnedRetainedResources(
   const deletions = []
   // Remove the known resource before account discovery can fail or become slow.
   if (controlRef?.environmentId) {
-    const exact = await cleanupProviderCall(() => client.get(controlRef.environmentId))
+    const exact = await cleanupProviderCall(() => presentSandbox(client, controlRef.environmentId))
     if (exact) {
       if (!predicate(exact)) {
         throw new MissingIntegrationError(

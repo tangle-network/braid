@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { Sandbox } from '@tangle-network/sandbox'
 import { connectionConfiguration } from './configuration.mjs'
 import { safeMessage } from './contracts.mjs'
+import { presentSandbox } from './provider-observation.mjs'
 import {
   closeSession,
   configEvidence,
@@ -193,7 +194,7 @@ async function runAttempt({ index, proofId, client, binary, values, environment 
     assert.equal(observed.continuity, 'unavailable', 'Ephemeral execution claimed continuity')
     assert.equal(observed.location, 'remote', 'Sandbox execution was not remote')
     assert.ok(exactEnvironmentId, 'Sandbox provider identity was unavailable')
-    automaticCleanup = (await client.get(exactEnvironmentId)) === null
+    automaticCleanup = (await presentSandbox(client, exactEnvironmentId)) === null
     assert.equal(automaticCleanup, true, 'Sandbox remained after the completed Braid turn')
     result = {
       index,
