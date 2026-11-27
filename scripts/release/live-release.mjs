@@ -614,7 +614,9 @@ class Driver {
       if (!pr) {
         const head = await this.gh(['api', `repos/${REPO}/commits/main`, '--jq', '.sha'])
         if (head !== sha) {
-          this.log(`main's head is ${head}, not ${sha}; the release workflows refuse any other commit`)
+          this.log(
+            `main's head is ${head}, not ${sha}; the release workflows refuse any other commit`,
+          )
           ok = false
         }
       }
