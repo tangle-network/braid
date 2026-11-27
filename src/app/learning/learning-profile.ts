@@ -177,3 +177,19 @@ export function inlineSkills(
     resource.kind === 'inline' ? [resource] : [],
   )
 }
+
+/**
+ * The name of every skill the profile carries, inline or by a GitHub reference.
+ * A GitHub reference without a name counts by the directory of its `SKILL.md`,
+ * since that directory is the skill the sessions invoke.
+ */
+export function carriedSkillNames(profile: AgentProfile): Set<string> {
+  return new Set(
+    (profile.resources?.skills ?? []).flatMap((resource) => {
+      if (resource.name !== undefined && resource.name !== '') return [resource.name]
+      if (resource.kind !== 'github') return []
+      const parts = resource.path.split('/')
+      return parts.at(-1) === 'SKILL.md' && parts.length > 1 ? [parts.at(-2) as string] : []
+    }),
+  )
+}

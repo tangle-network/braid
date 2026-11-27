@@ -17,6 +17,7 @@ import {
 import { draftProfileFromFeedback } from '../profile-learning.js'
 import { DEFAULT_LEARNER_SETTINGS } from './learner-profile.js'
 import {
+  carriedSkillNames,
   inlineSkills,
   loadedTokens,
   type MountedSkill,
@@ -489,8 +490,12 @@ export async function proposeCandidates(
   const skipped: string[] = []
   for (const kind of ['skill', 'workflow', 'instructions', 'removal', 'subagent'] as const)
     if (!proposes(kind)) skipped.push(`${kind}: the learner does not propose this kind`)
-  const present = new Set(inlineSkills(input.base).map((skill) => skill.name))
-  const rows = (input.harness.usage?.rows ?? [])
+  // A skill the profile already carries, inline or by reference, is not proposed again.
+  const present = carriedSkillNames(input.base)
+  const usage = input.harness.usage?.rows ?? []
+  for (const row of usage)
+    if (present.has(row.skill)) skipped.push(`skill ${row.skill}: the profile carries it`)
+  const rows = usage
     .filter((row) => !present.has(row.skill))
     .sort((left, right) => right.invocations.total - left.invocations.total)
     .slice(0, proposes('skill') || proposes('workflow') ? settings.rowsTried : 0)
