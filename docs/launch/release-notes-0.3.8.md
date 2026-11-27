@@ -16,11 +16,20 @@
 - Each change is replayed on your own finished tasks. It is promoted only when it
   keeps your worst task family's success rate, and every promotion is a version
   you can roll back.
+- A skill your profile already loads, inline or by a GitHub reference, is not
+  proposed again; the proposal lists it as skipped.
 - Every later run's receipt names the learned version it ran, on any runner.
 - How Braid learns is a versioned profile too. `/learn learner measure` builds
   one-change variants of the learner. Each variant picks a change on some of your
   tasks, and the pick is judged on the tasks it held out. `/learn learner promote`
   keeps a learner only when its pick does better there, and you can roll it back.
+
+## Release proofs
+
+- The Sandbox release proofs treat a Sandbox that the API reports as `deleted` as
+  gone. After a delete, the API answers a read by id with a `deleted` record that
+  has no name or metadata rather than a 404, so LIVE-07 refused to clean up its
+  own Sandbox and no release passed live evidence.
 
 ## First published here: the 0.3.7 changes
 
