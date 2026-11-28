@@ -4,6 +4,11 @@ import { enableCompileCache } from 'node:module'
 import { CliUsageError, HELP, parseArgs } from './args.js'
 
 async function launch(): Promise<number> {
+  const command = process.argv[2]
+  if (command === 'assign' || command === 'canary') {
+    const { runCanaryCommand } = await import('./canary-command.js')
+    return runCanaryCommand(process.argv.slice(2))
+  }
   let options: ReturnType<typeof parseArgs>
   try {
     options = parseArgs(process.argv.slice(2), process.cwd())
