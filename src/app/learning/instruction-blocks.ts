@@ -278,14 +278,6 @@ function distinctBlocks(text: string): Map<string, TextBlock> {
   return blocks
 }
 
-/** What blocks are ranked against: task texts, and the tasks that already pass. */
-export interface BlockTargets {
-  /** Each target task's request and, when measured, its check's output. */
-  readonly target: readonly string[]
-  /** Tasks the active profile already passes; their terms count against a block. */
-  readonly passing: readonly string[]
-}
-
 export interface RankedBlock {
   readonly block: LoadedBlock
   readonly score: number
@@ -298,32 +290,25 @@ const B = 0.75
 const SIMILAR = 0.5
 
 /**
- * Rank blocks by Okapi BM25 against the target tasks. A term weighs the share
- * of target tasks that use it less the share of passing tasks that do, so the
- * words every task shares count for nothing. Blocks whose terms overlap a
+ * Rank blocks by Okapi BM25 against the target texts: each task's request and,
+ * when measured, what its check printed. A term weighs the share of targets
+ * that use it, and less the more blocks hold it. Blocks whose terms overlap a
  * better-ranked block's by half or more are left out, so the picks differ.
+ *
+ * Passed tasks are not subtracted: their words differ from the failed tasks'
+ * mostly by the kind of task, not by what went wrong, so subtracting them
+ * favours a block that names the failing kind of task over one that fixes it.
  */
 export function rankInstructionBlocks(
   blocks: readonly LoadedBlock[],
-  targets: BlockTargets,
+  targets: readonly string[],
   limit: number,
 ): RankedBlock[] {
-  if (targets.target.length === 0 || blocks.length === 0 || limit <= 0) return []
-  const share = (texts: readonly string[]) => {
-    const counts = new Map<string, number>()
-    for (const text of texts)
-      for (const term of new Set(terms(text))) counts.set(term, (counts.get(term) ?? 0) + 1)
-    return { counts, total: texts.length }
-  }
-  const wanted = share(targets.target)
-  const passing = share(targets.passing)
+  if (targets.length === 0 || blocks.length === 0 || limit <= 0) return []
   const weights = new Map<string, number>()
-  for (const [term, count] of wanted.counts) {
-    const weight =
-      count / wanted.total -
-      (passing.total === 0 ? 0 : (passing.counts.get(term) ?? 0) / passing.total)
-    if (weight > 0) weights.set(term, weight)
-  }
+  for (const text of targets)
+    for (const term of new Set(terms(text)))
+      weights.set(term, (weights.get(term) ?? 0) + 1 / targets.length)
   const bags = blocks.map((block) => terms(block.text))
   const documents = new Map<string, number>()
   for (const bag of bags)

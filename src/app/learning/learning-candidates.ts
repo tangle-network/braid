@@ -16,7 +16,6 @@ import {
 } from '@tangle-network/agent-profile-materialize'
 import { draftProfileFromFeedback } from '../profile-learning.js'
 import {
-  type BlockTargets,
   carriedInstructionBlocks,
   composable,
   instructionBlockId,
@@ -657,39 +656,36 @@ export async function proposeCandidates(
 
 /**
  * What instruction blocks are ranked against: the tasks the active profile
- * failed in its latest measurement, with what their checks said, against the
- * tasks it passed; or every task when no measurement of this profile recorded
- * its results. null, with the reason, when there is nothing to rank against.
+ * failed in its latest measurement, with what their checks printed; or every
+ * task when no measurement of this profile recorded its results; or the reason
+ * there is nothing to rank against.
  */
 function blockTargets(
   input: ProposeCandidatesInput,
-): { readonly targets: BlockTargets; readonly against: string } | { readonly reason: string } {
+): { readonly targets: readonly string[]; readonly against: string } | { readonly reason: string } {
   const tasks = input.tasks ?? []
   if (tasks.length === 0)
     return { reason: 'no held-out task to rank blocks against: /learn task -- <check command>' }
-  const text = (task: LearningTask, result?: BaseTaskResult) =>
-    result === undefined || result.checkOutput === ''
-      ? task.prompt
-      : `${task.prompt}\n${result.checkOutput}`
   const results = new Map((input.baseResults ?? []).map((result) => [result.taskId, result]))
-  if (input.baseResults === null || input.baseResults === undefined || results.size === 0)
+  if (results.size === 0)
     return {
-      targets: { target: tasks.map((task) => text(task)), passing: [] },
+      targets: tasks.map((task) => task.prompt),
       against: `all ${tasks.length} held-out tasks: no measurement of the active profile records which it failed`,
     }
-  const failed = tasks.filter((task) => results.get(task.id)?.pass === false)
+  const failed = tasks.flatMap((task) => {
+    const result = results.get(task.id)
+    return result?.pass === false ? [{ task, output: result.checkOutput }] : []
+  })
   if (failed.length === 0)
     return {
       reason:
         'the active profile failed no held-out task in its latest measurement, so no block is proposed to fix one',
     }
-  const passed = tasks.filter((task) => results.get(task.id)?.pass === true)
   return {
-    targets: {
-      target: failed.map((task) => text(task, results.get(task.id))),
-      passing: passed.map((task) => text(task, results.get(task.id))),
-    },
-    against: `the ${failed.length} held-out tasks the active profile failed, against the ${passed.length} it passed`,
+    targets: failed.map(({ task, output }) =>
+      output === '' ? task.prompt : `${task.prompt}\n${output}`,
+    ),
+    against: `the ${failed.length} held-out tasks the active profile failed and what their checks printed`,
   }
 }
 

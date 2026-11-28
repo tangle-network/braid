@@ -1326,7 +1326,7 @@ test('a rule block of an instruction file the sessions loaded is ranked against 
     ])
     assert.match(
       candidate.evidence[3] as string,
-      /^ranked against the 6 held-out tasks the active profile failed, against the 6 it passed; it matches on .*\bdead\b/,
+      /^ranked against the 6 held-out tasks the active profile failed and what their checks printed; it matches on .*\bdead\b/,
     )
     assert.equal(
       candidate.evidence[4],

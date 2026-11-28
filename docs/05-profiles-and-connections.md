@@ -208,7 +208,8 @@ Every promotion is a new profile version you can roll back.
      A block is one list item without its marker, one paragraph, one table row under its header, or a fenced code block with the paragraph that introduces it.
      Only a file's newest loaded text is split, so a rule you have since removed is not proposed; the sessions that loaded a block are counted through every version of every file that holds it.
      Blocks are ranked by BM25 against the held-out tasks the active profile failed in its latest measurement, using each task's request and what its check printed.
-     A term weighs the share of failed tasks that use it, less the share of passed tasks that do, so a word every task shares counts for nothing.
+     A term weighs the share of those tasks that use it, and less the more blocks hold it.
+     Passed tasks are not subtracted: their words differ from the failed tasks' mostly by the kind of task, and subtracting them ranked a block naming the failing kind of task above the rule that fixed it.
      Before any measurement of the active profile, blocks are ranked against every task; a block whose terms overlap a better-ranked block's by half or more is left out.
      The candidate's evidence names the file, the lines, the SHA-256 of the loaded text, whether the file on disk still holds the block, and the terms it matched.
      The block is composed into `prompt.instructions` as profile guidance from `braid.instruction-file`, and its file, lines and digests are recorded under `instructionSources` in the profile's extension.
