@@ -34,6 +34,24 @@
 - `braid canary status` and `braid canary observe` verify the ledger and read
   each assignment's procedure mistakes, tokens and time.
 
+## Long reasoning streams
+
+- Braid stays responsive while a model streams a long reasoning part. Each
+  provider event was its own durable commit on the terminal's thread, so a
+  model that sent its reasoning a few characters at a time, with a progress
+  marker per piece, held the terminal for minutes: `/new` and run focus stopped
+  answering. Events that are already waiting are now merged before they are
+  stored: consecutive updates of one text or reasoning part, and consecutive
+  progress markers. Each merged event keeps the last event's id, sequence and
+  cursor, so resume and gap detection hold.
+- A reasoning part now shows its whole text. Its text stayed at the first update,
+  because each later update was appended as an empty delta.
+
+## Release proofs
+
+- A Sandbox proof whose permission response Braid refuses now names the refusal's
+  code and message.
+
 ## Dependencies
 
 - Agent Eval 2.0.19: session records name the instruction files the harness
