@@ -10,6 +10,8 @@ import type { BraidMessagePart } from './state.js'
 export interface ProviderEventMeta {
   readonly eventId: string
   readonly providerSequence: number
+  /** The first provider sequence a merged event stands for; `providerSequence` is the last. */
+  readonly firstProviderSequence?: number
   readonly cursor?: string
   readonly occurredAt?: string
   readonly receivedAt?: string

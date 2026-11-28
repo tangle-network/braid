@@ -579,6 +579,7 @@ interface RuntimeEventEnvelope {
   runId: string
   eventId: string
   sequence: number
+  coversFrom?: number
   cursor?: string
   occurredAt?: string
   receivedAt: string
@@ -589,6 +590,11 @@ interface RuntimeEventEnvelope {
 `RuntimeStreamEvent` must preserve canonical message-part, interaction, interaction-cancel, plan, status, warning, raw, and session events in addition to its existing event types.
 
 Stable event identity and sequence must survive replay and runtime adaptation.
+
+While a provider streams faster than Braid commits, Braid merges the events already waiting into one envelope before ingestion: consecutive thinking markers and consecutive updates of one text or reasoning part.
+The merged envelope keeps the last event's `eventId`, `sequence` and `cursor`, sets `coversFrom` to the first sequence it stands for, and carries every delta in order with the last whole part.
+A gap is judged from `coversFrom`, so a merged run is never mistaken for missing history; events that arrive one at a time are never merged.
+The stream also gives the process event loop a turn between groups, so input and other conversations stay responsive during a long reasoning stream.
 
 A provider without a native event identifier receives a stable identifier from the durable layer that records the mapping before delivery.
 

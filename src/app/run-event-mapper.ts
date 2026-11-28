@@ -224,6 +224,12 @@ export function safeProviderMeta(
       Number.isSafeInteger(value.providerSequence) && value.providerSequence > 0
         ? value.providerSequence
         : fallbackSequence,
+    ...(value.firstProviderSequence !== undefined &&
+    Number.isSafeInteger(value.firstProviderSequence) &&
+    value.firstProviderSequence > 0 &&
+    value.firstProviderSequence < value.providerSequence
+      ? { firstProviderSequence: value.firstProviderSequence }
+      : {}),
     ...(cursor === undefined ? {} : { cursor }),
     ...(occurredAt === undefined ? {} : { occurredAt }),
     ...(receivedAt === undefined ? {} : { receivedAt }),
