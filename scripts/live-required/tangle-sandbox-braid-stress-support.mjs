@@ -422,7 +422,7 @@ async function answerProofPermissions(session, runId, policy, deadline) {
     assert.equal(
       acknowledgement.response.type,
       'ack',
-      'Proof permission response was not acknowledged',
+      `Proof permission response was not acknowledged: ${acknowledgement.response.code ?? acknowledgement.response.type}: ${acknowledgement.response.message ?? ''}`,
     )
     assert.equal(
       acknowledgement.response.operationId,
