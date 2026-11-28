@@ -123,6 +123,7 @@ export function coalesceReadyEvents<T extends StreamItem>(
       const ready: T[] = []
       let carried: Promise<IteratorResult<T>> | undefined
       let held: T | undefined
+      let delivered = false
       let finished = false
       let failure: { readonly error: unknown } | undefined
       const pull = (): Promise<IteratorResult<T>> => {
@@ -183,7 +184,9 @@ export function coalesceReadyEvents<T extends StreamItem>(
             }
             ready.push(...(group.merged() as T[]))
             // A backlog read in one go must not hold timers and input behind the commits it feeds.
-            if (!turned) await looped
+            // The first group goes out at once so a lone first event is never delayed.
+            if (!turned && delivered) await looped
+            delivered = true
           }
         },
         async return(): Promise<IteratorResult<T>> {
