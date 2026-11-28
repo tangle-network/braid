@@ -189,7 +189,7 @@ Every promotion is a new profile version you can roll back.
    Both harnesses' sessions are joined to the change ledger at `$CHANGE_LEDGER_DIR/changes.jsonl`, which defaults to `~/.local/state/change-ledger/changes.jsonl`.
    The harness hooks and CLI Bridge append to that file: one row for each commit and pull request a session made, and from CLI Bridge one row per turn.
    A missing directory or ledger file reads as no source.
-   It proposes up to five kinds of candidate, each a profile diff:
+   It proposes up to six kinds of candidate, each a profile diff:
    - a **skill** your sessions use often, pinned to the commit and SHA-256 of a clean file in a GitHub checkout, with the provenance record that Interface's `mountSkill` writes.
      The committed text files beside its `SKILL.md`, such as `references/` and scripts, mount with it through Interface's `mountSkillDirectory`, each pinned to the same commit with its own record and its executable bit.
      They mount under the profile harness's skill directory, and every runner's materializer writes them beside the skill's `SKILL.md` in its own skills directory, so relative links hold on any runner; a binary file, a link or a submodule is not mounted, and the candidate's evidence says which;
@@ -203,9 +203,20 @@ Every promotion is a new profile version you can roll back.
      The definition's other settings, such as `tools` and `model`, are Claude Code names, so they are not carried; the evidence lists them, and the child runs with the parent's tools, permissions and model.
      Every runner whose materializer writes subagents writes the child in its own format: Claude Code, Codex, OpenCode and Gemini.
      A built-in type, a plugin's type and any type that is not a lowercase name have no definition to mount and are skipped with the reason.
+   - an **instruction block**: one rule from an instruction file your sessions loaded, such as a `CLAUDE.md`, an `AGENTS.md`, a private layer or a memory index, added to the profile's instructions.
+     Eval's session readers name each file Claude Code loaded, with its scope and text.
+     A block is one list item without its marker, one paragraph, one table row under its header, or a fenced code block with the paragraph that introduces it.
+     Only a file's newest loaded text is split, so a rule you have since removed is not proposed; the sessions that loaded a block are counted through every version of every file that holds it.
+     Blocks are ranked by BM25 against the held-out tasks the active profile failed in its latest measurement, using each task's request and what its check printed.
+     A term weighs the share of failed tasks that use it, less the share of passed tasks that do, so a word every task shares counts for nothing.
+     Before any measurement of the active profile, blocks are ranked against every task; a block whose terms overlap a better-ranked block's by half or more is left out.
+     The candidate's evidence names the file, the lines, the SHA-256 of the loaded text, whether the file on disk still holds the block, and the terms it matched.
+     The block is composed into `prompt.instructions` as profile guidance from `braid.instruction-file`, and its file, lines and digests are recorded under `instructionSources` in the profile's extension.
+     Codex joins the `AGENTS.md` files it finds into one text without naming them, so its loaded text has no file and line and is skipped with the count of sessions.
+     The text stays in your learning store; Braid copies none of it anywhere else.
    A skill the profile already carries, inline or by a GitHub reference, is not proposed again; the proposal lists it as skipped.
    A skill without a clean, pinned file, or with uncommitted changes to a tracked file beside it, is skipped with its reason.
-   A removal takes the skill's files and records with it.
+   A removal takes the skill's files and records with it; a learned instruction block the profile carries is a removal candidate too.
    Invocations of one skill version are counted together across harnesses, and the evidence gives each harness's share.
    A skill, workflow or child-profile candidate also records what the sessions behind it came to, one count per session:
    - **made a change**: the ledger, or a pull request URL the transcript prints, names a commit or pull request of the session or of a session that spawned it;
@@ -214,7 +225,9 @@ Every promotion is a new profile version you can roll back.
    Unknown is never counted as none: a transcript that shows no change proves nothing about commits.
    This is the join Eval's procedure registry makes, and it is evidence for you to read; the measurement decides what is kept.
    A change made is not a change merged: Braid does not read whether a change merged.
-3. **Measure.** `/learn measure` replays every task under the active profile once, then runs Eval's skill eval for each candidate against it on the same tasks.
+3. **Measure.** `/learn measure [--kind kind]...` replays every task under the active profile once, then runs Eval's skill eval for each candidate against it on the same tasks.
+   `--kind` measures only the proposal's candidates of that kind, such as `--kind instruction-block`.
+   The measurement keeps the active profile's result and check output on each task, which the next proposal ranks instruction blocks against.
    The blind judge sees each pair of answers with its check verdict and prefers a pass to a fail; anything else is a tie.
    A removal is measured as the unit it removes, so `keep` means removing it loses answers.
    The panel shows the decision (`keep`, `cut` or `inconclusive`) and why, wins, losses and ties, pass rates, the worst family on each side, and each side's loaded tokens.
@@ -246,13 +259,14 @@ What this does not do:
 
 ### The learner is a profile too
 
-How Braid learns is itself an AgentProfile, `braid-learner`, with its settings under `extensions.braid.learning`: the sources it reads, the candidate kinds it proposes, how many skills, removals and child profiles, how many session rows it tries, how many sessions a workflow needs, and the seed and concurrency of its replays.
+How Braid learns is itself an AgentProfile, `braid-learner`, with its settings under `extensions.braid.learning`: the sources it reads, the candidate kinds it proposes, how many skills, removals, child profiles and instruction blocks, how many session rows it tries, how many sessions a workflow needs, and the seed and concurrency of its replays.
 `/learn propose` and `/learn measure` use the active learner, and each proposal and measurement records it.
 Braid's default learner is active until a learner version is promoted.
 
 1. **Measure.** `/learn learner measure` splits your tasks per family by the learner's seed: the larger half of each family is held out, the rest are selection tasks.
    It builds up to five one-change variants of the active learner: bring back a kind it dropped, propose twice as many skills, or stop proposing one kind.
    Every learner, the active one first, proposes from the same sources, measures its candidates on the selection tasks under the rules above and picks one, or keeps the active profile when none passes.
+   Its instruction blocks are ranked against the selection tasks only.
    Each pick then replays on the held-out tasks.
    Replays are shared by profile, so a candidate or pick that several learners share runs once.
 2. **Promote.** A variant is promotable only when its pick's worst-family success on the held-out tasks is higher than the active learner's pick, with every held-out replay known; a tie keeps the active learner.

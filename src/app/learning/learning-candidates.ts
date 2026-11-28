@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { readdir, readFile, realpath } from 'node:fs/promises'
-import { dirname, join, posix, relative, sep } from 'node:path'
+import { basename, dirname, join, posix, relative, sep } from 'node:path'
 import { promisify } from 'node:util'
 import type { FeedbackTrajectory } from '@tangle-network/agent-eval'
 import type { SkillUsageRow } from '@tangle-network/agent-eval/analyst'
@@ -15,7 +15,18 @@ import {
   skillDirForHarness,
 } from '@tangle-network/agent-profile-materialize'
 import { draftProfileFromFeedback } from '../profile-learning.js'
-import { DEFAULT_LEARNER_SETTINGS } from './learner-profile.js'
+import {
+  type BlockTargets,
+  carriedInstructionBlocks,
+  composable,
+  instructionBlockId,
+  loadedInstructionBlocks,
+  onDisk,
+  rankInstructionBlocks,
+  withInstructionBlock,
+  withoutInstructionBlock,
+} from './instruction-blocks.js'
+import { CANDIDATE_KINDS, DEFAULT_LEARNER_SETTINGS } from './learner-profile.js'
 import {
   carriedSkillNames,
   inlineSkills,
@@ -37,10 +48,12 @@ import {
   subagentStarts,
 } from './learning-sources.js'
 import type {
+  BaseTaskResult,
   ChangeOutcomeCounts,
   LearnerSettings,
   LearningCandidate,
   LearningCandidateKind,
+  LearningTask,
 } from './learning-types.js'
 
 const run = promisify(execFile)
@@ -462,6 +475,14 @@ export interface ProposeCandidatesInput {
   readonly settings?: LearnerSettings['candidates']
   /** Where subagent definitions live, most specific first: the workspace's, then the user's. */
   readonly agentDirectories?: readonly string[]
+  /** The held-out tasks instruction blocks are ranked against. */
+  readonly tasks?: readonly LearningTask[]
+  /**
+   * The active profile's results on those tasks from its latest measurement,
+   * or null when no measurement of this profile recorded them; blocks are then
+   * ranked against every task.
+   */
+  readonly baseResults?: readonly BaseTaskResult[] | null
 }
 
 /**
@@ -473,8 +494,9 @@ export interface ProposeCandidatesInput {
  * | `skill` | one skill the sessions invoked most, pinned by commit | Claude Code and Codex sessions |
  * | `workflow` | a composed skill that runs two skills in the order sessions ran them | Claude Code and Codex sessions |
  * | `instructions` | lessons from task feedback reasons | Braid feedback |
- * | `removal` | one skill the profile carries | the profile itself |
+ * | `removal` | one skill or instruction block the profile carries | the profile itself |
  * | `subagent` | a child profile from the definition of a subagent type the sessions started, pinned by commit | Claude Code sessions |
+ * | `instruction-block` | one rule block of an instruction file the sessions loaded, ranked against the tasks the profile fails | the instruction files Claude Code sessions loaded |
  *
  * A skill or workflow candidate also records what its sessions came to (see
  * `changeState`). That is evidence for the reader; the measurement decides.
@@ -488,7 +510,7 @@ export async function proposeCandidates(
   const proposes = (kind: LearningCandidateKind) => settings.kinds.includes(kind)
   const candidates: LearningCandidate[] = []
   const skipped: string[] = []
-  for (const kind of ['skill', 'workflow', 'instructions', 'removal', 'subagent'] as const)
+  for (const kind of CANDIDATE_KINDS)
     if (!proposes(kind)) skipped.push(`${kind}: the learner does not propose this kind`)
   // A skill the profile already carries, inline or by reference, is not proposed again.
   const present = carriedSkillNames(input.base)
@@ -594,24 +616,153 @@ export async function proposeCandidates(
     skipped.push('instructions: no task feedback with a reason')
   }
 
-  for (const skill of inlineSkills(input.base).slice(
-    0,
-    proposes('removal') ? settings.maxRemovals : 0,
-  )) {
+  // Removals: each inline skill, then each learned instruction block, up to the limit.
+  const removals = [
+    ...inlineSkills(input.base).map((skill) => ({
+      name: skill.name,
+      summary: `Remove ${skill.name}`,
+      text: skill.content,
+      profile: () => withoutSkill(input.base, skill.name),
+    })),
+    ...carriedInstructionBlocks(input.base).map((block) => {
+      const name =
+        block.source === undefined
+          ? `instruction block ${block.id}`
+          : `${basename(block.source.path)}:${block.source.startLine}`
+      return {
+        name,
+        summary: `Remove the instruction block ${name}`,
+        text: block.text,
+        profile: () => withoutInstructionBlock(input.base, block.id),
+      }
+    }),
+  ]
+  for (const removal of removals.slice(0, proposes('removal') ? settings.maxRemovals : 0)) {
     candidates.push(
       await candidate('removal', {
-        name: skill.name,
-        summary: `Remove ${skill.name}`,
+        name: removal.name,
+        summary: removal.summary,
         evidence: ['the profile carries it; removal is kept only if success holds'],
-        unitText: skill.content,
-        unitDigest: `sha256:${sha256Hex(skill.content)}`,
-        profile: withoutSkill(input.base, skill.name),
+        unitText: removal.text,
+        unitDigest: `sha256:${sha256Hex(removal.text)}`,
+        profile: removal.profile(),
         changes: null,
       }),
     )
   }
   candidates.push(...(await childProfileCandidates(input, settings, skipped)))
+  candidates.push(...(await instructionBlockCandidates(input, settings, skipped)))
   return { candidates, skipped }
+}
+
+/**
+ * What instruction blocks are ranked against: the tasks the active profile
+ * failed in its latest measurement, with what their checks said, against the
+ * tasks it passed; or every task when no measurement of this profile recorded
+ * its results. null, with the reason, when there is nothing to rank against.
+ */
+function blockTargets(
+  input: ProposeCandidatesInput,
+): { readonly targets: BlockTargets; readonly against: string } | { readonly reason: string } {
+  const tasks = input.tasks ?? []
+  if (tasks.length === 0)
+    return { reason: 'no held-out task to rank blocks against: /learn task -- <check command>' }
+  const text = (task: LearningTask, result?: BaseTaskResult) =>
+    result === undefined || result.checkOutput === ''
+      ? task.prompt
+      : `${task.prompt}\n${result.checkOutput}`
+  const results = new Map((input.baseResults ?? []).map((result) => [result.taskId, result]))
+  if (input.baseResults === null || input.baseResults === undefined || results.size === 0)
+    return {
+      targets: { target: tasks.map((task) => text(task)), passing: [] },
+      against: `all ${tasks.length} held-out tasks: no measurement of the active profile records which it failed`,
+    }
+  const failed = tasks.filter((task) => results.get(task.id)?.pass === false)
+  if (failed.length === 0)
+    return {
+      reason:
+        'the active profile failed no held-out task in its latest measurement, so no block is proposed to fix one',
+    }
+  const passed = tasks.filter((task) => results.get(task.id)?.pass === true)
+  return {
+    targets: {
+      target: failed.map((task) => text(task, results.get(task.id))),
+      passing: passed.map((task) => text(task, results.get(task.id))),
+    },
+    against: `the ${failed.length} held-out tasks the active profile failed, against the ${passed.length} it passed`,
+  }
+}
+
+/**
+ * Instruction-block candidates: the blocks of the instruction files the
+ * sessions loaded that best match what the active profile fails, each added
+ * to the profile's instructions with a record of its file and lines. A block
+ * the profile already carries is not proposed again.
+ */
+async function instructionBlockCandidates(
+  input: ProposeCandidatesInput,
+  settings: LearnerSettings['candidates'],
+  skipped: string[],
+): Promise<LearningCandidate[]> {
+  if (!settings.kinds.includes('instruction-block') || settings.maxInstructionBlocks === 0)
+    return []
+  const loaded = loadedInstructionBlocks(input.harness.sessions)
+  if (loaded.withoutPath > 0)
+    skipped.push(
+      `instruction-block: ${loaded.withoutPath} sessions loaded instruction text that names no file (Codex joins the AGENTS.md files it finds), so none of it has a file and line to propose`,
+    )
+  if (loaded.blocks.length === 0) {
+    skipped.push('instruction-block: the sessions loaded no instruction file that names its path')
+    return []
+  }
+  const ranking = blockTargets(input)
+  if ('reason' in ranking) {
+    skipped.push(`instruction-block: ${ranking.reason}`)
+    return []
+  }
+  const carried = new Set(carriedInstructionBlocks(input.base).map((block) => block.id))
+  const eligible = loaded.blocks.filter(
+    (block) => !carried.has(instructionBlockId(block.sha256)) && composable(block),
+  )
+  const ranked = rankInstructionBlocks(eligible, ranking.targets, settings.maxInstructionBlocks)
+  if (ranked.length === 0) {
+    skipped.push(
+      `instruction-block: no block of the ${loaded.files} loaded files shares a term with ${ranking.against}`,
+    )
+    return []
+  }
+  const index = sessionIndex(input.harness.sessions)
+  const candidates: LearningCandidate[] = []
+  for (const { block, matched } of ranked) {
+    const name = `${basename(block.path)}:${block.startLine}`
+    const lines =
+      block.startLine === block.endLine
+        ? `line ${block.startLine}`
+        : `lines ${block.startLine}-${block.endLine}`
+    const changes = countChanges(block.sessions, index)
+    const firstLine = block.text.split('\n')[0]?.trim() ?? ''
+    candidates.push(
+      await candidate('instruction-block', {
+        name,
+        summary: `Add ${basename(block.path)} ${lines}: ${firstLine.length > 72 ? `${firstLine.slice(0, 71)}…` : firstLine}`,
+        evidence: [
+          `loaded in ${block.sessions.length} sessions: ${sessionsByHarness(block.sessions)}`,
+          `from ${block.path} ${lines}, in the newest text the sessions loaded (sha256 ${block.fileSha256.slice(0, 12)}${block.scope === null ? '' : `, ${block.scope} file`})`,
+          await onDisk(block),
+          ...(block.otherPaths === 0
+            ? []
+            : [`${block.otherPaths} other loaded files hold the same block`]),
+          `ranked against ${ranking.against}; it matches on ${matched.join(', ')}`,
+          changeEvidence(changes, 'loaded it'),
+        ],
+        unitText: block.text,
+        unitDigest: `sha256:${block.sha256}`,
+        profile: withInstructionBlock(input.base, block),
+        changes,
+      }),
+    )
+  }
+  return candidates
 }
 
 /**

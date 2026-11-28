@@ -1,5 +1,6 @@
 import type { BraidApplication } from '../../app/application.js'
 import { AppError } from '../../app/errors.js'
+import { CANDIDATE_KINDS } from '../../app/learning/learner-profile.js'
 import type { LearningActions } from '../../app/learning/learning-actions.js'
 import { harnessName } from '../../app/learning/learning-sources.js'
 import type {
@@ -7,6 +8,7 @@ import type {
   ChangeOutcomeCounts,
   LearnerArm,
   LearnerStatus,
+  LearningCandidateKind,
   LearningConfiguration,
   LearningSourceSummary,
   LearningStatus,
@@ -15,7 +17,7 @@ import type { BraidIntent, UiDispatchResult } from '../../views/shared/intents.j
 import type { EntityBrowserDocument, EntityBrowserRow } from '../../views/tui/entity-browser.js'
 
 const USAGE =
-  '/learn [status | task [--family name] [--timeout seconds] -- <check...> | propose [--since days] | measure | promote [candidate] [--override] | rollback | learner [status | measure | promote [variant] [--override] | rollback]]'
+  '/learn [status | task [--family name] [--timeout seconds] -- <check...> | propose [--since days] | measure [--kind kind]... | promote [candidate] [--override] | rollback | learner [status | measure | promote [variant] [--override] | rollback]]'
 
 export interface LearningDispatchContext {
   readonly app: BraidApplication
@@ -269,6 +271,16 @@ function flag(args: string[], name: string): string | undefined {
   return value
 }
 
+function candidateKinds(values: readonly string[]): LearningCandidateKind[] {
+  for (const value of values)
+    if (!(CANDIDATE_KINDS as readonly string[]).includes(value))
+      throw new AppError(
+        'INVALID_PARAMS',
+        `${value} is not a candidate kind: ${CANDIDATE_KINDS.join(', ')}`,
+      )
+  return values as LearningCandidateKind[]
+}
+
 function positiveNumber(value: string | undefined, name: string): number | undefined {
   if (value === undefined) return undefined
   const parsed = Number(value)
@@ -307,6 +319,9 @@ export async function dispatchLearningCommand(
     const proposal = await actions.propose(sinceDays === undefined ? {} : { sinceDays })
     notice = `${proposal.candidates.length} candidates proposed. /learn measure`
   } else if (action === 'measure') {
+    const kinds: string[] = []
+    for (let kind = flag(args, '--kind'); kind !== undefined; kind = flag(args, '--kind'))
+      kinds.push(kind)
     if (args.length > 0) throw new AppError('INVALID_PARAMS', USAGE)
     context.setNotice('Measuring candidates on held-out tasks…')
     context.notify()
@@ -315,6 +330,7 @@ export async function dispatchLearningCommand(
         context.setNotice(text)
         context.notify()
       },
+      ...(kinds.length === 0 ? {} : { kinds: candidateKinds(kinds) }),
     })
     notice =
       measurement.selected === null
@@ -437,8 +453,18 @@ export async function dispatchLearningHeadlessCommand(
       const proposal = await actions.propose(sinceDays === undefined ? {} : { sinceDays })
       return { kind: 'accepted', revision: revision(), data: proposal }
     }
-    case 'measure':
-      return { kind: 'accepted', revision: revision(), data: await actions.measure() }
+    case 'measure': {
+      const kinds = params.kinds
+      if (
+        kinds !== undefined &&
+        (!Array.isArray(kinds) || !kinds.every((kind) => typeof kind === 'string'))
+      )
+        throw new AppError('INVALID_PARAMS', 'kinds must be a list of candidate kinds')
+      const measurement = await actions.measure(
+        kinds === undefined ? {} : { kinds: candidateKinds(kinds as string[]) },
+      )
+      return { kind: 'accepted', revision: revision(), data: measurement }
+    }
     case 'promote': {
       const candidateId = optionalString(params, 'candidateId')
       const override = params.override

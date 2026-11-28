@@ -13,12 +13,14 @@ export const LEARNER_PROFILE_NAME = 'braid-learner'
 export const LEARNER_VERSION_PREFIX = 'learner.'
 const EXTENSION = 'braid'
 
-const KINDS: readonly LearningCandidateKind[] = [
+/** Every candidate kind, in the order a proposal lists them. */
+export const CANDIDATE_KINDS: readonly LearningCandidateKind[] = [
   'skill',
   'workflow',
   'instructions',
   'removal',
   'subagent',
+  'instruction-block',
 ]
 
 export const DEFAULT_LEARNER_SETTINGS: LearnerSettings = Object.freeze({
@@ -32,12 +34,13 @@ export const DEFAULT_LEARNER_SETTINGS: LearnerSettings = Object.freeze({
   changes:
     'per session, with the sessions that spawned it: changed; none when the change ledger observed it; otherwise unknown',
   candidates: Object.freeze({
-    kinds: Object.freeze([...KINDS]),
+    kinds: Object.freeze([...CANDIDATE_KINDS]),
     maxSkills: 2,
     maxRemovals: 2,
     rowsTried: 8,
     workflowMinSessions: 2,
     maxSubagents: 2,
+    maxInstructionBlocks: 2,
   }),
   measure: 'agent-eval runSkillEval; judge: check pass beats fail, otherwise tie',
   gate: 'addition: keep and worst-family success does not fall; compression: worst-family success holds at equal or fewer loaded tokens',
@@ -75,11 +78,11 @@ export function learnerSettings(profile: AgentProfile): LearnerSettings {
     !Array.isArray(kinds) ||
     kinds.length === 0 ||
     new Set(kinds).size !== kinds.length ||
-    !kinds.every((kind) => KINDS.includes(kind))
+    !kinds.every((kind) => CANDIDATE_KINDS.includes(kind))
   )
     throw new AppError(
       'LEARNER_PROFILE_INVALID',
-      `The learner's candidate kinds must be distinct values from ${KINDS.join(', ')}`,
+      `The learner's candidate kinds must be distinct values from ${CANDIDATE_KINDS.join(', ')}`,
     )
   const text = (value: unknown, name: string) => {
     if (typeof value !== 'string' || value === '')
@@ -93,12 +96,19 @@ export function learnerSettings(profile: AgentProfile): LearnerSettings {
     sources: [...sources],
     changes: text(raw.changes, 'changes'),
     candidates: {
-      kinds: KINDS.filter((kind) => kinds.includes(kind)),
+      kinds: CANDIDATE_KINDS.filter((kind) => kinds.includes(kind)),
       maxSkills: count(candidates.maxSkills, 'maxSkills', 0, 16),
       maxRemovals: count(candidates.maxRemovals, 'maxRemovals', 0, 16),
       rowsTried: count(candidates.rowsTried, 'rowsTried', 1, 64),
       workflowMinSessions: count(candidates.workflowMinSessions, 'workflowMinSessions', 1, 100),
       maxSubagents: count(candidates.maxSubagents, 'maxSubagents', 0, 16),
+      // A learner saved before this setting existed takes the default; it proposes blocks only when its kinds name them.
+      maxInstructionBlocks: count(
+        candidates.maxInstructionBlocks ?? DEFAULT_LEARNER_SETTINGS.candidates.maxInstructionBlocks,
+        'maxInstructionBlocks',
+        0,
+        16,
+      ),
     },
     measure: text(raw.measure, 'measure'),
     gate: text(raw.gate, 'gate'),
@@ -134,9 +144,9 @@ export function learnerVariants(active: LearnerSettings): LearnerVariant[] {
   const variants: LearnerVariant[] = []
   const withKinds = (kinds: readonly LearningCandidateKind[]): LearnerSettings => ({
     ...active,
-    candidates: { ...candidates, kinds: KINDS.filter((kind) => kinds.includes(kind)) },
+    candidates: { ...candidates, kinds: CANDIDATE_KINDS.filter((kind) => kinds.includes(kind)) },
   })
-  for (const kind of KINDS.filter((item) => !candidates.kinds.includes(item)))
+  for (const kind of CANDIDATE_KINDS.filter((item) => !candidates.kinds.includes(item)))
     variants.push({
       name: `with-${kind}`,
       summary: `Propose ${kind} candidates again`,

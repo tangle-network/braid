@@ -28,6 +28,7 @@ import type {
   LearnerRef,
   LearnerSettings,
   LearnerStatus,
+  LearningCandidateKind,
   LearningConfiguration,
   LearningMeasurement,
   LearningProposal,
@@ -56,7 +57,11 @@ export interface LearningActions {
   status(): LearningStatus
   addTask(input: AddLearningTaskInput): Promise<LearningTask>
   propose(input?: { readonly sinceDays?: number }): Promise<LearningProposal>
-  measure(input?: { readonly onProgress?: (text: string) => void }): Promise<LearningMeasurement>
+  measure(input?: {
+    readonly onProgress?: (text: string) => void
+    /** Measure only the proposal's candidates of these kinds; every candidate when absent. */
+    readonly kinds?: readonly LearningCandidateKind[]
+  }): Promise<LearningMeasurement>
   promote(input: {
     readonly operationId: string
     readonly candidateId?: string
@@ -247,14 +252,18 @@ export function createLearningActions(
       const learner = activeLearner()
       const { sinceMs, feedback, harness, agentDirectories } = await readSources(days)
       const history = braidHistory(app.state(), feedback, sinceMs)
+      const digest = profileDigest(profile)
+      // Instruction blocks are ranked against what the active profile failed when it was last measured.
+      const measured = store.measurement()
       const { candidates, skipped } = await proposeCandidates({
         base: profile,
         harness,
         feedback,
         settings: learner.settings.candidates,
         agentDirectories,
+        tasks: store.tasks(),
+        baseResults: measured?.baseProfileDigest === digest ? (measured.baseResults ?? null) : null,
       })
-      const digest = profileDigest(profile)
       const proposal: LearningProposal = {
         id: `proposal-${randomUUID()}`,
         createdAt: new Date().toISOString(),
@@ -302,6 +311,16 @@ export function createLearningActions(
           'LEARNING_NO_TASKS',
           'Mark finished runs as held-out tasks first: /learn task -- <check command>',
         )
+      const kinds = input.kinds
+      const candidates =
+        kinds === undefined
+          ? proposal.candidates
+          : proposal.candidates.filter((candidate) => kinds.includes(candidate.kind))
+      if (candidates.length === 0)
+        throw new AppError(
+          'LEARNING_NO_CANDIDATES',
+          `The proposal has no ${kinds?.join(' or ')} candidate: /learn propose`,
+        )
       const procedureDigest = learner.ref.digest as `sha256:${string}`
       const id = `measure-${randomUUID()}`
       const output = await measureCandidates({
@@ -309,7 +328,7 @@ export function createLearningActions(
         base: profile,
         baseDigest: digest,
         baseLoadedTokens: proposal.baseLoadedTokens,
-        candidates: proposal.candidates,
+        candidates,
         tasks,
         replayRoot: store.ensure('replays'),
         timeoutMs: configuration.replayTimeoutMs ?? DEFAULT_REPLAY_TIMEOUT_MS,
@@ -326,7 +345,7 @@ export function createLearningActions(
         seed: learner.settings.seed,
         base: { profile, digest },
         tasks,
-        candidates: proposal.candidates,
+        candidates,
         results: output.results,
         selected: output.selected,
         replays: output.replays,
@@ -338,6 +357,16 @@ export function createLearningActions(
         createdAt: new Date().toISOString(),
         learner: learner.ref,
         procedureDigest,
+        baseProfileDigest: digest,
+        baseResults: tasks.map((task) => {
+          const replay = output.replays.get(`${digest}:${task.id}`)
+          return {
+            taskId: task.id,
+            family: task.family,
+            pass: replay?.pass ?? null,
+            checkOutput: replay?.checkOutput ?? '',
+          }
+        }),
         tasks: tasks.length,
         families: [...new Set(tasks.map((task) => task.family))].sort(),
         searchId: id,
