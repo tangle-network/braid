@@ -10,6 +10,7 @@ import type {
   ProductionStartupLoadOptions,
   ProductionStartupSetup,
 } from './production-setup-types.js'
+import { defaultLearningConfiguration } from './state-path.js'
 
 export function createReauthenticationSetup(
   production: ProductionCompositionConfig,
@@ -64,6 +65,9 @@ export async function openSetupApplication(
     profileConnectionOptions: {
       profiles: setup.profiles,
       connections: setup.connections,
+      // Setup replaces this in-memory application with the configured one, which keeps these
+      // options; without the store here, `/learn` stayed unavailable until Braid restarted.
+      learning: defaultLearningConfiguration(),
       productionConnection: {
         ...(startupOptions.fetch === undefined ? {} : { fetch: startupOptions.fetch }),
         ...(startupOptions.credentialStore === undefined

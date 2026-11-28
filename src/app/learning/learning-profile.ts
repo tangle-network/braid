@@ -50,8 +50,8 @@ export async function loadedTokens(profile: AgentProfile): Promise<number> {
   return estimateTokens(loadedText(profile))
 }
 
-/** Where `mountSkill` provenance lives for this profile. */
-function provenanceNamespace(profile: AgentProfile): string {
+/** Where `mountSkill` provenance, and Braid's other source records, live for this profile. */
+export function provenanceNamespace(profile: AgentProfile): string {
   return profile.name ?? 'braid'
 }
 

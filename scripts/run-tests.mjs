@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process'
 import { readdir } from 'node:fs/promises'
 import { createRequire } from 'node:module'
+import { availableParallelism } from 'node:os'
 import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -130,9 +131,33 @@ const isolatedTestFiles = new Set([
 const isolatedTests = selectedTests.filter((path) => isolatedTestFiles.has(testName(path)))
 const concurrentTests = selectedTests.filter((path) => !isolatedTestFiles.has(testName(path)))
 
+// By default node --test runs one file per CPU it sees, and under beelink-gate that is every CPU of the
+// host rather than the cores the gate reserved, so the terminal and process tests time out under the load.
+// When the gate says how many workers it sized for its cores, run that many files at once.
+function testConcurrency() {
+  const gate = process.env.BEELINK_GATE_CORES
+  if (gate) {
+    try {
+      const { default_workers: workers, reserved } = JSON.parse(gate)
+      for (const count of [workers, reserved])
+        if (Number.isSafeInteger(count) && count > 0) return count
+    } catch {
+      process.stderr.write('BEELINK_GATE_CORES is not JSON; sizing tests from this machine\n')
+    }
+  }
+  return availableParallelism()
+}
+
+const concurrency = testConcurrency()
+process.stderr.write(`node --test runs ${concurrency} files at once\n`)
+
 function runTestBatch(paths) {
   if (paths.length === 0) return 0
-  const result = spawnSync(process.execPath, ['--test', ...paths], { stdio: 'inherit' })
+  const result = spawnSync(
+    process.execPath,
+    ['--test', `--test-concurrency=${concurrency}`, ...paths],
+    { stdio: 'inherit' },
+  )
   if (result.error) throw result.error
   return result.status ?? 1
 }

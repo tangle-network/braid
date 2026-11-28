@@ -750,3 +750,129 @@ test('startup prompt selects saved noncurrent history after setup and refuses ba
     await rm(root, { recursive: true, force: true })
   }
 })
+
+// Real executable and terminal over a controlled HTTP Bridge, with invented, empty learning sources.
+// First-run setup replaces its in-memory application with the configured one; `/learn` must reach the
+// configured store without a restart.
+test('/learn opens right after first-run setup applies, without a restart', {
+  timeout: 60_000,
+}, async () => {
+  const { startRuntimeBridgeServer } = await import('./support/runtime-bridge-server.js')
+  const bridge = await startRuntimeBridgeServer({
+    advertisedModels: [{ id: 'pi/openai/gpt-5', backend: 'pi' }],
+    responseText: 'SETUP_LEARN_REPLY',
+  })
+  const root = await mkdtemp(join(tmpdir(), 'braid-setup-learn-'))
+  const workspace = join(root, 'workspace')
+  const sources = join(root, 'sources')
+  await mkdir(workspace)
+  await mkdir(join(sources, 'claude-code'), { recursive: true })
+  await mkdir(join(sources, 'codex'), { recursive: true })
+  const key = join(root, 'database.key')
+  const profilePath = join(root, 'profile.json')
+  await writeFile(key, randomBytes(32), { mode: 0o600 })
+  await writeFile(
+    profilePath,
+    JSON.stringify(
+      defineAgentProfile({
+        name: 'Setup learn proof',
+        harness: 'pi',
+        model: { default: 'openai/gpt-5', provider: 'openai' },
+      }),
+    ),
+    { mode: 0o600 },
+  )
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    TERM: 'xterm-256color',
+    NO_COLOR: '1',
+    NODE_NO_WARNINGS: '1',
+    BRAID_CLI_BRIDGE_ENDPOINT: bridge.endpoint,
+    BRAID_STATE_PATH: join(workspace, 'state.sqlite'),
+    XDG_CONFIG_HOME: join(root, 'config'),
+    XDG_DATA_HOME: join(root, 'data'),
+    BRAID_LEARN_DIRECTORY: join(root, 'learn'),
+    BRAID_LEARN_CLAUDE_CODE_PROJECTS: join(sources, 'claude-code'),
+    BRAID_LEARN_CODEX_SESSIONS: join(sources, 'codex'),
+    BRAID_LEARN_CHANGE_LEDGER: join(sources, 'changes.jsonl'),
+  }
+  delete env.FORCE_COLOR
+  const emulator = new xterm.Terminal({ cols: 120, rows: 40, allowProposedApi: true })
+  const child = pty.spawn(
+    process.execPath,
+    [
+      resolve('dist/bin/braid.js'),
+      '--workspace',
+      workspace,
+      '--config',
+      join(workspace, 'config.json'),
+      '--database-key-file',
+      key,
+      '--profile',
+      profilePath,
+      // A startup prompt validates the selection on its first send, as the saved-target test does.
+      '--prompt',
+      'SETUP_LEARN_PROMPT',
+    ],
+    { cwd: workspace, env, cols: 120, rows: 40 },
+  )
+  let output = ''
+  let exited = false
+  const closed = new Promise<number>((resolve) =>
+    child.onExit(({ exitCode }) => {
+      exited = true
+      resolve(exitCode)
+    }),
+  )
+  child.onData((chunk) => {
+    output += chunk
+    emulator.write(chunk)
+  })
+  const screen = () =>
+    Array.from(
+      { length: 40 },
+      (_, row) =>
+        emulator.buffer.active
+          .getLine(emulator.buffer.active.viewportY + row)
+          ?.translateToString(true) ?? '',
+    ).join('\n')
+  const waitFor = async (predicate: () => boolean) => {
+    const deadline = Date.now() + 20_000
+    while (!predicate()) {
+      assert.ok(!exited && Date.now() < deadline, screen())
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    }
+  }
+  const watchdog = setTimeout(() => child.kill(), 50_000)
+  try {
+    await waitFor(() => screen().includes('choose an AgentProfile'))
+    child.write('\r')
+    await waitFor(() => screen().includes('choose a connection'))
+    child.write('\r')
+    await waitFor(() => screen().includes('review and start'))
+    child.write('\r')
+    await waitFor(() => screen().includes('selection applied'))
+    child.write('\r')
+    await waitFor(() => screen().includes('SETUP_LEARN_REPLY') && screen().includes('new message'))
+    child.write('/learn')
+    await waitFor(() => screen().includes('/learn'))
+    child.write('\r')
+    await waitFor(
+      () => screen().includes('Learning ›') || screen().includes('LEARNING_UNAVAILABLE'),
+    )
+    assert.ok(!screen().includes('LEARNING_UNAVAILABLE'), screen())
+    assert.match(screen(), /0 held-out tasks · 0 candidates/)
+    child.write('\u001b')
+    await waitFor(() => !screen().includes('Learning ›'))
+    child.write('\u0003')
+    await waitFor(() => screen().toLowerCase().includes('ctrl+c again to quit'))
+    child.write('\u0003')
+    assert.equal(await closed, 0, output)
+  } finally {
+    clearTimeout(watchdog)
+    if (!exited) child.kill()
+    emulator.dispose()
+    await bridge.close()
+    await rm(root, { recursive: true, force: true })
+  }
+})
