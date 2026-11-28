@@ -33,6 +33,11 @@ export interface RuntimeEventEnvelope {
   readonly runId: string
   readonly eventId: string
   readonly sequence: number
+  /**
+   * The first provider sequence this envelope stands for when Braid merged a run of consecutive
+   * events into one; absent for an event that stands for its own sequence.
+   */
+  readonly coversFrom?: number
   readonly cursor?: string
   readonly occurredAt?: string
   readonly receivedAt: string

@@ -180,14 +180,17 @@ export function withProviderProgress(
 ): BraidRun {
   if (!provider) return run
   if (provider.providerSequence <= run.lastProviderSequence) return run
+  const first = provider.firstProviderSequence ?? provider.providerSequence
   const missingSequence =
-    provider.providerSequence > run.lastProviderSequence + 1
-      ? { from: run.lastProviderSequence + 1, to: provider.providerSequence - 1 }
+    first > run.lastProviderSequence + 1
+      ? { from: run.lastProviderSequence + 1, to: first - 1 }
       : undefined
   return {
     ...run,
     lastProviderSequence: provider.providerSequence,
-    eventCount: run.eventCount + 1,
+    eventCount:
+      run.eventCount +
+      (provider.providerSequence - Math.max(first, run.lastProviderSequence + 1) + 1),
     ...(provider.cursor === undefined ? {} : { lastCursor: provider.cursor }),
     ...(missingSequence === undefined ? {} : { missingSequence }),
   }

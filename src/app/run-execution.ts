@@ -7,6 +7,7 @@ import { type RuntimeFailure, runtimeFailure } from './provider-values.js'
 import { eventIdFor, providerMeta } from './run-event-mapper.js'
 import type { RunExecutionSnapshot } from './run-execution-snapshot.js'
 import { continuesTerminal, recoverPendingFinal } from './run-final-recovery.js'
+import { coalesceReadyEvents } from './run-stream-coalescing.js'
 import { reconnectRun } from './run-replay.js'
 import { IdleArm, pumpWithIdleBound, stallDetail, streamIdleMs } from './run-stall.js'
 
@@ -69,7 +70,7 @@ export async function executeRun(
     }
     if (context.ledger.isDetached(admission.runId)) return
     const outcome = await pumpWithIdleBound(
-      context.execution.streamTurn(runtimeInput),
+      coalesceReadyEvents(context.execution.streamTurn(runtimeInput)),
       streamIdleMs(context.execution),
       idle,
       async (runtimeEvent) => {
@@ -81,7 +82,8 @@ export async function executeRun(
           // A gap after a terminal status would record reconnection and reopen the proven run.
           if (
             isRuntimeEventEnvelope(runtimeEvent) &&
-            runtimeEvent.sequence > context.findRun(admission.runId).lastProviderSequence + 1
+            (runtimeEvent.coversFrom ?? runtimeEvent.sequence) >
+              context.findRun(admission.runId).lastProviderSequence + 1
           )
             return 'stop'
         }

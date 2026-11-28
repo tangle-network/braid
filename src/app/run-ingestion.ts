@@ -1,5 +1,6 @@
-import { type ProviderEventMeta, providerEventKeyFor } from '../domain/events.js'
+import { type BraidEvent, type ProviderEventMeta, providerEventKeyFor } from '../domain/events.js'
 import type { RuntimeEventEnvelope } from '../domain/runtime-events.js'
+import type { BraidState } from '../domain/state.js'
 import { isCanonicalIsoDateTime } from '../domain/text.js'
 import type { IngestionPort, RuntimeEventIngestionResult } from './application-ports.js'
 import { AppError } from './errors.js'
@@ -16,6 +17,10 @@ export function ingestRuntimeEvent(
     envelope.sequence < 1 ||
     envelope.sequence > 1_000_000_000 ||
     !isCanonicalIsoDateTime(envelope.receivedAt) ||
+    (envelope.coversFrom !== undefined &&
+      (!Number.isSafeInteger(envelope.coversFrom) ||
+        envelope.coversFrom < 1 ||
+        envelope.coversFrom >= envelope.sequence)) ||
     (envelope.cursor !== undefined && !safePublicIdentifier(envelope.cursor)) ||
     (envelope.occurredAt !== undefined && !isCanonicalIsoDateTime(envelope.occurredAt))
   )
@@ -39,8 +44,9 @@ export function ingestRuntimeEvent(
       duplicate: false,
     })
   }
-  if (envelope.sequence > expected) {
-    const gap = { from: expected, to: envelope.sequence - 1 }
+  const first = envelope.coversFrom ?? envelope.sequence
+  if (first > expected) {
+    const gap = { from: expected, to: first - 1 }
     const commits: Array<void | Promise<void>> = []
     if (
       !context
@@ -127,6 +133,7 @@ function eventFromEnvelope(context: IngestionPort, envelope: RuntimeEventEnvelop
     {
       eventId: envelope.eventId,
       providerSequence: envelope.sequence,
+      ...(envelope.coversFrom === undefined ? {} : { firstProviderSequence: envelope.coversFrom }),
       ...(envelope.cursor === undefined ? {} : { cursor: envelope.cursor }),
       ...(envelope.occurredAt === undefined ? {} : { occurredAt: envelope.occurredAt }),
       receivedAt: envelope.receivedAt,
@@ -134,5 +141,22 @@ function eventFromEnvelope(context: IngestionPort, envelope: RuntimeEventEnvelop
     envelope.sequence,
   )
   const event = providerEventFor(envelope.runId, envelope.event, meta, context.streamSanitizer)
-  return event
+  return withWholeTextDelta(context.currentState(), event)
+}
+
+/**
+ * A part update carries the whole text so far, already redacted as a whole. The incremental
+ * sanitizer holds a delta back until its stream finishes, so the delta alone would leave the stored
+ * text where the first update put it. The part's own growth is the delta the reducer appends.
+ */
+function withWholeTextDelta(state: BraidState, event: BraidEvent): BraidEvent {
+  if (event.kind !== 'run.part.updated' || event.delta === undefined) return event
+  const text = event.part.text
+  if (text === undefined || (event.part.kind !== 'text' && event.part.kind !== 'reasoning'))
+    return event
+  const stored = state.messages
+    .find((message) => message.runId === event.runId && message.role === 'assistant')
+    ?.parts.find((part) => part.id === event.part.id)?.text
+  if (stored === undefined || !text.startsWith(stored)) return event
+  return { ...event, delta: text.slice(stored.length) }
 }
