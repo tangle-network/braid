@@ -83,6 +83,7 @@ const PARAMETER_TYPES: Readonly<
     override: 'boolean',
     step: 'string',
     variant: 'string',
+    kinds: 'string[]',
   },
   respond_interaction: { runId: 'string', interactionId: 'string', response: 'record' },
   cancel_interaction: { runId: 'string', interactionId: 'string' },

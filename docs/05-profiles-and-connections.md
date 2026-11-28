@@ -282,7 +282,7 @@ The held-out tasks judge picks the learners never chose on, but they also choose
 A round costs one replay per distinct profile per task: the active profile on every selection task, each distinct candidate on the selection tasks, and each distinct pick on the held-out tasks.
 
 Headless clients send `learn` with an operation identifier and `action` (`status`, `task`, `propose`, `measure`, `promote`, `rollback` or `learner`).
-`task` takes `check` (a string array) and optional `runId`, `family` and `timeoutSeconds`; `propose` takes `sinceDays`; `promote` takes `candidateId` and `override`.
+`task` takes `check` (a string array) and optional `runId`, `family` and `timeoutSeconds`; `propose` takes `sinceDays`; `measure` takes `kinds` (a string array of candidate kinds); `promote` takes `candidateId` and `override`.
 `learner` takes `step` (`status`, `measure`, `promote` or `rollback`); its `promote` takes `variant` and `override`.
 Each returns the stored record the action wrote: the task, proposal, measurement, learner round or version entry, or the whole status.
 
