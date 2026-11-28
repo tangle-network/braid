@@ -33,6 +33,14 @@
  * type and a type no profile can name. The agent tidies when its profile
  * carries `tidier`, so the child profile wins and is promoted, and every
  * runner that has subagents writes it.
+ *
+ * The fourth test learns a rule from an instruction file. Its sessions load a
+ * user file whose dead-code rule moved between two versions, and a project
+ * file. The agent tidies when its instructions tell it to remove dead code.
+ * Braid ranks the blocks against every task, measures only the blocks, then
+ * ranks against the tasks the active profile failed and what their checks
+ * printed, so the reading rules drop out; the rule is promoted with its file
+ * and line, and the next proposal offers it for removal.
  */
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
@@ -109,11 +117,25 @@ async function repository(path: string, files: Record<string, string>, remote?: 
   if (remote !== undefined) git(path, 'remote', 'add', 'origin', remote)
 }
 
+/** An instruction file a Claude Code session loaded, as its `instructions` attachment lists it. */
+interface InstructionLoad {
+  readonly path: string
+  readonly type: string
+  readonly content: string
+}
+
 /**
  * One invented Claude Code transcript: each named skill in order, each loaded
  * from the checkout. A name `agent:<type>` starts a subagent of that type instead.
+ * The instruction files it loaded are recorded after the first message, one
+ * attachment each, in order.
  */
-function transcript(sessionId: string, skills: string, names = ['tidy', 'audit']): string {
+function transcript(
+  sessionId: string,
+  skills: string,
+  names = ['tidy', 'audit'],
+  instructions: readonly InstructionLoad[] = [],
+): string {
   const lines: unknown[] = []
   let previous: string | null = null
   let tick = 0
@@ -135,6 +157,10 @@ function transcript(sessionId: string, skills: string, names = ['tidy', 'audit']
     previous = uuid
   }
   line('user', `${sessionId}-u`, { role: 'user', content: 'Invented request.' })
+  for (const [index, file] of instructions.entries())
+    line('attachment', `${sessionId}-i${index}`, undefined, {
+      attachment: { type: 'instructions', files: [file] },
+    })
   for (const [index, name] of names.entries()) {
     const id = `toolu_${sessionId}_${index}`
     if (name.startsWith('agent:')) {
@@ -724,6 +750,8 @@ test('learning reads Claude Code and Codex sessions with their change ledger, me
 async function learningHarness(
   names?: string[],
   profile: Readonly<AgentProfile> = LEARNING_FIXTURE_PROFILE,
+  /** Writes instruction files under the test's root and returns what each session loaded. */
+  loads?: (root: string) => Promise<Readonly<Record<string, readonly InstructionLoad[]>>>,
 ) {
   const root = await mkdtemp(join(tmpdir(), 'braid-learning-'))
   const skills = join(root, 'skills')
@@ -752,8 +780,12 @@ async function learningHarness(
   git(skills, 'commit', '-q', '-m', 'executable check')
   await repository(workspace, { 'README.md': '# Invented workspace\n' })
   await mkdir(join(projects, '-work-app'), { recursive: true })
+  const loaded = loads === undefined ? {} : await loads(root)
   for (const id of ['s1', 's2', 's3'])
-    await writeFile(join(projects, '-work-app', `${id}.jsonl`), transcript(id, skills, names))
+    await writeFile(
+      join(projects, '-work-app', `${id}.jsonl`),
+      transcript(id, skills, names, loaded[id] ?? []),
+    )
 
   const app = createBraidApplication({
     fixture: 'deterministic',
@@ -1165,6 +1197,196 @@ test('a subagent the sessions start becomes a child profile: pinned, measured, p
     assert.match(
       written('codex', '.codex/agents/tidier.toml'),
       /^developer_instructions = .*Remove dead code, one change per commit\./m,
+    )
+  } finally {
+    await close()
+  }
+})
+
+test('a rule block of an instruction file the sessions loaded is ranked against the failed tasks, measured, promoted with its file and line, and removable', async () => {
+  // The user's instruction file gained a reading rule above the dead-code rule between
+  // sessions, which renumbered it: s1 loaded both texts, s2 and s3 only the newer one,
+  // beside a project file.
+  const older =
+    '# Invented defaults\n\n1. Answer in plain words.\n2. Remove dead code before you hand back a cleanup task, and say which module you cleaned.\n'
+  const newer =
+    "# Invented defaults\n\n1. Answer in plain words.\n2. Keep a reading answer to the README's own words, and quote the line you summarize.\n3. Remove dead code before you hand back a cleanup task, and say which module you cleaned.\n"
+  const project =
+    'Notes for the app:\n\n- The README is the only documentation; read it before answering.\n'
+  const rule =
+    'Remove dead code before you hand back a cleanup task, and say which module you cleaned.'
+  const sha256 = (text: string) => createHash('sha256').update(text).digest('hex')
+  let userFile = ''
+  const { app, session, workspace, close } = await learningHarness(
+    ['audit'],
+    LEARNING_FIXTURE_PROFILE,
+    async (root) => {
+      userFile = join(root, 'home', 'AGENTS.md')
+      const projectFile = join(root, 'app', 'CLAUDE.md')
+      await mkdir(dirname(userFile), { recursive: true })
+      await mkdir(dirname(projectFile), { recursive: true })
+      await writeFile(userFile, newer)
+      await writeFile(projectFile, project)
+      const user = (content: string) => ({ path: userFile, type: 'User', content })
+      const notes = { path: projectFile, type: 'Project', content: project }
+      return { s1: [user(older), user(newer)], s2: [user(newer), notes], s3: [user(newer), notes] }
+    },
+  )
+  try {
+    await call(session, 'initialize', { workspace })
+    // Even tasks clean up a module and fail unless the answer is tidy; odd ones read and always pass.
+    const node = process.execPath
+    const cleaned = [
+      node,
+      '-e',
+      "const ok=require('fs').readFileSync(process.env.BRAID_REPLAY_ANSWER,'utf8').startsWith('tidied');if(!ok)console.log('dead code is left in the parser module');process.exit(ok?0:1)",
+    ]
+    const read = [node, '-e', "require('fs').statSync('README.md');process.exit(0)"]
+    for (let index = 0; index < 12; index++) {
+      const cleanup = index % 2 === 0
+      const runId = await finishRun(
+        app,
+        cleanup
+          ? `Invented cleanup task ${index}: clean up the parser module`
+          : `Invented reading task ${index}: read the README and summarize it`,
+        `op-block-run-${index}`,
+      )
+      await call(
+        session,
+        'learn',
+        {
+          action: 'task',
+          runId,
+          check: cleanup ? cleaned : read,
+          family: cleanup ? 'cleanup' : 'reading',
+        },
+        `op-block-task-${index}`,
+      )
+    }
+
+    const blocks = (proposal: LearningProposal) =>
+      proposal.candidates.filter((candidate) => candidate.kind === 'instruction-block')
+    const named = (proposal: LearningProposal, name: string) => {
+      const found = blocks(proposal).find((candidate) => candidate.name === name)
+      assert(found !== undefined, `${name} in ${blocks(proposal).map((item) => item.name)}`)
+      return found
+    }
+
+    // Before any measurement, blocks are ranked against every task.
+    const first = (await call(
+      session,
+      'learn',
+      { action: 'propose' },
+      'op-block-propose-1',
+    )) as LearningProposal
+    const proposed = named(first, 'AGENTS.md:5')
+    assert.equal(proposed.unitText, rule)
+    assert.equal(proposed.unitDigest, `sha256:${sha256(rule)}`)
+    assert.match(
+      proposed.evidence[3] as string,
+      /^ranked against all 12 held-out tasks: no measurement of the active profile records which it failed; it matches on /,
+    )
+
+    // Measuring only the blocks keeps the dead-code rule and records what the base failed.
+    const measured = (await call(
+      session,
+      'learn',
+      { action: 'measure', kinds: ['instruction-block'] },
+      'op-block-measure-1',
+    )) as LearningMeasurement
+    assert.deepEqual(
+      measured.results.map((result) => result.kind),
+      blocks(first).map(() => 'instruction-block'),
+    )
+    assert.equal(measured.selected, proposed.id)
+    const failed = (measured.baseResults ?? []).filter((result) => result.pass === false)
+    assert.equal(failed.length, 6)
+    assert.equal(failed[0]?.checkOutput, 'dead code is left in the parser module\n')
+
+    // The next proposal ranks against the six failed tasks, so the reading rules drop out.
+    const second = (await call(
+      session,
+      'learn',
+      { action: 'propose' },
+      'op-block-propose-2',
+    )) as LearningProposal
+    const id = sha256(rule).slice(0, 16)
+    const candidate = named(second, 'AGENTS.md:5')
+    assert.equal(blocks(second)[0]?.id, candidate.id, 'the dead-code rule ranks first')
+    assert(
+      !blocks(second).some((item) => /README/.test(item.unitText)),
+      blocks(second)
+        .map((item) => item.unitText)
+        .join('\n'),
+    )
+    assert.deepEqual(candidate.evidence.slice(0, 3), [
+      'loaded in 3 sessions: 3 Claude Code',
+      `from ${userFile} line 5, in the newest text the sessions loaded (sha256 ${sha256(newer).slice(0, 12)}, User file)`,
+      'the file on disk holds it at the same lines',
+    ])
+    assert.match(
+      candidate.evidence[3] as string,
+      /^ranked against the 6 held-out tasks the active profile failed and what their checks printed; it matches on .*\bdead\b/,
+    )
+    assert.equal(
+      candidate.evidence[4],
+      'Changes of the 3 sessions that loaded it: 0 made a change, 0 made none, 3 unknown',
+    )
+    assert.deepEqual(candidate.profile.prompt?.instructions, [
+      `<profile-guidance source="braid.instruction-file" id="${id}">\n${rule}\n</profile-guidance>`,
+      'Keep public behavior.',
+    ])
+    assert.deepEqual(
+      candidate.profile.extensions?.[LEARNING_FIXTURE_PROFILE.name as string]?.instructionSources,
+      [
+        {
+          id,
+          path: userFile,
+          startLine: 5,
+          endLine: 5,
+          scope: 'User',
+          fileSha256: sha256(newer),
+          sha256: sha256(rule),
+        },
+      ],
+    )
+
+    await call(
+      session,
+      'learn',
+      { action: 'measure', kinds: ['instruction-block'] },
+      'op-block-measure-2',
+    )
+    const promoted = (await call(
+      session,
+      'learn',
+      { action: 'promote' },
+      'op-block-promote',
+    )) as LearningVersion
+    assert.equal(promoted.version, 'learn.1')
+    assert.equal(promoted.candidateId, candidate.id)
+    assert.deepEqual(
+      app.runtimeSelection.profile().prompt?.instructions,
+      candidate.profile.prompt?.instructions,
+    )
+
+    // The promoted profile carries the block: it is offered for removal, not added again.
+    const third = (await call(
+      session,
+      'learn',
+      { action: 'propose' },
+      'op-block-propose-3',
+    )) as LearningProposal
+    assert(!blocks(third).some((item) => item.unitText === rule))
+    const removal = third.candidates.find(
+      (item) => item.kind === 'removal' && item.name === 'AGENTS.md:5',
+    )
+    assert(removal !== undefined, third.candidates.map((item) => item.name).join(', '))
+    assert.equal(removal.unitText, rule)
+    assert.deepEqual(removal.profile.prompt?.instructions, ['Keep public behavior.'])
+    assert.equal(
+      removal.profile.extensions?.[LEARNING_FIXTURE_PROFILE.name as string]?.instructionSources,
+      undefined,
     )
   } finally {
     await close()

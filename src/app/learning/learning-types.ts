@@ -19,7 +19,13 @@ export interface LearningTask {
     | { readonly kind: 'empty' }
 }
 
-export type LearningCandidateKind = 'skill' | 'workflow' | 'instructions' | 'removal' | 'subagent'
+export type LearningCandidateKind =
+  | 'skill'
+  | 'workflow'
+  | 'instructions'
+  | 'removal'
+  | 'subagent'
+  | 'instruction-block'
 
 export interface LearningCandidate {
   readonly id: string
@@ -136,11 +142,25 @@ export interface CandidateMeasurement {
   readonly failures: readonly string[]
 }
 
+/** One held-out task as the active profile did on it in a measurement. */
+export interface BaseTaskResult {
+  readonly taskId: string
+  readonly family: string
+  /** null when the replay or its check had no result. */
+  readonly pass: boolean | null
+  /** The end of the check's output, which names what the answer missed. */
+  readonly checkOutput: string
+}
+
 export interface LearningMeasurement {
   readonly id: string
   readonly proposalId: string
   readonly createdAt: string
   readonly learner: LearnerRef
+  /** The active profile the candidates were measured against; absent on measurements before it was recorded. */
+  readonly baseProfileDigest?: string
+  /** The active profile's result on each task, which the next proposal ranks instruction blocks against. */
+  readonly baseResults?: readonly BaseTaskResult[]
   /** The learner's digest: the procedure revision the ledger names. */
   readonly procedureDigest: string
   readonly tasks: number
@@ -196,6 +216,8 @@ export interface LearnerSettings {
     readonly workflowMinSessions: number
     /** Child-profile candidates, one per subagent type the sessions started that has a pinnable definition. */
     readonly maxSubagents: number
+    /** Instruction-block candidates: blocks of the instruction files the sessions loaded, best match to the failed tasks first. */
+    readonly maxInstructionBlocks: number
   }
   readonly measure: string
   readonly gate: string

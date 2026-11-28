@@ -22,15 +22,21 @@ export const LEARNING_FIXTURE_PROFILE: Readonly<AgentProfile> = defineAgentProfi
   },
 })
 
+/** The rule that makes the walkthrough's agent tidy when its instructions carry it. */
+export const LEARNING_FIXTURE_RULE = /remove dead code/i
+
 /**
  * The walkthrough's agent: it tidies only when its profile mounts the `tidy`
- * skill or carries a `tidier` child profile to hand the work to, so a check
- * that needs a tidy answer passes under a profile with either.
+ * skill, carries a `tidier` child profile to hand the work to, or its
+ * instructions tell it to remove dead code, so a check that needs a tidy
+ * answer passes under a profile with any of them.
  */
 export function learningFixtureResponse(profile: Readonly<AgentProfile>, text: string): string {
   const tidies =
     (profile.resources?.skills ?? []).some(
       (skill) => skill.kind === 'inline' && skill.name === LEARNING_FIXTURE_SKILL,
-    ) || profile.subagents?.[LEARNING_FIXTURE_SUBAGENT] !== undefined
+    ) ||
+    profile.subagents?.[LEARNING_FIXTURE_SUBAGENT] !== undefined ||
+    (profile.prompt?.instructions ?? []).some((line) => LEARNING_FIXTURE_RULE.test(line))
   return `${tidies ? 'tidied' : 'untouched'}: ${text}`
 }

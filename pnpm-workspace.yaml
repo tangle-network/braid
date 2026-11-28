@@ -7,17 +7,11 @@ allowBuilds:
   protobufjs: false
 ignoreScripts: false
 minimumReleaseAgeExclude:
-  - '@tangle-network/agent-eval@0.209.1 || 0.214.0 || 0.215.1 || 0.221.8 || 1.0.0 || 1.0.1 || 1.0.21 || 1.0.22 || 2.0.12 || 2.0.14 || 2.0.15'
-  - '@tangle-network/agent-knowledge@20.0.0 || 22.0.1 || 22.0.2 || 23.0.0'
-  - '@tangle-network/sandbox@0.60.27 || 0.60.58 || 0.60.88 || 0.61.1 || 1.0.33 || 1.0.264 || 1.0.282'
+  # Our own scope installs as soon as it publishes: only our gated, provenance-signed
+  # release workflow publishes it. The first matching entry decides, so a per-version
+  # entry for this scope would never be read.
+  - '@tangle-network/*'
   - '@earendil-works/pi-tui@1.1.0'
-  - '@tangle-network/agent-profile-materialize@0.21.0 || 1.1.2 || 1.1.4 || 1.1.54 || 1.1.55 || 1.1.62 || 1.1.222 || 1.1.224'
-  - '@tangle-network/agent-trace-contract@2.2.0'
-  - '@tangle-network/agent-provider-cli-bridge@2.0.19'
-  - '@tangle-network/agent-interface@5.10.27 || 5.10.31 || 5.10.32'
-  - '@tangle-network/agent-provider-tangle@5.0.15'
-  - '@tangle-network/agent-runtime@8.0.0 || 10.0.16'
-  - '@tangle-network/cli-agent-registry@0.15.30'
 overrides:
   zod@<4.6.7: 4.6.7
   undici@>=8.0.0 <8.12.2: 8.12.3

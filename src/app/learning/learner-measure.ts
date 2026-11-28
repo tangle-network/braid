@@ -100,10 +100,13 @@ export async function measureLearners(input: MeasureLearnersInput): Promise<Meas
   const measured: Omit<LearnerArm, 'gate'>[] = []
   for (const learner of learners) {
     input.onProgress?.(`Learner ${learner.name}: proposing`)
+    // Blocks are ranked against the selection tasks only, so no learner sees the held-out ones.
     const { candidates, skipped } = await proposeCandidates({
       base: input.base,
       ...input.sources,
       settings: learner.settings.candidates,
+      tasks: selection,
+      baseResults: null,
     })
     let picked: LearningCandidate | undefined
     if (candidates.length > 0 && selection.length > 0) {
